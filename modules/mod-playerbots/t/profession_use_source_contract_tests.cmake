@@ -79,7 +79,7 @@ require_text("${triggers}" "bot->IsNonMeleeSpellCasted(true), !bot->IsStandState
 require_text("${actions_header}" "bool isUseful() override;" "craft action checks usefulness")
 require_text("${actions}" "|| IsReadyToCraft(ai)" "action waits while the bot is busy")
 require_text("${actions}" "SET_AI_VALUE2(int, \"manual int\", \"profession craft spell\", 0);" "pick used once")
-require_order("${actions}" "ai->CanCastSpell(spellId, bot, 0, true, nullptr, false, false, false, &check)" "ai->CastSpell(spellId, bot)" "pre-check before the cast")
+require_order("${actions}" "ai->CanCastSpell(spellId, bot, 0, true, nullptr, false, false, false, &check)" "ai->CastSpell(spellId, bot, nullptr, true, &castDuration)" "pre-check before the cast")
 # Review: trade skills carry SPELL_ATTR_NOT_SHAPESHIFT; the form goes first.
 require_order("${actions}" "ai->RemoveShapeshift();" "ai->CanCastSpell(spellId, bot, 0, true, nullptr, false, false, false, &check)" "form dropped before the pre-check")
 foreach(code SPELL_FAILED_ITEM_NOT_READY SPELL_FAILED_ITEM_GONE SPELL_FAILED_REQUIRES_SPELL_FOCUS)
@@ -104,7 +104,18 @@ require_text("${triggers}" "recipe.craftable > 0 && !HasRoomForProduct(spell, bo
 # Critic B4.3: a pending pick is reused for a minute instead of a scan every 10 s.
 require_text("${triggers}" "AI_VALUE2(time_t, \"manual time\", \"profession craft scan\"), 60)" "scan at most once a minute")
 # Direct self cast, trace with the spell id, bot event for cast starts (critic B4.4).
-require_text("${actions}" "ai->CastSpell(spellId, bot)" "direct self cast")
+require_text("${actions}" "ai->CastSpell(spellId, bot, nullptr, true, &castDuration)" "direct self cast")
+# twow-repo#333 P2-a (M1r run 4: crafts INTERRUPTED): the action holds the AI for the cast time it reports, and each
+# run starts from the react delay.
+require_text("${actions}" "{
+    // twow-repo#333 P2-a: each run starts from the react delay, so a cast time never carries over to the next run.
+    SetDuration(sPlayerbotAIConfig.reactDelay);
+" "the react delay at the start of Execute")
+require_text("${actions}" "        if (ok)
+        {
+            SetDuration(std::max(castDuration, sPlayerbotAIConfig.reactDelay));
+" "the cast wait after a started craft")
+forbid_text("${actions}" "ai->CastSpell(spellId, bot);" "a craft cast without its cast time")
 require_text("${actions}" "ok ? \"cast_started\" : \"failed\", ok ? \"real_reagents\" : \"cast_failed\", spellId" "trace carries the spell id")
 require_text("${actions}" "\"CraftCastStarted\"" "bot event counts cast starts")
 forbid_text("${actions}" "\"CraftAction\"" "event name that reads like a finished item")
