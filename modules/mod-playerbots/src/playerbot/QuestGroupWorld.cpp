@@ -2,6 +2,9 @@
 #include "playerbot/QuestGroupWorld.h"
 #include "playerbot/BotGroupDiagnostics.h"
 #include "playerbot/GroupAiRefresh.h"
+#include "playerbot/DeferredLog.h"     // s7r: BotGroups.WorldThreadDefer
+#include "playerbot/GroupOpTiming.h"   // s7r: the core share of a join or leave
+#include "playerbot/ThreadCpuClock.h"  // s7r: stall control
 #include "playerbot/ScanSlicePolicy.h"
 #include "playerbot/GuidPosition.h"
 #include "playerbot/BotSlots.h"
@@ -301,12 +304,18 @@ void LeaveCore(Player* bot)
     if (!group)
         return;
     PlayerbotAI* ai = Ai(bot);
-    sPlayerbotAIConfig.logEvent(ai, "LeaveGroupAction", group->GetLeaderName(), std::to_string(group->GetMembersCount() - 1));
-    bot_group::LogMembership(bot, group, "leave");
+    {
+        // s7r (BotGroups.WorldThreadDefer): both lines written later on the bot's own thread.
+        deferred_log::Scope const deferLogs(ai, sPlayerbotAIConfig.botGroupsWorldThreadDefer);
+        sPlayerbotAIConfig.logEvent(ai, "LeaveGroupAction", group->GetLeaderName(), std::to_string(group->GetMembersCount() - 1));
+        bot_group::LogMembership(bot, group, "leave");
+    }
     WorldPacket p;
     std::string name = bot->GetName();
     p << uint32(PARTY_OP_LEAVE) << name << uint32(0);
+    auto const coreStart = std::chrono::steady_clock::now();
     bot->GetSession()->HandleGroupDisbandOpcode(p);
+    group_op_timing::lastLeaveCoreUs = group_op_timing::UsSince(coreStart);   // s7r: the core leave alone
 }
 
 Player* Find(std::map<std::uint32_t, Player*> const& bots, std::uint32_t guid)
@@ -638,9 +647,10 @@ void WorldThreadManager::StageForm(std::map<std::uint32_t, Player*> const& bots,
 
 // One group operation (StagedOps): a queued release first, else the next step of the oldest formation - one invitee's
 // invite and accept, or the setup once all were asked.
-void WorldThreadManager::StepOne(std::map<std::uint32_t, Player*> const& bots, std::uint32_t now)
+bool WorldThreadManager::StepOne(std::map<std::uint32_t, Player*> const& bots, std::uint32_t now)
 {
     minute.queuedMax = std::max(minute.queuedMax, std::uint32_t(forming.size() + releasing.size()));
+    std::uint32_t const ops0 = minute.ops;
     if (!releasing.empty())
     {
         StagedRelease const r = releasing.front();
@@ -650,14 +660,16 @@ void WorldThreadManager::StepOne(std::map<std::uint32_t, Player*> const& bots, s
         {
             auto const t0 = std::chrono::steady_clock::now();
             Group* group = bot->GetGroup();
+            group_op_timing::lastLeaveCoreUs = 0;
             Release(bot, r.member, group && group->GetId() == r.groupId);
+            minute.leaveCoreUsMax = std::max(minute.leaveCoreUsMax, group_op_timing::lastLeaveCoreUs);
             minute.releaseUsMax = std::max(minute.releaseUsMax, UsSince(t0));
             ++minute.ops;
         }
-        return;
+        return ops0 != minute.ops;   // a release ran (its bot may have logged out meanwhile)
     }
     if (forming.empty())
-        return;
+        return false;
 
     StagedForm& f = forming.front();
     Player* leader = Find(bots, f.invitees[0]);
@@ -676,7 +688,7 @@ void WorldThreadManager::StepOne(std::map<std::uint32_t, Player*> const& bots, s
         for (std::size_t i = f.next; i < f.invitees.size(); ++i)
             staged.erase(f.invitees[i]);
         forming.pop_front();
-        return;
+        return false;
     }
 
     if (f.next < f.invitees.size())
@@ -686,7 +698,7 @@ void WorldThreadManager::StepOne(std::map<std::uint32_t, Player*> const& bots, s
         if (!bot || !Eligible(bot) || bot->GetGroup())
         {
             staged.erase(guid);
-            return;
+            return false;
         }
         if (f.joined.empty())
             f.leader.travel = SaveTravel(Target(Ai(leader)));   // before anything changes it
@@ -695,14 +707,16 @@ void WorldThreadManager::StepOne(std::map<std::uint32_t, Player*> const& bots, s
         m.travel = SaveTravel(Target(Ai(bot)));
         std::uint32_t inviteUs = 0;
         std::uint32_t acceptUs = 0;
+        group_op_timing::lastAcceptCoreUs = 0;
         bool const joined = InviteAccept(leader, bot, &inviteUs, &acceptUs);
+        minute.acceptCoreUsMax = std::max(minute.acceptCoreUsMax, group_op_timing::lastAcceptCoreUs);
         minute.inviteUsMax = std::max(minute.inviteUsMax, inviteUs);
         minute.acceptUsMax = std::max(minute.acceptUsMax, acceptUs);
         ++minute.ops;
         if (!joined)
         {
             staged.erase(guid);
-            return;
+            return true;
         }
         if (!f.groupId && leader->GetGroup())
             f.groupId = leader->GetGroup()->GetId();
@@ -711,7 +725,7 @@ void WorldThreadManager::StepOne(std::map<std::uint32_t, Player*> const& bots, s
         if (Cohort(guid) != Cohort(f.invitees[0]))
             f.mixed = true;
         f.joined.push_back(m);
-        return;
+        return true;
     }
 
     auto const t0 = std::chrono::steady_clock::now();
@@ -719,6 +733,7 @@ void WorldThreadManager::StepOne(std::map<std::uint32_t, Player*> const& bots, s
     minute.setupUsMax = std::max(minute.setupUsMax, UsSince(t0));
     ++minute.ops;
     forming.pop_front();
+    return true;
 }
 
 // The setup of a staged formation once every invitee was asked (FormOne's tail; the travel force is posted).
@@ -872,8 +887,14 @@ bool WorldThreadManager::FormOne(std::map<std::uint32_t, Player*> const& bots, s
 void WorldThreadManager::ScanBots(std::map<std::uint32_t, Player*> const& bots, std::size_t end, std::uint32_t now)
 {
     std::uint32_t const mode = sPlayerbotAIConfig.questGroupsEnable;
+    // s7r (QuestGroups.ScanBudgetUs): the slice also ends once it took the budget; the rest goes to the next update.
+    std::uint32_t const budgetUs = sPlayerbotAIConfig.questGroupsScanBudgetUs;
+    auto const sliceStart = std::chrono::steady_clock::now();
+    std::size_t const first = round.next;
     for (; round.next < end; ++round.next)
     {
+        if (scan_slice::BudgetSpent(budgetUs, budgetUs ? UsSince(sliceStart) : 0u, round.next - first))
+            break;
         std::uint32_t const guid = round.guids[round.next];
         Player* bot = Find(bots, guid);
         if (!bot || !Applies(mode, guid) || memberOf.count(guid) || staged.count(guid) || !Eligible(bot) || bot->GetGroup())
@@ -959,11 +980,15 @@ void WorldThreadManager::FlushMinute(std::uint32_t now)
     if (now - minute.start < 60)
         return;
     sLog.outBasic("[QuestGroup] minute candidates=%u quests=%u formed=%u active=%u dissolved=%u queued=%u scan_us_max=%u passes=%u mode=%u form_us_max=%u dissolve_us_max=%u scan_only_us_max=%u bots=%u slices=%u"
-        " staged=%u invite_us_max=%u accept_us_max=%u setup_us_max=%u release_us_max=%u ops=%u ops_queued_max=%u",
+        " staged=%u invite_us_max=%u accept_us_max=%u setup_us_max=%u release_us_max=%u ops=%u ops_queued_max=%u"
+        " tend_us_max=%u accept_core_us_max=%u leave_core_us_max=%u stall_us_max=%u one_step=%u scan_budget_us=%u defer=%u"
+        " dissolves_deferred=%u",
         minute.candidates, minute.quests, minute.formed, uint32(groups.size()), minute.dissolved, uint32(Queue().Size()),
         minute.scanUsMax, minute.passes, sPlayerbotAIConfig.questGroupsEnable, minute.formUsMax, minute.dissolveUsMax, minute.scanOnlyUsMax,
         minute.bots, minute.slices, Staged() ? 1u : 0u, minute.inviteUsMax, minute.acceptUsMax, minute.setupUsMax, minute.releaseUsMax,
-        minute.ops, minute.queuedMax);
+        minute.ops, minute.queuedMax, minute.tendUsMax, minute.acceptCoreUsMax, minute.leaveCoreUsMax, minute.stallUsMax,
+        sPlayerbotAIConfig.questGroupsOneHeavyStep ? 1u : 0u, sPlayerbotAIConfig.questGroupsScanBudgetUs,
+        sPlayerbotAIConfig.botGroupsWorldThreadDefer ? 1u : 0u, minute.deferredDissolves);
     minute = Minute();
     minute.start = now;
 }
@@ -973,30 +998,51 @@ void WorldThreadManager::Update(std::map<std::uint32_t, Player*> const& bots, st
     FlushMinute(now);
     bool const enabled = sPlayerbotAIConfig.questGroupsEnable != ModeOff;
     auto const start = std::chrono::steady_clock::now();
+    std::uint64_t const cpuStart = thread_cpu::NowUs();   // s7r: stall control (ThreadCpuClock.h)
+    // s7r (QuestGroups.OneHeavyStep): set by a dissolution or a group operation; with the switch the update does nothing heavy
+    // after it (HeavyStepTaken).
+    bool const oneStep = sPlayerbotAIConfig.questGroupsOneHeavyStep;
+    bool heavy = false;
 
-    // Every update: tend the running groups (cheap: only their members).
+    // Every update: tend the running groups (cheap: only their members). Groups ended in an earlier update and carried over
+    // (OneHeavyStep) come first and are not tended again.
     std::vector<std::pair<std::uint32_t, Dissolve>> ended;
+    ended.swap(dissolveLater);
+    std::unordered_set<std::uint32_t> carried;
+    for (auto const& [id, d] : ended)
+        carried.insert(id);
+    auto const tendStart = std::chrono::steady_clock::now();
     for (auto& [id, g] : groups)
     {
+        if (carried.count(id))
+            continue;
         Dissolve d = Dissolve::None;
         Tend(bots, g, now, d);
         if (d != Dissolve::None)
             ended.emplace_back(id, d);
     }
+    minute.tendUsMax = std::max(minute.tendUsMax, UsSince(tendStart));
     for (auto const& [id, d] : ended)
     {
         auto const it = groups.find(id);
         if (it == groups.end())
             continue;
+        if (HeavyStepTaken(oneStep, heavy))
+        {
+            dissolveLater.emplace_back(id, d);   // its own update next time
+            ++minute.deferredDissolves;
+            continue;
+        }
         auto const dissolveStart = std::chrono::steady_clock::now();
         DissolveGroup(bots, it->second, d, now);
         minute.dissolveUsMax = std::max(minute.dissolveUsMax, UsSince(dissolveStart));
         groups.erase(it);
+        heavy = true;
     }
 
     // StagedOps: at most one group operation per update (also with Enable 0: queued releases still run).
-    if (!forming.empty() || !releasing.empty())
-        StepOne(bots, now);
+    if (!HeavyStepTaken(oneStep, heavy) && (!forming.empty() || !releasing.empty()))
+        heavy = StepOne(bots, now);
 
     // Every ScanSeconds: the quest-log index and new groups (twow-repo#628 ScanSlices: spread over several updates).
     if (!enabled)
@@ -1011,7 +1057,8 @@ void WorldThreadManager::Update(std::map<std::uint32_t, Player*> const& bots, st
             round.guids.push_back(guid);
         minute.bots = std::max(minute.bots, std::uint32_t(bots.size()));
     }
-    if (round.active)
+    // OneHeavyStep: a running scan waits for an update without a dissolution or a group operation.
+    if (round.active && !HeavyStepTaken(oneStep, heavy))
     {
         passFormUs = 0;
         auto const scanStart = std::chrono::steady_clock::now();
@@ -1027,7 +1074,9 @@ void WorldThreadManager::Update(std::map<std::uint32_t, Player*> const& bots, st
         std::uint32_t const scanUs = UsSince(scanStart);
         minute.scanOnlyUsMax = std::max(minute.scanOnlyUsMax, scanUs > passFormUs ? scanUs - passFormUs : 0u);
     }
-    minute.scanUsMax = std::max(minute.scanUsMax, UsSince(start));
+    std::uint32_t const wallUs = UsSince(start);
+    minute.scanUsMax = std::max(minute.scanUsMax, wallUs);
+    minute.stallUsMax = std::max(minute.stallUsMax, thread_cpu::StallUs(wallUs, cpuStart, thread_cpu::NowUs()));
 }
 
 WorldThreadManager& WorldManager()

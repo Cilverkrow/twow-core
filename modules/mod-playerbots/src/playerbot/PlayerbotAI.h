@@ -24,6 +24,7 @@
 #include "playerbot/StallGuardPolicy.h"
 #include <atomic>
 #include <functional>
+#include <mutex>
 #include "playerbot/QuestSearchPolicy.h"
 #include "playerbot/QuestFeasibilityPolicy.h"
 #include "playerbot/BotActivityPolicy.h"
@@ -1028,6 +1029,11 @@ protected:
     // taken in the bot's next UpdateAI on its own map thread (ApplyGroupAiRequests).
     std::atomic<uint32> groupAiRequests{ 0 };
     std::atomic<uint32> questGroupForce{ 0 };   // S7 StagedOps: the ForceTravel request's quest/objective (PackForce)
+    // s7r (AiPlayerbot.BotGroups.WorldThreadDefer): log lines a world-thread manager handed to this bot (DeferredLog.h), written
+    // in its next UpdateAI on its own thread; file empty = the core log (sLog). Short mutex: the world thread posts, the bot drains.
+    std::mutex deferredLogMtx;
+    std::vector<std::pair<std::string, std::string>> deferredLogs;
+    uint32 deferredLogsDropped = 0;
     uint32 lastParkedUpdateMs = 0;
     // twow-repo#551 (AiPlayerbot.Park.Quiet): when a quiet parked bot may do its next idle emote (seconds, 0 = never).
     std::atomic<uint32> nextParkIdleEmote{ 0 };
@@ -1112,6 +1118,10 @@ public:
     void RequestQuestForce(uint32 packedForce) { questGroupForce.store(packedForce); RequestGroupAi(ai::group_ai_refresh::ForceTravel); }
     // Bot thread (UpdateAI): run the posted requests - strategy rebuild and reset first, then an S7 role set.
     void ApplyGroupAiRequests();
+    // s7r (world thread, inside an ai::deferred_log::Scope): one line for this bot to write later (file "" = sLog).
+    void PostDeferredLog(std::string const& file, std::string const& line);
+    // Bot thread (UpdateAI, right after ApplyGroupAiRequests): write the posted lines.
+    void DrainDeferredLogs();
     // twow-repo#517 stage a (OB-10): a fill bot is out of its battleground again. Quest search stage 0 and
     // questProgress.lastChange = now, as the questRescueDone path in UpdateAI - but without OnQuestRescued(): that sets
     // lastQuestRescue, and the per-bot rescue limit would then block a later real rescue.

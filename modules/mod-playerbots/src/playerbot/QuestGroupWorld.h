@@ -116,6 +116,13 @@ private:
         std::uint32_t releaseUsMax = 0;
         std::uint32_t queuedMax = 0;
         std::uint32_t ops = 0;
+        // s7r 26.10.2026: the Tend loop of one update, the core opcode alone of a join / leave (GroupOpTiming.h), and the
+        // slowest update's time off the CPU (ThreadCpuClock.h: preemption, blocking faults, lock waits, file I/O).
+        std::uint32_t tendUsMax = 0;
+        std::uint32_t acceptCoreUsMax = 0;
+        std::uint32_t leaveCoreUsMax = 0;
+        std::uint32_t stallUsMax = 0;
+        std::uint32_t deferredDissolves = 0;   // OneHeavyStep: dissolutions carried to a later update
     };
 
     // twow-repo#627 S7 (AiPlayerbot.QuestGroups.StagedOps, default 0): S7-A 25.10. broke the 2 ms guard with a formation of
@@ -167,7 +174,8 @@ private:
     void StageForm(std::map<std::uint32_t, Player*> const& bots, std::vector<Candidate> const& members, std::uint32_t questId,
         std::uint32_t now);
     void StageRelease(std::uint32_t groupId, Member const& m);
-    void StepOne(std::map<std::uint32_t, Player*> const& bots, std::uint32_t now);
+    // True when it ran a group operation (OneHeavyStep: no scan slice after it in the same update).
+    bool StepOne(std::map<std::uint32_t, Player*> const& bots, std::uint32_t now);
     void FinishForm(std::map<std::uint32_t, Player*> const& bots, StagedForm& f, std::uint32_t now);
     void Force(Player* bot, std::uint32_t questId, int objIdx, bool& forced);
 
@@ -180,6 +188,9 @@ private:
     std::deque<StagedForm> forming;                 // StagedOps
     std::deque<StagedRelease> releasing;
     std::unordered_set<std::uint32_t> staged;      // bots in either queue
+    // s7r (AiPlayerbot.QuestGroups.OneHeavyStep): groups Tend ended that wait for their own update - dissolved first in the
+    // next one, not tended again (a reason like leader_stuck is taken once and would be lost).
+    std::vector<std::pair<std::uint32_t, Dissolve>> dissolveLater;
 };
 
 WorldThreadManager& WorldManager();

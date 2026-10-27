@@ -179,6 +179,15 @@ enum class Dissolve
     Abandoned,          // the quest was dropped or abandoned by a member that leads it
 };
 
+// s7r 26.10.2026 (AiPlayerbot.QuestGroups.OneHeavyStep, default 0): the slow minutes of s7r summed parts of one manager
+// update - a dissolution, a staged group operation and a scan slice, each below 2 ms. With the switch one update does one
+// heavy step: after a dissolution no further dissolution, no group operation and no scan slice; after a group operation no
+// scan slice. False = this update may still do the next heavy step.
+inline bool HeavyStepTaken(bool oneHeavyStep, bool heavyDone)
+{
+    return oneHeavyStep && heavyDone;
+}
+
 inline char const* DissolveName(Dissolve d)
 {
     switch (d)
