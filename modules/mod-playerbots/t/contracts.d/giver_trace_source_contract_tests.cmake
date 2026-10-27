@@ -103,7 +103,8 @@ endif()
 # 4. GetDestinations: the traced range first, in both loops, before IsPossible; untraced: nothing changes.
 region("${travel_cpp}" "DestinationList TravelMgr::GetDestinations(" "\nvoid TravelMgr::GetPartitionsLock(" dest)
 require_text("${dest}" "ai::quest_search::GiverDropCounts* const tracedGivers = onlyPossible ? info.GetGiverDrops() : nullptr;" "only a traced fetch")
-require_text("${dest}" "        if (!tracedGivers)\n            return false;" "untraced: no range check of its own")
+require_text("${dest}" "        if (!rangeFirst)\n            return false;" "no traced and no every-giver fetch: no range check of its own (lever iv)")
+require_text("${dest}" "            if (tracedGivers)\n                ++tracedGivers->outOfRange;" "out_of_range counted only when traced")
 count_text("${dest}" "if (outOfTracedRange(dest))\n" 2 "the traced range check in both loops")
 require_order("${dest}" "if (outOfTracedRange(dest))" "if (onlyPossible && !dest->IsPossible(info))" "range before IsPossible (gated path)")
 
