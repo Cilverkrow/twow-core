@@ -3093,6 +3093,14 @@ AiPlayerbot.Rotation.RestGate.MaxRestSeconds = 120
 # "[CastLosGate] mode= gated= dropped= skipped=" once a minute with the mode on.
 # 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
 AiPlayerbot.Rotation.CastLosGate = 0
+# twow-repo#602 ROT-01 cast-abort loop (OB-00 27.10.2026, BEHAVIOUR CHANGE, ON by default, 0 = rollback): a moving bot
+# without a real player master stopped before a spell with a cast time or a channel and then cancelled the cast without
+# casting; the next action moved it again and the next try cancelled again (hunt2 action logs: 47k cancels of Mind Blast,
+# Multi-Shot, Fireball, Frostbolt, Smite, Arcane Missiles; 740 streaks of 10 or more without a cast). With the switch the
+# cast goes on after the stop (all three CastSpell variants). Loot casts always cast after the stop (twow-repo#333 P1-w).
+# "[CastStopFirst] mode= cast_after_stop= cancelled=" once a minute with the mode on.
+# 0 = as before (cancel), 1 = every bot (default), 2 = only cohort B (odd low guid). Any other value acts like 1.
+AiPlayerbot.Rotation.CastStopFirst = 1
 # twow-repo#541 (audit A17, BEHAVIOUR CHANGE, enable only after OB-30 measurement + owner go): 1 = a bot AI in
 # combat (no real player master; also non-roster random bots, bot-led groups, battlegrounds and duels) whose AI
 # pass executed no action while it auto-attacks its current target (melee swing with the victim in melee reach,

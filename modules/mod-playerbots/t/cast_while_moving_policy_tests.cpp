@@ -1,5 +1,6 @@
 // twow-repo#333 P1-w (CastWhileMovingPolicy.h, OB-00 27.10.2026): a loot cast of a moving bot casts after StopMoving instead of
-// cancelling, and a started loot cast holds the AI for its cast time; every other cast keeps the old rule.
+// cancelling, and a started loot cast holds the AI for its cast time. twow-repo#602 (Rotation.CastStopFirst, OB-00 27.10.2026,
+// default 1): every other cast of a moving bot casts after the stop too; 0 keeps the old cancel.
 // Hand-rolled Require(), std::exit(1) on failure, no gtest, no game library.
 #include "CastWhileMovingPolicy.h"
 
@@ -38,15 +39,34 @@ int main()
     }
 
     // 3) After the stop: a loot cast casts (run 4: 12 of 12 skinning tries cancelled); with an active real player master as
-    //    before; every other cast of a bot on its own still cancels (combat casts stay with CLI-ROT).
+    //    before; every other cast of a bot on its own cancels only without Rotation.CastStopFirst (switch value 0).
     {
-        Require(!CancelAfterStop(false, true), "bot on its own, loot cast: cast");
-        Require(!CancelAfterStop(true, true), "player master, loot cast: cast");
-        Require(!CancelAfterStop(true, false), "player master, other cast: cast (unchanged)");
-        Require(CancelAfterStop(false, false), "bot on its own, other cast: cancel (unchanged)");
+        Require(!CancelAfterStop(false, true, false), "bot on its own, loot cast: cast");
+        Require(!CancelAfterStop(true, true, false), "player master, loot cast: cast");
+        Require(!CancelAfterStop(true, false, false), "player master, other cast: cast (unchanged)");
+        Require(CancelAfterStop(false, false, false), "bot on its own, other cast, switch off: cancel (rollback)");
+        Require(!CancelAfterStop(false, false, true), "bot on its own, other cast, switch on: cast (hunt2: Mind Blast 26k cancels)");
+        Require(!CancelAfterStop(false, true, true) && !CancelAfterStop(true, false, true) && !CancelAfterStop(true, true, true),
+            "switch on: nothing cancels");
     }
 
-    // 4) The open loot action waits for its cast: the cast time when longer, else its own duration.
+    // 4) Rotation.CastStopFirst modes: 0 off, 1 every bot, 2 cohort B (odd low guid); unknown values never reach the policy
+    //    (PlayerbotAIConfig maps them to 1).
+    {
+        Require(!CastStopFirstApplies(0, 10) && !CastStopFirstApplies(0, 11), "mode 0: no bot");
+        Require(CastStopFirstApplies(1, 10) && CastStopFirstApplies(1, 11), "mode 1: every bot");
+        Require(!CastStopFirstApplies(2, 10) && CastStopFirstApplies(2, 11), "mode 2: cohort B only");
+    }
+
+    // 5) The [CastStopFirst] cast_after_stop counter: only the casts the old rule cancelled and the switch lets through.
+    {
+        Require(CastByStopFirst(false, false, true), "bot on its own, other cast, switch on: counted");
+        Require(!CastByStopFirst(false, false, false), "switch off: not counted (it cancels)");
+        Require(!CastByStopFirst(false, true, true), "loot cast: casts anyway, not counted");
+        Require(!CastByStopFirst(true, false, true), "player master: casts anyway, not counted");
+    }
+
+    // 6) The open loot action waits for its cast: the cast time when longer, else its own duration.
     {
         Require(LootActionDuration(100, 0) == 100, "no cast (corpse loot without cast, cleared loot): react delay");
         Require(LootActionDuration(750, 0) == 750, "corpse loot: the loot delay stays");
