@@ -19,7 +19,7 @@
 #include "playerbot/ReachDropPolicy.h"   // twow-repo#630 follow-up (Rotation.ReachDropEngagement)
 #include "playerbot/RotCastPolicy.h"
 #include "playerbot/RotCastTrace.h"     // twow-repo#602 ROT-01 D0 (AiPlayerbot.Rotation.CastTrace)
-#include "playerbot/CastWhileMovingPolicy.h"   // twow-repo#333 P1-w: a loot cast after StopMoving
+#include "playerbot/CastWhileMovingPolicy.h"   // twow-repo#333 P1-w: a loot cast after StopMoving; #602 Rotation.CastStopFirst
 #include "Maps/PathFinder.h"
 #include <stdarg.h>
 #include <array>
@@ -6802,8 +6802,19 @@ bool PlayerbotAI::CastSpell(uint32 spellId, Unit* target, Item* itemTarget, bool
         // fail if not with real player to avoid movement glitches
         // twow-repo#333 P1-w (M1r run 4): a loot cast stays - its cancel failed the action, the next action moved the bot again
         // and every try cancelled (skinning, mining, herbs, chests, quest objects never opened).
-        if (ai::cast_moving::CancelAfterStop(HasActivePlayerMaster(), lootCast))
+        // twow-repo#602 (AiPlayerbot.Rotation.CastStopFirst, CastWhileMovingPolicy.h): with the switch every cast casts after the
+        // stop - the same loop hit the combat casts (hunt2: 47k cancels, 740 streaks of 10 or more).
+        bool const activeMaster = HasActivePlayerMaster();
+        // A bot StopMoving() cannot stop (vehicle, far teleport) keeps the old cancel: its cast would be interrupted at once.
+        bool const castStopFirst = ai::cast_moving::CastStopFirstApplies(sPlayerbotAIConfig.rotationCastStopFirst, bot->GetGUIDLow())
+            && !sServerFacade.isMoving(bot);
+        if (ai::cast_moving::CastByStopFirst(activeMaster, lootCast, castStopFirst))
+            ai::cast_moving::castAfterStop.fetch_add(1, std::memory_order_relaxed);
+        if (ai::cast_moving::CancelAfterStop(activeMaster, lootCast, castStopFirst))
         {
+            if (sPlayerbotAIConfig.rotationCastStopFirst)
+                ai::cast_moving::cancelled.fetch_add(1, std::memory_order_relaxed);
+
             if (waitForSpell)
             {
                 SetAIInternalUpdateDelay(sPlayerbotAIConfig.globalCoolDown);
@@ -7018,8 +7029,18 @@ bool PlayerbotAI::CastSpell(uint32 spellId, GameObject* goTarget, Item* itemTarg
         StopMoving();
 
         // fail if not with real player to avoid movement glitches
-        if (!HasActivePlayerMaster())
+        // twow-repo#602 (AiPlayerbot.Rotation.CastStopFirst, CastWhileMovingPolicy.h): with the switch the cast goes on after the stop.
+        bool const activeMaster = HasActivePlayerMaster();
+        // A bot StopMoving() cannot stop (vehicle, far teleport) keeps the old cancel: its cast would be interrupted at once.
+        bool const castStopFirst = ai::cast_moving::CastStopFirstApplies(sPlayerbotAIConfig.rotationCastStopFirst, bot->GetGUIDLow())
+            && !sServerFacade.isMoving(bot);
+        if (ai::cast_moving::CastByStopFirst(activeMaster, false, castStopFirst))
+            ai::cast_moving::castAfterStop.fetch_add(1, std::memory_order_relaxed);
+        if (ai::cast_moving::CancelAfterStop(activeMaster, false, castStopFirst))
         {
+            if (sPlayerbotAIConfig.rotationCastStopFirst)
+                ai::cast_moving::cancelled.fetch_add(1, std::memory_order_relaxed);
+
             if (waitForSpell)
             {
                 SetAIInternalUpdateDelay(sPlayerbotAIConfig.globalCoolDown);
@@ -7158,8 +7179,18 @@ bool PlayerbotAI::CastSpell(uint32 spellId, float x, float y, float z, Item* ite
         StopMoving();
 
         // fail if not with real player to avoid movement glitches
-        if (!HasActivePlayerMaster())
+        // twow-repo#602 (AiPlayerbot.Rotation.CastStopFirst, CastWhileMovingPolicy.h): with the switch the cast goes on after the stop.
+        bool const activeMaster = HasActivePlayerMaster();
+        // A bot StopMoving() cannot stop (vehicle, far teleport) keeps the old cancel: its cast would be interrupted at once.
+        bool const castStopFirst = ai::cast_moving::CastStopFirstApplies(sPlayerbotAIConfig.rotationCastStopFirst, bot->GetGUIDLow())
+            && !sServerFacade.isMoving(bot);
+        if (ai::cast_moving::CastByStopFirst(activeMaster, false, castStopFirst))
+            ai::cast_moving::castAfterStop.fetch_add(1, std::memory_order_relaxed);
+        if (ai::cast_moving::CancelAfterStop(activeMaster, false, castStopFirst))
         {
+            if (sPlayerbotAIConfig.rotationCastStopFirst)
+                ai::cast_moving::cancelled.fetch_add(1, std::memory_order_relaxed);
+
             if (waitForSpell)
             {
                 SetAIInternalUpdateDelay(sPlayerbotAIConfig.globalCoolDown);
@@ -7170,7 +7201,11 @@ bool PlayerbotAI::CastSpell(uint32 spellId, float x, float y, float z, Item* ite
         }
     }
 
-    spell->SpellStart(&targets);
+    // twow-repo#602 (AiPlayerbot.Rotation.CastStopFirst): with the switch a moving bot's Blizzard / Volley / Flamestrike gets
+    // here; a start that fails (range, sight, power) returns false as in the other overloads, not true with a cast wait.
+    SpellCastResult const startResult = spell->SpellStart(&targets);
+    if (startResult != SPELL_CAST_OK && ai::cast_moving::CastStopFirstApplies(sPlayerbotAIConfig.rotationCastStopFirst, bot->GetGUIDLow()))
+        return false;
 
     if (pSpellInfo->Effect[0] == SPELL_EFFECT_OPEN_LOCK ||
         pSpellInfo->Effect[0] == SPELL_EFFECT_SKINNING)
