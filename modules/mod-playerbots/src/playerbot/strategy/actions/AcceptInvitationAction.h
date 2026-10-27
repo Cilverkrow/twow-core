@@ -16,14 +16,14 @@ namespace ai
         virtual bool Execute(Event& event) override
         {
             // s7r (BotGroups.WorldThreadDefer): the tail a world-thread manager posted (ApplyGroupAiRequests, bot thread). The
-            // join itself is done; the owner is the group's leader.
+            // join itself is done; the owner is that join's inviter, still a member of the bot's group.
             if (event.getSource() == group_ai_refresh::JoinTailSource)
             {
-                Player* leader = event.getOwner();
+                Player* inviter = event.getOwner();
                 Group* joined = bot->GetGroup();
-                if (!leader || !joined)
+                if (!inviter || !joined)
                     return false;
-                JoinTail(joined, leader, event);
+                JoinTail(joined, inviter, event, /*onBotThread*/ true);
                 return true;
             }
 
@@ -79,7 +79,7 @@ namespace ai
                 // world thread keeps the core join (s7r: accept 1-2.4 ms with logs, chat, update gear on the world thread).
                 if (sPlayerbotAIConfig.botGroupsWorldThreadDefer)
                 {
-                    ai->RequestGroupAi(group_ai_refresh::JoinReset | group_ai_refresh::JoinTail);
+                    ai->RequestJoinTail(inviter->GetGUIDLow());   // JoinReset + JoinTail, the inviter before the bits
                     return true;
                 }
                 ai->RequestGroupAi(group_ai_refresh::JoinReset);
@@ -99,7 +99,7 @@ namespace ai
     private:
         // Everything after the join and the reset: the event and membership log, the invite chat, the master's formation, the
         // hello, reset raids, update gear. Here at once - or, posted by a world-thread manager, on the bot's own thread.
-        void JoinTail(Group* grp, Player* inviter, Event& event)
+        void JoinTail(Group* grp, Player* inviter, Event& event, bool onBotThread = false)
         {
             sPlayerbotAIConfig.logEvent(ai, "AcceptInvitationAction", grp->GetLeaderName(), std::to_string(grp->GetMembersCount()));
             bot_group::LogMembership(bot, bot->GetGroup(), "join");
@@ -126,9 +126,14 @@ namespace ai
                         bot->Say(reply, (bot->GetTeam() == ALLIANCE ? LANG_COMMON : LANG_ORCISH));
                 }
 
-                Formation* masterFormation = MAI_VALUE(Formation*, "formation");
-                FormationValue* value = (FormationValue*)context->GetValue<Formation*>("formation");
-                value->Load(masterFormation->getName());
+                // s7r pre-review: on the bot's own thread the master's AI value is read only when the master shares this map
+                // (the same map thread); otherwise the bot keeps its own formation.
+                if (!onBotThread || master->FindMap() == bot->FindMap())
+                {
+                    Formation* masterFormation = MAI_VALUE(Formation*, "formation");
+                    FormationValue* value = (FormationValue*)context->GetValue<Formation*>("formation");
+                    value->Load(masterFormation->getName());
+                }
             }
 
             ai->TellPlayer(inviter, BOT_TEXT("hello"), PlayerbotSecurityLevel::PLAYERBOT_SECURITY_ALLOW_ALL, false);

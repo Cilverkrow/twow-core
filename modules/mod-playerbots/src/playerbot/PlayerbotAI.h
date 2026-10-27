@@ -1025,6 +1025,8 @@ protected:
     std::mutex deferredLogMtx;
     std::vector<std::pair<std::string, std::string>> deferredLogs;
     uint32 deferredLogsDropped = 0;
+    std::atomic<bool> hasDeferredLogs{ false };   // the drain is free without lines (the key at 0)
+    std::atomic<uint32> joinTailInviter{ 0 };      // JoinTail: the inviter (guid low) of the deferred accept
     uint32 lastParkedUpdateMs = 0;
     // twow-repo#551 (AiPlayerbot.Park.Quiet): when a quiet parked bot may do its next idle emote (seconds, 0 = never).
     std::atomic<uint32> nextParkIdleEmote{ 0 };
@@ -1103,6 +1105,8 @@ public:
     uint32 PendingGroupAiRequests() const { return groupAiRequests.load(); }
     // S7 QuestGroups.StagedOps: the forced quest travel on the bot's own thread (the parameters before the request bit).
     void RequestQuestForce(uint32 packedForce) { questGroupForce.store(packedForce); RequestGroupAi(ai::group_ai_refresh::ForceTravel); }
+    // s7r (BotGroups.WorldThreadDefer): the accept tail on the bot's own thread, for this inviter (the parameter before the bit).
+    void RequestJoinTail(uint32 inviterGuidLow) { joinTailInviter.store(inviterGuidLow); RequestGroupAi(ai::group_ai_refresh::JoinReset | ai::group_ai_refresh::JoinTail); }
     // Bot thread (UpdateAI): run the posted requests - strategy rebuild and reset first, then an S7 role set.
     void ApplyGroupAiRequests();
     // s7r (world thread, inside an ai::deferred_log::Scope): one line for this bot to write later (file "" = sLog).

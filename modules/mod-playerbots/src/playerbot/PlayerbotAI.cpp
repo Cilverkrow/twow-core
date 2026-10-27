@@ -443,6 +443,9 @@ void PlayerbotAI::BackoffOutOfMana(bool yieldSetDelay, bool minimal)
 
 PlayerbotAI::~PlayerbotAI()
 {
+    // s7r (BotGroups.WorldThreadDefer): lines a manager handed to this bot are written at logout, not lost (world thread).
+    DrainDeferredLogs();
+
     for (uint8 i = 0 ; i < (uint8)BotState::BOT_STATE_ALL; i++)
     {
         if (engines[i])
@@ -1213,9 +1216,10 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
 
     // twow-repo#628 / #627: what the world-thread group managers posted (strategy rebuild, reset, S7 role set), before this
     // update's AI runs.
-    ApplyGroupAiRequests();
-    // s7r (BotGroups.WorldThreadDefer): the log lines a world-thread manager handed to this bot.
+    // s7r (BotGroups.WorldThreadDefer): the log lines a world-thread manager handed to this bot - first: they are older than
+    // anything the requests below log (a deferred leave before the tail of a later join).
     DrainDeferredLogs();
+    ApplyGroupAiRequests();
 
     // #420: close a finished [GroupBuff] window.
     if (groupBuffWindow.casts)
@@ -10975,11 +10979,13 @@ void PlayerbotAI::ApplyGroupAiRequests()
         Reset();
     }
     // s7r (BotGroups.WorldThreadDefer): the accept tail the world-thread manager left out - only while the bot is still in a
-    // group (a leave since then dropped the request); the leader stands in for the inviter (the managers' leader invites).
+    // group (a leave since then dropped the request), and only for the inviter of that join - still a member of this group
+    // (pre-review: not whoever leads by now).
     if (plan.joinTail && bot->GetGroup())
     {
-        if (Player* leader = sObjectMgr.GetPlayer(bot->GetGroup()->GetLeaderGuid()))
-            DoSpecificAction("accept invitation", Event(ai::group_ai_refresh::JoinTailSource, "", leader), true);
+        Player* inviter = sObjectMgr.GetPlayer(ObjectGuid(HIGHGUID_PLAYER, joinTailInviter.load()));
+        if (inviter && bot->GetGroup()->IsMember(inviter->GetObjectGuid()))
+            DoSpecificAction("accept invitation", Event(ai::group_ai_refresh::JoinTailSource, "", inviter), true);
     }
     if (plan.follower || plan.turnIn)
         ai::quest_groups::ApplyRoleSet(this, plan.turnIn);
@@ -11003,10 +11009,13 @@ void PlayerbotAI::PostDeferredLog(std::string const& file, std::string const& li
         return;
     }
     deferredLogs.emplace_back(file, line);
+    hasDeferredLogs.store(true);
 }
 
 void PlayerbotAI::DrainDeferredLogs()
 {
+    if (!hasDeferredLogs.exchange(false))   // no lines: no lock (the key at 0)
+        return;
     std::vector<std::pair<std::string, std::string>> lines;
     uint32 dropped = 0;
     {
@@ -11025,5 +11034,5 @@ void PlayerbotAI::DrainDeferredLogs()
             sPlayerbotAIConfig.log(file, line.c_str());
     }
     if (dropped)
-        sLog.outBasic("[BotGroup] event=deferred_log_dropped bot=%u lines=%u", bot->GetGUIDLow(), dropped);
+        sLog.outBasic("[BotGroup] event=deferred_log_dropped bot=%u lines=%u", bot ? bot->GetGUIDLow() : 0u, dropped);
 }

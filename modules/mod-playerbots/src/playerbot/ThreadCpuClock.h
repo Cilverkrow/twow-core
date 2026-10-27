@@ -8,7 +8,9 @@
 // minute lines report its maximum (stall_us_max), so a slow update can be told apart from slow code.
 namespace ai::thread_cpu
 {
-// This thread's CPU time in us; 0 where the platform gives none (then stall_us_max reads as the wall time). Out of line:
+// This thread's CPU time in us; 0 where the platform gives none (then stall_us_max reads as the wall time). Windows
+// (GetThreadTimes) advances in ~15.6 ms ticks, so there stall_us_max is about the wall time below ~16 ms - meaningful on Linux
+// (CLOCK_THREAD_CPUTIME_ID), where the realms run. Out of line:
 // the platform headers (windows.h) stay in ThreadCpuClock.cpp.
 std::uint64_t NowUs();
 
