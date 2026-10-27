@@ -807,6 +807,9 @@ public:
     // twow-repo#601/#602 G2 (OB-00 go 26.10.2026): short life after a revive is a loop; an evacuation point at the loop
     // is replaced by the race's safe start (0 off, 1 all, 2 cohort B).
     uint32 deathLoopFarEscape = 0;
+    // Owner order 27.10.2026 (via OB-00, code default 1, 0 = rollback): a bot revived by a spirit healer comes back at full
+    // health and mana without Resurrection Sickness (SpiritHealerRevivePolicy.h); 0 off, 1 all, 2 cohort B.
+    uint32 reviveSpiritHealerFull = 1;
     // #307: a roster bot on its own leaves a zone clearly above its level.
     bool zoneEscapeEnabled = false;
     uint32 zoneEscapeCooldownSeconds = 600;

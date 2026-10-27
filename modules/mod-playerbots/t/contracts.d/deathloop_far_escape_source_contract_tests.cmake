@@ -69,7 +69,7 @@ require_text("${policy}" "constexpr float FarEscapeMinYards = 600.0f;" "far esca
 # 3. Revive stamps: corpse (only when the reclaim worked) and spirit healer.
 between("${revive}" "HandleReclaimCorpseOpcode(packet);" "SET_AI_VALUE(bool, \"corpse run\", false);" corpse)
 require_text("${corpse}" "if (!sServerFacade.UnitIsDead(bot))\n        ai->RecordReviveForLoop();" "corpse revive stamped when alive")
-require_order("${revive}" "bot->ResurrectPlayer(0.5f, !ai->HasCheat(BotCheatMask::repair));" "ai->RecordReviveForLoop();   // twow-repo#601/#602 G2" "spirit healer revive stamped")
+require_order("${revive}" "bot->ResurrectPlayer(ai::spirit_healer::RestorePercent(fullRevive)," "ai->RecordReviveForLoop();   // twow-repo#601/#602 G2" "spirit healer revive stamped")
 
 # 4. Record at death: switch + cohort, latest death kept, short life streak; the old record untouched.
 between("${ai_cpp}" "void PlayerbotAI::RecordDeathForLoop()" "\n}\n" record)

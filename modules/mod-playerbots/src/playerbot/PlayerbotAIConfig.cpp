@@ -773,6 +773,9 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[DeathLoop] config key=FarEscape value=%u result=off (0 off, 1 all, 2 cohort B)", deathLoopFarEscape);
         deathLoopFarEscape = 0;
     }
+    reviveSpiritHealerFull = config.GetIntDefault("AiPlayerbot.Revive.SpiritHealerFull", 1);   // owner order 27.10.2026
+    if (reviveSpiritHealerFull > 2)
+        reviveSpiritHealerFull = 1;   // an unknown mode is the default (0 off = rollback, 1 all, 2 cohort B)
     zoneEscapeEnabled = config.GetBoolDefault("AiPlayerbot.ZoneEscape.Enabled", false);
     zoneEscapeCooldownSeconds = std::max<uint32>(60, config.GetIntDefault("AiPlayerbot.ZoneEscape.CooldownSeconds", 600));
     zoneEscapeRetrySeconds = std::max<uint32>(15, config.GetIntDefault("AiPlayerbot.ZoneEscape.RetrySeconds", 60));
@@ -1782,6 +1785,7 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestLoop.InactiveAfterProgress", Value(questLoopInactiveAfterProgress)},
             {"QuestLoop.InactiveReselect", Value(questLoopInactiveReselect)},
             {"QuestRescue.KeepRequestWhenFull", Value(questRescueKeepRequestWhenFull)},
+            {"Revive.SpiritHealerFull", Value(reviveSpiritHealerFull)},
             {"Rotation.CastLosGate", Value(rotationCastLosGate)},
             {"Rotation.CastStopFirst", Value(rotationCastStopFirst)},
             {"Rotation.DarkRuneGate", Value(rotationDarkRuneGate)},
