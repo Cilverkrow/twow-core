@@ -223,6 +223,15 @@ int main()
             " giver_kept=4 giver_out_of_range=310", "counted by rule");
     }
 
+    // twow-repo#601 quest acceptance lever (iv) (GiverFetchAnyQuest): a giver fetch (quest id 0) asks for every giver with the mode,
+    // for entry 0 (no giver filed there) without it; any other fetch keeps its quest id.
+    {
+        Require(FetchEntries(false, 0) == std::vector<int32_t>{ 0 }, "off: entry 0, as before");
+        Require(FetchEntries(true, 0).empty(), "on: every giver in range");
+        Require(FetchEntries(true, 783) == std::vector<int32_t>{ 783 } && FetchEntries(false, 783) == std::vector<int32_t>{ 783 },
+            "a quest's own fetch keeps its id");
+    }
+
     std::cout << "quest_search_policy_tests passed\n";
     return 0;
 }

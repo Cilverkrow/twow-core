@@ -893,6 +893,13 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[QuestBand] config key=BandLadderSameZoneNext value=%u result=off (0 off, 1..10)", questFirstProgressionBandLadderSameZoneNext);
         questFirstProgressionBandLadderSameZoneNext = 0;
     }
+    // twow-repo#601 quest acceptance lever (iv) GiverFetchAnyQuest: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B).
+    questFirstProgressionGiverFetchAnyQuest = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.GiverFetchAnyQuest", 0);
+    if (questFirstProgressionGiverFetchAnyQuest > 2)
+    {
+        sLog.outError("[QuestFirstRoute] config key=GiverFetchAnyQuest value=%u result=off (0 off, 1 all, 2 cohort B)", questFirstProgressionGiverFetchAnyQuest);
+        questFirstProgressionGiverFetchAnyQuest = 0;
+    }
     // twow-repo#601 SkipSkillLockedObjectives: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B).
     questFirstProgressionSkipSkillLockedObjectives = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.SkipSkillLockedObjectives", 0);
     if (questFirstProgressionSkipSkillLockedObjectives > 2)
@@ -1765,6 +1772,7 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestFirstProgression.Enabled", Value(questFirstProgressionEnabled)},
             {"QuestFirstProgression.FailureClasses", Value(questFirstProgressionFailureClasses)},
             {"QuestFirstProgression.FailureClasses.GroupNeeded", Value(questFirstProgressionFailureClassesGroupNeeded)},
+            {"QuestFirstProgression.GiverFetchAnyQuest", Value(questFirstProgressionGiverFetchAnyQuest)},
             {"QuestFirstProgression.GrindFallbackFailures", Value(questFirstProgressionGrindFallbackFailures)},
             {"QuestFirstProgression.GrindFallbackMinutes", Value(questFirstProgressionGrindFallbackMinutes)},
             {"QuestFirstProgression.GrindMode", Value(questFirstProgressionGrindMode)},

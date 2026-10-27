@@ -207,6 +207,17 @@ constexpr uint32_t MaxStage = 2;
 // A bot widens at most once per this many seconds.
 constexpr uint32_t WidenIntervalSeconds = 120;
 
+// twow-repo#601 quest acceptance lever (iv) (QuestFirstProgression.GiverFetchAnyQuest, OB-00 28.10.2026): the entries of one quest
+// destination fetch. The giver fetch carries quest id 0, but TravelMgr files every quest giver under its quest id, so {0} matched no
+// giver and the radius fetch below returned nothing. With the mode on for the bot a giver fetch asks for every giver ({}); every
+// other fetch keeps its quest id.
+inline std::vector<int32_t> FetchEntries(bool giverFetchAnyQuest, int32_t questId)
+{
+    if (giverFetchAnyQuest && questId == 0)
+        return {};
+    return { questId };
+}
+
 // Quest-giver search radius (yards). Stage 0 is today's radius (own zone,
 // #307 floor of 2000); stage 1 reaches neighbouring zones, stage 2 the region.
 // Same map only - the fetch never leaves the continent; the zone-level filter
