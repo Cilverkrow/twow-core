@@ -2,6 +2,7 @@
 #include "playerbot/playerbot.h"
 #include "playerbot/LootSlotPolicy.h"
 #include "playerbot/SkinLootPolicy.h"
+#include "playerbot/CastWhileMovingPolicy.h"   // twow-repo#333 P1-w: hold the AI for a started loot cast
 #include "LootAction.h"
 
 #include "playerbot/LootObjectStack.h"
@@ -81,12 +82,18 @@ enum ProfessionSpells
 
 bool OpenLootAction::Execute(Event& event)
 {
+    // twow-repo#333 P1-w: the engine sets the AI delay to this action's duration after it ran, which replaced the cast wait of
+    // a started gather / opening cast; the next movement action then interrupted the cast. Hold the AI for the cast time; start
+    // each run from the react delay, so neither the loot delay nor a cast time carries over to the next run.
+    SetDuration(sPlayerbotAIConfig.reactDelay);
+    castDuration = 0;
     LootObject lootObject = AI_VALUE(LootObject, "loot target");
     bool result = DoLoot(lootObject);
     if (result)
     {
         AI_VALUE(LootObjectStack*, "available loot")->Remove(lootObject.guid);
         context->GetValue<LootObject>("loot target")->Set(LootObject());
+        SetDuration(ai::cast_moving::LootActionDuration(GetDuration(), castDuration));
     }
     return result;
 }
@@ -174,13 +181,13 @@ bool OpenLootAction::DoLoot(LootObject& lootObject)
         switch (skill)
         {
         case SKILL_ENGINEERING:
-            return ai->HasSkill(SKILL_ENGINEERING) ? ai->CastSpell(ENGINEERING, creature) : false;
+            return ai->HasSkill(SKILL_ENGINEERING) ? ai->CastSpell(ENGINEERING, creature, nullptr, true, &castDuration) : false;
         case SKILL_HERBALISM:
-            return ai->HasSkill(SKILL_HERBALISM) ? ai->CastSpell(32605, creature) : false;
+            return ai->HasSkill(SKILL_HERBALISM) ? ai->CastSpell(32605, creature, nullptr, true, &castDuration) : false;
         case SKILL_MINING:
-            return ai->HasSkill(SKILL_MINING) ? ai->CastSpell(32606, creature) : false;
+            return ai->HasSkill(SKILL_MINING) ? ai->CastSpell(32606, creature, nullptr, true, &castDuration) : false;
         default:
-            return ai->HasSkill(SKILL_SKINNING) ? ai->CastSpell(SKINNING, creature) : false;
+            return ai->HasSkill(SKILL_SKINNING) ? ai->CastSpell(SKINNING, creature, nullptr, true, &castDuration) : false;
         }
     }
 
@@ -192,7 +199,7 @@ bool OpenLootAction::DoLoot(LootObject& lootObject)
         return false;
 
     if (lootObject.skillId == SKILL_MINING)
-        return ai->HasSkill(SKILL_MINING) ? ai->CastSpell(MINING, bot) : false;
+        return ai->HasSkill(SKILL_MINING) ? ai->CastSpell(MINING, bot, nullptr, true, &castDuration) : false;
 
     if (lootObject.skillId == SKILL_HERBALISM)
     {
@@ -209,7 +216,7 @@ bool OpenLootAction::DoLoot(LootObject& lootObject)
 
         if (!isForQuest)
         {
-            return ai->HasSkill(SKILL_HERBALISM) ? ai->CastSpell(HERB_GATHERING, bot) : false;
+            return ai->HasSkill(SKILL_HERBALISM) ? ai->CastSpell(HERB_GATHERING, bot, nullptr, true, &castDuration) : false;
         }
     }
 
@@ -234,7 +241,7 @@ bool OpenLootAction::DoLoot(LootObject& lootObject)
         return ai->DoSpecificAction("use", Event("do loot", chat->formatQItem(lootObject.reqItem) + " " + chat->formatGameobject(go)));
     }
 
-    return ai->CastSpell(spellId, bot);
+    return ai->CastSpell(spellId, bot, nullptr, true, &castDuration);
 }
 
 uint32 OpenLootAction::GetOpeningSpell(LootObject& lootObject)
