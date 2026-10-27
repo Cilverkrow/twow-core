@@ -67,17 +67,20 @@ require_order("${accept}" "auto const coreStart = std::chrono::steady_clock::now
             group_op_timing::lastAcceptCoreUs = group_op_timing::UsSince(coreStart);" "if (!bot->GetGroup() || !bot->GetGroup()->IsMember(inviter->GetObjectGuid()))" "core join timed alone")
 require_order("${accept}" "                if (sPlayerbotAIConfig.botGroupsWorldThreadDefer)
                 {
-                    ai->RequestGroupAi(group_ai_refresh::JoinReset | group_ai_refresh::JoinTail);
+                    ai->RequestJoinTail(inviter->GetGUIDLow());   // JoinReset + JoinTail, the inviter before the bits
                     return true;
                 }" "            JoinTail(grp, inviter, event);" "deferred accept returns before the tail")
-require_order("${accept}" "        void JoinTail(Group* grp, Player* inviter, Event& event)" "            ai->DoSpecificAction(\"update gear\", event, true);" "update gear is part of the tail")
+require_order("${accept}" "        void JoinTail(Group* grp, Player* inviter, Event& event, bool onBotThread = false)" "            ai->DoSpecificAction(\"update gear\", event, true);" "update gear is part of the tail")
 require_text("${refresh}" "        pending &= ~std::uint32_t(JoinReset | JoinTail | Follower | TurnIn | ForceTravel);" "a leave drops a pending tail")
 
 # The bot thread: the tail after the reset and before the S7 set; the deferred lines right after the requests.
 require_order("${ai_cpp}" "        Reset();
     }
     // s7r (BotGroups.WorldThreadDefer): the accept tail" "    if (plan.follower || plan.turnIn)" "tail after the reset, before the set")
-require_order("${ai_cpp}" "    ApplyGroupAiRequests();" "    DrainDeferredLogs();" "deferred lines drained in UpdateAI")
+require_order("${ai_cpp}" "    DrainDeferredLogs();
+    ApplyGroupAiRequests();" "    // #420: close a finished [GroupBuff] window." "deferred lines drained before the requests (older first)")
+require_text("${ai_cpp}" "        if (inviter && bot->GetGroup()->IsMember(inviter->GetObjectGuid()))" "the tail only for the inviter, still in the group")
+require_text("${ai_cpp}" "    if (!hasDeferredLogs.exchange(false))" "the drain is free without lines")
 # Logs: inside a scope the line goes to the bot - before the shared mutex and the fflush.
 require_order("${config_cpp}" "    if (PlayerbotAI* target = ai::deferred_log::Target())" "    std::lock_guard<std::mutex> guard(m_logMtx);" "log() defers before the lock")
 require_text("${diag}" "        target->PostDeferredLog(\"\", line);" "membership line deferred")
@@ -110,3 +113,5 @@ require_text("${qgw}" " tend_us_max=%u accept_core_us_max=%u leave_core_us_max=%
 require_text("${agw}" " join_core_us_max=%u leave_core_us_max=%u stall_us_max=%u scan_budget_us=%u defer=%u" "ad-hoc minute fields")
 require_text("${qgw}" "    minute.stallUsMax = std::max(minute.stallUsMax, thread_cpu::StallUs(wallUs, cpuStart, thread_cpu::NowUs()));" "S7 stall")
 require_text("${agw}" "    minute.stallUsMax = std::max(minute.stallUsMax, thread_cpu::StallUs(wallUs, cpuStart, thread_cpu::NowUs()));" "ad-hoc stall")
+# Pre-review: on the bot thread the master's formation is copied only from the same map (the same map thread).
+require_order("${accept}" "                if (!onBotThread || master->FindMap() == bot->FindMap())" "                    Formation* masterFormation = MAI_VALUE(Formation*, \"formation\");" "formation copy same map only")

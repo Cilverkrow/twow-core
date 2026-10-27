@@ -122,7 +122,7 @@ private:
         std::uint32_t acceptCoreUsMax = 0;
         std::uint32_t leaveCoreUsMax = 0;
         std::uint32_t stallUsMax = 0;
-        std::uint32_t deferredDissolves = 0;   // OneHeavyStep: dissolutions carried to a later update
+        std::uint32_t deferredDissolves = 0;   // OneHeavyStep: carries of a dissolution to a later update (each update counts)
     };
 
     // twow-repo#627 S7 (AiPlayerbot.QuestGroups.StagedOps, default 0): S7-A 25.10. broke the 2 ms guard with a formation of
