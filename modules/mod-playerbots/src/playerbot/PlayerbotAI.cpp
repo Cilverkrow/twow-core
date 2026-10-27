@@ -665,7 +665,17 @@ void PlayerbotAI::SampleActivity(uint32 now)
         ai::bot_activity::Global().Add(ai::bot_activity::BandOf(bot->GetLevel()), kind, credited);
     if (activityClock.HourDone(now))
     {
-        sLog.outBasic("%s", ai::bot_activity::FormatLine(bot->GetGUIDLow(), bot->GetLevel(), bot->GetZoneId(), activityClock).c_str());
+        // twow-repo#601 quest acceptance (OB-00 27.10.2026): how full the quest log is, once an hour (20 slots, no lookup).
+        int32 questLog = 0, questDone = 0;
+        for (uint16 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+            if (uint32 const questId = bot->GetQuestSlotQuestId(slot))
+            {
+                ++questLog;
+                if (bot->GetQuestStatus(questId) == QUEST_STATUS_COMPLETE)
+                    ++questDone;
+            }
+        sLog.outBasic("%s", ai::bot_activity::FormatLine(bot->GetGUIDLow(), bot->GetLevel(), bot->GetZoneId(), activityClock,
+            questLog, questDone).c_str());
         activityClock.StartHour(now);
     }
 }
