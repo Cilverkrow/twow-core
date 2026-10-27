@@ -8,6 +8,7 @@
 #include "playerbot/strategy/values/TravelValues.h"
 #include "playerbot/strategy/values/SharedValueContext.h"
 #include "playerbot/strategy/values/GuildValues.h"
+#include "playerbot/strategy/values/QuestValues.h"   // twow-repo#601 quest acceptance step 1b: DialogStatusValue::getDialogStatus
 #include "GuildCreateActions.h"
 #include "playerbot/strategy/values/FreeMoveValues.h"
 #include "playerbot/RandomPlayerbotMgr.h"
@@ -317,6 +318,52 @@ ai::quest_search::RejectCounts::InactiveReason InactiveReasonOf(PlayerbotAI* ai,
     if (relation->GetEntry() > 0 && GuidPosition(HIGHGUID_UNIT, relation->GetEntry()).IsHostileTo(bot))
         return Counts::InactiveHostile;
     return Counts::InactiveOther;
+}
+
+// twow-repo#601 quest acceptance step 1b (DirectTargets.TraceInactive + QuestFirstProgression.TraceTravelDecisions): why a no_mark
+// giver point's own quest is not takeable for this bot - the first check of Player::CanTakeQuest that fails, in its order
+// (QuestSearchPolicy.h NoMarkOf). Only for a candidate already counted as no_mark; core checks without messages.
+ai::quest_search::NoMarkReason NoMarkWhyOf(Player* bot, TravelDestination* destination)
+{
+    QuestRelationTravelDestination* relation = dynamic_cast<QuestRelationTravelDestination*>(destination);
+    Quest const* quest = relation ? relation->GetQuestTemplate() : nullptr;
+    if (!quest)
+        return ai::quest_search::NoMarkOther;
+
+    ai::quest_search::QuestTakeChecks checks;
+    checks.maxLevel = !quest->GetMaxLevel() || quest->GetMaxLevel() >= bot->GetLevel();
+    checks.notRewarded = !bot->GetQuestRewardStatus(quest->GetQuestId());
+    checks.status = bot->SatisfyQuestStatus(quest, false);
+    checks.exclusive = bot->SatisfyQuestExclusiveGroup(quest, false);
+    checks.cls = bot->SatisfyQuestClass(quest, false);
+    checks.race = bot->SatisfyQuestRace(quest, false);
+    checks.level = bot->SatisfyQuestLevel(quest, false);
+    checks.skill = bot->SatisfyQuestSkill(quest, false);
+    checks.condition = bot->SatisfyQuestCondition(quest, false);
+    checks.reputation = bot->SatisfyQuestReputation(quest, false);
+    checks.prevQuest = bot->SatisfyQuestPreviousQuest(quest, false);
+    checks.timed = bot->SatisfyQuestTimed(quest, false);
+    checks.chain = bot->SatisfyQuestNextChain(quest, false) && bot->SatisfyQuestPrevChain(quest, false);
+    checks.active = quest->IsActive();
+    checks.challenge = bot->SatisfyQuestChallenges(quest, false);
+    ai::quest_search::NoMarkReason const why = ai::quest_search::NoMarkOf(checks);
+    if (why != ai::quest_search::NoMarkOther)
+        return why;
+
+    // Takeable: the NPC mark is the highest status over all of its relations - this point's own quest alone (static, one NPC).
+    switch (DialogStatusValue::getDialogStatus(bot, relation->GetEntry(), relation->GetQuestId()))
+    {
+    case DIALOG_STATUS_AVAILABLE:
+        return ai::quest_search::NoMarkMasked;
+    case DIALOG_STATUS_REWARD_REP:
+        return ai::quest_search::NoMarkRepeatable;
+#ifndef MANGOSBOT_TWO
+    case DIALOG_STATUS_CHAT:
+        return ai::quest_search::NoMarkLowLevelMasked;
+#endif
+    default:
+        return ai::quest_search::NoMarkOther;
+    }
 }
 
 // twow-repo#485: the finished quests of this bot a turn-in-only quest route request offered
@@ -1774,7 +1821,13 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
                 // Judged with the choice's PlayerTravelInfo (choiceInfo: the one IsActive saw with A10 reuse, built once per
                 // choice without it), not a new one per candidate (OB-10 review).
                 if (sPlayerbotAIConfig.directTargetsTraceInactive)
-                    ++lastRejects.notActiveReason[InactiveReasonOf(ai, destination, choiceInfo())];
+                {
+                    ai::quest_search::RejectCounts::InactiveReason const reason = InactiveReasonOf(ai, destination, choiceInfo());
+                    ++lastRejects.notActiveReason[reason];
+                    // twow-repo#601 quest acceptance step 1b: with TraceTravelDecisions too, why the no_mark (a split of it).
+                    if (reason == ai::quest_search::RejectCounts::InactiveNoMark && sPlayerbotAIConfig.questFirstProgressionTraceTravelDecisions)
+                        ++lastRejects.noMarkWhy[NoMarkWhyOf(bot, destination)];
+                }
             }
 
         }
@@ -3237,13 +3290,41 @@ bool RequestQuestTravelTargetAction::Execute(Event& event)
             parkTarget->ParkedTurnInCount());
     }
 
+    // twow-repo#601 quest acceptance step 1b (TraceTravelDecisions, the same bots as the request line): the giver fetches of this
+    // request - the radius one and the whole-map fallback when the list came back empty - count what
+    // QuestRelationTravelDestination::IsPossible drops, by rule, on their own PlayerTravelInfo copy; the job writes one
+    // "[QuestFirstRoute] state=giver_fetch" line. fetch=radius: no fallback ran (the radius fetch asks for entry 0, under which no
+    // giver is filed - review 27.10.); fetch=fallback: the counts include the fallback. Without the trace: no copy, no count.
+    bool const traceGivers = sPlayerbotAIConfig.questFirstProgressionTraceTravelDecisions && UsesQuestFirstProgression(bot);
+    uint32 const traceBot = bot->GetGUIDLow();
     *AI_VALUE(FutureDestinations*, "future travel destinations") = std::async(std::launch::async,
-        [partitions = travelPartitions, travelInfo = PlayerTravelInfo(bot), center, destinationFetches, hubsFirst = searchStage > 0]()
+        [partitions = travelPartitions, travelInfo = PlayerTravelInfo(bot), center, destinationFetches, hubsFirst = searchStage > 0,
+            traceGivers, traceBot, giverStage = searchStage]()
         {
+            ai::quest_search::GiverDropCounts giverDrops;
+            std::optional<PlayerTravelInfo> giverInfo;
+            if (traceGivers)
+            {
+                giverInfo.emplace(travelInfo);
+                giverInfo->SetGiverDrops(&giverDrops);
+            }
+            bool giverFetched = false;
+            float giverRange = 0.0f;
+            uint32 giverPoints = 0;
+
             PartitionedTravelList list;
             for (auto [purpose, questId, range] : destinationFetches)
             {
-                PartitionedTravelList subList = sTravelMgr.GetPartitions(center, partitions, travelInfo, purpose, { questId }, true, range);
+                bool const tracedGiverFetch = traceGivers && (purpose & (uint32)TravelDestinationPurpose::QuestGiver);
+                PartitionedTravelList subList = sTravelMgr.GetPartitions(center, partitions, tracedGiverFetch ? *giverInfo : travelInfo,
+                    purpose, { questId }, true, range);
+                if (tracedGiverFetch)
+                {
+                    giverFetched = true;
+                    giverRange = range;
+                    for (auto const& [partition, points] : subList)
+                        giverPoints += uint32(points.size());
+                }
 
                 for (auto& [partition, points] : subList)
                     list[partition].insert(list[partition].end(), points.begin(), points.end());
@@ -3253,8 +3334,21 @@ bool RequestQuestTravelTargetAction::Execute(Event& event)
             if (hubsFirst)
                 SortQuestHubsFirst(list);
 
-            if (list.empty())
-                list = sTravelMgr.GetPartitions(center, partitions, travelInfo, (uint32)TravelDestinationPurpose::QuestGiver);
+            bool const giverFallback = list.empty();
+            if (giverFallback)
+            {
+                list = sTravelMgr.GetPartitions(center, partitions, traceGivers ? *giverInfo : travelInfo, (uint32)TravelDestinationPurpose::QuestGiver);
+                if (traceGivers)
+                    for (auto const& [partition, points] : list)
+                        giverPoints += uint32(points.size());
+            }
+
+            if (traceGivers && (giverFetched || giverFallback))
+                sLog.outBasic("[QuestFirstRoute] state=giver_fetch bot=%u level=%u stage=%u radius=%.0f fetch=%s free_slots=%u "
+                    "can_fight_equal=%u %s giver_points=%u",
+                    traceBot, travelInfo.GetLevel(), giverStage, giverRange, giverFallback ? "fallback" : "radius",
+                    uint32(travelInfo.GetUint8Value("free quest log slots")), travelInfo.GetBoolValue("can fight equal") ? 1u : 0u,
+                    giverDrops.Format().c_str(), giverPoints);
 
             return list;
         }

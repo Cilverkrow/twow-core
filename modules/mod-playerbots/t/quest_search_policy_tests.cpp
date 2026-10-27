@@ -166,6 +166,63 @@ int main()
             "counted after battleground_quest, before the not_active split");
     }
 
+    // twow-repo#601 quest acceptance step 1b: no_mark split by the first failed CanTakeQuest check, in its order.
+    {
+        QuestTakeChecks all;
+        Require(NoMarkOf(all) == NoMarkOther, "every check passes: other");
+        QuestTakeChecks c = all;
+        c.status = false;
+        Require(NoMarkOf(c) == NoMarkInLog, "status fails, not rewarded: in the log");
+        c.notRewarded = false;
+        Require(NoMarkOf(c) == NoMarkDone, "status fails, rewarded: done");
+        c = all;
+        c.maxLevel = false;
+        c.status = false;
+        Require(NoMarkOf(c) == NoMarkMaxLevel, "max level comes first");
+        c = all;
+        c.prevQuest = false;
+        c.level = false;
+        Require(NoMarkOf(c) == NoMarkLevel, "level before the previous quest (CanTakeQuest order)");
+        c = all;
+        c.prevQuest = false;
+        Require(NoMarkOf(c) == NoMarkPrevQuest, "previous quest");
+        c = all;
+        c.chain = false;
+        Require(NoMarkOf(c) == NoMarkChain, "chain");
+        c = all;
+        c.active = false;
+        Require(NoMarkOf(c) == NoMarkInactiveQuest, "inactive quest");
+        Require(std::string(NoMarkName(NoMarkPrevQuest)) == "prev_quest" && std::string(NoMarkName(NoMarkReasons)) == "other",
+            "names, out of range = other");
+        Require(std::string(NoMarkName(NoMarkMasked)) == "masked" && std::string(NoMarkName(NoMarkRepeatable)) == "repeatable" &&
+            std::string(NoMarkName(NoMarkLowLevelMasked)) == "low_level_masked" && std::string(NoMarkName(NoMarkOther)) == "other",
+            "the dialog status split names, other last");
+
+        RejectCounts counts;
+        counts.notActiveReason[RejectCounts::InactiveNoMark] = 3;
+        Require(counts.FormatInactiveReasons().find("no_mark_why") == std::string::npos, "no split counted: no token");
+        counts.noMarkWhy[NoMarkDone] = 2;
+        counts.noMarkWhy[NoMarkPrevQuest] = 1;
+        Require(counts.FormatInactiveReasons() ==
+            " not_active_reasons=impossible:0,map:0,no_mark:3,low_level_no_reward:0,no_turnin:0,hostile:0,other:0 no_mark_why=done:2,prev_quest:1",
+            "no_mark_why after the split, only the counted reasons");
+    }
+
+    // twow-repo#601 quest acceptance step 1b: the giver drop counters of a traced fetch.
+    {
+        GiverDropCounts drops;
+        Require(drops.Format() == "giver_drops=strategy:0,focus:0,quest_level:0,min_max:0,band_grey:0,condition:0,free_slots:0,elite:0"
+            " giver_kept=0 giver_out_of_range=0", "empty counters");
+        drops.Drop(GiverDropFreeSlots);
+        drops.Drop(GiverDropFreeSlots);
+        drops.Drop(GiverDropQuestLevel);
+        drops.Drop(GiverDrops);   // out of range: ignored
+        drops.kept = 4;
+        drops.outOfRange = 310;
+        Require(drops.Format() == "giver_drops=strategy:0,focus:0,quest_level:1,min_max:0,band_grey:0,condition:0,free_slots:2,elite:0"
+            " giver_kept=4 giver_out_of_range=310", "counted by rule");
+    }
+
     std::cout << "quest_search_policy_tests passed\n";
     return 0;
 }
