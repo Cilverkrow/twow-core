@@ -326,7 +326,7 @@ ai::quest_search::RejectCounts::InactiveReason InactiveReasonOf(PlayerbotAI* ai,
 ai::quest_search::NoMarkReason NoMarkWhyOf(Player* bot, TravelDestination* destination)
 {
     QuestRelationTravelDestination* relation = dynamic_cast<QuestRelationTravelDestination*>(destination);
-    Quest const* quest = relation ? relation->GetQuestTemplate() : nullptr;
+    Quest const* quest = relation ? sObjectMgr.GetQuestTemplate(relation->GetQuestId()) : nullptr;   // GetQuestTemplate() is protected
     if (!quest)
         return ai::quest_search::NoMarkOther;
 
