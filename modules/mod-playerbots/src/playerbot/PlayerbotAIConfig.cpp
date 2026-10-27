@@ -595,6 +595,9 @@ bool PlayerbotAIConfig::Initialize()
     rotationCastLosGate = config.GetIntDefault("AiPlayerbot.Rotation.CastLosGate", 0);   // twow-repo#602 hunter LoS
     if (rotationCastLosGate > 2)
         rotationCastLosGate = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
+    rotationCastStopFirst = config.GetIntDefault("AiPlayerbot.Rotation.CastStopFirst", 1);   // twow-repo#602 cast-abort loop
+    if (rotationCastStopFirst > 2)
+        rotationCastStopFirst = 1;   // an unknown mode is the default (0 off = rollback, 1 all, 2 cohort B)
     perfCombatIdleYield = config.GetBoolDefault("AiPlayerbot.Perf.CombatIdleYield", false);
     castWaitPreparing = config.GetIntDefault("AiPlayerbot.CastWait.Preparing", 0);
     if (castWaitPreparing > 2)
@@ -1780,6 +1783,7 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestLoop.InactiveReselect", Value(questLoopInactiveReselect)},
             {"QuestRescue.KeepRequestWhenFull", Value(questRescueKeepRequestWhenFull)},
             {"Rotation.CastLosGate", Value(rotationCastLosGate)},
+            {"Rotation.CastStopFirst", Value(rotationCastStopFirst)},
             {"Rotation.DarkRuneGate", Value(rotationDarkRuneGate)},
             {"Rotation.EmergencyLadder", Value(rotationEmergencyLadder)},
             {"Rotation.FleeAway", Value(rotationFleeAway)},
