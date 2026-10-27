@@ -23,6 +23,8 @@ namespace ai
         uint32 GetOpeningSpell(LootObject& lootObject, GameObject* go);
         bool CanOpenLock(LootObject& lootObject, const SpellEntry* pSpellInfo, GameObject* go);
         bool CanOpenLock(uint32 skillId, uint32 reqSkillValue);
+
+        uint32 castDuration = 0;   // twow-repo#333 P1-w: cast time of the loot cast DoLoot started
     };
 
     class StoreLootAction : public Action
