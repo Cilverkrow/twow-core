@@ -19,6 +19,7 @@
 #include "playerbot/ReachDropPolicy.h"   // twow-repo#630 follow-up (Rotation.ReachDropEngagement)
 #include "playerbot/RotCastPolicy.h"
 #include "playerbot/RotCastTrace.h"     // twow-repo#602 ROT-01 D0 (AiPlayerbot.Rotation.CastTrace)
+#include "playerbot/CastWhileMovingPolicy.h"   // twow-repo#333 P1-w: a loot cast after StopMoving
 #include "Maps/PathFinder.h"
 #include <stdarg.h>
 #include <array>
@@ -6760,6 +6761,8 @@ bool PlayerbotAI::CastSpell(uint32 spellId, Unit* target, Item* itemTarget, bool
         targets.setDestination(fx, fy, fz);
     }
 
+    // twow-repo#333 P1-w (CastWhileMovingPolicy.h): whether this is a loot cast with its target found.
+    bool lootTargetFound = false;
     if (pSpellInfo->Effect[0] == SPELL_EFFECT_OPEN_LOCK ||
         pSpellInfo->Effect[0] == SPELL_EFFECT_SKINNING)
     {
@@ -6769,6 +6772,7 @@ bool PlayerbotAI::CastSpell(uint32 spellId, Unit* target, Item* itemTarget, bool
         {
             targets.setGOTarget(go);
             faceTo = go;
+            lootTargetFound = true;
         }
         else
         {
@@ -6777,9 +6781,11 @@ bool PlayerbotAI::CastSpell(uint32 spellId, Unit* target, Item* itemTarget, bool
             {
                 targets.setUnitTarget(creature);
                 faceTo = creature;
+                lootTargetFound = true;
             }
         }
     }
+    bool const lootCast = ai::cast_moving::IsLootCast(pSpellInfo->Effect[0], lootTargetFound, targets.getItemTarget() != nullptr);
 
     // Fail the cast if the bot is moving and the spell is a casting/channeled spell
     if (sServerFacade.isMoving(bot) && ((GetSpellCastTime(pSpellInfo, bot, spell) > 0) || (IsChanneledSpell(pSpellInfo) && (GetSpellDuration(pSpellInfo) > 0))))
@@ -6794,7 +6800,9 @@ bool PlayerbotAI::CastSpell(uint32 spellId, Unit* target, Item* itemTarget, bool
         StopMoving();
 
         // fail if not with real player to avoid movement glitches
-        if (!HasActivePlayerMaster())
+        // twow-repo#333 P1-w (M1r run 4): a loot cast stays - its cancel failed the action, the next action moved the bot again
+        // and every try cancelled (skinning, mining, herbs, chests, quest objects never opened).
+        if (ai::cast_moving::CancelAfterStop(HasActivePlayerMaster(), lootCast))
         {
             if (waitForSpell)
             {

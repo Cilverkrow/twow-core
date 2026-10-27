@@ -4052,6 +4052,20 @@ add_test(NAME rpg_area_level_policy
   COMMAND rpg_area_level_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#333 P1-w: a loot cast of a moving bot casts after StopMoving (skinning, mining, herbs, chests, quest objects).
+add_executable(cast_while_moving_policy_tests
+  "${PB_MODULE_DIR}/t/cast_while_moving_policy_tests.cpp")
+
+target_include_directories(cast_while_moving_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(cast_while_moving_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME cast_while_moving_policy
+  COMMAND cast_while_moving_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 add_test(NAME profession_travel_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
