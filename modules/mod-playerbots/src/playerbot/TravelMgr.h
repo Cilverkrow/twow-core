@@ -8,6 +8,7 @@
 #include "QuestLoopPolicy.h"
 #include "AreaLevelPolicy.h"
 #include "PosStuckPolicy.h"
+#include "QuestSearchPolicy.h"   // twow-repo#601 quest acceptance step 1b: GiverDropCounts
 #include <mutex>
 
 #include "strategy/AiObject.h"
@@ -88,6 +89,11 @@ namespace ai
 		// bot (RpgAreaLevelPolicy.h), set in the constructor on the bot thread; false for every bot with the switch off.
 		bool UsesRpgAreaFromSpawn() const { return rpgAreaFromSpawn; }
 		uint32 GetBandGreyLevel() const { return bandGreyLevel; }
+		// twow-repo#601 quest acceptance step 1b (TraceTravelDecisions): the drop counters of one traced giver fetch. Set only on the
+		// copy the async quest fetch job passes to GetPartitions, counted by QuestRelationTravelDestination::IsPossible in that job's
+		// thread and written by it; null everywhere else (no count).
+		void SetGiverDrops(ai::quest_search::GiverDropCounts* counts) { giverDrops = counts; }
+		ai::quest_search::GiverDropCounts* GetGiverDrops() const { return giverDrops; }
 
 	private:
 		WorldPosition position;
@@ -102,6 +108,7 @@ namespace ai
 		uint16 skillMax[MAX_SKILL_TYPE] = { 0 };
 		uint8 groupSize = 0;
 		uint32 money = 0;
+		ai::quest_search::GiverDropCounts* giverDrops = nullptr;   // twow-repo#601 step 1b: only on the traced giver fetch's copy
 
 		focusQuestTravelList focusList = {};
 

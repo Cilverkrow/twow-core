@@ -24,6 +24,98 @@ inline bool RebindAtRescue(bool rosterBot, bool realMaster, uint32_t /*homebindM
 
 // ---- A) why the route choice found nothing ------------------------------
 
+// twow-repo#601 quest acceptance step 1b (OB-00 27.10.2026, cli-quest-organic/quest-acceptance/STEP2.md): in AB-2 not one normal
+// quest giver was routed to. Even uncontested, 90 % of the giver fetches found no active giver, and every giver point that came
+// back failed IsActive as no_mark (the NPC offers this bot nothing). Two log-only splits answer why:
+//
+// (1) no_mark: the first check of Player::CanTakeQuest (in its order) that the giver point's own quest fails for this bot. Pass
+//     = true. A quest that passes every check is split by its own dialog status, because the NPC mark is the highest status over
+//     all of the NPC's relations (review 27.10.): masked = available, but a higher status (e.g. a completed or parked turn-in at
+//     the same NPC) hides it; repeatable = already rewarded repeatable or auto-complete; low_level_masked = a grey quest hidden by
+//     an incomplete one; anything else is "other". NoMarkOf returns other for all of them; the caller adds the split.
+enum NoMarkReason : uint32_t { NoMarkMaxLevel, NoMarkDone, NoMarkInLog, NoMarkExclusive, NoMarkClass, NoMarkRace, NoMarkLevel,
+    NoMarkSkill, NoMarkCondition, NoMarkReputation, NoMarkPrevQuest, NoMarkTimed, NoMarkChain, NoMarkInactiveQuest, NoMarkChallenge,
+    NoMarkMasked, NoMarkRepeatable, NoMarkLowLevelMasked, NoMarkOther, NoMarkReasons };
+
+struct QuestTakeChecks
+{
+    bool maxLevel = true;      // GetMaxLevel() == 0 or >= the bot's level
+    bool notRewarded = true;   // GetQuestRewardStatus false: a failed status check is then the quest in the log
+    bool status = true;        // SatisfyQuestStatus
+    bool exclusive = true;
+    bool cls = true;
+    bool race = true;
+    bool level = true;
+    bool skill = true;
+    bool condition = true;
+    bool reputation = true;
+    bool prevQuest = true;
+    bool timed = true;
+    bool chain = true;         // SatisfyQuestNextChain && SatisfyQuestPrevChain
+    bool active = true;        // Quest::IsActive
+    bool challenge = true;
+};
+
+inline NoMarkReason NoMarkOf(QuestTakeChecks const& c)
+{
+    if (!c.maxLevel) return NoMarkMaxLevel;
+    if (!c.status)
+        return !c.notRewarded ? NoMarkDone : NoMarkInLog;   // SatisfyQuestStatus: rewarded (not repeatable) or in the log
+    if (!c.exclusive) return NoMarkExclusive;
+    if (!c.cls) return NoMarkClass;
+    if (!c.race) return NoMarkRace;
+    if (!c.level) return NoMarkLevel;
+    if (!c.skill) return NoMarkSkill;
+    if (!c.condition) return NoMarkCondition;
+    if (!c.reputation) return NoMarkReputation;
+    if (!c.prevQuest) return NoMarkPrevQuest;
+    if (!c.timed) return NoMarkTimed;
+    if (!c.chain) return NoMarkChain;
+    if (!c.active) return NoMarkInactiveQuest;
+    if (!c.challenge) return NoMarkChallenge;
+    return NoMarkOther;
+}
+
+inline char const* NoMarkName(NoMarkReason reason)
+{
+    static char const* const names[NoMarkReasons] = { "max_level", "done", "in_log", "exclusive", "class", "race", "level", "skill",
+        "condition", "reputation", "prev_quest", "timed", "chain", "inactive_quest", "challenge", "masked", "repeatable",
+        "low_level_masked", "other" };
+    return reason < NoMarkReasons ? names[reason] : "other";
+}
+
+// (2) The givers QuestRelationTravelDestination::IsPossible drops silently inside the async giver fetch (GetPartitions with
+//     onlyPossible), by its rule, in its order; kept = passed. Only givers within the fetch range are judged (out_of_range = the
+//     others, TravelMgr::GetDestinations takes the range first when traced). One counter set per traced request, written by the
+//     fetch job only.
+enum GiverDrop : uint32_t { GiverDropStrategy, GiverDropFocus, GiverDropQuestLevel, GiverDropMinMaxLevel, GiverDropBandGrey,
+    GiverDropCondition, GiverDropFreeSlots, GiverDropElite, GiverDrops };
+
+struct GiverDropCounts
+{
+    uint32_t dropped[GiverDrops] = {};
+    uint32_t kept = 0;
+    uint32_t outOfRange = 0;
+
+    void Drop(GiverDrop reason)
+    {
+        if (reason < GiverDrops)
+            ++dropped[reason];
+    }
+
+    // "giver_drops=strategy:0,focus:0,quest_level:3,min_max:1,band_grey:0,condition:0,free_slots:12,elite:0 giver_kept=4
+    // giver_out_of_range=310"
+    std::string Format() const
+    {
+        static char const* const names[GiverDrops] = { "strategy", "focus", "quest_level", "min_max", "band_grey", "condition",
+            "free_slots", "elite" };
+        std::string out = "giver_drops=";
+        for (uint32_t i = 0; i < GiverDrops; ++i)
+            out += std::string(i ? "," : "") + names[i] + ":" + std::to_string(dropped[i]);
+        return out + " giver_kept=" + std::to_string(kept) + " giver_out_of_range=" + std::to_string(outOfRange);
+    }
+};
+
 // Per-reason counts of the candidates SetBestTarget turned down; written with
 // [QuestFirstRoute] state=rejected. Counting only, inside the existing loop.
 struct RejectCounts
@@ -55,6 +147,9 @@ struct RejectCounts
     enum InactiveReason { InactiveImpossible, InactiveMap, InactiveNoMark, InactiveLowLevelNoReward, InactiveNoTurnIn,
         InactiveHostile, InactiveOther, InactiveReasons };
     uint32_t notActiveReason[InactiveReasons] = {};
+    // twow-repo#601 quest acceptance step 1b: the no_mark count split by NoMarkOf (with TraceTravelDecisions too). A split of
+    // notActiveReason[InactiveNoMark] only; in the line only when counted.
+    uint32_t noMarkWhy[NoMarkReasons] = {};
 
     std::string FormatInactiveReasons() const
     {
@@ -68,6 +163,20 @@ struct RejectCounts
         std::string out = " not_active_reasons=";
         for (uint32_t i = 0; i < InactiveReasons; ++i)
             out += std::string(i ? "," : "") + names[i] + ":" + std::to_string(notActiveReason[i]);
+        uint32_t noMarkSum = 0;
+        for (uint32_t count : noMarkWhy)
+            noMarkSum += count;
+        if (noMarkSum)
+        {
+            out += " no_mark_why=";
+            bool first = true;
+            for (uint32_t i = 0; i < NoMarkReasons; ++i)
+                if (noMarkWhy[i])
+                {
+                    out += std::string(first ? "" : ",") + NoMarkName(NoMarkReason(i)) + ":" + std::to_string(noMarkWhy[i]);
+                    first = false;
+                }
+        }
         return out;
     }
 
