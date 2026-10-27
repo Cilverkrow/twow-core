@@ -1099,6 +1099,14 @@ AiPlayerbot.DeathLoop.FarEscape = 0
 # hostile-area death (Wailing Caverns lies in Horde territory: every Alliance death there was a loop and the bot
 # was evacuated out of the instance). The window and short-life rules still apply. 0 = off (A39 as before).
 AiPlayerbot.DeathLoop.HostileAreaOutsideDungeons = 0
+# Owner order 27.10.2026 (via OB-00, BEHAVIOUR CHANGE, ON by default, 0 = rollback): a bot revived by a spirit healer
+# gets no Resurrection Sickness and comes back at full health and mana (rage 0, energy full). Before: half health and
+# mana and the sickness (none with the repair cheat). Bots only - a real player's spirit healer is the core's and
+# unchanged; a corpse run, every other revive and the 25 % durability loss stay as they are. The
+# "[BOT GRAVEYARD] event=revive" line carries full= (1 = the rule applied to the bot). It changes the cost of a death:
+# a test unit measured without it is not comparable with one measured with it.
+# 0 = as before, 1 = every bot (default), 2 = only cohort B (odd low guid). Any other value acts like 1.
+AiPlayerbot.Revive.SpiritHealerFull = 1
 
 # #357 O-12 (owner 2026-09-27, variant A): roster shamans on premade path 7.1
 # "enhancement" or 7.3 "shaman tank" get the reworked Enhancement talents as
