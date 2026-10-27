@@ -1,6 +1,8 @@
 #include "AdhocGroupPolicy.h"
 #include "GroupAiRefresh.h"
 #include "ScanSlicePolicy.h"
+#include "DeferredLog.h"
+#include "ThreadCpuClock.h"
 
 #include <cstdlib>
 #include <iostream>
@@ -227,6 +229,36 @@ int main()
         Require(SliceEnd(3, 0, 10) == 1 && SliceEnd(3, 2, 10) == 3, "more slices than bots: one bot per update");
         Require(SliceEnd(0, 0, 10) == 0, "no bots: nothing to do, the pass ends at once");
         Require(SliceEnd(540, 540, 10) == 540, "a finished pass stays at its end");
+    }
+
+    // s7r 26.10.2026 (BotGroups.WorldThreadDefer): the accept tail on the bot thread, after the reset.
+    {
+        using namespace ai::group_ai_refresh;
+        Require(Merge(0, JoinReset | JoinTail) == (JoinReset | JoinTail), "a deferred join: reset and tail");
+        Require(Merge(JoinReset | JoinTail, Follower) == (JoinReset | JoinTail | Follower), "S7: the set after the tail");
+        Require(Merge(JoinReset | JoinTail, LeaveReset) == LeaveReset, "a leave drops a pending tail (no hello to a left group)");
+        Plan const p = PlanFor(JoinReset | JoinTail | Follower);
+        Require(p.reset && p.joinStrategies && p.joinTail && p.follower, "tail plan: reset, tail, set");
+        Require(!PlanFor(JoinReset).joinTail, "no tail without the request (the key off: the tail ran inline)");
+        Require(std::string(JoinTailSource) == "join tail" && !IsWorldManagerSource(JoinTailSource), "the tail is no new accept");
+        Require(ai::deferred_log::Fits(0) && ai::deferred_log::Fits(ai::deferred_log::kMaxLines - 1), "room for lines");
+        Require(!ai::deferred_log::Fits(ai::deferred_log::kMaxLines), "a bot that never updates does not grow without bound");
+    }
+
+    // s7r (QuestGroups.ScanBudgetUs / BotGroups.AdHoc.ScanBudgetUs): a slice also ends after its time budget.
+    {
+        using ai::scan_slice::BudgetSpent;
+        Require(!BudgetSpent(0, 50000, 54), "0 = no budget: by count only");
+        Require(!BudgetSpent(1000, 50000, 0), "at least one bot per update, however slow");
+        Require(!BudgetSpent(1000, 999, 10) && BudgetSpent(1000, 1000, 10), "ends once the budget is reached");
+    }
+
+    // s7r stall control (ThreadCpuClock.h): wall time the thread was not on a CPU.
+    {
+        using ai::thread_cpu::StallUs;
+        Require(StallUs(7600, 1000, 1500) == 7100, "7.6 ms wall, 0.5 ms CPU: 7.1 ms off the CPU");
+        Require(StallUs(2000, 1000, 3000) == 0, "all on the CPU: no stall");
+        Require(StallUs(2000, 1000, 3100) == 0 && StallUs(2000, 5000, 4000) == 0, "clock granularity or a reset never goes negative");
     }
 
     std::cout << "adhoc_group_policy_tests passed\n";

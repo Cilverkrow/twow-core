@@ -88,6 +88,7 @@
 #include "AI/ScriptDevAI/ScriptDevAIMgr.h"
 #include "strategy/values/GuildValues.h"
 #include "playerbot/GroupAiRefresh.h"   // twow-repo#628 / #627: the AI part of the world-thread group changes
+#include "playerbot/DeferredLog.h"      // s7r: log lines a world-thread manager handed to the bot
 #include "playerbot/QuestGroupWorld.h"
 
 using namespace ai;
@@ -1213,6 +1214,8 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
     // twow-repo#628 / #627: what the world-thread group managers posted (strategy rebuild, reset, S7 role set), before this
     // update's AI runs.
     ApplyGroupAiRequests();
+    // s7r (BotGroups.WorldThreadDefer): the log lines a world-thread manager handed to this bot.
+    DrainDeferredLogs();
 
     // #420: close a finished [GroupBuff] window.
     if (groupBuffWindow.casts)
@@ -10971,6 +10974,13 @@ void PlayerbotAI::ApplyGroupAiRequests()
             ChangeStrategy("-lfg,-bg", BotState::BOT_STATE_NON_COMBAT);
         Reset();
     }
+    // s7r (BotGroups.WorldThreadDefer): the accept tail the world-thread manager left out - only while the bot is still in a
+    // group (a leave since then dropped the request); the leader stands in for the inviter (the managers' leader invites).
+    if (plan.joinTail && bot->GetGroup())
+    {
+        if (Player* leader = sObjectMgr.GetPlayer(bot->GetGroup()->GetLeaderGuid()))
+            DoSpecificAction("accept invitation", Event(ai::group_ai_refresh::JoinTailSource, "", leader), true);
+    }
     if (plan.follower || plan.turnIn)
         ai::quest_groups::ApplyRoleSet(this, plan.turnIn);
     // S7 StagedOps: the destination search off the world thread; a released bot (role 0) is not forced any more.
@@ -10982,4 +10992,38 @@ void PlayerbotAI::ApplyGroupAiRequests()
         if (questId)
             ai::quest_groups::ForceQuestTravel(bot, questId, objIdx);
     }
+}
+
+void PlayerbotAI::PostDeferredLog(std::string const& file, std::string const& line)
+{
+    std::lock_guard<std::mutex> guard(deferredLogMtx);
+    if (!ai::deferred_log::Fits(deferredLogs.size()))
+    {
+        ++deferredLogsDropped;
+        return;
+    }
+    deferredLogs.emplace_back(file, line);
+}
+
+void PlayerbotAI::DrainDeferredLogs()
+{
+    std::vector<std::pair<std::string, std::string>> lines;
+    uint32 dropped = 0;
+    {
+        std::lock_guard<std::mutex> guard(deferredLogMtx);
+        if (deferredLogs.empty() && !deferredLogsDropped)
+            return;
+        lines.swap(deferredLogs);
+        std::swap(dropped, deferredLogsDropped);
+    }
+    // Outside the lock, on this bot's thread: no scope here, so log() writes at once.
+    for (auto const& [file, line] : lines)
+    {
+        if (file.empty())
+            sLog.outBasic("%s", line.c_str());
+        else
+            sPlayerbotAIConfig.log(file, line.c_str());
+    }
+    if (dropped)
+        sLog.outBasic("[BotGroup] event=deferred_log_dropped bot=%u lines=%u", bot->GetGUIDLow(), dropped);
 }

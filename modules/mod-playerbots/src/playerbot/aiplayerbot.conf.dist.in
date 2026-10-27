@@ -1199,6 +1199,13 @@ AiPlayerbot.BotGroups.Enabled = 0
 AiPlayerbot.BotGroups.MaxBots = 3
 AiPlayerbot.BotGroups.LevelWindow = 3
 AiPlayerbot.BotGroups.Diagnostics = 0
+# #627/#628 (s7r 26.10.2026: a staged accept cost 1-2.4 ms of the world tick - the core join plus logs, invite chat and
+# update gear on the world thread): 1 = the world-thread managers (ad-hoc WorldThread, S7) keep only the core join or leave
+# on the world thread; the rest of the accept (event and membership log, invite chat, formation, hello, reset raids, update
+# gear) and the event/membership lines of a leave run on the bot's own thread in its next update. The [QuestGroup] and
+# [BotGroup] kind=adhoc state and minute lines stay on the world thread. Minute lines: accept_core_us_max / join_core_us_max,
+# leave_core_us_max (the core opcode alone, always measured), defer=. 0 = as before (default).
+AiPlayerbot.BotGroups.WorldThreadDefer = 0
 
 # #365 step 2 (owner contract 2026-09-27): with BotGroups.Enabled = 1, roster
 # bots working on the same quest objective within AdHoc.Radius yards form an
@@ -1226,6 +1233,9 @@ AiPlayerbot.BotGroups.AdHoc.WorldThread = 0
 # pairs are formed once all slices are done. 0 or 1 = the whole pass in one update.
 # Only if the pass itself costs the world tick too much (minute line scan_us_max).
 AiPlayerbot.BotGroups.AdHoc.ScanSlices = 0
+# s7r: a slice of the pass also ends once it took this many microseconds (at least one bot per update; the rest next
+# update). Guards against single expensive bots in a slice. 0 = by ScanSlices only (default). Max 20000.
+AiPlayerbot.BotGroups.AdHoc.ScanBudgetUs = 0
 # #365 (owner 25.10.2026, world-thread manager only - WorldThread = 1): 1 = a member whose own objective is done stays as a
 # helper while another member still works on it - follower role, it follows the nearest open member (re-picked when that one
 # is done), its idle clock is the group's freshest progress - and leaves with reason=group_done once nobody is left open.
@@ -1252,12 +1262,21 @@ AiPlayerbot.QuestGroups.ScanSeconds = 60
 # #628: the S7 scan (quest logs of all bots) spread over this many manager updates
 # (~0.4 s each); groups form once all slices are done. 0 or 1 = the whole scan at once.
 AiPlayerbot.QuestGroups.ScanSlices = 0
+# s7r (26.10.2026: single slices of ~54 bots cost 3.8-9.9 ms): a slice also ends once it took this many microseconds
+# (at least one bot per update; the rest next update). 0 = by ScanSlices only (default). Max 20000.
+AiPlayerbot.QuestGroups.ScanBudgetUs = 0
 # #627 (S7-A 25.10.2026: a formation of two bots cost 2.9-4.3 ms of the world tick, a dissolution up to 4.5 ms): 1 = at most
 # one group operation per manager update (~0.4 s) - one member's invite and accept, the setup of a formed group, or one
 # member's release, releases first - and the forced quest travel (destination search) on the bot's own thread. A group of
 # five then forms in ~2.5 s. Minute line: staged= invite_us_max= accept_us_max= setup_us_max= release_us_max= ops=
 # ops_queued_max=. 0 = everything in one update, as before (default).
 AiPlayerbot.QuestGroups.StagedOps = 0
+# s7r (26.10.2026: half the slow minutes summed parts of one manager update - a dissolution, a staged operation and a scan
+# slice, each below 2 ms): 1 = one heavy step per manager update - at most one dissolution (further ones wait for their
+# own update, dissolves_deferred=), no group operation and no scan slice in an update with a dissolution, no scan slice
+# in an update with a group operation. Minute line: one_step=, tend_us_max=, stall_us_max= (the slowest update's time off
+# the CPU: preemption, blocking faults, lock waits, file I/O - Linux). 0 = as before (default).
+AiPlayerbot.QuestGroups.OneHeavyStep = 0
 AiPlayerbot.QuestGroups.MaxSize = 5
 AiPlayerbot.QuestGroups.MaxSizeDrop = 3
 AiPlayerbot.QuestGroups.LevelWindow = 3

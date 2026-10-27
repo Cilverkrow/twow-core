@@ -852,6 +852,10 @@ public:
     uint32 botGroupsMaxBots = 3;
     uint32 botGroupsLevelWindow = 3;
     bool botGroupsDiagnostics = false;
+    // twow-repo#627/#628 (s7r 26.10.2026, OB-00 go 27.10.): the world-thread managers' accept and leave keep only the core
+    // group change on the world thread; the accept tail (logs, chat, formation, hello, reset raids, update gear) and the
+    // event and membership log lines run on the bot's own thread (GroupAiRefresh JoinTail, DeferredLog.h).
+    bool botGroupsWorldThreadDefer = false;
     // #365 step 2: ad-hoc quest groups.
     uint32 botGroupsAdhocScanIntervalSeconds = 10;
     float botGroupsAdhocRadius = 50.0f;
@@ -860,12 +864,17 @@ public:
     bool botGroupsAdhocWorldThread = false;
     // twow-repo#628: the manager pass spread over this many updates (0/1 = the whole pass in one update).
     uint32 botGroupsAdhocScanSlices = 0;
+    uint32 botGroupsAdhocScanBudgetUs = 0;   // s7r: a slice ends once it took this many us (at least one bot; 0 = by count only)
     bool botGroupsAdhocHelpUntilDone = false;  // twow-repo#365 (owner 25.10.): whoever is done follows a member with the objective open until the group is done
     // twow-repo#627 S7 help groups (QuestGroupPolicy.h, QuestGroupWorld.cpp); Enable: 0 off, 1 all, 2 cohort B, 3 cohort A.
     uint32 questGroupsEnable = 0;
     uint32 questGroupsScanSeconds = 60;
     // twow-repo#628: the S7 scan spread over this many updates (0/1 = the whole scan in one update).
     uint32 questGroupsScanSlices = 0;
+    uint32 questGroupsScanBudgetUs = 0;   // s7r: a slice ends once it took this many us (at least one bot; 0 = by count only)
+    // s7r: one heavy step per manager update - at most one dissolution; no group operation and no scan slice in its update,
+    // no scan slice in an update that ran a group operation (the s7r slow minutes summed parts of one update).
+    bool questGroupsOneHeavyStep = false;
     bool questGroupsStagedOps = false;  // twow-repo#627 S7 (S7-A 25.10.): at most one group operation per manager update, forced travel on the bot thread
     uint32 questGroupsMaxSize = 5;
     uint32 questGroupsMaxSizeDrop = 3;

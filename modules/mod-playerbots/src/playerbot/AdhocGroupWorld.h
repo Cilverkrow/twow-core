@@ -70,6 +70,11 @@ private:
         std::uint32_t scanUsMax = 0;   // leave rules and candidates of all bots, without the leaves
         std::uint32_t bots = 0;
         std::uint32_t slices = 0;      // updates of the last finished pass
+        // s7r 26.10.2026: the core opcode alone of a join / leave (GroupOpTiming.h) and the slowest update's time off the CPU
+        // (ThreadCpuClock.h).
+        std::uint32_t joinCoreUsMax = 0;
+        std::uint32_t leaveCoreUsMax = 0;
+        std::uint32_t stallUsMax = 0;
     };
 
     // A candidate by id, not by pointer: with ScanSlices a pass spans several updates, and the pairs resolve the bot and its

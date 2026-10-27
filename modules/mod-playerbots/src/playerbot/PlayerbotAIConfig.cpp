@@ -43,6 +43,7 @@
 #include <fstream>
 #include <sstream>
 #include "PlayerbotLoginMgr.h"
+#include "playerbot/DeferredLog.h"   // s7r: lines of a world-thread manager scope go to the bot
 
 std::vector<std::string> ConfigAccess::GetValues(const std::string& name) const
 {
@@ -824,15 +825,19 @@ bool PlayerbotAIConfig::Initialize()
     botGroupsMaxBots = ai::bot_group::ClampMaxBots(config.GetIntDefault("AiPlayerbot.BotGroups.MaxBots", 3));
     botGroupsLevelWindow = config.GetIntDefault("AiPlayerbot.BotGroups.LevelWindow", 3);
     botGroupsDiagnostics = config.GetBoolDefault("AiPlayerbot.BotGroups.Diagnostics", false);
+    botGroupsWorldThreadDefer = config.GetBoolDefault("AiPlayerbot.BotGroups.WorldThreadDefer", false);   // s7r
     botGroupsAdhocScanIntervalSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.BotGroups.AdHoc.ScanIntervalSeconds", 10));
     botGroupsAdhocRadius = std::max(5.0f, config.GetFloatDefault("AiPlayerbot.BotGroups.AdHoc.Radius", 50.0f));
     botGroupsAdhocPairCooldownSeconds = (uint32)config.GetIntDefault("AiPlayerbot.BotGroups.AdHoc.PairCooldownSeconds", 600);
     botGroupsAdhocWorldThread = config.GetBoolDefault("AiPlayerbot.BotGroups.AdHoc.WorldThread", false);
     botGroupsAdhocScanSlices = std::min<uint32>(64, (uint32)config.GetIntDefault("AiPlayerbot.BotGroups.AdHoc.ScanSlices", 0));
+    botGroupsAdhocScanBudgetUs = std::min<uint32>(20000, (uint32)config.GetIntDefault("AiPlayerbot.BotGroups.AdHoc.ScanBudgetUs", 0));
     botGroupsAdhocHelpUntilDone = config.GetBoolDefault("AiPlayerbot.BotGroups.AdHoc.HelpUntilDone", false);   // twow-repo#365
     questGroupsEnable = (uint32)config.GetIntDefault("AiPlayerbot.QuestGroups.Enable", 0);
     questGroupsScanSeconds = std::max<uint32>(10, config.GetIntDefault("AiPlayerbot.QuestGroups.ScanSeconds", 60));
     questGroupsScanSlices = std::min<uint32>(64, (uint32)config.GetIntDefault("AiPlayerbot.QuestGroups.ScanSlices", 0));
+    questGroupsScanBudgetUs = std::min<uint32>(20000, (uint32)config.GetIntDefault("AiPlayerbot.QuestGroups.ScanBudgetUs", 0));
+    questGroupsOneHeavyStep = config.GetBoolDefault("AiPlayerbot.QuestGroups.OneHeavyStep", false);   // s7r
     questGroupsStagedOps = config.GetBoolDefault("AiPlayerbot.QuestGroups.StagedOps", false);   // twow-repo#627
     questGroupsMaxSize = std::min<uint32>(5, std::max<uint32>(2, config.GetIntDefault("AiPlayerbot.QuestGroups.MaxSize", 5)));
     questGroupsMaxSizeDrop = std::min<uint32>(5, std::max<uint32>(2, config.GetIntDefault("AiPlayerbot.QuestGroups.MaxSizeDrop", 3)));
@@ -1704,9 +1709,11 @@ bool PlayerbotAIConfig::Initialize()
             {"ActivityTrace", Value(activityTrace)},
             {"ActivityTrace.StuckDetail", Value(activityTraceStuckDetail)},
             {"BotGroups.AdHoc.HelpUntilDone", Value(botGroupsAdhocHelpUntilDone)},
+            {"BotGroups.AdHoc.ScanBudgetUs", Value(botGroupsAdhocScanBudgetUs)},
             {"BotGroups.AdHoc.ScanSlices", Value(botGroupsAdhocScanSlices)},
             {"BotGroups.AdHoc.WorldThread", Value(botGroupsAdhocWorldThread)},
             {"BotGroups.Enabled", Value(botGroupsEnabled)},
+            {"BotGroups.WorldThreadDefer", Value(botGroupsWorldThreadDefer)},
             {"BotUpdateTrace", Value(botUpdateTrace)},
             {"CastWait.Preparing", Value(castWaitPreparing)},
             {"DangerMap.CountAddDeaths", Value(dangerMapCountAddDeaths)},
@@ -1770,6 +1777,8 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestFirstProgression.TransientCountsAfter", Value(questFirstProgressionTransientCountsAfter)},
             {"QuestFirstProgression.TurnInParkFailures", Value(questFirstProgressionTurnInParkFailures)},
             {"QuestGroups.Enable", Value(questGroupsEnable)},
+            {"QuestGroups.OneHeavyStep", Value(questGroupsOneHeavyStep)},
+            {"QuestGroups.ScanBudgetUs", Value(questGroupsScanBudgetUs)},
             {"QuestGroups.ScanSlices", Value(questGroupsScanSlices)},
             {"QuestGroups.StagedOps", Value(questGroupsStagedOps)},
             {"QuestLoop.EmptyCampHold", Value(questLoopEmptyCampHold)},
@@ -2095,6 +2104,14 @@ void PlayerbotAIConfig::log(std::string fileName, const char* line)
 {
     if (!line)
         return;
+
+    // s7r (BotGroups.WorldThreadDefer): inside a world-thread manager's scope the line goes to the bot and is written on its
+    // own thread - no wait on this mutex (shared with every bot thread) and no fflush on the world thread.
+    if (PlayerbotAI* target = ai::deferred_log::Target())
+    {
+        target->PostDeferredLog(fileName, line);
+        return;
+    }
 
     std::lock_guard<std::mutex> guard(m_logMtx);
 

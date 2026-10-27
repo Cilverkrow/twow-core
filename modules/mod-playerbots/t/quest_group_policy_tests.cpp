@@ -149,6 +149,13 @@ int main()
         Require(!box.Take(1000, e) && box.Take(1000 + MaxEnded + 9, e), "the oldest end goes first");
     }
 
+    // s7r 26.10.2026 (QuestGroups.OneHeavyStep): one heavy step per manager update.
+    {
+        Require(!HeavyStepTaken(false, true), "switch off: everything in one update, as before");
+        Require(!HeavyStepTaken(true, false), "switch on, nothing heavy yet: the next step may run");
+        Require(HeavyStepTaken(true, true), "switch on, a dissolution or an operation ran: nothing heavy after it");
+    }
+
     std::cout << "quest_group_policy_tests passed\n";
     return 0;
 }
