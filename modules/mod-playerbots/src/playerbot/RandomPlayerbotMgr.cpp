@@ -70,6 +70,7 @@
 #include "playerbot/DarkRuneGatePolicy.h"   // twow-repo#602 ROT-01 3c (Rotation.DarkRuneGate): [DarkRuneGate] minute line
 #include "playerbot/ReachLosPolicy.h"   // twow-repo#594 (Rotation.ReachLosClose): [ReachLos] minute line
 #include "playerbot/CastLosGatePolicy.h"   // twow-repo#602 (Rotation.CastLosGate): [CastLosGate] minute line
+#include "playerbot/CastWhileMovingPolicy.h"   // twow-repo#602 (Rotation.CastStopFirst): [CastStopFirst] minute line
 #include "playerbot/PathReusePolicy.h"
 #include "playerbot/RotCastTrace.h"   // twow-repo#602 ROT-01 D0
 #include "playerbot/EmergencyLadderTrace.h"   // twow-repo#602 ROT-01 X3
@@ -1267,6 +1268,21 @@ void ReportCastLosGate()
         (unsigned long long)ai::cast_los_gate::skipped.exchange(0, std::memory_order_relaxed));
 }
 
+// twow-repo#602 (AiPlayerbot.Rotation.CastStopFirst): one [CastStopFirst] line per minute - cast-time / channelled casts of a
+// moving bot that went on after StopMoving because of the switch (cast_after_stop), and those still cancelled for bots outside
+// the switch's cohort (cancelled). Nothing is written when off.
+void ReportCastStopFirst()
+{
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (!sPlayerbotAIConfig.rotationCastStopFirst || now < lastReport + 60)
+        return;
+    lastReport = now;
+    sLog.outBasic("[CastStopFirst] mode=%u cast_after_stop=%llu cancelled=%llu", sPlayerbotAIConfig.rotationCastStopFirst,
+        (unsigned long long)ai::cast_moving::castAfterStop.exchange(0, std::memory_order_relaxed),
+        (unsigned long long)ai::cast_moving::cancelled.exchange(0, std::memory_order_relaxed));
+}
+
 // twow-repo#602 #2 (AiPlayerbot.Grind.NeighbourAware): one [GrindNeighbour] line per minute and cohort with scored passes - the
 // counters of GrindNeighbourPolicy.h as increments, then cls=<class>:<picks>/<would_change>/<changed> for the stratified readout.
 // Nothing is written when off or for a cohort without passes.
@@ -1916,6 +1932,7 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     ReportBotUpdate();    // twow-repo#541: [BotUpdate] once per minute (AiPlayerbot.BotUpdateTrace)
     ReportBotActivity();  // twow-repo#601 R01 L1: [BotActivityMin] once per minute (AiPlayerbot.ActivityTrace)
     ReportCastLosGate();  // twow-repo#602: [CastLosGate] once per minute (AiPlayerbot.Rotation.CastLosGate)
+    ReportCastStopFirst();  // twow-repo#602: [CastStopFirst] once per minute (AiPlayerbot.Rotation.CastStopFirst)
     ReportParkSleep();    // twow-repo#541: core switches + [ParkSleep] once per minute (AiPlayerbot.Park.SleepGrid)
     ReportCombatIdle();   // twow-repo#541 (audit A17): [CombatIdle] once per minute (AiPlayerbot.Perf.CombatIdleYield)
     ReportHunterMelee();  // twow-repo#602: [HunterMelee] once per minute (AiPlayerbot.Rotation.HunterMeleeStart)
