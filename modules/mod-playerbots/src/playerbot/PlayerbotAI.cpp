@@ -2697,6 +2697,14 @@ void PlayerbotAI::OnDeath()
                 }
             }
 
+            // twow-repo#601 (CLI-PATH ArriveSafe A/B, 28.10.2026): cohort B's share of arrive_deaths (A = total - b), no switch.
+            if (ai::cohort::InB(bot->GetGUIDLow()))
+            {
+                LastMovement const& farMove = AI_VALUE(LastMovement&, "last movement");
+                if (farMove.farMoveArrivedAt && time(nullptr) - farMove.farMoveArrivedAt <= time_t(far_move::ArriveDeathSeconds))
+                    far_move::SharedCounters().arriveDeathsB.fetch_add(1, std::memory_order_relaxed);
+            }
+
             if (sPlayerbotAIConfig.hasLog("deaths.csv"))
             {
                 WorldPosition botPos(bot);
