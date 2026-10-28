@@ -48,10 +48,13 @@ int main()
 
     // twow-repo#601 (OB-00 28.10.2026): the wait state for the activity trace - none without a far move, waiting up to the grace
     // after its time (Arrive runs at the next MoveTo2 pass), overdue later.
-    Require(WaitStateOf(1000, 0) == WaitState::None, "no far move");
-    Require(WaitStateOf(1000, 1240) == WaitState::Waiting && WaitStateOf(1240, 1240) == WaitState::Waiting, "waiting up to its time");
-    Require(WaitStateOf(1240 + ArriveGraceSeconds, 1240) == WaitState::Waiting, "and up to the grace after it");
-    Require(WaitStateOf(1240 + ArriveGraceSeconds + 1, 1240) == WaitState::Overdue, "overdue after the grace");
+    Require(WaitStateOf(1000, 0, true) == WaitState::None, "no far move");
+    Require(WaitStateOf(1000, 1240, true) == WaitState::Waiting && WaitStateOf(1240, 1240, true) == WaitState::Waiting,
+        "waiting up to its time");
+    Require(WaitStateOf(1240 + ArriveGraceSeconds, 1240, true) == WaitState::Waiting, "and up to the grace after it");
+    Require(WaitStateOf(1240 + ArriveGraceSeconds + 1, 1240, true) == WaitState::Overdue, "overdue after the grace");
+    Require(WaitStateOf(1000, 1240, false) == WaitState::None && WaitStateOf(2000, 1240, false) == WaitState::None,
+        "a far move to another target than the travel target (abandoned, 8.33b keeps its time): none");
     Require(ArriveGraceSeconds > 10, "the grace covers the wait's longest duration (10 s)");
     Require(std::string(WaitStateName(WaitState::None)) == "none" && std::string(WaitStateName(WaitState::Waiting)) == "waiting" &&
         std::string(WaitStateName(WaitState::Overdue)) == "overdue", "names");

@@ -98,7 +98,6 @@ struct State
     std::uint8_t status = 0;   // TravelTarget status, 0 without a target
     Dest dest = Dest::None;
     float moved = 1e9f;
-    bool hasTarget = false;   // a travel target object at all (IdleDetail only; Classify does not read it)
     bool farMoveWaiting = false;   // twow-repo#601: a RosterFarMove wait is running (FarMovePolicy.h WaitStateOf)
 };
 
@@ -304,23 +303,24 @@ inline StuckDetailLimit& StuckDetailGlobal()
 // target). Both lines within IdleDetailGlobal() - its own budget of StuckDetailPerMinute lines a minute. Log only.
 constexpr std::uint8_t IdleDetailSamples = 2;
 
-// Why an idle bot's target is not active (Classify: no target, an inactive status, or an active one without a destination).
+// Why an idle bot's target is not active (Classify: an inactive status, or an active one without a destination). The bot always
+// holds a travel target object; "no target" is one without a destination (or the null destination).
 enum class IdleWhy : std::uint8_t
 {
-    NoTarget = 0,   // no travel target object
+    NoTarget = 0,   // an inactive status and no destination
     NullDest,       // an active status (prepare / ready / travel / work), no destination
-    None,           // status NONE
-    Cooldown,       // status COOLDOWN
-    Expired,        // status EXPIRED
+    None,           // status NONE with a destination
+    Cooldown,       // status COOLDOWN with a destination
+    Expired,        // status EXPIRED with a destination
     Other           // a status above EXPIRED
 };
 
-inline IdleWhy IdleWhyOf(bool hasTarget, std::uint8_t status)
+inline IdleWhy IdleWhyOf(Dest dest, std::uint8_t status)
 {
-    if (!hasTarget)
-        return IdleWhy::NoTarget;
     if (TravelActive(status))
         return IdleWhy::NullDest;
+    if (dest == Dest::None)
+        return IdleWhy::NoTarget;
     return status == 0 ? IdleWhy::None : status == 5 ? IdleWhy::Cooldown : status == 6 ? IdleWhy::Expired : IdleWhy::Other;
 }
 
@@ -341,19 +341,39 @@ enum class IdleNote : std::uint8_t
 {
     Nothing = 0,
     Start,   // the sample that makes the episode (IdleDetailSamples idle samples in a row), once per episode
-    End      // the first sample of another kind after an episode
+    End      // the first sample of another kind after an episode, or the first sample after a gap
 };
 
-// Per bot (its own update thread only).
+// Per bot (its own update thread only). A step longer than MaxCreditSeconds since the previous sample (the bot was not sampled: a
+// real master, no update) ends an episode at its last idle sample (End, seconds up to it) and the sample starts afresh. The caller
+// sets startLogged when it wrote the Start line; an End is only written for such an episode (no end line without its start).
 struct IdleEpisode
 {
     std::uint32_t samples = 0;
     std::uint32_t since = 0;   // time of the episode's first idle sample
+    std::uint32_t last = 0;    // time of the previous sample
     IdleWhy why = IdleWhy::NoTarget;   // at its Start
-    std::uint32_t seconds = 0;   // at an End: from the first idle sample to this one
+    std::uint32_t seconds = 0;   // at an End: from the first idle sample to this one (to the last idle one after a gap)
+    bool startLogged = false;
+    bool endedByGap = false;   // at an End: the episode ended at a gap, not at another kind
 
     IdleNote Note(bool idle, std::uint32_t now, IdleWhy whyNow)
     {
+        bool const gap = samples && now - last > MaxCreditSeconds;
+        std::uint32_t const previous = last;
+        last = now;
+        if (gap)
+        {
+            bool const episode = samples >= IdleDetailSamples;
+            samples = idle ? 1 : 0;
+            if (episode)
+            {
+                seconds = previous - since;
+                endedByGap = true;
+            }
+            since = now;
+            return episode ? IdleNote::End : IdleNote::Nothing;
+        }
         if (idle)
         {
             if (!samples)
@@ -370,6 +390,7 @@ struct IdleEpisode
         if (!episode)
             return IdleNote::Nothing;
         seconds = now - since;
+        endedByGap = false;
         return IdleNote::End;
     }
 };

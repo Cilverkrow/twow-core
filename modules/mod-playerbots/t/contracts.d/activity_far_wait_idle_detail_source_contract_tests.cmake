@@ -67,12 +67,14 @@ read_source("strategy/values/LastMovementValue.h" last_move_h)
 
 # 1. The far-move wait state: pure, the grace after its time covers the wait's longest duration (10 s) before Arrive.
 require_text("${far}" "constexpr std::uint32_t ArriveGraceSeconds = 15;" "grace after the far move's time")
-require_text("${far}" "    if (!pendingAt)\n        return WaitState::None;\n    return now <= pendingAt + ArriveGraceSeconds ? WaitState::Waiting : WaitState::Overdue;" "none / waiting / overdue")
+require_text("${far}" "    if (!pendingAt || !sameTarget)\n        return WaitState::None;\n    return now <= pendingAt + ArriveGraceSeconds ? WaitState::Waiting : WaitState::Overdue;" "none / waiting / overdue, only for the travel target's far move (review 28.10.)")
 require_text("${last_move_h}" "time_t farMoveAt = 0;" "the far move's time on the last movement value")
 require_text("${ai_h}" "#include \"playerbot/FarMovePolicy.h\"" "policy include")
 require_text("${ai_h}" "    bool IsFarMovePending() const { return FarMoveWaitState() == ai::far_move::WaitState::Waiting; }" "the shared accessor (CLI-PATH)")
 between("${ai_cpp}" "ai::far_move::WaitState PlayerbotAI::FarMoveWaitState() const" "\n}\n" wait_state)
-require_text("${wait_state}" "ai::far_move::WaitStateOf(uint64(time(nullptr)),\n        uint64(aiObjectContext->GetValue<LastMovement&>(\"last movement\")->Get().farMoveAt));" "read from the bot's last movement")
+require_text("${wait_state}" "    LastMovement const& lastMove = aiObjectContext->GetValue<LastMovement&>(\"last movement\")->Get();" "read from the bot's last movement")
+require_text("${wait_state}" "            sameTarget = point->getMapId() == lastMove.farMoveTarget.getMapId() &&\n                lastMove.farMoveTarget.distance(*point) <= ai::far_move::SameTargetYards;" "the far move of the travel target's point (as far_move::Next)")
+require_text("${wait_state}" "    return ai::far_move::WaitStateOf(uint64(time(nullptr)), uint64(lastMove.farMoveAt), sameTarget);" "the pure rule")
 
 # 2. The classifier: a far-move wait in TRAVEL is the target's kind; far_wait= the seconds that were stuck before.
 require_text("${policy}" "    bool farMoveWaiting = false;" "state field")
@@ -96,9 +98,9 @@ between("${ai_cpp}" "void PlayerbotAI::ReportStuckDetail(ai::bot_activity::State
 require_text("${stuck_report}" "dropped=%u far_wait=%s\"," "far_wait= on the stuck line")
 require_text("${stuck_report}" "ai::far_move::WaitStateName(FarMoveWaitState())" "its value")
 
-# 5. The far-move arrival death: one line, within the existing arrive_deaths count, log only.
+# 5. The far-move arrival death: one line with ActivityTrace, within the existing arrive_deaths count (unchanged), log only.
 require_text("${ai_cpp}" "                    far_move::SharedCounters().arriveDeaths.fetch_add(1, std::memory_order_relaxed);\n                    // twow-repo#601 (OB-00 28.10.2026)" "with the arrive_deaths count")
-require_text("${ai_cpp}" "sLog.outBasic(\"[FarMoveDeath] bot=%u level=%u map=%u zone=%u x=%.0f y=%.0f after_farmove=1 arrived_s=%u cohort=%c\"," "the arrival death line")
+require_text("${ai_cpp}" "                    if (sPlayerbotAIConfig.activityTrace)\n                        sLog.outBasic(\"[FarMoveDeath] bot=%u level=%u map=%u zone=%u x=%.0f y=%.0f after_farmove=1 arrived_s=%u cohort=%c\"," "the arrival death line, behind ActivityTrace (review 28.10.)")
 
 # 6. IdleDetail: the key (default 0), the episode at every sample behind the switch, its own limit, the lines.
 require_text("${config_h}" "bool activityTraceIdleDetail = false;" "member default off")
@@ -108,14 +110,16 @@ require_text("${conf_dist}" "\nAiPlayerbot.ActivityTrace.IdleDetail = 0\n" "docu
 require_text("${policy}" "constexpr std::uint8_t IdleDetailSamples = 2;" "two idle samples in a row")
 require_text("${policy}" "inline StuckDetailLimit& IdleDetailGlobal()\n{\n    static StuckDetailLimit limit;" "its own budget")
 forbid_text("${policy}" "mutex" "a lock in the policy")
-require_text("${sample}" "    if (sPlayerbotAIConfig.activityTraceIdleDetail)\n    {\n        ai::bot_activity::IdleNote const note = idleEpisode.Note(kind == ai::bot_activity::Kind::Idle, now,\n            ai::bot_activity::IdleWhyOf(state.hasTarget, state.status));\n        if (note != ai::bot_activity::IdleNote::Nothing && ai::bot_activity::IdleDetailGlobal().Take(now))\n            ReportIdleDetail(state, kind, note, now);\n    }" "switch, episode at every sample, limit last")
+require_text("${sample}" "    if (sPlayerbotAIConfig.activityTraceIdleDetail)\n    {\n        ai::bot_activity::IdleNote const note = idleEpisode.Note(kind == ai::bot_activity::Kind::Idle, now,\n            ai::bot_activity::IdleWhyOf(state.dest, state.status));" "switch, episode at every sample")
+require_text("${sample}" "        if (note == ai::bot_activity::IdleNote::End && idleEpisode.startLogged)\n        {\n            idleEpisode.startLogged = false;\n            ReportIdleDetail(state, kind, note, now);\n        }" "an end only after its start line (review 28.10.)")
+require_text("${sample}" "            idleEpisode.startLogged = ai::bot_activity::IdleDetailGlobal().Take(now);\n            if (idleEpisode.startLogged)\n                ReportIdleDetail(state, kind, note, now);" "the start within the limit")
 require_order("${sample}" "ai::bot_activity::Kind const kind = ai::bot_activity::Classify(state);" "ReportIdleDetail(state, kind, note, now);" "after the kind")
 require_order("${sample}" "ReportIdleDetail(state, kind, note, now);" "activityClock.Add(kind, now)" "before the credit")
-require_text("${sample}" "        state.hasTarget = true;" "a target object at all")
+require_text("${policy}" "        bool const gap = samples && now - last > MaxCreditSeconds;" "a sampling gap ends the episode (review 28.10.)")
 require_text("${ai_h}" "    ai::bot_activity::IdleEpisode idleEpisode;" "per-bot episode")
 require_text("${travel_h}" "        bool IsInactiveReselectPending() const { return inactiveReselectPending; }" "read-only reselect flag")
 between("${ai_cpp}" "void PlayerbotAI::ReportIdleDetail(" "\n}\n" idle_report)
-require_text("${idle_report}" "\"[IdleDetail] state=end bot=%u level=%u idle_s=%u why=%s next=%s dest=%s quest=%u status=%u dropped=%u\"" "end line")
+require_text("${idle_report}" "\"[IdleDetail] state=end bot=%u level=%u idle_s=%u why=%s next=%s dest=%s quest=%u status=%u gap=%u dropped=%u\"" "end line")
 require_text("${idle_report}" "\"[IdleDetail] state=start bot=%u level=%u map=%u zone=%u x=%.0f y=%.0f why=%s dest=%s quest=%u entry=%d status=%u\"" "start line head")
 require_text("${idle_report}" "\" status_s=%d left_s=%d reselect=%u purpose=\\\"%s\\\" fetch=%s backoff_s=%d stage=%d free_slots=%u state=%u action=\\\"%s\\\"\"" "start line middle")
 require_text("${idle_report}" "fetch->wait_for(std::chrono::seconds(0)) != std::future_status::timeout" "the search state without waiting")
