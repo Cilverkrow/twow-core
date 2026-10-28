@@ -124,10 +124,10 @@ bool DcTestPlanManager::Start(DcTestPlan::Spec spec, Player* gm, std::string* ms
     _plans.push_back(std::move(plan));
 
     LOG_INFO("playerbots.dungeonclear",
-             "TESTPLAN START {} dungeon={} total={} concurrent={} level={} heroic={} seedBase={} "
+             "TESTPLAN START {} dungeon={} total={} concurrent={} level={} heroic={} seedBase={} tankClass={} "
              "gear={} gm={}",
              spec.planId, spec.dungeonToken, spec.total, spec.concurrent, DcTestPlan::LevelText(spec.level),
-             spec.heroic ? 1 : 0, spec.seedBase, DcTestGearTiers::Describe(spec.gear),
+             spec.heroic ? 1 : 0, spec.seedBase, uint32(spec.tankClass), DcTestGearTiers::Describe(spec.gear),
              gm ? gm->GetName() : "<pending test driver>");
 
     if (msg)
@@ -363,7 +363,7 @@ void DcTestPlanManager::TickPlan(Plan& plan, uint32 diff)
     bool const ok = DcTestRunManager::Instance().Start(gm, plan.spec.dungeonToken,
                                                        plan.spec.level, seed, plan.spec.heroic,
                                                        plan.spec.gear, &msg, plan.spec.planId,
-                                                       &err, &runId);
+                                                       &err, &runId, plan.spec.tankClass);
     if (ok)
     {
         ++plan.counters.launched;
@@ -449,6 +449,7 @@ void DcTestPlanManager::Finalize(Plan& plan)
     h.level = plan.spec.level == DcTestPlan::kLevelBoss ? 0u : plan.spec.level;
     h.heroic = plan.spec.heroic;
     h.seedBase = plan.spec.seedBase;
+    h.tankClass = plan.spec.tankClass;
     h.gearIlvl = plan.spec.gear.ilvl;
     h.gearQuality = plan.spec.gear.quality;
     h.startedAtMs = plan.startedAtMs;

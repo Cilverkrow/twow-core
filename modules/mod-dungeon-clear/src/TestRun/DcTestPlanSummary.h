@@ -129,6 +129,7 @@ namespace DcTestPlanSummary
         std::uint32_t level = 0;
         bool heroic = false;
         std::uint32_t seedBase = 0;
+        std::uint32_t tankClass = 0;   // CLI-GRP G2: `tank=<class>` (class id), 0 = drawn by the seed
         // Gear ceiling asked for, as typed rather than resolved: 0 = "whatever
         // the server is set to", -1 = no limit. Resolved per run (and recorded
         // there); a campaign summary only needs to say what it requested.
