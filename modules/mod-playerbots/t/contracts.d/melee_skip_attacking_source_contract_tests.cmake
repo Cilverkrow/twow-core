@@ -33,7 +33,7 @@ read_source("strategy/actions/AttackAction.cpp" attack_cpp)
 require_text("${dist}" "\nAiPlayerbot.Rotation.MeleeSkipAttacking = 1\n" "dist key, default 1")
 require_text("${config_h}" "uint32 rotationMeleeSkipAttacking = 1;" "config member, default 1")
 require_text("${config_cpp}" "rotationMeleeSkipAttacking = config.GetIntDefault(\"AiPlayerbot.Rotation.MeleeSkipAttacking\", 1);   // twow-repo#602 failure census\n    if (rotationMeleeSkipAttacking > 2)\n        rotationMeleeSkipAttacking = 1;" "config read, > 2 = the default 1")
-require_text("${config_cpp}" "            {\"Rotation.MeleeFleeBreak.Ranged\", Value(rotationMeleeFleeBreakRanged)},\n            {\"Rotation.MeleeSkipAttacking\", Value(rotationMeleeSkipAttacking)},\n            {\"Rotation.OomBackoff\"" "parsed mode in [ConfigEcho], sorted (owner rule #615, #710)")
+require_text("${config_cpp}" "            {\"Rotation.MeleeFleeBreak.Ranged\", Value(rotationMeleeFleeBreakRanged)},\n            {\"Rotation.MeleeSkipAttacking\", Value(rotationMeleeSkipAttacking)},\n" "parsed mode in [ConfigEcho], sorted (owner rule #615, #710; the next key is free - #602 NeverPossibleSkip follows)")
 
 # 2. Pure policy (std + the cohort rule only) and its rules.
 string(REGEX MATCHALL "#include [<\"][^>\"]+[>\"]" incs "${policy}")
