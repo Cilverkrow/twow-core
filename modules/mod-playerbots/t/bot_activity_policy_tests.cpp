@@ -89,6 +89,32 @@ int main()
         s.taxiFlying = false;
         Require(Classify(s) == Kind::Idle, "nothing is idle");
     }
+    // twow-repo#601 (OB-00 28.10.2026, CLI-PATH CAUSE.md): a RosterFarMove wait in TRAVEL is the target's kind, counted as far wait.
+    {
+        State s = make(StatusTravel, Dest::Quest, 0.0f);
+        s.farMoveWaiting = true;
+        Require(Classify(s) == Kind::Quest && FarWaitSample(s), "cand4-B: far-move wait to a quest target is quest, a far-wait sample");
+        s.dest = Dest::Grind;
+        Require(Classify(s) == Kind::Grind && FarWaitSample(s), "far-move wait to a grind spot is grind");
+        s.dest = Dest::Other;
+        Require(Classify(s) == Kind::Other && FarWaitSample(s), "far-move wait to another target is other");
+        s.moved = 50.0f;
+        Require(Classify(s) == Kind::Other && !FarWaitSample(s), "moving: no far-wait sample");
+        s.moved = 0.0f;
+        s.inCombat = true;
+        Require(Classify(s) == Kind::Combat && !FarWaitSample(s), "combat stays combat, no far-wait sample");
+        s.inCombat = false;
+        s.status = StatusWork;
+        s.dest = Dest::Grind;
+        s.combatSinceSample = false;
+        Require(Classify(s) == Kind::GrindIdle && !FarWaitSample(s), "WORK is never a far wait");
+        s.status = 5;
+        Require(Classify(s) == Kind::Idle && !FarWaitSample(s), "cooldown stays idle");
+        s.status = StatusTravel;
+        s.dest = Dest::Quest;
+        s.farMoveWaiting = false;
+        Require(Classify(s) == Kind::Stuck && !FarWaitSample(s), "no far move: stuck as before");
+    }
 
     // Position and combat notes of the clock.
     {
@@ -119,10 +145,17 @@ int main()
         std::uint32_t const t1 = 3600u * 500001u + 10u;
         Require(c.Add(Kind::Grind, t1) == 0 && c.HourDone(t1), "long gap into the next hour, hour done");
         std::string const line = FormatLine(12, 14, 40, c);
-        Require(line == "[BotActivity] bot=12 level=14 zone=40 hour=500000 quest=60 grind=0 grind_idle=0 stuck=0 combat=90 other=0 "
-            "idle=120 dead=0 parked=0 group=0 gap=3240", "hour line");
+        std::string const head = "[BotActivity] bot=12 level=14 zone=40 hour=500000 quest=60 grind=0 grind_idle=0 stuck=0 combat=90 "
+            "other=0 idle=120 dead=0 parked=0 group=0 gap=3240";
+        Require(line == head + " far_wait=0", "hour line");
+        // twow-repo#601 quest acceptance: the quest log fields after gap=, left out without a count; far_wait= last.
+        Require(FormatLine(12, 14, 40, c, 18, 3) == head + " quest_log=18 quest_done=3 far_wait=0", "hour line with the quest log");
+        Require(FormatLine(12, 14, 40, c, 0, 0) == head + " quest_log=0 quest_done=0 far_wait=0", "an empty quest log is written");
+        c.AddFarWait(60);
+        c.AddFarWait(45);
+        Require(FormatLine(12, 14, 40, c) == head + " far_wait=105", "far-move wait seconds of the hour");
         c.StartHour(t1);
-        Require(c.hour == 500001u && c.gap == 0 && c.seconds[std::size_t(Kind::Quest)] == 0, "fresh hour");
+        Require(c.hour == 500001u && c.gap == 0 && c.seconds[std::size_t(Kind::Quest)] == 0 && c.farWait == 0, "fresh hour");
         Require(c.Add(Kind::Grind, t1 + 60) == 60 && !c.HourDone(t1 + 60), "credit in the new hour");
     }
 
@@ -166,6 +199,58 @@ int main()
         for (int i = 0; i < 300; ++i)
             Require(longOne.Note(true) == (i == 1), "a long episode logs once, the counter stops at 255");
     }
+
+    // twow-repo#601 IdleDetail: why the target is not active.
+    Require(IdleWhyOf(Dest::None, 0) == IdleWhy::NoTarget && IdleWhyOf(Dest::None, 5) == IdleWhy::NoTarget &&
+        IdleWhyOf(Dest::None, 6) == IdleWhy::NoTarget, "an inactive status without a destination: no target");
+    Require(IdleWhyOf(Dest::None, 3) == IdleWhy::NullDest && IdleWhyOf(Dest::None, 1) == IdleWhy::NullDest,
+        "an active status without a destination");
+    Require(IdleWhyOf(Dest::Quest, 0) == IdleWhy::None && IdleWhyOf(Dest::Quest, 5) == IdleWhy::Cooldown &&
+        IdleWhyOf(Dest::Grind, 6) == IdleWhy::Expired, "none / cooldown / expired with a destination");
+    Require(IdleWhyOf(Dest::Other, 7) == IdleWhy::Other, "an unknown status");
+    Require(std::string(IdleWhyName(IdleWhy::NoTarget)) == "no_target" && std::string(IdleWhyName(IdleWhy::NullDest)) == "null_dest" &&
+        std::string(IdleWhyName(IdleWhy::Cooldown)) == "cooldown" && std::string(IdleWhyName(IdleWhy::Expired)) == "expired" &&
+        std::string(IdleWhyName(IdleWhy::None)) == "none" && std::string(IdleWhyName(IdleWhy::Other)) == "other", "names");
+    Require(std::string(FetchStateName(false, false)) == "none" && std::string(FetchStateName(true, false)) == "pending" &&
+        std::string(FetchStateName(true, true)) == "ready", "destination search state");
+
+    // IdleDetail episode: the start at the second idle sample in a row (the reason then), the end at the next other sample with the
+    // seconds since the first idle one; single idle samples write nothing.
+    {
+        IdleEpisode e;
+        Require(e.Note(true, 1000, IdleWhy::Expired) == IdleNote::Nothing, "first idle sample: nothing yet");
+        Require(e.Note(true, 1060, IdleWhy::Cooldown) == IdleNote::Start && e.why == IdleWhy::Cooldown, "second idle sample: start");
+        Require(e.Note(true, 1120, IdleWhy::Expired) == IdleNote::Nothing && e.why == IdleWhy::Cooldown, "same episode: no second start");
+        Require(e.Note(false, 1180, IdleWhy::NoTarget) == IdleNote::End && e.seconds == 180, "another kind: end, 180 s idle");
+        Require(e.Note(false, 1240, IdleWhy::NoTarget) == IdleNote::Nothing, "no episode: nothing");
+        Require(e.Note(true, 1300, IdleWhy::None) == IdleNote::Nothing && e.Note(false, 1360, IdleWhy::None) == IdleNote::Nothing,
+            "a single idle sample: neither start nor end");
+        IdleEpisode longOne;
+        for (std::uint32_t i = 0; i < 300; ++i)
+            Require(longOne.Note(true, 60 * i, IdleWhy::NoTarget) == (i == 1 ? IdleNote::Start : IdleNote::Nothing),
+                "a long episode starts once, the counter stops at 255");
+        Require(longOne.Note(false, 60 * 300, IdleWhy::NoTarget) == IdleNote::End && longOne.seconds == 60 * 300 && !longOne.endedByGap,
+            "and ends once");
+    }
+    // IdleDetail episode across a sampling gap (a real master, no update): ends at the last idle sample, the next starts afresh.
+    {
+        IdleEpisode e;
+        Require(e.Note(true, 1000, IdleWhy::Expired) == IdleNote::Nothing && e.Note(true, 1060, IdleWhy::Expired) == IdleNote::Start,
+            "an episode");
+        Require(e.Note(true, 1060 + 3 * 3600, IdleWhy::None) == IdleNote::End && e.seconds == 60 && e.endedByGap,
+            "3 h without a sample: the episode ends at its last idle sample (60 s), not 3 h later");
+        Require(e.Note(true, 1120 + 3 * 3600, IdleWhy::None) == IdleNote::Start && e.why == IdleWhy::None,
+            "the idle sample after the gap counts as the first of a new episode");
+        Require(e.Note(false, 1180 + 3 * 3600, IdleWhy::None) == IdleNote::End && e.seconds == 120 && !e.endedByGap, "which ends normally");
+        IdleEpisode single;
+        Require(single.Note(true, 0, IdleWhy::None) == IdleNote::Nothing && single.Note(false, 600, IdleWhy::None) == IdleNote::Nothing,
+            "one idle sample before a gap: nothing");
+        Require(single.Note(true, 660, IdleWhy::None) == IdleNote::Nothing && single.Note(true, 720, IdleWhy::None) == IdleNote::Start,
+            "then a normal episode");
+        Require(e.Note(true, 1240 + 3 * 3600, IdleWhy::None) == IdleNote::Nothing &&
+            e.Note(true, 1240 + 3 * 3600 + MaxCreditSeconds, IdleWhy::None) == IdleNote::Start, "MaxCreditSeconds is no gap yet");
+    }
+    Require(&IdleDetailGlobal() != &StuckDetailGlobal(), "IdleDetail has its own budget");
 
     // StuckDetail limit: 30 lines a minute for all bots, the refused ones counted for the next line.
     {

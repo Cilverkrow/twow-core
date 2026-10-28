@@ -10,6 +10,7 @@
 #include "playerbot/MasterWaitPolicy.h"
 #include "playerbot/RandomPlayerbotMgr.h"
 #include "playerbot/ShortcutPolicy.h"   // twow-repo#595 P4 S0: [Shortcut] counters
+#include "playerbot/SpiritHealerRevivePolicy.h"   // owner order 27.10.2026: Revive.SpiritHealerFull
 
 using namespace ai;
 
@@ -402,10 +403,15 @@ bool SpiritHealerAction::Execute(Event& event)
         sLog.outDetail("Bot #%d %s:%d <%s> revives at spirit healer", bot->GetGUIDLow(), bot->GetTeam() == ALLIANCE ? "A" : "H", bot->GetLevel(), bot->GetName());
         // One BASIC line per revive (visible at live LogLevel 1) so a far graveyard
         // choice is provable from the log instead of reconstructed (#276).
-        sLog.outBasic("[BOT GRAVEYARD] event=revive guid=%u level=%u death_count=%u map=%u zone=%u corpse_zone=%u corpse_dist=%.0f",
-            bot->GetGUIDLow(), bot->GetLevel(), dCount, bot->GetMapId(), bot->GetZoneId(), corpse->GetZoneId(), grave.fDist(corpse));
+        // Owner order 27.10.2026 (AiPlayerbot.Revive.SpiritHealerFull, default 1): full health and mana, no Resurrection
+        // Sickness. full= on the revive line (1 = the rule applied to this bot).
+        bool const fullRevive = ai::spirit_healer::FullApplies(sPlayerbotAIConfig.reviveSpiritHealerFull, bot->GetGUIDLow());
+        sLog.outBasic("[BOT GRAVEYARD] event=revive guid=%u level=%u death_count=%u map=%u zone=%u corpse_zone=%u corpse_dist=%.0f full=%u",
+            bot->GetGUIDLow(), bot->GetLevel(), dCount, bot->GetMapId(), bot->GetZoneId(), corpse->GetZoneId(), grave.fDist(corpse),
+            fullRevive ? 1u : 0u);
         PlayerbotChatHandler ch(bot);
-        bot->ResurrectPlayer(0.5f, !ai->HasCheat(BotCheatMask::repair));
+        bot->ResurrectPlayer(ai::spirit_healer::RestorePercent(fullRevive),
+            ai::spirit_healer::ApplySickness(fullRevive, ai->HasCheat(BotCheatMask::repair)));
         bot->DurabilityLossAll(0.25f, true);
         ai->RecordReviveForLoop();   // twow-repo#601/#602 G2 (AiPlayerbot.DeathLoop.FarEscape): short life after it
 

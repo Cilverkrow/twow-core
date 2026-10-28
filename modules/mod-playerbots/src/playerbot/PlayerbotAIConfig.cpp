@@ -515,6 +515,7 @@ bool PlayerbotAIConfig::Initialize()
     worldBotsTrace = config.GetBoolDefault("AiPlayerbot.WorldBotsTrace", false);
     activityTrace = config.GetBoolDefault("AiPlayerbot.ActivityTrace", false);   // twow-repo#601 R01 L1
     activityTraceStuckDetail = config.GetBoolDefault("AiPlayerbot.ActivityTrace.StuckDetail", false);   // twow-repo#601 (OB-00 26.10.2026)
+    activityTraceIdleDetail = config.GetBoolDefault("AiPlayerbot.ActivityTrace.IdleDetail", false);   // twow-repo#601 (OB-00 28.10.2026)
     botUpdateTrace = config.GetBoolDefault("AiPlayerbot.BotUpdateTrace", false);
     // twow-repo#597 (TICK-01): log-only extensions of [BotUpdateSlow] and [WorldBots], default 0.
     botUpdateTraceTick = config.GetBoolDefault("AiPlayerbot.BotUpdateTraceTick", false);
@@ -563,6 +564,9 @@ bool PlayerbotAIConfig::Initialize()
     castSpellRefreshOnLearn = config.GetBoolDefault("AiPlayerbot.CastSpell.RefreshOnLearn", false);
     rotationCastTrace = config.GetBoolDefault("AiPlayerbot.Rotation.CastTrace", false);
     rotationSpecFromPath = config.GetIntDefault("AiPlayerbot.Rotation.SpecFromPath", 0);
+    rotationTankKitFromLevel = config.GetIntDefault("AiPlayerbot.Rotation.TankKitFromLevel", 0);   // twow-repo#602 tank count
+    if (rotationTankKitFromLevel > 2)
+        rotationTankKitFromLevel = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
     rotationEmergencyLadder = config.GetIntDefault("AiPlayerbot.Rotation.EmergencyLadder", 0);
     if (rotationEmergencyLadder > 2)
         rotationEmergencyLadder = 0;   // twow-repo#602 X3: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B)
@@ -596,6 +600,12 @@ bool PlayerbotAIConfig::Initialize()
     rotationCastLosGate = config.GetIntDefault("AiPlayerbot.Rotation.CastLosGate", 0);   // twow-repo#602 hunter LoS
     if (rotationCastLosGate > 2)
         rotationCastLosGate = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
+    rotationCastStopFirst = config.GetIntDefault("AiPlayerbot.Rotation.CastStopFirst", 1);   // twow-repo#602 cast-abort loop
+    if (rotationCastStopFirst > 2)
+        rotationCastStopFirst = 1;   // an unknown mode is the default (0 off = rollback, 1 all, 2 cohort B)
+    rotationInvalidTargetQuiet = config.GetIntDefault("AiPlayerbot.Rotation.InvalidTargetQuiet", 1);   // twow-repo#602 failure census
+    if (rotationInvalidTargetQuiet > 2)
+        rotationInvalidTargetQuiet = 1;   // an unknown mode is the default (0 off = rollback, 1 all, 2 cohort B)
     perfCombatIdleYield = config.GetBoolDefault("AiPlayerbot.Perf.CombatIdleYield", false);
     castWaitPreparing = config.GetIntDefault("AiPlayerbot.CastWait.Preparing", 0);
     if (castWaitPreparing > 2)
@@ -607,6 +617,9 @@ bool PlayerbotAIConfig::Initialize()
     if (rotationMeleeFleeBreak > 2)
         rotationMeleeFleeBreak = 0;   // twow-repo#602: an unknown mode is off
     rotationMeleeFleeBreakRanged = config.GetBoolDefault("AiPlayerbot.Rotation.MeleeFleeBreak.Ranged", false);
+    rotationMeleeSkipAttacking = config.GetIntDefault("AiPlayerbot.Rotation.MeleeSkipAttacking", 1);   // twow-repo#602 failure census
+    if (rotationMeleeSkipAttacking > 2)
+        rotationMeleeSkipAttacking = 1;   // an unknown mode is the default (0 off = rollback, 1 all, 2 cohort B)
     rotationFleeAway = config.GetIntDefault("AiPlayerbot.Rotation.FleeAway", 0);   // twow-repo#602 (c)
     if (rotationFleeAway > 2)
         rotationFleeAway = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
@@ -771,6 +784,9 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[DeathLoop] config key=FarEscape value=%u result=off (0 off, 1 all, 2 cohort B)", deathLoopFarEscape);
         deathLoopFarEscape = 0;
     }
+    reviveSpiritHealerFull = config.GetIntDefault("AiPlayerbot.Revive.SpiritHealerFull", 1);   // owner order 27.10.2026
+    if (reviveSpiritHealerFull > 2)
+        reviveSpiritHealerFull = 1;   // an unknown mode is the default (0 off = rollback, 1 all, 2 cohort B)
     zoneEscapeEnabled = config.GetBoolDefault("AiPlayerbot.ZoneEscape.Enabled", false);
     zoneEscapeCooldownSeconds = std::max<uint32>(60, config.GetIntDefault("AiPlayerbot.ZoneEscape.CooldownSeconds", 600));
     zoneEscapeRetrySeconds = std::max<uint32>(15, config.GetIntDefault("AiPlayerbot.ZoneEscape.RetrySeconds", 60));
@@ -949,6 +965,9 @@ bool PlayerbotAIConfig::Initialize()
     rosterFarMove = config.GetBoolDefault("AiPlayerbot.RosterFarMove", false);
     rosterFarMoveArriveBackYards = std::max(0.0f, config.GetFloatDefault("AiPlayerbot.RosterFarMove.ArriveBackYards", 60.0f));
     rosterFarMoveWatchRoute = config.GetBoolDefault("AiPlayerbot.RosterFarMove.WatchRoute", true);
+    rosterFarMoveArriveSafe = config.GetIntDefault("AiPlayerbot.RosterFarMove.ArriveSafe", 0);
+    if (rosterFarMoveArriveSafe > 2)
+        rosterFarMoveArriveSafe = 0;   // twow-repo#601 cand4-B: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B)
     shortcutNearScope = ai::shortcut::ClampScope(config.GetIntDefault("AiPlayerbot.Shortcut.NearScope", 0));
     shortcutNearRadius = std::max(0.0f, config.GetFloatDefault("AiPlayerbot.Shortcut.NearRadius", 0.0f));
     shortcutTestWatcherGuids = ai::shortcut::ParseGuidList(config.GetStringDefault("AiPlayerbot.Shortcut.TestWatcherGuids", ""));
@@ -1707,6 +1726,7 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outString("%s", ai::config_echo::FormatLine({
             {"ActionLog.Guids.count", Value(uint32(actionLogGuids.size()))},
             {"ActivityTrace", Value(activityTrace)},
+            {"ActivityTrace.IdleDetail", Value(activityTraceIdleDetail)},
             {"ActivityTrace.StuckDetail", Value(activityTraceStuckDetail)},
             {"BotGroups.AdHoc.HelpUntilDone", Value(botGroupsAdhocHelpUntilDone)},
             {"BotGroups.AdHoc.ScanBudgetUs", Value(botGroupsAdhocScanBudgetUs)},
@@ -1788,21 +1808,27 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestLoop.InactiveAfterProgress", Value(questLoopInactiveAfterProgress)},
             {"QuestLoop.InactiveReselect", Value(questLoopInactiveReselect)},
             {"QuestRescue.KeepRequestWhenFull", Value(questRescueKeepRequestWhenFull)},
+            {"Revive.SpiritHealerFull", Value(reviveSpiritHealerFull)},
+            {"RosterFarMove.ArriveSafe", Value(rosterFarMoveArriveSafe)},
             {"Rotation.CastLosGate", Value(rotationCastLosGate)},
+            {"Rotation.CastStopFirst", Value(rotationCastStopFirst)},
             {"Rotation.DarkRuneGate", Value(rotationDarkRuneGate)},
             {"Rotation.EmergencyLadder", Value(rotationEmergencyLadder)},
             {"Rotation.FleeAway", Value(rotationFleeAway)},
             {"Rotation.FleeAway.Scope", Value(rotationFleeAwayScope)},
             {"Rotation.FollowUnstealth", Value(rotationFollowUnstealth)},
             {"Rotation.HunterMeleeStart", Value(rotationHunterMeleeStart)},
+            {"Rotation.InvalidTargetQuiet", Value(rotationInvalidTargetQuiet)},
             {"Rotation.MeleeFleeBreak", Value(rotationMeleeFleeBreak)},
             {"Rotation.MeleeFleeBreak.Ranged", Value(rotationMeleeFleeBreakRanged)},
+            {"Rotation.MeleeSkipAttacking", Value(rotationMeleeSkipAttacking)},
             {"Rotation.OomBackoff", Value(rotationOomBackoff)},
             {"Rotation.ReachDropEngagement", Value(rotationReachDropEngagement)},
             {"Rotation.ReachLosClose", Value(rotationReachLosClose)},
             {"Rotation.ReachPlayerMaster", Value(rotationReachPlayerMaster)},
             {"Rotation.RestGate", Value(rotationRestGate)},
             {"Rotation.SpecFromPath", Value(rotationSpecFromPath)},
+            {"Rotation.TankKitFromLevel", Value(rotationTankKitFromLevel)},
             {"ThrownUsageFix", Value(thrownUsageFix)},
             {"Travel.RpgAreaLevelFromSpawn", Value(travelRpgAreaLevelFromSpawn)},
             {"ZoneExit.TurnInNearRadius", Value(zoneExitTurnInNearRadius)},
