@@ -46,7 +46,8 @@ endif()
 
 # 3. The stones: one base class picks the highest known rank before isUseful / isPossible; the four stones use it.
 require_text("${warlock}" "#include \"playerbot/SpellNamePolicy.h\"" "the policy include")
-require_text("${warlock}" "        bool isUseful() override { PickKnownRank(); return CastSpellAction::isUseful(); }\n        bool isPossible() override { PickKnownRank(); return CastSpellAction::isPossible(); }" "the rank pick before both checks")
+require_text("${warlock}" "        bool isUseful() override { PickKnownRank(); return CastSpellAction::isUseful(); }\n        bool isPossible() override { PickKnownRank(); return CastSpellAction::isPossible(); }
+        bool Execute(Event& event) override { PickKnownRank(); return CastSpellAction::Execute(event); }" "the rank pick before both checks and the cast")
 require_text("${warlock}" "            for (std::string const& name : ai::spell_names::StoneRankNames(stone))\n            {\n                if (AI_VALUE2(uint32, \"spell id\", name))\n                {\n                    SetSpellName(name);\n                    return;\n                }\n            }\n            SetSpellName(stone);" "the first known rank, else the bare name")
 foreach(s healthstone soulstone firestone spellstone)
   require_text("${warlock}" ": CastCreateStoneAction(ai, \"create ${s}\") {}" "create ${s} on the rank pick")
