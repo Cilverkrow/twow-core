@@ -72,7 +72,8 @@ if(kat EQUAL -1)
 endif()
 string(SUBSTRING "${factory}" ${kat} 1200 kit)
 require_text("${kit}" "    int const tab = GetPlayerSpecTab(player);\n    if (!sPlayerbotAIConfig.rotationTankKitFromLevel || !player)\n        return tab;" "off = the spec tab")
-require_text("${kit}" "bool const tankTab = (cls == CLASS_WARRIOR && tab == 2) || (cls == CLASS_PALADIN && tab == 1);" "only the warrior / paladin tank tabs")
+require_text("${kit}" "bool const tankTab = ai::tank_kit::IsTankTab(cls, tab);" "only the warrior / paladin tank tabs")
+require_text("${policy}" "return (playerClass == kClassWarrior && tab == 2) || (playerClass == kClassPaladin && tab == 1);" "the tank tabs")
 require_text("${kit}" "if (!tankTab || !botAi || !sRandomPlayerbotMgr.IsRandomBot(const_cast<Player*>(player)) || (botAi->GetForcedRole() & BOT_ROLE_TANK))\n        return tab;" "random bots only, a forced tank role keeps the tank kit")
 require_text("${kit}" "if (!ai::tank_kit::TooEarly(ai::tank_kit::Applies(sPlayerbotAIConfig.rotationTankKitFromLevel, player->GetGUIDLow()), cls, player->GetLevel()))\n        return tab;\n\n    return ai::tank_kit::DpsTab(cls);" "below the key level the DPS tab")
 require_text("${factory}" "    return GetPlayerRoles(player->getClass(), GetPlayerKitTab(player));" "the role offer follows the kit tab")
@@ -94,7 +95,7 @@ require_text("${factory}" "            if (player->GetLevel() < 10)\n           
 # 3b. The level crossing rebuild in UpdateAIInternal (strategies are not rebuilt on a level-up).
 require_text("${ai_cpp}" "#include \"playerbot/TankKitPolicy.h\"" "the policy include in PlayerbotAI.cpp")
 require_text("${ai_h}" "uint32 tankKitLevel = 0;" "the level member")
-require_text("${ai_cpp}" "    if (sPlayerbotAIConfig.rotationTankKitFromLevel && ai::tank_kit::Applies(sPlayerbotAIConfig.rotationTankKitFromLevel, bot->GetGUIDLow()))\n    {\n        uint32 const level = bot->GetLevel();\n        if (level != tankKitLevel)\n        {\n            bool const crossed = ai::tank_kit::CrossesKey(bot->getClass(), tankKitLevel, level);\n            tankKitLevel = level;\n            if (crossed)\n            {\n                ai::tank_kit::rebuilt.fetch_add(1, std::memory_order_relaxed);\n                ResetStrategies();\n            }\n        }\n    }" "one rebuild per crossing, only where the switch applies")
+require_text("${ai_cpp}" "    if (sPlayerbotAIConfig.rotationTankKitFromLevel && ai::tank_kit::Applies(sPlayerbotAIConfig.rotationTankKitFromLevel, bot->GetGUIDLow()) &&\n        sRandomPlayerbotMgr.IsRandomBot(bot))\n    {\n        uint32 const level = bot->GetLevel();\n        if (level != tankKitLevel)\n        {\n            // only a bot on its tank tab changes its kit at the crossing (an arms warrior reaching 10 stays arms: no rebuild)\n            bool const crossed = ai::tank_kit::CrossesKey(bot->getClass(), tankKitLevel, level) &&\n                ai::tank_kit::IsTankTab(bot->getClass(), AiFactory::GetPlayerSpecTab(bot));\n            tankKitLevel = level;\n            if (crossed)\n            {\n                ai::tank_kit::rebuilt.fetch_add(1, std::memory_order_relaxed);\n                ResetStrategies();\n            }\n        }\n    }" "one rebuild per crossing, only random bots on their tank tab where the switch applies (OB-10 28.10.)")
 require_text("${policy}" "return key && fromLevel && (fromLevel < key) != (toLevel < key);" "the crossing rule (never on the first pass)")
 # the low-level default tab (the reason for the switch) and the druid leveling kit (why druids are not gated) are unchanged
 require_text("${factory}" "        case CLASS_WARRIOR:\n            tab = 2;\n            break;" "the warrior default tab below 10 stays (the switch gates the kit, not the tab)")
