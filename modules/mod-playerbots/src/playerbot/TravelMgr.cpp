@@ -194,23 +194,33 @@ std::string QuestTravelDestination::GetTitle() const {
 
 bool QuestRelationTravelDestination::IsPossible(const PlayerTravelInfo& info) const
 {
-    if (!info.GetBoolValue2("has strategy", "rpg quest"))
+    // twow-repo#601 quest acceptance step 1b (TraceTravelDecisions): a traced giver fetch counts every giver refused here by its
+    // rule and every giver kept (GiverDropCounts on its PlayerTravelInfo copy); null everywhere else, no count.
+    ai::quest_search::GiverDropCounts* const giverDrops = GetRelation() == 0 ? info.GetGiverDrops() : nullptr;
+    auto refuse = [giverDrops](ai::quest_search::GiverDrop reason)
+    {
+        if (giverDrops)
+            giverDrops->Drop(reason);
         return false;
+    };
+
+    if (!info.GetBoolValue2("has strategy", "rpg quest"))
+        return refuse(ai::quest_search::GiverDropStrategy);
 
     bool forceThisQuest = info.HasFocusQuest();
 
     if (forceThisQuest && !info.IsFocusQuest(GetQuestId()))
-        return false;
+        return refuse(ai::quest_search::GiverDropFocus);
 
     const Quest* quest = GetQuestTemplate();
 
     if (GetRelation() == 0)
     {
         if (!forceThisQuest && (int32)quest->GetQuestLevel() >= (int32)info.GetLevel() + (int32)5)
-            return false;
+            return refuse(ai::quest_search::GiverDropQuestLevel);
 
         if ((int32)info.GetLevel() < quest->GetMinLevel() || (int32)info.GetLevel() > quest->GetMaxLevel())
-            return false;
+            return refuse(ai::quest_search::GiverDropMinMaxLevel);
 
         // twow-repo#601 S5a (BandLadder, giver filter E): an in-scope bot whose band has a usable ladder row skips the giver of a
         // quest the accept rule would refuse (grey or red; class quests stay; QuestAcceptPolicy.h), so a worked-out zone comes
@@ -218,29 +228,32 @@ bool QuestRelationTravelDestination::IsPossible(const PlayerTravelInfo& info) co
         if (!forceThisQuest && info.HasBandGiverFilter() && ai::quest_band::GreyGiverSkip(info.GetLevel(),
                 quest->GetQuestLevel() > 0 ? uint32(quest->GetQuestLevel()) : info.GetLevel(), info.GetBandGreyLevel(),
                 quest->GetRequiredClasses() != 0))
-            return false;
+            return refuse(ai::quest_search::GiverDropBandGrey);
 
         if (OnMap(info.GetPosition())) //CanTakeQuest will check required conditions which will fail on a different map.
             if (quest->GetRequiredCondition())          //So we skip this quest for now.
-                return false;
+                return refuse(ai::quest_search::GiverDropCondition);
 
         if (!info.HasFocusQuest())
         {
             if (info.GetBoolValue("can fight equal"))
             {
                 if (info.GetUint8Value("free quest log slots") < 5)
-                    return false;
+                    return refuse(ai::quest_search::GiverDropFreeSlots);
             }
             else
             {
                 if (info.GetUint8Value("free quest log slots") < 10)
-                    return false;
+                    return refuse(ai::quest_search::GiverDropFreeSlots);
             }
 
             //Do not try to pick up dungeon/elite quests in instances without a group.
             if ((quest->GetType() == QUEST_TYPE_ELITE || quest->GetType() == QUEST_TYPE_DUNGEON) && !info.GetBoolValue("can fight boss"))
-                return false;
+                return refuse(ai::quest_search::GiverDropElite);
         }
+
+        if (giverDrops)
+            ++giverDrops->kept;
     }
     else
     {
@@ -4277,12 +4290,30 @@ DestinationList TravelMgr::GetDestinations(const PlayerTravelInfo& info, uint32 
     // Exactly one asked entry is looked up instead of walking every key, and DistanceTo is computed once per
     // destination. Same list in the same order; several entries keep the key walk (map order).
     bool const travelInfoReuse = sPlayerbotAIConfig.perfTravelInfoReuse;
+    // twow-repo#601 quest acceptance step 1b: a traced giver fetch (GiverDropCounts on its PlayerTravelInfo) takes the range first,
+    // so its drop counts cover only the givers in reach. The list is the same - a destination needs both checks. Null: as before.
+    ai::quest_search::GiverDropCounts* const tracedGivers = onlyPossible ? info.GetGiverDrops() : nullptr;
+    auto const outOfTracedRange = [&](TravelDestination* dest)
+    {
+        if (!tracedGivers)
+            return false;
+        float const reach = dest->DistanceTo(center);
+        if ((maxDistance > 0 && reach > maxDistance) || reach == FLT_MAX)
+        {
+            ++tracedGivers->outOfRange;
+            return true;
+        }
+        return false;
+    };
     auto const appendDestinations = [&](DestinationList const& dests)
     {
         for (TravelDestination* dest : dests)
         {
             // twow-repo#575 (PATH-01 E5): a start-zone destination only for its own faction (tagged at boot when on).
             if (!ai::start_zone::DestinationAllows(ai::start_zone::StartTeam(dest->GetStartZoneTeam()), info.GetTeam() == ALLIANCE))
+                continue;
+
+            if (outOfTracedRange(dest))
                 continue;
 
             if (onlyPossible && !dest->IsPossible(info))
@@ -4331,6 +4362,9 @@ DestinationList TravelMgr::GetDestinations(const PlayerTravelInfo& info, uint32 
             for (auto& dest : dests)
             {
                 if (!ai::start_zone::DestinationAllows(ai::start_zone::StartTeam(dest->GetStartZoneTeam()), info.GetTeam() == ALLIANCE))
+                    continue;
+
+                if (outOfTracedRange(dest))
                     continue;
 
                 if (onlyPossible && !dest->IsPossible(info))
