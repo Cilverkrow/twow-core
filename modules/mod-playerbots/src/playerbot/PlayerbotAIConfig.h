@@ -531,6 +531,9 @@ public:
     // a phase-one profession and to the vendor of its missing gathering tool; 0 off, 1 all, 2 cohort B (odd guid).
     uint32 professionTrainingTravel = 0;
     uint32 professionTrainingNearRadius = 0;   // P1-n: yards, 0 = off - the near trainer trip of the same mode and cohort
+    // twow-repo#601 turn_in hold (CLI-Deep 28.10.2026, OB-00 go): the "an open turn-in waits" rule of the profession trips skips a
+    // finished quest whose taker route is stall- or death-suppressed for that quest; 0 off (default), 1 all, 2 cohort B.
+    uint32 professionTrainingTurnInGateSkipSuppressed = 0;
     uint32 professionUseToolBuy = 0;
     uint32 travelRpgAreaLevelFromSpawn = 0;  // twow-repo#333 P1-v: RpgTravelDestination::IsPossible reads the area level at the spawn nearest to the bot, not at the map origin (RpgAreaLevelPolicy.h); 0 off, 1 all, 2 cohort B (odd guid)
     uint32 gatherQuestHerbFilter = 0;  // twow-repo#333 P1-f: a quest herb (lock 259) is picked only with its quest active (modes 0/1/2)
@@ -780,6 +783,13 @@ public:
     // twow-repo#601 (CLI-Deep 26.10.2026, cr2-C gap analysis): a quest giver / taker trip that went inactive because its quest was
     // taken / turned in ends at once instead of a 60 s COOLDOWN at the NPC. Mode 0 off (default), 1 all, 2 cohort B.
     uint32 questLoopGiverTakerDone = 0;
+    // twow-repo#601 turn_in hold (CLI-Deep 28.10.2026, OB-00 go): at a quest giver / taker whose turn-in / accept is still open,
+    // RelationWorkNoGrind skips grind targets without quest need in WORK, RelationArriveRpgTarget sets the NPC as rpg target on
+    // arrival, TurnInWorkDeathNotRoute books a death in WORK at the taker as a turn-in failure instead of a route death.
+    // Mode 0 off (default), 1 all, 2 cohort B.
+    uint32 questLoopRelationWorkNoGrind = 0;
+    uint32 questLoopRelationArriveRpgTarget = 0;
+    uint32 questLoopTurnInWorkDeathNotRoute = 0;
     // twow-repo#601 (CLI-Deep 25.10.2026): an inactive objective whose count grew since the target was set is progress, not an
     // emptied camp - no QL-1, no QL-2, a 1 s cooldown. Mode 0 off (default), 1 all, 2 cohort B.
     uint32 questLoopInactiveAfterProgress = 0;

@@ -110,9 +110,15 @@ bool UsesFreePersistentRosterProfessionTraining(Player const* bot)
 bool ProfessionTripTurnInWaiting(Player* bot, TravelTarget const* travelTarget)
 {
     TravelTarget const* turnIns = sPlayerbotAIConfig.questFirstProgressionTurnInParkFailures ? travelTarget : nullptr;
+    // twow-repo#601 turn_in hold (AiPlayerbot.ProfessionTraining.TurnInGateSkipSuppressed, CLI-Deep 28.10.2026): a finished quest whose
+    // taker route is stall- or death-suppressed for that quest cannot be turned in before the suppression ends - it no longer holds the
+    // trips (m1r-C: 318 turn_in refusals, one bot the whole run). Fail closed: a quest without a suppression still counts. Off: as before.
+    TravelTarget const* suppressed = travelTarget &&
+        ai::cohort::Applies(sPlayerbotAIConfig.professionTrainingTurnInGateSkipSuppressed, bot->GetGUIDLow()) ? travelTarget : nullptr;
     uint32 finished = 0;
     for (auto const& [questId, status] : bot->getQuestStatusMap())
-        if (!status.m_rewarded && status.m_status == QUEST_STATUS_COMPLETE && (!turnIns || turnIns->IsTurnInOpen(questId)))
+        if (!status.m_rewarded && status.m_status == QUEST_STATUS_COMPLETE && (!turnIns || turnIns->IsTurnInOpen(questId)) &&
+            (!suppressed || !suppressed->IsTurnInRouteSuppressedForQuest(questId)))
             ++finished;
     return ai::quest_search::GatherYieldsToTurnIn(true, finished);
 }

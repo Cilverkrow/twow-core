@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
+#include <string>
 
 #include "QuestLoopPolicy.h"
 #include "QuestSkillLockPolicy.h"   // twow-repo#601 SkipSkillLockedObjectives (no own test target: the rule is a few lines)
@@ -183,6 +184,19 @@ int main()
         Require(EmptyCampLeftMs(camps, 41746, 62633, t + 241000) == 59000, "re-pick at 4:01 skipped, 59 s left");
         Require(camps.slots[1].untilMs == 0, "the hold takes the camp's own slot again");
         Require(EmptyCampLeftMs(camps, 41746, 62633, t + 300000) == 0, "free again at the respawn");
+    }
+
+    // twow-repo#601 turn_in hold (QuestLoop.RelationWorkNoGrind / RelationArriveRpgTarget / TurnInWorkDeathNotRoute, CLI-Deep 28.10.).
+    {
+        Require(RelationWorkGrindSkipped(true, false), "working at an open taker: an elemental without quest need is skipped");
+        Require(!RelationWorkGrindSkipped(true, true), "a quest objective stays a target");
+        Require(!RelationWorkGrindSkipped(false, false), "off, travelling or the hand-in done: grinding as before");
+        Require(std::string(RelationArriveRpgAction(1)) == "rpg end quest", "taker: the hand-in");
+        Require(std::string(RelationArriveRpgAction(0)) == "rpg start quest", "giver: the accept");
+        Require(WorkDeathIsTurnInFailure(true, true, true), "a death in WORK at the taker: a turn-in failure, no route death");
+        Require(!WorkDeathIsTurnInFailure(true, false, true), "a death on the way (TRAVEL): the route rule as before");
+        Require(!WorkDeathIsTurnInFailure(true, true, false), "parking off: nothing would bound the deaths - the route rule stays");
+        Require(!WorkDeathIsTurnInFailure(false, true, true), "switch off or another cohort: as before");
     }
 
     std::cout << "quest_loop_policy_tests passed\n";
