@@ -136,7 +136,7 @@ require_order("${sample}" "sLog.outBasic(\"%s\", ai::bot_activity::FormatLine(" 
 require_order("${sample}" "activityClock.HourDone(now)" "for (uint16 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)" "quest log counted only for the hour line")
 require_order("${sample}" "for (uint16 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)" "sLog.outBasic(\"%s\", ai::bot_activity::FormatLine(" "counted before the line")
 require_text("${sample}" "activityClock,\n            questLog, questDone).c_str());" "quest log fields on the hour line")
-require_text("${policy}" "        line += \" quest_log=\" + std::to_string(questLog) + \" quest_done=\" + std::to_string(questDone);" "quest_log= quest_done= at the end")
+require_text("${policy}" "        line += \" quest_log=\" + std::to_string(questLog) + \" quest_done=\" + std::to_string(questDone);" "quest_log= quest_done= after gap= (far_wait= is last, #601 28.10.)")
 
 # 3. The minute line: one reporter, switched like ReportBotUpdate, called once per pass.
 function_body("${mgr_cpp}" "void ReportBotActivity()" report)

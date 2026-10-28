@@ -640,7 +640,6 @@ void PlayerbotAI::SampleActivity(uint32 now)
     ai::bot_activity::State state;
     if (TravelTarget* target = aiObjectContext->GetValue<TravelTarget*>("travel target")->Get())
     {
-        state.hasTarget = true;
         state.status = uint8(target->GetStatus());
         TravelDestination* const destination = target->GetDestination();
         state.dest = !destination || dynamic_cast<NullTravelDestination*>(destination) ? ai::bot_activity::Dest::None :
@@ -663,14 +662,24 @@ void PlayerbotAI::SampleActivity(uint32 now)
     if (sPlayerbotAIConfig.activityTraceStuckDetail && stuckEpisode.Note(kind == ai::bot_activity::Kind::Stuck) &&
         ai::bot_activity::StuckDetailGlobal().Take(now))
         ReportStuckDetail(state);
-    // twow-repo#601 (AiPlayerbot.ActivityTrace.IdleDetail): the second idle sample in a row names the episode, the first sample of
-    // another kind after it ends it, within its own per-minute limit. Off: nothing is read or written.
+    // twow-repo#601 (AiPlayerbot.ActivityTrace.IdleDetail): the second idle sample in a row names the episode within its own
+    // per-minute limit; the first sample of another kind (or a gap) ends it - written only after its start line, outside the limit
+    // (at most one end per start). Off: nothing is read or written.
     if (sPlayerbotAIConfig.activityTraceIdleDetail)
     {
         ai::bot_activity::IdleNote const note = idleEpisode.Note(kind == ai::bot_activity::Kind::Idle, now,
-            ai::bot_activity::IdleWhyOf(state.hasTarget, state.status));
-        if (note != ai::bot_activity::IdleNote::Nothing && ai::bot_activity::IdleDetailGlobal().Take(now))
+            ai::bot_activity::IdleWhyOf(state.dest, state.status));
+        if (note == ai::bot_activity::IdleNote::End && idleEpisode.startLogged)
+        {
+            idleEpisode.startLogged = false;
             ReportIdleDetail(state, kind, note, now);
+        }
+        else if (note == ai::bot_activity::IdleNote::Start)
+        {
+            idleEpisode.startLogged = ai::bot_activity::IdleDetailGlobal().Take(now);
+            if (idleEpisode.startLogged)
+                ReportIdleDetail(state, kind, note, now);
+        }
     }
 
     // the seconds since the last sample still belong to its hour; the line for that hour follows
@@ -733,8 +742,16 @@ void PlayerbotAI::ReportStuckDetail(ai::bot_activity::State const& state)
 
 ai::far_move::WaitState PlayerbotAI::FarMoveWaitState() const
 {
-    return ai::far_move::WaitStateOf(uint64(time(nullptr)),
-        uint64(aiObjectContext->GetValue<LastMovement&>("last movement")->Get().farMoveAt));
+    LastMovement const& lastMove = aiObjectContext->GetValue<LastMovement&>("last movement")->Get();
+    if (!lastMove.farMoveAt)
+        return ai::far_move::WaitState::None;
+    // the far move of the bot's travel target only (MoveToTravelTargetAction moves to its point; FarMovePolicy.h)
+    bool sameTarget = false;
+    if (TravelTarget* target = aiObjectContext->GetValue<TravelTarget*>("travel target")->Get())
+        if (WorldPosition const* point = target->GetPosition())
+            sameTarget = point->getMapId() == lastMove.farMoveTarget.getMapId() &&
+                lastMove.farMoveTarget.distance(*point) <= ai::far_move::SameTargetYards;
+    return ai::far_move::WaitStateOf(uint64(time(nullptr)), uint64(lastMove.farMoveAt), sameTarget);
 }
 
 // twow-repo#601 (AiPlayerbot.ActivityTrace.IdleDetail, OB-00 28.10.2026): why an idle bot has no active target - at the start of
@@ -761,9 +778,10 @@ void PlayerbotAI::ReportIdleDetail(ai::bot_activity::State const& state, ai::bot
         state.dest == ai::bot_activity::Dest::Grind ? "grind" : state.dest == ai::bot_activity::Dest::Other ? "other" : "none";
     if (note == ai::bot_activity::IdleNote::End)
     {
-        sLog.outBasic("[IdleDetail] state=end bot=%u level=%u idle_s=%u why=%s next=%s dest=%s quest=%u status=%u dropped=%u",
+        sLog.outBasic("[IdleDetail] state=end bot=%u level=%u idle_s=%u why=%s next=%s dest=%s quest=%u status=%u gap=%u dropped=%u",
             bot->GetGUIDLow(), bot->GetLevel(), idleEpisode.seconds, ai::bot_activity::IdleWhyName(idleEpisode.why),
-            ai::bot_activity::KindName(kind), dest, questId, uint32(state.status), ai::bot_activity::IdleDetailGlobal().TakeDropped());
+            ai::bot_activity::KindName(kind), dest, questId, uint32(state.status), idleEpisode.endedByGap ? 1u : 0u,
+            ai::bot_activity::IdleDetailGlobal().TakeDropped());
         return;
     }
 
@@ -2654,11 +2672,12 @@ void PlayerbotAI::OnDeath()
                 if (farMove.farMoveArrivedAt && time(nullptr) - farMove.farMoveArrivedAt <= time_t(far_move::ArriveDeathSeconds))
                 {
                     far_move::SharedCounters().arriveDeaths.fetch_add(1, std::memory_order_relaxed);
-                    // twow-repo#601 (OB-00 28.10.2026): one line per such death, so a cand run judges its deaths veto with and
-                    // without the far-move arrival deaths per cohort (arrived_s: seconds since the arrival). Log only.
-                    sLog.outBasic("[FarMoveDeath] bot=%u level=%u map=%u zone=%u x=%.0f y=%.0f after_farmove=1 arrived_s=%u cohort=%c",
-                        bot->GetGUIDLow(), bot->GetLevel(), bot->GetMapId(), bot->GetZoneId(), bot->GetPositionX(), bot->GetPositionY(),
-                        uint32(time(nullptr) - farMove.farMoveArrivedAt), ai::cohort::Letter(bot->GetGUIDLow()));
+                    // twow-repo#601 (OB-00 28.10.2026): with ActivityTrace one line per such death, so a cand run judges its deaths
+                    // veto with and without the far-move arrival deaths per cohort (arrived_s: seconds since the arrival). Log only.
+                    if (sPlayerbotAIConfig.activityTrace)
+                        sLog.outBasic("[FarMoveDeath] bot=%u level=%u map=%u zone=%u x=%.0f y=%.0f after_farmove=1 arrived_s=%u cohort=%c",
+                            bot->GetGUIDLow(), bot->GetLevel(), bot->GetMapId(), bot->GetZoneId(), bot->GetPositionX(), bot->GetPositionY(),
+                            uint32(time(nullptr) - farMove.farMoveArrivedAt), ai::cohort::Letter(bot->GetGUIDLow()));
                 }
             }
 

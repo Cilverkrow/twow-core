@@ -201,11 +201,13 @@ int main()
     }
 
     // twow-repo#601 IdleDetail: why the target is not active.
-    Require(IdleWhyOf(false, 0) == IdleWhy::NoTarget && IdleWhyOf(false, 5) == IdleWhy::NoTarget, "no target object");
-    Require(IdleWhyOf(true, 3) == IdleWhy::NullDest && IdleWhyOf(true, 1) == IdleWhy::NullDest, "an active status without a destination");
-    Require(IdleWhyOf(true, 0) == IdleWhy::None && IdleWhyOf(true, 5) == IdleWhy::Cooldown && IdleWhyOf(true, 6) == IdleWhy::Expired,
-        "none / cooldown / expired");
-    Require(IdleWhyOf(true, 7) == IdleWhy::Other, "an unknown status");
+    Require(IdleWhyOf(Dest::None, 0) == IdleWhy::NoTarget && IdleWhyOf(Dest::None, 5) == IdleWhy::NoTarget &&
+        IdleWhyOf(Dest::None, 6) == IdleWhy::NoTarget, "an inactive status without a destination: no target");
+    Require(IdleWhyOf(Dest::None, 3) == IdleWhy::NullDest && IdleWhyOf(Dest::None, 1) == IdleWhy::NullDest,
+        "an active status without a destination");
+    Require(IdleWhyOf(Dest::Quest, 0) == IdleWhy::None && IdleWhyOf(Dest::Quest, 5) == IdleWhy::Cooldown &&
+        IdleWhyOf(Dest::Grind, 6) == IdleWhy::Expired, "none / cooldown / expired with a destination");
+    Require(IdleWhyOf(Dest::Other, 7) == IdleWhy::Other, "an unknown status");
     Require(std::string(IdleWhyName(IdleWhy::NoTarget)) == "no_target" && std::string(IdleWhyName(IdleWhy::NullDest)) == "null_dest" &&
         std::string(IdleWhyName(IdleWhy::Cooldown)) == "cooldown" && std::string(IdleWhyName(IdleWhy::Expired)) == "expired" &&
         std::string(IdleWhyName(IdleWhy::None)) == "none" && std::string(IdleWhyName(IdleWhy::Other)) == "other", "names");
@@ -227,7 +229,26 @@ int main()
         for (std::uint32_t i = 0; i < 300; ++i)
             Require(longOne.Note(true, 60 * i, IdleWhy::NoTarget) == (i == 1 ? IdleNote::Start : IdleNote::Nothing),
                 "a long episode starts once, the counter stops at 255");
-        Require(longOne.Note(false, 60 * 300, IdleWhy::NoTarget) == IdleNote::End && longOne.seconds == 60 * 300, "and ends once");
+        Require(longOne.Note(false, 60 * 300, IdleWhy::NoTarget) == IdleNote::End && longOne.seconds == 60 * 300 && !longOne.endedByGap,
+            "and ends once");
+    }
+    // IdleDetail episode across a sampling gap (a real master, no update): ends at the last idle sample, the next starts afresh.
+    {
+        IdleEpisode e;
+        Require(e.Note(true, 1000, IdleWhy::Expired) == IdleNote::Nothing && e.Note(true, 1060, IdleWhy::Expired) == IdleNote::Start,
+            "an episode");
+        Require(e.Note(true, 1060 + 3 * 3600, IdleWhy::None) == IdleNote::End && e.seconds == 60 && e.endedByGap,
+            "3 h without a sample: the episode ends at its last idle sample (60 s), not 3 h later");
+        Require(e.Note(true, 1120 + 3 * 3600, IdleWhy::None) == IdleNote::Start && e.why == IdleWhy::None,
+            "the idle sample after the gap counts as the first of a new episode");
+        Require(e.Note(false, 1180 + 3 * 3600, IdleWhy::None) == IdleNote::End && e.seconds == 120 && !e.endedByGap, "which ends normally");
+        IdleEpisode single;
+        Require(single.Note(true, 0, IdleWhy::None) == IdleNote::Nothing && single.Note(false, 600, IdleWhy::None) == IdleNote::Nothing,
+            "one idle sample before a gap: nothing");
+        Require(single.Note(true, 660, IdleWhy::None) == IdleNote::Nothing && single.Note(true, 720, IdleWhy::None) == IdleNote::Start,
+            "then a normal episode");
+        Require(e.Note(true, 1240 + 3 * 3600, IdleWhy::None) == IdleNote::Nothing &&
+            e.Note(true, 1240 + 3 * 3600 + MaxCreditSeconds, IdleWhy::None) == IdleNote::Start, "MaxCreditSeconds is no gap yet");
     }
     Require(&IdleDetailGlobal() != &StuckDetailGlobal(), "IdleDetail has its own budget");
 
