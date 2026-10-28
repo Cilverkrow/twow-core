@@ -1206,6 +1206,14 @@ AiPlayerbot.GrindAvoid.AvoidSeconds = 3600
 AiPlayerbot.QuestFirstProgression.LocalHubRadius = 1200
 # Emit one QuestFirst route decision when a quest-travel request is materialized. Also logs [QuestSearch]
 # state=grind_none when a quest-first bot's grind search finds nothing (twow-repo#601 S1, also with FailureClasses).
+# twow-repo#601 quest acceptance step 1b (OB-00 27.10.2026): each such request whose fetch asks for quest givers also writes
+# "[QuestFirstRoute] state=giver_fetch bot= level= stage= radius= fetch=radius|fallback free_slots= can_fight_equal=
+# giver_drops=strategy:,focus:,quest_level:,min_max:,band_grey:,condition:,free_slots:,elite: giver_kept= giver_out_of_range=
+# giver_points=" - the givers in reach that QuestRelationTravelDestination::IsPossible dropped, by rule, those it kept, and the
+# giver points the fetch returned; fetch=fallback: the whole-map giver fetch ran because the list came back empty (counted
+# too). With DirectTargets.TraceInactive = 1 as well, the rejected line splits no_mark by the first Player::CanTakeQuest check
+# the giver point's own quest fails, or for a takeable quest by its own dialog status ("no_mark_why=done:,in_log:,prev_quest:,
+# level:,masked:,repeatable:,low_level_masked:,..." - only the reasons counted). Log only, no behaviour change.
 AiPlayerbot.QuestFirstProgression.TraceTravelDecisions = 0
 # #303: log a [FollowDiag] snapshot (map, transports, movement generator, chase
 # target, distance, strategies) when a bot of a real player falls back to far
