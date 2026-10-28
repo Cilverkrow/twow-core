@@ -35,6 +35,9 @@ namespace DcTestRunRecord
         // slots without shirt and tabard, and how many such slots are filled.
         float avgIlvl = 0.0f;
         std::uint32_t gearSlots = 0;
+        // 13 (CLI-GRP 28.10.2026): the member's AI carries the "tank" combat strategy, read at the monitoring start -
+        // whether the bot plays tank, whatever its seat says (a level-9 warrior gets the tank kit from AiFactory).
+        bool tankStrategy = false;
 
         // Roster runs only. A hand-picked party is never respecced, so the human
         // can mark a fury warrior as the tank; the run proceeds (that is the
@@ -65,6 +68,9 @@ namespace DcTestRunRecord
         std::uint32_t entry = 0; // 0 for anchor/objective completions
         std::string name;
         std::string via;         // "mask" | "anchor"
+        // 13: seconds since run start when the party's current engagement with this boss began (the fight that
+        // killed it; a wipe and a re-pull start a new one). 0 = not seen in combat (an anchor, a kill off-sample).
+        std::uint32_t engageT = 0;
     };
 
     struct PauseEntry
@@ -113,6 +119,10 @@ namespace DcTestRunRecord
         std::uint32_t observedElites = 0; // ...of which elite, at that same sample
         bool advanced = false;            // final standing verdict was Advanced
         bool wipedHere = false;           // the run ended while this pull was open
+        // 13: monitor steps in combat while this pull was open, and of those the steps with a creature on a member
+        // other than the tank (DcAggroTally.h).
+        std::uint32_t combatTicks = 0;
+        std::uint32_t aggroLossTicks = 0;
     };
 
     struct Record
@@ -138,7 +148,10 @@ namespace DcTestRunRecord
         // 12: added the realised gear per member (comp[].avgIlvl, comp[].gearSlots;
         //     G1 dry-r3 25.10.2026). Pre-12 records have neither: absent is unknown,
         //     not 0.
-        std::uint32_t schema = 12;
+        // 13: added the tank measures (CLI-GRP 28.10.2026): aggro loss per run (aggro{combatTicks,lossTicks,
+        //     lossEvents}) and per pull (pulls[].combatTicks/aggroLossTicks), the engagement start per boss kill
+        //     (bossTimeline[].engageT) and the tank strategy per member (comp[].tankStrategy). Pre-13: absent.
+        std::uint32_t schema = 13;
         std::string runId;
         std::string planId;       // owning `.dc test plan`, "" for ad-hoc runs
         std::string dungeon;      // registry token
@@ -190,6 +203,11 @@ namespace DcTestRunRecord
         // COUNTED rather than silently dropped — a fat number here means the log
         // below is a prefix, not the whole run.
         std::uint32_t pullsElided = 0;
+        // 13: aggro loss over the whole run (DcAggroTally.h).
+        std::uint32_t aggroCombatTicks = 0;
+        std::uint32_t aggroLossTicks = 0;
+        std::uint32_t aggroLossEvents = 0;
+        std::uint32_t aggroTankDownTicks = 0;   // combat with the tank down (dead / off the map): no loss counted
         std::vector<StatusEntry> statusTimeline;
         std::vector<PauseEntry> pauses;
         std::uint32_t finalMap = 0;

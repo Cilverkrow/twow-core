@@ -23,7 +23,7 @@ read_dc("src/TestRun/DcTestRunRecord.h" header)
 read_dc("src/TestRun/DcTestRunRecord.cpp" writer)
 read_dc("src/TestRun/DcTestRunJob.cpp" job)
 
-require_text("${header}" "std::uint32_t schema = 12;" "schema 12")
+require_text("${header}" "// 12: added the realised gear per member (comp[].avgIlvl, comp[].gearSlots;" "schema 12 (still listed; the current schema may be higher)")
 require_text("${header}" "        float avgIlvl = 0.0f;
         std::uint32_t gearSlots = 0;" "per-member fields")
 require_text("${writer}" "              << \",\\\"avgIlvl\\\":\" << ilvl
