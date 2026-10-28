@@ -3110,6 +3110,14 @@ AiPlayerbot.Rotation.CastLosGate = 0
 # "[CastStopFirst] mode= cast_after_stop= cancelled=" once a minute with the mode on.
 # 0 = as before (cancel), 1 = every bot (default), 2 = only cohort B (odd low guid). Any other value acts like 1.
 AiPlayerbot.Rotation.CastStopFirst = 1
+# twow-repo#602 ROT-01 failure census (OB-00 28.10.2026, ON by default, 0 = rollback): the combat trigger "invalid target" was also
+# true for an EMPTY current target. After a kill, while nothing attacks the bot, "select new target" then ran on every AI pass with
+# nothing to clear and nobody to pick, failed, and the AI re-ticked every 20-40 ms (hunt2: 90,889 fails, 186 streaks of 50 or more).
+# With the switch an empty target fires only while the bot has attackers (the retarget to the next add stays); a non-empty invalid
+# target fires as before. "[InvalidTarget] mode= quiet= dropped_live= interrupted_live=" once a minute with the mode on; the last two
+# are a trace only (a live target dropped by "select new target", and whether that interrupted a cast).
+# 0 = as before, 1 = every bot (default), 2 = only cohort B (odd low guid). Any other value acts like 1.
+AiPlayerbot.Rotation.InvalidTargetQuiet = 1
 # twow-repo#541 (audit A17, BEHAVIOUR CHANGE, enable only after OB-30 measurement + owner go): 1 = a bot AI in
 # combat (no real player master; also non-roster random bots, bot-led groups, battlegrounds and duels) whose AI
 # pass executed no action while it auto-attacks its current target (melee swing with the victim in melee reach,
