@@ -162,7 +162,7 @@ int AiFactory::GetPlayerKitTab(const Player* player)
         return tab;
 
     uint32 const cls = player->getClass();
-    bool const tankTab = (cls == CLASS_WARRIOR && tab == 2) || (cls == CLASS_PALADIN && tab == 1);
+    bool const tankTab = ai::tank_kit::IsTankTab(cls, tab);
     PlayerbotAI* const botAi = GetBotAI(player);
     if (!tankTab || !botAi || !sRandomPlayerbotMgr.IsRandomBot(const_cast<Player*>(player)) || (botAi->GetForcedRole() & BOT_ROLE_TANK))
         return tab;

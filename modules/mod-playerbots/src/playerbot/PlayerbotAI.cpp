@@ -2802,13 +2802,17 @@ void PlayerbotAI::UpdateAIInternal(uint32 elapsed, bool minimal)
 
     // twow-repo#602 (AiPlayerbot.Rotation.TankKitFromLevel, TankKitPolicy.h): a level-up does not rebuild the strategies, so a warrior
     // reaching 10 or a protection paladin reaching 16 would keep its DPS kit until the next relog; a level change across the key level
-    // rebuilds them once (only for bots the switch applies to; the first pass only records the level).
-    if (sPlayerbotAIConfig.rotationTankKitFromLevel && ai::tank_kit::Applies(sPlayerbotAIConfig.rotationTankKitFromLevel, bot->GetGUIDLow()))
+    // rebuilds them once - only for random bots the switch applies to (GetPlayerKitTab gates the same way; a player-controlled bot keeps
+    // its own strategies, OB-10 28.10.); the first pass only records the level.
+    if (sPlayerbotAIConfig.rotationTankKitFromLevel && ai::tank_kit::Applies(sPlayerbotAIConfig.rotationTankKitFromLevel, bot->GetGUIDLow()) &&
+        sRandomPlayerbotMgr.IsRandomBot(bot))
     {
         uint32 const level = bot->GetLevel();
         if (level != tankKitLevel)
         {
-            bool const crossed = ai::tank_kit::CrossesKey(bot->getClass(), tankKitLevel, level);
+            // only a bot on its tank tab changes its kit at the crossing (an arms warrior reaching 10 stays arms: no rebuild)
+            bool const crossed = ai::tank_kit::CrossesKey(bot->getClass(), tankKitLevel, level) &&
+                ai::tank_kit::IsTankTab(bot->getClass(), AiFactory::GetPlayerSpecTab(bot));
             tankKitLevel = level;
             if (crossed)
             {

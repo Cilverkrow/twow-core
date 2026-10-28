@@ -53,6 +53,10 @@ int main()
     Require(CrossesKey(kClassWarrior, 12, 3), "a level reset across the key level: rebuild");
     Require(!CrossesKey(kClassWarrior, 0, 12) && !CrossesKey(11, 9, 10), "first pass and other classes: no rebuild");
 
+    // 8) The tank tabs: warrior 2, paladin 1 (an arms warrior reaching 10 is no tank: no rebuild).
+    Require(IsTankTab(kClassWarrior, 2) && IsTankTab(kClassPaladin, 1), "warrior 2, paladin 1");
+    Require(!IsTankTab(kClassWarrior, 0) && !IsTankTab(kClassPaladin, 2) && !IsTankTab(11, 1), "arms, retribution, druid: no tank tab");
+
     std::cout << "tank_kit_policy_tests passed\n";
     return 0;
 }

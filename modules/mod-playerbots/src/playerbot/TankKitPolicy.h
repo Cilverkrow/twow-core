@@ -39,6 +39,12 @@ inline bool TooEarly(bool applies, std::uint32_t playerClass, std::uint32_t leve
     return false;
 }
 
+// The tank tab of the class: warrior 2 (protection), paladin 1 (protection); other classes have none here.
+inline bool IsTankTab(std::uint32_t playerClass, int tab)
+{
+    return (playerClass == kClassWarrior && tab == 2) || (playerClass == kClassPaladin && tab == 1);
+}
+
 // The DPS tab a too-early tank gets: warrior 0 (arms), paladin 2 (retribution); -1 for other classes.
 inline int DpsTab(std::uint32_t playerClass)
 {
