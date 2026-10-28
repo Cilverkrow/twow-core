@@ -78,6 +78,7 @@ namespace ai
     {
     public:
         CastShamanWeaponImbueAction(PlayerbotAI* ai) : CastEnchantItemAction(ai, "shaman weapon imbue") {}
+        bool KeepsUnknownSpell() const override { return true; }   // twow-repo#602 (NeverPossibleSkip): ChooseImbue picks the spell
         virtual bool isUseful() override;
         virtual bool isPossible() override;
 
