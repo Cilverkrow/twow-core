@@ -3191,6 +3191,14 @@ AiPlayerbot.Rotation.MeleeFleeBreak.Ranged = 0
 # exactly as before. "[MeleeSkip] mode= skipped=" once a minute with the mode on.
 # 0 = as before, 1 = every bot (default), 2 = only cohort B (odd low guid). Any other value acts like 1.
 AiPlayerbot.Rotation.MeleeSkipAttacking = 1
+# twow-repo#602 ROT-01 failure census v3 (OB-00 28.10.2026, ON by default, 0 = rollback, behaviour-neutral): in hunt2 22.8 % of the
+# engine time of all action checks went to spell actions the bot can never cast (Cone of Cold below L26 alone 11 %, other races'
+# racials ~6.5 %, talent spells). With the switch, a spell action whose spell the bot does not know (its "spell id" value is 0) is
+# IMPOSSIBLE at once - as before, so the node's alternatives are still tried - and pushes no reach prerequisite. Actions whose spell
+# name is a placeholder or changes at runtime (shoot, pull, paladin blessings, shaman imbue, vehicle spells, mount) keep the full
+# checks. "[NeverPossible] mode= possible= prereq=" once a minute with the mode on.
+# 0 = as before, 1 = every bot (default), 2 = only cohort B (odd low guid). Any other value acts like 1.
+AiPlayerbot.Rotation.NeverPossibleSkip = 1
 # twow-repo#602 ROT-01 (c) (hunter + adds analysis 25.10.2026, BEHAVIOUR CHANGE, enable only after A/B + owner go): the flee of a
 # bot without a real master is a chase of the enemy at the flee distance. Its angle was the bot's world angle to the enemy, but the
 # core adds the chase angle to the ENEMY's facing, so the flee point lay on an effectively random side of the mob (often across it

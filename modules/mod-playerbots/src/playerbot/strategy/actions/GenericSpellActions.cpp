@@ -8,8 +8,19 @@
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/RotCastPolicy.h"
 #include "playerbot/RotCastTrace.h"
+#include "playerbot/NeverPossiblePolicy.h"
 
 using namespace ai;
+
+bool CastSpellAction::NeverPossible()
+{
+    // the switch first (no value read when off); "mount" is a plain CastSpellAction whose name is no spell (isPossible special-cases it)
+    if (!ai::never_possible::Applies(sPlayerbotAIConfig.rotationNeverPossibleSkip, bot->GetGUIDLow()) || KeepsUnknownSpell() || spellName == "mount")
+        return false;
+
+    // the "spell id" value (refreshed every few seconds), not the spellId member, which stays 0 after a learn without RefreshOnLearn
+    return ai::never_possible::Skip(true, false, AI_VALUE2(uint32, "spell id", spellName));
+}
 
 CastSpellAction::CastSpellAction(PlayerbotAI* ai, std::string spell)
 : Action(ai, spell)
@@ -112,6 +123,14 @@ bool CastSpellAction::isPossible()
             ai->Unmount();
             return RotEval(false, ai::rot_cast::EvalMountInCombat);
         }
+    }
+
+    // twow-repo#602 (AiPlayerbot.Rotation.NeverPossibleSkip): a spell the bot does not know is IMPOSSIBLE at once (self-casts skipped the
+    // spellId test below and went into CanCastSpell every time). IMPOSSIBLE as before, so the node's alternatives are still pushed.
+    if (NeverPossible())
+    {
+        ai::never_possible::possible.fetch_add(1, std::memory_order_relaxed);
+        return RotEval(false, ai::rot_cast::EvalNoSpellId);
     }
 
     Unit* spellTarget = GetTarget();
@@ -239,6 +258,14 @@ bool CastSpellAction::isUseful()
 
 NextAction** CastSpellAction::getPrerequisites()
 {
+    // twow-repo#602 (AiPlayerbot.Rotation.NeverPossibleSkip): no reach action for a spell the bot does not know (it was pushed on every
+    // pass and then the cast was IMPOSSIBLE anyway)
+    if (NeverPossible())
+    {
+        ai::never_possible::prereq.fetch_add(1, std::memory_order_relaxed);
+        return Action::getPrerequisites();
+    }
+
     // Set the reach action as the cast spell prerequisite when needed
     const std::string reachAction = GetReachActionName();
     if (!reachAction.empty())

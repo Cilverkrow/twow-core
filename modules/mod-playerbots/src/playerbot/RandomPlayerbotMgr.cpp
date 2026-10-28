@@ -75,6 +75,7 @@
 #include "playerbot/InvalidTargetPolicy.h"   // twow-repo#602 (Rotation.InvalidTargetQuiet): [InvalidTarget] minute line
 #include "playerbot/TankKitPolicy.h"   // twow-repo#602 (Rotation.TankKitFromLevel): [TankKit] minute line
 #include "playerbot/PathReusePolicy.h"
+#include "playerbot/NeverPossiblePolicy.h"   // twow-repo#602 (Rotation.NeverPossibleSkip): [NeverPossible] minute line
 #include "playerbot/RotCastTrace.h"   // twow-repo#602 ROT-01 D0
 #include "playerbot/EmergencyLadderTrace.h"   // twow-repo#602 ROT-01 X3
 #include "playerbot/RestGateTrace.h"   // twow-repo#602 ROT-01 X1
@@ -1255,6 +1256,20 @@ void ReportCastWait()
         (unsigned long long)ai::cast_wait::savedTicks.exchange(0, std::memory_order_relaxed));
 }
 
+// twow-repo#602 (AiPlayerbot.Rotation.NeverPossibleSkip): one [NeverPossible] line per minute - spell actions answered IMPOSSIBLE at once
+// because the bot does not know the spell (possible), and reach prerequisites not pushed for them (prereq). Nothing is written when off.
+void ReportNeverPossible()
+{
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (!sPlayerbotAIConfig.rotationNeverPossibleSkip || now < lastReport + 60)
+        return;
+    lastReport = now;
+    sLog.outBasic("[NeverPossible] mode=%u possible=%llu prereq=%llu", sPlayerbotAIConfig.rotationNeverPossibleSkip,
+        (unsigned long long)ai::never_possible::possible.exchange(0, std::memory_order_relaxed),
+        (unsigned long long)ai::never_possible::prereq.exchange(0, std::memory_order_relaxed));
+}
+
 // twow-repo#602 (AiPlayerbot.Rotation.CastLosGate): one [CastLosGate] line per minute - casts made IMPOSSIBLE by a LINE_OF_SIGHT
 // verdict (gated), current targets dropped because 8.2 marked them unreachable (dropped), unreachable units skipped by target
 // selection (skipped). Nothing is written when off.
@@ -1987,6 +2002,7 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     ReportCombatIdle();   // twow-repo#541 (audit A17): [CombatIdle] once per minute (AiPlayerbot.Perf.CombatIdleYield)
     ReportHunterMelee();  // twow-repo#602: [HunterMelee] once per minute (AiPlayerbot.Rotation.HunterMeleeStart)
     ReportCastWait();     // twow-repo#602: [CastWait] once per minute (AiPlayerbot.CastWait.Preparing)
+    ReportNeverPossible();  // twow-repo#602: [NeverPossible] once per minute (AiPlayerbot.Rotation.NeverPossibleSkip)
     ReportGrindNeighbour();   // twow-repo#602 #2: [GrindNeighbour] once per minute (AiPlayerbot.Grind.NeighbourAware)
     ReportOomBackoff();   // twow-repo#602 ROT-01 3c-B: [OomBackoff] once per minute (AiPlayerbot.Rotation.OomBackoff)
     ReportMeleeFleeBreak(); // twow-repo#602: [MeleeFleeBreak] once per minute (AiPlayerbot.Rotation.MeleeFleeBreak)
