@@ -385,6 +385,10 @@ namespace ai
 	//WORK      (grind/rpg until the target is no longer active) (rpg and grind is enabled on quest mobs)
 	//COOLDOWN  (wait some time free to do what the bot wants)
 	//EXPIRE    (if any of the above actions take too long pick a new target)
+	// twow-repo#601 turn_in hold (QuestLoop.RelationWorkNoGrind): a giver / taker destination whose own quest this bot can still
+	// take (giver) or hand in (taker). False for every other destination.
+	bool QuestRelationOpen(Player* bot, TravelDestination const* destination);
+
 	class TravelTarget : AiObject
 	{
 	public:
@@ -463,6 +467,9 @@ namespace ai
         // #329: completed turn-ins and incomplete roster quest objectives.
         bool IsProgressAwareQuestTravel() const;
         bool IsTurnInRouteSuppressed(TravelDestination const* destination, WorldPosition const* position) const;
+        // twow-repo#601 turn_in hold (ProfessionTraining.TurnInGateSkipSuppressed): the turn-in route of this finished quest is stall- or
+        // death-suppressed now (turnin_recovery::IsSuppressedForQuest).
+        bool IsTurnInRouteSuppressedForQuest(uint32 questId) const;
         // twow-repo#485: a finished quest whose turn-in failed TurnInParkFailures times within
         // TurnInParkWindowSeconds is parked for TurnInParkSeconds (roster bots on their own).
         // True when this failure parked the quest.
@@ -521,6 +528,9 @@ namespace ai
         // #329: one visible [QuestCommit] line per commitment change of a
         // roster bot's quest target, throttled per event, reason and target.
         void TraceQuestCommit(TravelDestination const* destination, char const* event, char const* reason);
+        // twow-repo#601 turn_in hold (QuestLoop.RelationArriveRpgTarget): on arrival at an open giver / taker its nearest spawn
+        // becomes the rpg target with the hand-in / accept as the next rpg action.
+        void SetRelationRpgTarget();
 
 		// twow-repo#295: with riding stages taken at the unmounted run speed (RidingStagesBotPolicy.h).
 		uint32 GetMaxTravelTime() const;

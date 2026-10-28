@@ -71,6 +71,31 @@ namespace ai::quest_loop
         return relation == 0 ? (questInLog || questRewarded) : !questInLog;
     }
 
+    // twow-repo#601 turn_in hold (CLI-Deep 28.10.2026, cli-quest-organic/turnin-hold/CAUSE.md): the arrival at a quest giver / taker
+    // sets the WORK status, which lifted the only grind block, and "attack anything" (5.0) beat "rpg end quest" (1.09) while a mob
+    // without quest need was in sight (41747 / 62634, 7 Lesser Arcane Elementals at 49-72 yd: m1r-C 2 of 15 arrivals turned in,
+    // hunt2 7 of 10 bots never). QuestLoop.RelationWorkNoGrind: while the bot works at such an NPC whose turn-in / accept is still
+    // open, a grind candidate without quest need is skipped; attackers come first in the grind value and stay.
+    inline bool RelationWorkGrindSkipped(bool relationWorkOpen, bool needForQuest)
+    {
+        return relationWorkOpen && !needForQuest;
+    }
+
+    // QuestLoop.RelationArriveRpgTarget: the rpg action set with the NPC as rpg target on arrival - taker (relation 1) the
+    // hand-in, giver the accept.
+    inline char const* RelationArriveRpgAction(std::uint8_t relation)
+    {
+        return relation ? "rpg end quest" : "rpg start quest";
+    }
+
+    // QuestLoop.TurnInWorkDeathNotRoute: a death while working at the taker (the route is done) is no route death - no
+    // death_suppressed (an hour) but a turn-in failure, so the #485 park bounds it. Only with parking on (TurnInParkFailures > 0):
+    // without it nothing would bound the deaths (#307), so the route rule stays.
+    inline bool WorkDeathIsTurnInFailure(bool applies, bool working, bool parkingOn)
+    {
+        return applies && working && parkingOn;
+    }
+
     // QL-2: the cooldown after an inactive objective, never shorter than the destination's own.
     inline std::uint32_t InactiveCooldownMs(std::uint32_t destinationCooldownMs, std::uint32_t minSeconds)
     {

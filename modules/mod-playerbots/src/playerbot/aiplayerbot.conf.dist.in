@@ -1037,6 +1037,19 @@ AiPlayerbot.QuestLoop.InactiveCooldownSeconds = 0
 # the log): the COOLDOWN as before.
 #   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid); other values act like 0.
 AiPlayerbot.QuestLoop.GiverTakerDone = 0
+# twow-repo#601 turn_in hold (CLI-Deep 28.10.2026, cli-quest-organic/turnin-hold/CAUSE.md): the arrival at a quest giver / taker
+# sets the WORK status, which lifted the only grind block - "attack anything" then beat the hand-in while any mob without quest
+# need was in sight (41747 "The Tower of Azora" / 62634: the bots grind the Lesser Arcane Elementals at 49-72 yd, low levels die,
+# death_suppressed locks the turn-in for an hour; hunt2 7 of 10 bots never turned it in).
+# RelationWorkNoGrind: while the bot works at a giver / taker whose turn-in / accept is still open, grind candidates without
+# quest need are skipped (attackers stay). RelationArriveRpgTarget: on arrival at such an NPC it becomes the rpg target with
+# "rpg end quest" (taker) / "rpg start quest" (giver) as the next rpg action; "[QuestCommit] event=progress reason=rpg_target".
+# TurnInWorkDeathNotRoute: a death while working at the taker is no route death (no death_suppressed) but a turn-in failure for
+# the #485 park; only with TurnInParkFailures > 0. "[QuestFirstRoute] state=work_death". Roster bots on their own (not in a group).
+#   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid); other values act like 0.
+AiPlayerbot.QuestLoop.RelationWorkNoGrind = 0
+AiPlayerbot.QuestLoop.RelationArriveRpgTarget = 0
+AiPlayerbot.QuestLoop.TurnInWorkDeathNotRoute = 0
 # twow-repo#601 (CLI-Deep 25.10.2026, root cause of the cand-v466r standing): an objective goes inactive as soon as no living
 # target of its entry is in sight - also right after the bot killed the visible ones. QL-1/QL-2 booked that normal progress as
 # an emptied camp (a failure + InactiveCooldownSeconds of standing; cohort B spent 32 % of its time between an inactive objective
@@ -1854,6 +1867,12 @@ AiPlayerbot.ProfessionTraining.Travel = 0
 # no target writes "[ProfTravel] state=no_target kind= ... ranges= points= path= rejects=" and ends at once with
 # "state=end ... reason=no_target" (before: "lost" an hour later). The hourly limit stays spent.
 AiPlayerbot.ProfessionTraining.NearRadius = 0
+# twow-repo#601 turn_in hold (CLI-Deep 28.10.2026): the profession trips wait while a finished quest can be turned in (gate
+# result=turn_in). A finished quest whose taker route is stall- or death-suppressed for that quest cannot be turned in until the
+# suppression ends, yet it held the gate for hours (m1r-C: 318 turn_in refusals, one bot the whole run). TurnInGateSkipSuppressed
+# skips such a quest in that rule (near trip, gap trips, trip end); a quest the quest system has not suppressed still counts.
+#   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid); other values act like 0.
+AiPlayerbot.ProfessionTraining.TurnInGateSkipSuppressed = 0
 # Profession use (#333), persistent roster bots without a real-player master.
 # GatherDistance: passive gathering radius for such a bot on its own (herbs,
 # ore, skinning); 0 = GatheringDistance. The hostile check stays in force.
