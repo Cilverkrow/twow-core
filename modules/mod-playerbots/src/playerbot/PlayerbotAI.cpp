@@ -61,6 +61,7 @@
 #include "playerbot/DangerMapPolicy.h"
 #include "playerbot/GrindCapPolicy.h"
 #include "playerbot/SpellPowerGatePolicy.h"
+#include "playerbot/TankKitPolicy.h"
 #include "Movement/spline/MoveSplineInitArgs.h"
 #include "Maps/InstanceData.h"
 #include "ChatHelper.h"
@@ -2171,6 +2172,21 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
         }
     }
 
+    // twow-repo#333 finding 4 (TeleportCastPolicy.h, OB-10 review 28.10.): a travel / unstuck / zone-escape hold for a hearthstone
+    // or teleport ends as soon as that spell is no longer PREPARING - cast, interrupted, cancelled by fear or stun, failed - so a
+    // bot in combat fights again at once; once the hold is over the watch only stops.
+    if (ai::teleport_cast::Watching(teleportHold))
+    {
+        Spell* const holdSpell = bot->GetCurrentSpell(CURRENT_GENERIC_SPELL);
+        ai::teleport_cast::WatchStep const holdStep = ai::teleport_cast::Check(teleportHold, uint64(uintptr_t(holdSpell)),
+            holdSpell ? holdSpell->m_spellInfo->Id : 0u, holdSpell && holdSpell->getState() == SPELL_STATE_PREPARING,
+            WorldTimer::getMSTime());
+        if (holdStep == ai::teleport_cast::WatchStep::Release)
+            ResetAIInternalUpdateDelay();
+        if (holdStep != ai::teleport_cast::WatchStep::Keep)
+            ai::teleport_cast::Clear(teleportHold);
+    }
+
     // Only update the internal ai when no reaction is running and the internal ai can be updated
     SC_PHASE("UpdateAI.UpdateAIReaction", bot ? bot->GetName() : "(null)");
     if(!UpdateAIReaction(elapsed, doMinimalReaction, bot->IsTaxiFlying()) && CanUpdateAIInternal())
@@ -2886,6 +2902,28 @@ void PlayerbotAI::UpdateAIInternal(uint32 elapsed, bool minimal)
     SC_PHASE("UpdateAIInternal.entry", bot ? bot->GetName() : "(null)");
     if (bot->IsBeingTeleported() || !bot->IsInWorld())
         return;
+
+    // twow-repo#602 (AiPlayerbot.Rotation.TankKitFromLevel, TankKitPolicy.h): a level-up does not rebuild the strategies, so a warrior
+    // reaching 10 or a protection paladin reaching 16 would keep its DPS kit until the next relog; a level change across the key level
+    // rebuilds them once - only for random bots the switch applies to (GetPlayerKitTab gates the same way; a player-controlled bot keeps
+    // its own strategies, OB-10 28.10.); the first pass only records the level.
+    if (sPlayerbotAIConfig.rotationTankKitFromLevel && ai::tank_kit::Applies(sPlayerbotAIConfig.rotationTankKitFromLevel, bot->GetGUIDLow()) &&
+        sRandomPlayerbotMgr.IsRandomBot(bot))
+    {
+        uint32 const level = bot->GetLevel();
+        if (level != tankKitLevel)
+        {
+            // only a bot on its tank tab changes its kit at the crossing (an arms warrior reaching 10 stays arms: no rebuild)
+            bool const crossed = ai::tank_kit::CrossesKey(bot->getClass(), tankKitLevel, level) &&
+                ai::tank_kit::IsTankTab(bot->getClass(), AiFactory::GetPlayerSpecTab(bot));
+            tankKitLevel = level;
+            if (crossed)
+            {
+                ai::tank_kit::rebuilt.fetch_add(1, std::memory_order_relaxed);
+                ResetStrategies();
+            }
+        }
+    }
 
     std::string mapString = WorldPosition(bot).isInstance() ? "I" : std::to_string(bot->GetMapId());
     auto pmo = sPerformanceMonitor.start(PERF_MON_TOTAL, "PlayerbotAI::UpdateAIInternal " + mapString, nullptr, bot->GetMapId(), bot->GetInstanceId());
@@ -3752,6 +3790,18 @@ void PlayerbotAI::HandleBotOutgoingPacket(const WorldPacket& packet)
 		}
 		botOutgoingPacketHandlers.AddPacket(packet);
 	}
+}
+
+void PlayerbotAI::WatchTeleportHold(uint32 holdMs)
+{
+    // twow-repo#333 finding 4 (TeleportCastPolicy.h): the caller found its teleport PREPARING in the generic slot (holdMs > 0).
+    Spell* const spell = holdMs ? bot->GetCurrentSpell(CURRENT_GENERIC_SPELL) : nullptr;
+    if (!spell)
+    {
+        ai::teleport_cast::Clear(teleportHold);
+        return;
+    }
+    ai::teleport_cast::Arm(teleportHold, uint64(uintptr_t(spell)), spell->m_spellInfo->Id, WorldTimer::getMSTime(), holdMs);
 }
 
 void PlayerbotAI::SpellInterrupted(uint32 spellid)
