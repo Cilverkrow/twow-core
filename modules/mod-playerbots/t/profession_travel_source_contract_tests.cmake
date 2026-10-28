@@ -104,7 +104,7 @@ require_order("${values_cpp}" "if (ai::quest_search::GatherYieldsToTurnIn(roster
 require_order("${values_cpp}" "!ai::profession_travel::HasGatherTool(gatheringSkills.at(purpose)," "switch (ai::gather_purpose::Decide(declared, rosterOnItsOwn, skill, value, target, now))" "tool check before the purpose is declared")
 
 # Request: before the generic trainer branch, request time set before the empty check, one line, hold conditions, allowed.
-require_order("${choose_cpp}" "else if (travelName == \"trainer profession\" || travelName == \"trainer profession near\" || travelName == \"tool vendor\")" "else if (travelName.find(\"trainer\") == 0)" "the profession request before the generic trainer branch")
+require_order("${choose_cpp}" "else if (travelName == \"trainer profession\" || travelName == \"trainer profession near\" || travelName == \"tool vendor\" ||\n        travelName == \"tool vendor near\")" "else if (travelName.find(\"trainer\") == 0)" "the profession request before the generic trainer branch")
 require_order("${choose_cpp}" "SET_AI_VALUE2(int, \"manual int\", key, int(now));" "        if (entries.empty())\n            return false;\n\n        // P1-u (ProfessionTravelPolicy.h HomeZoneOnly)" "the request time counts an empty request too")
 require_text("${choose_cpp}" "sLog.outBasic(\"[ProfTravel] state=request kind=%s bot=%u level=%u cohort=%c tool=%u entries=%u dropped_hostile=%u dropped_unreachable=%u hold_s=%u path=%s dropped_home_zone=%u zone=%u\"," "one line per request with the dropped counts (P1-b2), the path (P1-n) and the home zone (P1-u)")
 require_text("${choose_cpp}" "travelName == \"trainer profession\" ? \"should travel named::trainer profession hold\" :" "trainer trip hold condition")
