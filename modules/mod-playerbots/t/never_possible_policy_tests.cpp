@@ -34,7 +34,7 @@ int main()
     // 3) A learned spell is seen as soon as the "spell id" value has it: the same input decides, no cached "never".
     Require(Skip(true, false, 0) && !Skip(true, false, 10230), "before / after learning: skip, then checks");
 
-    // 4) Runtime / placeholder names keep the old path (shoot, pull, paladin blessings, shaman imbue, vehicle spells, mount).
+    // 4) Runtime / placeholder names keep the old path (shoot, pull, paladin blessings, shaman imbue, vehicle spells, item actions, mount).
     Require(!Skip(true, true, 0), "keeps unknown spell: the full checks");
 
     // 5) Switch off: never skip (rollback).

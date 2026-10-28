@@ -3,7 +3,7 @@
 # action checks went to such checks). IMPOSSIBLE stays IMPOSSIBLE (the engine still pushes the node's alternatives; the never-possible
 # audit found an isUseful early-out would lose them). This contract pins the dist key, the config member and read (unknown modes = the
 # default 1), the parsed mode in [ConfigEcho] (owner rule #615), the pure policy, the CastSpellAction wiring (the "spell id" value, not
-# the spellId member, so a learned spell is seen; isPossible after the mount branch; getPrerequisites first), the opt-out of the six
+# the spellId member, so a learned spell is seen; isPossible after the mount branch; getPrerequisites first), the opt-out of the seven
 # runtime-name actions and "mount", and the [NeverPossible] minute line. The rules are tested in t/never_possible_policy_tests.cpp.
 
 # cmake 3.x script mode (Debian trixie builder / CI): policies as in the host cmake 4.x.
@@ -70,14 +70,16 @@ string(FIND "${spell_cpp}" "NextAction** CastSpellAction::getPrerequisites()" gp
 string(SUBSTRING "${spell_cpp}" ${gp} 900 pre)
 require_text("${pre}" "    if (NeverPossible())\n    {\n        ai::never_possible::prereq.fetch_add(1, std::memory_order_relaxed);\n        return Action::getPrerequisites();\n    }\n\n    // Set the reach action as the cast spell prerequisite when needed" "no reach prerequisite for an unknown spell")
 
-# 4. The six runtime-name actions opt out (the audit: shoot / throw rename in isPossible, pull picks its spell, blessings pick the
-#    blessing, the shaman imbue picks the imbue, vehicle spells use "vehicle spell id").
+# 4. The runtime-name and placeholder actions opt out (the audit: shoot / throw rename in isPossible, pull picks its spell, blessings pick the
+#    blessing, the shaman imbue picks the imbue, vehicle spells use "vehicle spell id", the item actions the placeholder "item target").
 require_text("${spell_h}" "CastShootAction(PlayerbotAI* ai) : CastSpellAction(ai, \"shoot\"), rangedWeapon(nullptr), weaponDelay(0), needsAmmo(false) {}\n        bool KeepsUnknownSpell() const override { return true; }" "shoot")
 require_text("${spell_h}" "            SetSpellName(spell, \"vehicle spell id\", !GetSpellID());\n        }\n        bool KeepsUnknownSpell() const override { return true; }" "vehicle spells")
 require_text("${pull_h}" "PullAction(PlayerbotAI* ai, std::string name = \"pull action\");\n        bool KeepsUnknownSpell() const override { return true; }" "pull")
 require_text("${paladin_h}" "CastBlessingAction(PlayerbotAI* ai, std::string name, bool greater) : CastSpellAction(ai, name), greater(greater) {}\n        bool KeepsUnknownSpell() const override { return true; }" "blessing (self)")
 require_text("${paladin_h}" "CastBlessingOnPartyAction(PlayerbotAI* ai, std::string name, bool greater) : CastSpellAction(ai, name), greater(greater) {}\n        bool KeepsUnknownSpell() const override { return true; }" "blessing on party")
 require_text("${shaman_h}" "CastShamanWeaponImbueAction(PlayerbotAI* ai) : CastEnchantItemAction(ai, \"shaman weapon imbue\") {}\n        bool KeepsUnknownSpell() const override { return true; }" "shaman imbue")
+# pre-review 28.10.: the item actions ("item target" placeholder; the soulstone walks to its party member via the reach prerequisite)
+require_text("${spell_h}" "CastSpellTargetAction(ai, \"item target\", targetsValue, aliveCheck, false), itemAuraCheck(auraCheck) {}\n        bool KeepsUnknownSpell() const override { return true; }" "item target (soulstone reach)")
 
 # 5. The [NeverPossible] minute line: nothing when off, increments (exchange), called from the minute reports.
 require_text("${mgr_cpp}" "#include \"playerbot/NeverPossiblePolicy.h\"" "the policy include in RandomPlayerbotMgr.cpp")

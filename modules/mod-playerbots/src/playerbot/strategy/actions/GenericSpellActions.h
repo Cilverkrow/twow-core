@@ -192,6 +192,7 @@ namespace ai
     {
     public:
         CastItemTargetAction(PlayerbotAI* ai, std::string targetsValue, bool aliveCheck = false, bool auraCheck = false) : CastSpellTargetAction(ai, "item target", targetsValue, aliveCheck, false), itemAuraCheck(auraCheck) {}
+        bool KeepsUnknownSpell() const override { return true; }
         virtual bool IsTargetValid(Unit* target) override;
         virtual uint32 GetItemId() = 0;
 
