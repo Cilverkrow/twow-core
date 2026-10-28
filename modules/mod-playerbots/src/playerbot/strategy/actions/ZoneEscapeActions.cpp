@@ -59,11 +59,9 @@ bool ZoneEscapeAction::Execute(Event& event)
         if (ai->DoSpecificAction("hearthstone", Event("zone escape"), true))
         {
             state = lastStep == zone_escape::Step::Hearth ? "retry" : "hearth";
-            // twow-repo#333 finding 4 (TeleportCastPolicy.h): hold for the started cast; the engine sets the AI wait to this
-            // action's duration.
-            uint32 const reactDelay = sPlayerbotAIConfig.reactDelay;
-            SetDuration(teleport_cast::HoldMs(teleport_cast::PreparedWaitMs(bot, teleport_cast::kHearthstone, reactDelay),
-                ai->GetAIInternalUpdateDelay(), reactDelay));
+            // twow-repo#333 finding 4 (TeleportCastPolicy.h): hold for the started cast (the engine sets the AI wait to this
+            // action's duration); the watch ends the hold when the spell stops PREPARING.
+            SetDuration(teleport_cast::HoldFor(ai, bot, teleport_cast::kHearthstone, sPlayerbotAIConfig.reactDelay));
         }
         else
         {
