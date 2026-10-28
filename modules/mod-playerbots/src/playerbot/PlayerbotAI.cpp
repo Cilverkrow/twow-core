@@ -640,6 +640,7 @@ void PlayerbotAI::SampleActivity(uint32 now)
     ai::bot_activity::State state;
     if (TravelTarget* target = aiObjectContext->GetValue<TravelTarget*>("travel target")->Get())
     {
+        state.hasTarget = true;
         state.status = uint8(target->GetStatus());
         TravelDestination* const destination = target->GetDestination();
         state.dest = !destination || dynamic_cast<NullTravelDestination*>(destination) ? ai::bot_activity::Dest::None :
@@ -653,16 +654,32 @@ void PlayerbotAI::SampleActivity(uint32 now)
     state.taxiFlying = bot->IsTaxiFlying();
     state.helpFollower = questGroupRole.load() == 1;   // twow-repo#627 S7 follower: no own target
     state.moved = activityClock.Move(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY());
+    // twow-repo#601 (OB-00 28.10.2026): a RosterFarMove wait is travel, not a stall (BotActivityPolicy.h StuckSample)
+    ai::far_move::WaitState const farMove = FarMoveWaitState();
+    state.farMoveWaiting = farMove == ai::far_move::WaitState::Waiting;
     ai::bot_activity::Kind const kind = ai::bot_activity::Classify(state);
     // twow-repo#601 (AiPlayerbot.ActivityTrace.StuckDetail): the second stuck sample in a row names the episode, within the
     // per-minute limit. Off: nothing is read or written.
     if (sPlayerbotAIConfig.activityTraceStuckDetail && stuckEpisode.Note(kind == ai::bot_activity::Kind::Stuck) &&
         ai::bot_activity::StuckDetailGlobal().Take(now))
         ReportStuckDetail(state);
+    // twow-repo#601 (AiPlayerbot.ActivityTrace.IdleDetail): the second idle sample in a row names the episode, the first sample of
+    // another kind after it ends it, within its own per-minute limit. Off: nothing is read or written.
+    if (sPlayerbotAIConfig.activityTraceIdleDetail)
+    {
+        ai::bot_activity::IdleNote const note = idleEpisode.Note(kind == ai::bot_activity::Kind::Idle, now,
+            ai::bot_activity::IdleWhyOf(state.hasTarget, state.status));
+        if (note != ai::bot_activity::IdleNote::Nothing && ai::bot_activity::IdleDetailGlobal().Take(now))
+            ReportIdleDetail(state, kind, note, now);
+    }
 
     // the seconds since the last sample still belong to its hour; the line for that hour follows
     if (uint32 const credited = activityClock.Add(kind, now))
+    {
         ai::bot_activity::Global().Add(ai::bot_activity::BandOf(bot->GetLevel()), kind, credited);
+        if (ai::bot_activity::FarWaitSample(state))
+            activityClock.AddFarWait(credited);
+    }
     if (activityClock.HourDone(now))
     {
         // twow-repo#601 quest acceptance (OB-00 27.10.2026): how full the quest log is, once an hour (20 slots, no lookup).
@@ -703,12 +720,72 @@ void PlayerbotAI::ReportStuckDetail(ai::bot_activity::State const& state)
     char const* const dest = state.dest == ai::bot_activity::Dest::Quest ? "quest" :
         state.dest == ai::bot_activity::Dest::Grind ? "grind" : state.dest == ai::bot_activity::Dest::Other ? "other" : "none";
     ai::bot_activity::TrailPick const pick = ai::bot_activity::PickFromTrail(currentEngine ? currentEngine->GetLastAction() : "");
+    // twow-repo#601 (OB-00 28.10.2026): far_wait= the bot's far move - a waiting one is no stall any more (none / overdue left: a far
+    // move that was never ended)
     sLog.outBasic("[StuckDetail] bot=%u level=%u map=%u zone=%u x=%.0f y=%.0f dest=%s quest=%u entry=%d status=%u status_s=%d left_s=%d"
-        " dist=%.0f moved=%.1f move_retries=%u motion=%u moving=%u state=%u action=\"%s\" trigger=\"%s\" dropped=%u",
+        " dist=%.0f moved=%.1f move_retries=%u motion=%u moving=%u state=%u action=\"%s\" trigger=\"%s\" dropped=%u far_wait=%s",
         bot->GetGUIDLow(), bot->GetLevel(), bot->GetMapId(), bot->GetZoneId(), bot->GetPositionX(), bot->GetPositionY(), dest,
         questId, entry, uint32(state.status), statusSeconds, leftSeconds, distance, state.moved, retries,
         uint32(bot->GetMotionMaster()->GetCurrentMovementGeneratorType()), bot->IsMoving() ? 1u : 0u, uint32(currentState),
-        pick.action.c_str(), pick.trigger.c_str(), ai::bot_activity::StuckDetailGlobal().TakeDropped());
+        pick.action.c_str(), pick.trigger.c_str(), ai::bot_activity::StuckDetailGlobal().TakeDropped(),
+        ai::far_move::WaitStateName(FarMoveWaitState()));
+}
+
+ai::far_move::WaitState PlayerbotAI::FarMoveWaitState() const
+{
+    return ai::far_move::WaitStateOf(uint64(time(nullptr)),
+        uint64(aiObjectContext->GetValue<LastMovement&>("last movement")->Get().farMoveAt));
+}
+
+// twow-repo#601 (AiPlayerbot.ActivityTrace.IdleDetail, OB-00 28.10.2026): why an idle bot has no active target - at the start of
+// the episode the reason (BotActivityPolicy.h IdleWhyOf), the inactive target (kind, quest, entry, status with the seconds held
+// and left), the empty-camp reselect flag, the last travel purpose and its destination search, the quest route backoff, the quest
+// search stage, the free quest log slots and the engine's newest executed action; at its end the seconds idle, the kind that
+// ended it and the new target. Only values the bot holds (20 quest slots, no search).
+void PlayerbotAI::ReportIdleDetail(ai::bot_activity::State const& state, ai::bot_activity::Kind kind, ai::bot_activity::IdleNote note,
+    uint32 now)
+{
+    uint32 questId = 0;
+    int32 entry = 0, statusSeconds = -1, leftSeconds = -1;
+    bool reselect = false;
+    if (TravelTarget* target = aiObjectContext->GetValue<TravelTarget*>("travel target")->Get())
+    {
+        if (QuestTravelDestination const* quest = dynamic_cast<QuestTravelDestination const*>(target->GetDestination()))
+            questId = quest->GetQuestId();
+        entry = target->GetEntry();
+        statusSeconds = target->GetExpiredTime() / int32(IN_MILLISECONDS);
+        leftSeconds = target->GetTimeLeft() / int32(IN_MILLISECONDS);
+        reselect = target->IsInactiveReselectPending();
+    }
+    char const* const dest = state.dest == ai::bot_activity::Dest::Quest ? "quest" :
+        state.dest == ai::bot_activity::Dest::Grind ? "grind" : state.dest == ai::bot_activity::Dest::Other ? "other" : "none";
+    if (note == ai::bot_activity::IdleNote::End)
+    {
+        sLog.outBasic("[IdleDetail] state=end bot=%u level=%u idle_s=%u why=%s next=%s dest=%s quest=%u status=%u dropped=%u",
+            bot->GetGUIDLow(), bot->GetLevel(), idleEpisode.seconds, ai::bot_activity::IdleWhyName(idleEpisode.why),
+            ai::bot_activity::KindName(kind), dest, questId, uint32(state.status), ai::bot_activity::IdleDetailGlobal().TakeDropped());
+        return;
+    }
+
+    FutureDestinations* const fetch = aiObjectContext->GetValue<FutureDestinations*>("future travel destinations")->Get();
+    bool const fetchValid = fetch && fetch->valid();
+    bool const fetchReady = fetchValid && fetch->wait_for(std::chrono::seconds(0)) != std::future_status::timeout;
+    std::string const purpose = aiObjectContext->GetValue<std::string>("manual string", "future travel purpose")->Get();
+    int32 const backoffUntil = aiObjectContext->GetValue<int>("manual int", "quest route backoff until")->Get();
+    uint32 freeSlots = 0;
+    for (uint16 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+        if (!bot->GetQuestSlotQuestId(slot))
+            ++freeSlots;
+    ai::bot_activity::TrailPick const pick = ai::bot_activity::PickFromTrail(currentEngine ? currentEngine->GetLastAction() : "");
+    sLog.outBasic("[IdleDetail] state=start bot=%u level=%u map=%u zone=%u x=%.0f y=%.0f why=%s dest=%s quest=%u entry=%d status=%u"
+        " status_s=%d left_s=%d reselect=%u purpose=\"%s\" fetch=%s backoff_s=%d stage=%d free_slots=%u state=%u action=\"%s\""
+        " trigger=\"%s\" dropped=%u",
+        bot->GetGUIDLow(), bot->GetLevel(), bot->GetMapId(), bot->GetZoneId(), bot->GetPositionX(), bot->GetPositionY(),
+        ai::bot_activity::IdleWhyName(idleEpisode.why), dest, questId, entry, uint32(state.status), statusSeconds, leftSeconds,
+        reselect ? 1u : 0u, purpose.c_str(), ai::bot_activity::FetchStateName(fetchValid, fetchReady),
+        backoffUntil > int32(now) ? backoffUntil - int32(now) : 0,
+        aiObjectContext->GetValue<int>("manual int", "quest search stage")->Get(), freeSlots, uint32(currentState),
+        pick.action.c_str(), pick.trigger.c_str(), ai::bot_activity::IdleDetailGlobal().TakeDropped());
 }
 
 bool PlayerbotAI::IsInGroupWithRealPlayer()
@@ -2575,7 +2652,14 @@ void PlayerbotAI::OnDeath()
             {
                 LastMovement& farMove = AI_VALUE(LastMovement&, "last movement");
                 if (farMove.farMoveArrivedAt && time(nullptr) - farMove.farMoveArrivedAt <= time_t(far_move::ArriveDeathSeconds))
+                {
                     far_move::SharedCounters().arriveDeaths.fetch_add(1, std::memory_order_relaxed);
+                    // twow-repo#601 (OB-00 28.10.2026): one line per such death, so a cand run judges its deaths veto with and
+                    // without the far-move arrival deaths per cohort (arrived_s: seconds since the arrival). Log only.
+                    sLog.outBasic("[FarMoveDeath] bot=%u level=%u map=%u zone=%u x=%.0f y=%.0f after_farmove=1 arrived_s=%u cohort=%c",
+                        bot->GetGUIDLow(), bot->GetLevel(), bot->GetMapId(), bot->GetZoneId(), bot->GetPositionX(), bot->GetPositionY(),
+                        uint32(time(nullptr) - farMove.farMoveArrivedAt), ai::cohort::Letter(bot->GetGUIDLow()));
+                }
             }
 
             if (sPlayerbotAIConfig.hasLog("deaths.csv"))

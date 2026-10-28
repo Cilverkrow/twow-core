@@ -98,7 +98,9 @@ require_order("${policy}" "    if (s.parked)\n        return Kind::Parked;" "   
 require_order("${policy}" "    if (!s.alive)\n        return Kind::Dead;" "    if (s.inCombat)\n        return Kind::Combat;" "dead before combat")
 require_order("${policy}" "    if (s.inCombat)\n        return Kind::Combat;" "    if (TravelActive(s.status) && s.dest != Dest::None)" "combat before the target")
 # OB-10 review: an active target must not hide a stall
-require_text("${policy}" "        if (s.status == StatusTravel && !s.taxiFlying && s.moved < StuckYards)\n            return Kind::Stuck;" "stuck: TRAVEL without moving")
+require_text("${policy}" "    return s.status == StatusTravel && !s.taxiFlying && s.moved < StuckYards;" "stuck sample: TRAVEL without moving")
+# twow-repo#601 (OB-00 28.10.2026): a RosterFarMove wait is travel, not stuck (contracts.d/activity_far_wait_idle_detail)
+require_text("${policy}" "        if (StuckSample(s) && !s.farMoveWaiting)\n            return Kind::Stuck;" "stuck: TRAVEL without moving, no far-move wait")
 require_text("${policy}" "            return s.status == StatusWork && !s.combatSinceSample ? Kind::GrindIdle : Kind::Grind;" "grind_idle: WORK without a fight")
 require_order("${policy}" "            return Kind::Stuck;" "            return s.status == StatusWork && !s.combatSinceSample" "stuck before grind_idle")
 require_order("${policy}" "    if (TravelActive(s.status) && s.dest != Dest::None)" "    if (s.taxiFlying)\n        return Kind::Other;" "the target before a flight")
