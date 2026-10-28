@@ -32,6 +32,7 @@
 #include "playerbot/TransportBoardPolicy.h"   // twow-repo#342 (S3b-0): Path.TransportDeckProbe / TransportWaitTimeoutMin
 #include "playerbot/MeleeFleeBreakPolicy.h"   // twow-repo#602 (MFB-W): the break's flee dispatch record
 #include "playerbot/FleeAwayPolicy.h"   // twow-repo#602 (c): Rotation.FleeAway
+#include "playerbot/TeleportCastWait.h"   // twow-repo#333 finding 4: hearthstone / teleport cast wait
 
 using namespace ai;
 
@@ -1710,11 +1711,27 @@ bool MovementAction::HandleSpecialMovement(TravelPath& path)
     if (nextPoint.type == PathNodeType::NODE_TELEPORT && nextPoint.entry)
     {
         bool canCastNow = !bot->IsFlying() || WorldPosition(bot).currentHeight() < 10.0f;
+        uint32 const reactDelay = sPlayerbotAIConfig.reactDelay;
+
+        // twow-repo#333 finding 4 (TeleportCastPolicy.h): a hearthstone or teleport the bot already prepares is waited for -
+        // failing the step reset the path, ran the move retries out, and the next movement interrupted the cast. HoldFor arms
+        // the watch that ends the hold when the spell stops PREPARING (PlayerbotAI::UpdateAI).
+        if (teleport_cast::PreparedWaitMs(bot, nextPoint.entry, reactDelay))
+        {
+            SetDuration(teleport_cast::HoldFor(ai, bot, nextPoint.entry, reactDelay));
+            return true;
+        }
 
         if (nextPoint.entry == 8690) // Hearthstone
         {
             if (AI_VALUE2(bool, "action useful", "hearthstone") && canCastNow)
-                return ai->DoSpecificAction("hearthstone", Event("move action"), true) ? true : false;
+            {
+                if (!ai->DoSpecificAction("hearthstone", Event("move action"), true))
+                    return false;
+                // twow-repo#333 finding 4: hold for the started cast; the engine sets the AI wait to this action's duration.
+                SetDuration(teleport_cast::HoldFor(ai, bot, nextPoint.entry, reactDelay));
+                return true;
+            }
         }
         else if (sServerFacade.IsSpellReady(bot, nextPoint.entry) && canCastNow && AI_VALUE2(uint32, "has reagents for", nextPoint.entry) > 0)
         {
@@ -1729,7 +1746,11 @@ bool MovementAction::HandleSpecialMovement(TravelPath& path)
             ai->RemoveShapeshift();
 
             if (ai->DoSpecificAction("cast", Event("rpg action", chat->formatWorldobject(bot) + " " + std::to_string(nextPoint.entry)), true))
+            {
+                // twow-repo#333 finding 4: hold for the started cast.
+                SetDuration(teleport_cast::HoldFor(ai, bot, nextPoint.entry, reactDelay));
                 return true;
+            }
         }
 
         AI_VALUE(LastMovement&, "last movement").setPath(TravelPath());

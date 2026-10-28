@@ -20,6 +20,7 @@
 #include "playerbot/DeathLoopPolicy.h"
 #include "playerbot/DeathAddsPolicy.h"
 #include "playerbot/CastWaitPolicy.h"
+#include "playerbot/TeleportCastPolicy.h"
 #include "playerbot/BotSavePolicy.h"
 #include "playerbot/StallGuardPolicy.h"
 #include <atomic>
@@ -502,6 +503,9 @@ public:
     bool TellDebug(Player* player, std::string text, std::string strategy = "debug", BotState state = BotState::BOT_STATE_NON_COMBAT){ if (HasStrategy(strategy, state)) return TellPlayerNoFacing(player, text, PlayerbotSecurityLevel::PLAYERBOT_SECURITY_ALLOW_ALL, true, false); return false;}
     bool TellError(Player* player, std::string text, PlayerbotSecurityLevel securityLevel = PlayerbotSecurityLevel::PLAYERBOT_SECURITY_ALLOW_ALL, bool ignoreSilent = false);
     void SpellInterrupted(uint32 spellid);
+    // twow-repo#333 finding 4 (TeleportCastPolicy.h): watch a hold of holdMs for the bot's own PREPARING teleport / hearthstone
+    // (0 = nothing prepared: stop watching); UpdateAI ends the hold when the spell is no longer PREPARING.
+    void WatchTeleportHold(uint32 holdMs);
     int32 CalculateGlobalCooldown(uint32 spellid);
     void InterruptSpell(bool withMeleeAndAuto = true);
     bool RemoveAura(const std::string& name);
@@ -1288,6 +1292,7 @@ protected:
     bool oomBackoffPending = false;   // twow-repo#602 ROT-01 3c-B: an out-of-mana backoff wait is running
     uint32 tankKitLevel = 0;   // twow-repo#602 (Rotation.TankKitFromLevel): the level the strategies were last built for; a crossing of the tank key level rebuilds them
     ai::cast_wait::Watch castWait;   // twow-repo#602 (AiPlayerbot.CastWait.Preparing): pending wait for the bot's own PREPARING cast
+    ai::teleport_cast::HoldWatch teleportHold;   // twow-repo#333 finding 4: pending travel / unstuck / zone-escape hold for a teleport
     bool isPlayerFriend = false;
     bool isMovingToTransport = false;
     bool shouldLogOut = false;
