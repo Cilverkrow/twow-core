@@ -1658,6 +1658,8 @@ bool MovementAction::HandleSpecialMovement(TravelPath& path)
         bool usedTransport = UseTransport(ai, nextPoint.entry, nextPoint.point, WorldPosition(), sPlayerbotAIConfig.transportTeleportType > 0, edge, board);
         if (!usedTransport && !bot->GetTransport() && sPlayerbotAIConfig.pathTaxiTrace)   // twow-repo#575 (PATH-01 b)
             LogTransportWait(bot, nextPoint.entry, nextPoint.point);
+        if (!usedTransport && !bot->GetTransport())   // twow-repo#342 ABBA-1 §6: the dock wait pauses PosStuck (PosStuckPolicy.h)
+            AI_VALUE(LastMovement&, "last movement").transportWaitMs = WorldTimer::getMSTime();
 
         uint32 lastTransportEntry = 0;
 
@@ -1677,6 +1679,8 @@ bool MovementAction::HandleSpecialMovement(TravelPath& path)
         bool usedTransport = UseTransport(ai, currentPoint.entry, currentPoint.point, nextPoint.point, sPlayerbotAIConfig.transportTeleportType > 0, edge, board);
         if (!usedTransport && !bot->GetTransport() && sPlayerbotAIConfig.pathTaxiTrace)   // twow-repo#575 (PATH-01 b)
             LogTransportWait(bot, currentPoint.entry, currentPoint.point);
+        if (!usedTransport && !bot->GetTransport())   // twow-repo#342 ABBA-1 §6: the dock wait pauses PosStuck (PosStuckPolicy.h)
+            AI_VALUE(LastMovement&, "last movement").transportWaitMs = WorldTimer::getMSTime();
 
         uint32 lastTransportEntry = 0;
 
