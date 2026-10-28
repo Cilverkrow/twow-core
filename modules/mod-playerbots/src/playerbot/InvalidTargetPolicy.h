@@ -32,5 +32,5 @@ inline std::atomic<std::uint64_t> quiet{ 0 };            // trigger checks kept 
 // Trace for the follow-up (b) (log only, no behaviour): "select new target" dropped a LIVE current target, and whether that interrupted a
 // running cast (InterruptSpell + AttackStop also hit a live but "invalid" target - selection mismatch, a mob without a target of its own).
 inline std::atomic<std::uint64_t> droppedLive{ 0 };      // the dropped current target was alive
-inline std::atomic<std::uint64_t> interruptedLive{ 0 };  // ... and the bot was casting or channelling (the drop interrupted it)
+inline std::atomic<std::uint64_t> interruptedLive{ 0 };  // ... and a cast InterruptSpell stops was running (generic / autorepeat, not delayed, not a channel)
 }
