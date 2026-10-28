@@ -15,6 +15,7 @@
 #include "playerbot/CohortPolicy.h"
 #include "playerbot/RpgAreaLevelPolicy.h"
 #include "playerbot/ContestedObjectivePolicy.h"
+#include "playerbot/TransportBoardPolicy.h"   // twow-repo#342 ABBA-1 §6: the PosStuck dock pause ends after WaitTimeoutMsOf
 #include <algorithm>
 #include <vector>
 #include <iomanip>
@@ -1961,10 +1962,13 @@ bool TravelTarget::ObservePosStuck()
         wPosition->getMapId() != bot->GetMapId() || RestGateValue::Resting(ai) ||
         quest_groups::IsFollower(ai);   // twow-repo#627 S7: a follower goes where its leader goes (the leader stays watched)
     // twow-repo#342 ABBA-1 §6 (OB-00 28.10.2026): a bot waiting at its dock for a ship or zeppelin is held up on purpose - no
-    // window during the wait, a fresh one after the ride (PosStuckPolicy.h DockWaitPaused).
-    if (!observation.excluded)
-        observation.excluded = pos_stuck::DockWaitPaused(observation.now,
-            ai->GetAiObjectContext()->GetValue<LastMovement&>("last movement")->Get().transportWaitMs, pos_stuck::DockWaitPauseMs);
+    // window during the wait, a fresh one after the ride (PosStuckPolicy.h DockWaitPaused). OB-10 review: at most
+    // Path.TransportWaitTimeoutMin of continuous waiting (PauseHolds), then the window runs again - a transport that never
+    // comes or cannot be boarded is a stand like any other. Evaluated on every observation, so the pause start stays current.
+    bool const dockPause = pos_stuck::PauseHolds(posStuck.dockPauseSince, pos_stuck::DockWaitPaused(observation.now,
+            ai->GetAiObjectContext()->GetValue<LastMovement&>("last movement")->Get().transportWaitMs, pos_stuck::DockWaitPauseMs),
+        observation.now, transport_board::WaitTimeoutMsOf(sPlayerbotAIConfig.pathTransportWaitTimeoutMin));
+    observation.excluded = observation.excluded || dockPause;
     observation.distance = observation.excluded ? 0.0f : Distance(bot);
 
     if (pos_stuck::Observe(posStuck, observation, sPlayerbotAIConfig.pathPosStuckMinutes * 60 * IN_MILLISECONDS,

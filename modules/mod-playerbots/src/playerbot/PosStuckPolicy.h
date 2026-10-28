@@ -40,6 +40,22 @@ inline bool DockWaitPaused(std::uint32_t nowMs, std::uint32_t waitMs, std::uint3
     return waitMs != 0 && std::uint32_t(nowMs - waitMs) < pauseMs;
 }
 
+// OB-10 review (28.10.2026): a pause has an upper limit. The dock wait is renewed on every pass, so a bot that waits for good
+// (the transport never comes, or cannot be boarded) would never be watched again; after maxMs of continuous pause the window
+// runs again, and a stand detects as before. since = the start of the continuous pause (0 = none), kept in State across the
+// windows the pause clears (a start at clock 0 is stored as 1 ms before it); pausedNow = the pause condition at this observation.
+inline bool PauseHolds(std::uint32_t& since, bool pausedNow, std::uint32_t nowMs, std::uint32_t maxMs)
+{
+    if (!pausedNow)
+    {
+        since = 0;
+        return false;
+    }
+    if (!since)
+        since = nowMs ? nowMs : 0xFFFFFFFFu;
+    return std::uint32_t(nowMs - since) < maxMs;
+}
+
 struct Observation
 {
     std::uint32_t now = 0;
@@ -72,6 +88,8 @@ struct State
     float anchorX = 0.0f;
     float anchorY = 0.0f;
     float anchorZ = 0.0f;
+    // The start of the continuous dock-wait pause (PauseHolds; 0 = none). Reset() leaves it alone: a pause clears the window.
+    std::uint32_t dockPauseSince = 0;
 
     void Reset() { initialized = false; }
 };
