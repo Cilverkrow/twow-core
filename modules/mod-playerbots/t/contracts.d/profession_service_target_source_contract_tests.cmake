@@ -63,7 +63,7 @@ forbid_text("${builder}" "IsLocationLevelValid" "the fight gate in the professio
 
 # (a) No target: one line with the reject counts, the open trip ends at once.
 require_text("${choose_cpp}" "ProfessionTripNoTarget(ai, futureTravelPurpose, uint32(destinationList.size()), points, lastRejects.Format());" "the no_target call")
-require_text("${choose_cpp}" "futureTravelPurpose == \"tool vendor\") &&\n            !lastRejects.movedAway)" "not when the bot moved away (pre-review)")
+require_text("${choose_cpp}" "futureTravelPurpose == \"tool vendor near\") &&\n            !lastRejects.movedAway)" "not when the bot moved away (pre-review)")
 require_order("${choose_cpp}" "ProfessionTripNoTarget(ai, futureTravelPurpose," "SET_AI_VALUE2(bool, \"no active travel destinations\", futureTravelPurpose, true);" "in the failure branch")
 require_text("${values_cpp}" "sLog.outBasic(\"[ProfTravel] state=no_target kind=%s bot=%u level=%u cohort=%c ranges=%u points=%u path=%s rejects=%s\"," "the no_target line")
 require_text("${values_cpp}" "sLog.outBasic(\"[ProfTravel] state=end kind=%s bot=%u level=%u cohort=%c reason=no_target trip_s=0 hold_over_s=0 path=%s\"," "the end at once")
