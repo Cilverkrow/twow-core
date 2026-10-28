@@ -112,4 +112,119 @@ inline Point2 ArrivalPoint(Point2 start, Point2 target, float backYards)
     float const f = backYards >= len ? 1.0f : backYards / len;
     return Point2{ target.x + dx * f, target.y + dy * f };
 }
+
+// twow-repo#601 cand4-B (AiPlayerbot.RosterFarMove.ArriveSafe, OB-00 28.10.2026): 382 of 1022 deaths in 3 h came within 60 s of a
+// far-move arrival. The arrival point lies ArriveBackYards before a kill objective - usually inside its camp - and only
+// danger-map cells were refused, so the bot appeared within the aggro radius of several mobs and was pulled without an
+// approach (killers relatively 1.2 levels higher, more adds, more HP left). With the switch the arrival is checked right
+// before the teleport: a point where a creature would attack the bot at once (core proximity aggro, Creature.cpp
+// GetAttackDistance, AggressorAI / CreatureEventAI MoveInLineOfSight, without the LOS test) is given up for one ArriveSafeStep
+// further back along the line, at most ArriveSafeSteps times; the bot walks the rest and pulls on its own.
+constexpr float ArriveSafeStepYards = 30.0f;
+constexpr std::uint32_t ArriveSafeSteps = 4;
+constexpr float ArriveSafeMarginYards = 5.0f;   // on top of the creature's aggro radius
+// Grid search radius: above the largest proximity aggro radius with Rate.Creature.Aggro 1 (detection range 20 + 25 levels
+// = 45 yd, plus the margin). A creature with a larger radius (aggro rate > 1, detect-range auras) is not found beyond it.
+constexpr float ArriveSafeSearchYards = 60.0f;
+constexpr float ArriveSafeZYards = 3.0f;        // CREATURE_Z_ATTACK_RANGE: a creature that cannot fly ignores a bot beyond it
+// A point further back lets the bot walk the rest to its target; that far-move decline lapses after this (the walk of up to
+// 180 yd and its pulls), so a bot that died there far-moves to the same target again after its corpse run.
+constexpr std::uint32_t ArriveSafeDeclineSeconds = 120;
+
+// The height difference as the core's WorldObject::GetDistanceZ counts it: minus both bounding radii, never below 0.
+inline float AggroDz(float dz, float radii)
+{
+    float const d = (dz < 0.0f ? -dz : dz) - radii;
+    return d > 0.0f ? d : 0.0f;
+}
+
+// A creature at distance / height difference dz (AggroDz) from the arrival point that would attack the bot there at once: it
+// can start an attack (alive, hostile, not neutral to all, not stunned or passive, no victim - the caller checks those), the
+// point is inside its aggro radius attackDistance (0 = it never aggroes) plus the margin, and within its z range unless it flies.
+inline bool Threatens(float distance, float attackDistance, float dz, bool canFly)
+{
+    return attackDistance > 0.0f && distance <= attackDistance + ArriveSafeMarginYards && (canFly || dz <= ArriveSafeZYards);
+}
+
+// A far-move decline is active: the hotfix 8.36 decline (no arrival point at all, until 0) until the target changes, an
+// ArriveSafe decline until its time.
+inline bool DeclineActive(std::uint64_t until, std::uint64_t now)
+{
+    return !until || now < until;
+}
+
+// One arrival candidate, k steps back (k = 0: the point chosen at the start of the far move).
+struct ArriveCandidate
+{
+    bool valid = false;           // on the navmesh, outside danger-map cells, its grid loaded
+    std::uint32_t threats = 0;    // creatures that would attack the bot there (Threatens)
+};
+
+enum class ArriveOutcome : std::uint8_t
+{
+    Kept,       // the first candidate is free
+    Shifted,    // a later candidate is free
+    Unsafe,     // none is free: the valid one with the fewest threats, the farthest of those (no endless search)
+    None        // no valid candidate: the caller keeps its point (as before the switch)
+};
+
+struct ArriveChoice
+{
+    ArriveOutcome outcome = ArriveOutcome::None;
+    std::uint32_t index = 0;
+};
+
+// The first free valid candidate, else the valid one with the fewest threats (the farthest of equal ones): a line that crosses
+// a second, bigger camp must not take the bot into it.
+inline ArriveChoice ChooseArrival(ArriveCandidate const* candidates, std::uint32_t count)
+{
+    ArriveChoice choice;
+    bool anyValid = false;
+    std::uint32_t fewest = 0;
+    for (std::uint32_t i = 0; i < count; ++i)
+    {
+        if (!candidates[i].valid)
+            continue;
+        if (!candidates[i].threats)
+        {
+            choice.outcome = i == 0 ? ArriveOutcome::Kept : ArriveOutcome::Shifted;
+            choice.index = i;
+            return choice;
+        }
+        if (!anyValid || candidates[i].threats <= fewest)
+        {
+            fewest = candidates[i].threats;
+            choice.index = i;
+        }
+        anyValid = true;
+    }
+    choice.outcome = anyValid ? ArriveOutcome::Unsafe : ArriveOutcome::None;
+    if (!anyValid)
+        choice.index = 0;
+    return choice;
+}
+
+// The [FarMove] counters of the switch (shared by all map threads): arrivals checked, kept, shifted, unsafe, not checked
+// (the arrival grid not loaded: no creature there to see yet), and the check cost.
+struct ArriveSafeCounters
+{
+    std::atomic<std::uint32_t> checked{0};
+    std::atomic<std::uint32_t> kept{0};
+    std::atomic<std::uint32_t> shifted{0};
+    std::atomic<std::uint32_t> unsafe{0};
+    std::atomic<std::uint32_t> unchecked{0};
+    std::atomic<std::uint64_t> checkUs{0};
+    std::atomic<std::uint32_t> checkUsMax{0};
+
+    void NoteCost(std::uint32_t us)
+    {
+        checkUs.fetch_add(us, std::memory_order_relaxed);
+        std::uint32_t seen = checkUsMax.load(std::memory_order_relaxed);
+        while (us > seen && !checkUsMax.compare_exchange_weak(seen, us, std::memory_order_relaxed))
+        {
+        }
+    }
+};
+
+inline ArriveSafeCounters& SharedArriveSafeCounters() { static ArriveSafeCounters counters; return counters; }
 }
