@@ -20,6 +20,7 @@
 #include "playerbot/TankPathPolicy.h"
 #include "playerbot/CohortPolicy.h"
 #include "playerbot/SpecPathPolicy.h"
+#include "playerbot/TankKitPolicy.h"
 
 namespace
 {
@@ -459,7 +460,13 @@ void AiFactory::AddDefaultCombatStrategies(Player* player, PlayerbotAI* const fa
 
         case CLASS_WARRIOR:
         {
-            if (tab == 2)
+            // twow-repo#602 (AiPlayerbot.Rotation.TankKitFromLevel, TankKitPolicy.h): below L10 every warrior has the default tab 2;
+            // with the switch the tank kit waits for Defensive Stance / Taunt (L10) and the warrior gets the arms kit until then.
+            bool const tankEarly = tab == 2 && ai::tank_kit::TooEarly(
+                ai::tank_kit::Applies(sPlayerbotAIConfig.rotationTankKitFromLevel, player->GetGUIDLow()), CLASS_WARRIOR, player->GetLevel());
+            if (tankEarly)
+                ai::tank_kit::demoted.fetch_add(1, std::memory_order_relaxed);
+            if (tab == 2 && !tankEarly)
             {
                 combatEngine->addStrategies("protection", "tank assist", "pull", "pull back", "close", NULL);
             }
@@ -513,7 +520,13 @@ void AiFactory::AddDefaultCombatStrategies(Player* player, PlayerbotAI* const fa
 
         case CLASS_PALADIN:
         {
-            if (tab == 1)
+            // twow-repo#602 (AiPlayerbot.Rotation.TankKitFromLevel, TankKitPolicy.h): with the switch a protection paladin below
+            // Righteous Fury (L16) gets the retribution kit (the else branch) until then.
+            bool const tankEarly = tab == 1 && ai::tank_kit::TooEarly(
+                ai::tank_kit::Applies(sPlayerbotAIConfig.rotationTankKitFromLevel, player->GetGUIDLow()), CLASS_PALADIN, player->GetLevel());
+            if (tankEarly)
+                ai::tank_kit::demoted.fetch_add(1, std::memory_order_relaxed);
+            if (tab == 1 && !tankEarly)
             {
                 combatEngine->addStrategies("protection", "tank assist", "pull", "pull back", "close", NULL);
 			}
@@ -872,7 +885,9 @@ void AiFactory::AddDefaultNonCombatStrategies(Player* player, PlayerbotAI* const
 
         case CLASS_PALADIN:
         {
-            if (tab == 1)
+            // twow-repo#602 (Rotation.TankKitFromLevel): the same level gate as in the combat engine (retribution below L16)
+            if (tab == 1 && !ai::tank_kit::TooEarly(ai::tank_kit::Applies(sPlayerbotAIConfig.rotationTankKitFromLevel, player->GetGUIDLow()),
+                    CLASS_PALADIN, player->GetLevel()))
             {
                 nonCombatEngine->addStrategies("protection", "tank assist", NULL);
             }
@@ -1039,7 +1054,9 @@ void AiFactory::AddDefaultNonCombatStrategies(Player* player, PlayerbotAI* const
 
         case CLASS_WARRIOR:
         {
-            if (tab == 2)
+            // twow-repo#602 (Rotation.TankKitFromLevel): the same level gate as in the combat engine (arms below L10)
+            if (tab == 2 && !ai::tank_kit::TooEarly(ai::tank_kit::Applies(sPlayerbotAIConfig.rotationTankKitFromLevel, player->GetGUIDLow()),
+                    CLASS_WARRIOR, player->GetLevel()))
             {
                 nonCombatEngine->addStrategies("protection", "tank assist", NULL);
             }
