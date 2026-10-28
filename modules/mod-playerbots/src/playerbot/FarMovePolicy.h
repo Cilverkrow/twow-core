@@ -91,4 +91,94 @@ inline Point2 ArrivalPoint(Point2 start, Point2 target, float backYards)
     float const f = backYards >= len ? 1.0f : backYards / len;
     return Point2{ target.x + dx * f, target.y + dy * f };
 }
+
+// twow-repo#601 cand4-B (AiPlayerbot.RosterFarMove.ArriveSafe, OB-00 28.10.2026): 382 of 1022 deaths in 3 h came within 60 s of a
+// far-move arrival. The arrival point lies ArriveBackYards before a kill objective - usually inside its camp - and only
+// danger-map cells were refused, so the bot appeared within the aggro radius of several mobs and was pulled without an
+// approach (killers relatively 1.2 levels higher, more adds, more HP left). With the switch the arrival is checked right
+// before the teleport: a point where a creature would attack the bot at once (core proximity aggro, Creature.cpp
+// GetAttackDistance, AggressorAI / CreatureEventAI MoveInLineOfSight, without the LOS test) is given up for one ArriveSafeStep
+// further back along the line, at most ArriveSafeSteps times; the bot walks the rest and pulls on its own.
+constexpr float ArriveSafeStepYards = 30.0f;
+constexpr std::uint32_t ArriveSafeSteps = 4;
+constexpr float ArriveSafeMarginYards = 5.0f;   // on top of the creature's aggro radius
+constexpr float ArriveSafeSearchYards = 60.0f;  // grid search radius: above the largest proximity aggro radius (about 45 yd)
+constexpr float ArriveSafeZYards = 3.0f;        // CREATURE_Z_ATTACK_RANGE: a creature that cannot fly ignores a bot beyond it
+
+// A creature at distance / height difference dz from the arrival point that would attack the bot there at once: it can start
+// an attack (alive, hostile, not neutral to all, not stunned or passive, no victim - the caller checks those), the point is
+// inside its aggro radius attackDistance (0 = it never aggroes) plus the margin, and within its z range unless it flies.
+inline bool Threatens(float distance, float attackDistance, float dz, bool canFly)
+{
+    return attackDistance > 0.0f && distance <= attackDistance + ArriveSafeMarginYards && (canFly || dz <= ArriveSafeZYards);
+}
+
+// One arrival candidate, k steps back (k = 0: the point chosen at the start of the far move).
+struct ArriveCandidate
+{
+    bool valid = false;           // on the navmesh, outside danger-map cells, its grid loaded
+    std::uint32_t threats = 0;    // creatures that would attack the bot there (Threatens)
+};
+
+enum class ArriveOutcome : std::uint8_t
+{
+    Kept,       // the first candidate is free
+    Shifted,    // a later candidate is free
+    Unsafe,     // none is free: the farthest valid one (no endless search)
+    None        // no valid candidate: the caller keeps its point (as before the switch)
+};
+
+struct ArriveChoice
+{
+    ArriveOutcome outcome = ArriveOutcome::None;
+    std::uint32_t index = 0;
+};
+
+// The first free valid candidate, else the farthest valid one.
+inline ArriveChoice ChooseArrival(ArriveCandidate const* candidates, std::uint32_t count)
+{
+    ArriveChoice choice;
+    bool anyValid = false;
+    for (std::uint32_t i = 0; i < count; ++i)
+    {
+        if (!candidates[i].valid)
+            continue;
+        if (!candidates[i].threats)
+        {
+            choice.outcome = i == 0 ? ArriveOutcome::Kept : ArriveOutcome::Shifted;
+            choice.index = i;
+            return choice;
+        }
+        anyValid = true;
+        choice.index = i;   // the farthest valid one so far
+    }
+    choice.outcome = anyValid ? ArriveOutcome::Unsafe : ArriveOutcome::None;
+    if (!anyValid)
+        choice.index = 0;
+    return choice;
+}
+
+// The [FarMove] counters of the switch (shared by all map threads): arrivals checked, kept, shifted, unsafe, not checked
+// (the arrival grid not loaded: no creature there to see yet), and the check cost.
+struct ArriveSafeCounters
+{
+    std::atomic<std::uint32_t> checked{0};
+    std::atomic<std::uint32_t> kept{0};
+    std::atomic<std::uint32_t> shifted{0};
+    std::atomic<std::uint32_t> unsafe{0};
+    std::atomic<std::uint32_t> unchecked{0};
+    std::atomic<std::uint64_t> checkUs{0};
+    std::atomic<std::uint32_t> checkUsMax{0};
+
+    void NoteCost(std::uint32_t us)
+    {
+        checkUs.fetch_add(us, std::memory_order_relaxed);
+        std::uint32_t seen = checkUsMax.load(std::memory_order_relaxed);
+        while (us > seen && !checkUsMax.compare_exchange_weak(seen, us, std::memory_order_relaxed))
+        {
+        }
+    }
+};
+
+inline ArriveSafeCounters& SharedArriveSafeCounters() { static ArriveSafeCounters counters; return counters; }
 }
