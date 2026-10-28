@@ -2,6 +2,7 @@
 
 #include "playerbot/strategy/actions/GenericActions.h"
 #include "playerbot/strategy/actions/UseItemAction.h"
+#include "playerbot/SpellNamePolicy.h"
 
 namespace ai
 {
@@ -383,32 +384,56 @@ namespace ai
 		virtual bool isPossible() { return true; }
 	};
 
-	class CastCreateHealthstoneAction : public CastSpellAction
+	// twow-repo#602 (spell-name audit, SpellNamePolicy.h): each stone rank is its own spell ("Create Healthstone (Minor)" .. "(Major)"), the
+	// bare name only one of them; the action casts the highest rank the bot knows. The action name stays the bare stone name.
+	class CastCreateStoneAction : public CastSpellAction
 	{
 	public:
-		CastCreateHealthstoneAction(PlayerbotAI* ai) : CastSpellAction(ai, "create healthstone") {}
+		CastCreateStoneAction(PlayerbotAI* ai, std::string const& stone) : CastSpellAction(ai, stone), stone(stone) {}
         std::string GetTargetName() override { return "self target"; }
+        bool isUseful() override { PickKnownRank(); return CastSpellAction::isUseful(); }
+        bool isPossible() override { PickKnownRank(); return CastSpellAction::isPossible(); }
+        bool Execute(Event& event) override { PickKnownRank(); return CastSpellAction::Execute(event); }   // also chat "cast" / events
+
+	private:
+        void PickKnownRank()
+        {
+            for (std::string const& name : ai::spell_names::StoneRankNames(stone))
+            {
+                if (AI_VALUE2(uint32, "spell id", name))
+                {
+                    SetSpellName(name);
+                    return;
+                }
+            }
+            SetSpellName(stone);
+        }
+
+        std::string const stone;
 	};
 
-        class CastCreateSoulstoneAction : public CastSpellAction
+	class CastCreateHealthstoneAction : public CastCreateStoneAction
+	{
+	public:
+		CastCreateHealthstoneAction(PlayerbotAI* ai) : CastCreateStoneAction(ai, "create healthstone") {}
+	};
+
+        class CastCreateSoulstoneAction : public CastCreateStoneAction
         {
         public:
-                CastCreateSoulstoneAction(PlayerbotAI* ai) : CastSpellAction(ai, "create soulstone") {}
-        std::string GetTargetName() override { return "self target"; }
+                CastCreateSoulstoneAction(PlayerbotAI* ai) : CastCreateStoneAction(ai, "create soulstone") {}
         };
 
-	class CastCreateFirestoneAction : public CastSpellAction
+	class CastCreateFirestoneAction : public CastCreateStoneAction
 	{
 	public:
-		CastCreateFirestoneAction(PlayerbotAI* ai) : CastSpellAction(ai, "create firestone") {}
-        std::string GetTargetName() override { return "self target"; }
+		CastCreateFirestoneAction(PlayerbotAI* ai) : CastCreateStoneAction(ai, "create firestone") {}
 	};
 
-	class CastCreateSpellstoneAction : public CastSpellAction
+	class CastCreateSpellstoneAction : public CastCreateStoneAction
 	{
 	public:
-		CastCreateSpellstoneAction(PlayerbotAI* ai) : CastSpellAction(ai, "create spellstone") {}
-        std::string GetTargetName() override { return "self target"; }
+		CastCreateSpellstoneAction(PlayerbotAI* ai) : CastCreateStoneAction(ai, "create spellstone") {}
 	};
 
     class CastBanishAction : public CastSpellAction
