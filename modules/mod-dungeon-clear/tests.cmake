@@ -216,6 +216,12 @@ add_test(NAME dungeon_clear_login_refused_contract
                  "-DDC_SOURCE_DIR=${DC_MOD_PATH}"
                  -P "${DC_MOD_PATH}/t/test_login_refused_contract.cmake")
 
+# CLI-GRP 28.10.2026: the record's tank measures (schema 13; rules DcAggroTally.h / TestTestRunRecord).
+add_test(NAME dungeon_clear_tank_measures_contract
+         COMMAND "${CMAKE_COMMAND}"
+                 "-DDC_SOURCE_DIR=${DC_MOD_PATH}"
+                 -P "${DC_MOD_PATH}/t/test_tank_measures_contract.cmake")
+
 # Force-include the test prelude, mirroring what the shipping module does with
 # AcCompat.h but with a fraction of its reach — see DcTestPrelude.h for why the
 # module's headers need it and why AcCompat.h itself cannot be used here.

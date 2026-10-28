@@ -2003,6 +2003,7 @@ void DcTestRunJob::TrackEngagement(Player* tank)
         return;
 
     DcTestRun::EngagementSample sample;
+    bool nonTankAttacked = false;   // schema 13: a creature on a member other than the run's tank (DcAggroTally.h)
 
     auto rosterName = [this](uint32 entry) -> std::string const*
     {
@@ -2049,7 +2050,12 @@ void DcTestRunJob::TrackEngagement(Player* tank)
         // healer, or anyone the pack peeled onto).
         consider(member->GetVictim());
         for (Unit const* attacker : member->getAttackers())
+        {
             consider(attacker);
+            Creature const* c = attacker && attacker->IsAlive() ? attacker->ToCreature() : nullptr;
+            if (member != tank && c && !c->IsCritter() && !c->IsTotem())
+                nonTankAttacked = true;
+        }
     };
 
     scan(tank);
@@ -2059,6 +2065,34 @@ void DcTestRunJob::TrackEngagement(Player* tank)
                 scan(member);
 
     _engaged = DcTestRun::UpdateEngagement(_engaged, sample);
+
+    // CLI-GRP 28.10.2026 (schema 13, owner: "tanks have to perform"; descriptive in G1 phase D): aggro loss over the run
+    // and the open pull, and when the party's current engagement with a boss began (BossKill::engageT).
+    _aggro.Observe(sample.anyAliveInCombat, nonTankAttacked);
+    _record.aggroCombatTicks = _aggro.combatTicks;
+    _record.aggroLossTicks = _aggro.lossTicks;
+    _record.aggroLossEvents = _aggro.lossEvents;
+    if (_pullOpen && sample.anyAliveInCombat)
+    {
+        ++_pullEntry.combatTicks;
+        if (nonTankAttacked)
+            ++_pullEntry.aggroLossTicks;
+    }
+    if (sample.bossEntry && sample.bossEntry != _prevBossEntry)
+        _bossEngageS[sample.bossEntry] = _totalMs / 1000;
+    _prevBossEntry = sample.bossEntry;
+
+    // Who plays tank, read once the run is monitored (the strategies are set by then): comp[].tankStrategy.
+    if (!_tankStrategyRead)
+    {
+        _tankStrategyRead = true;
+        for (Slot const& slot : _slots)
+            if (Player* bot = ObjectAccessor::FindPlayer(slot.guid))
+                if (PlayerbotAI* ai = GET_PLAYERBOT_AI(bot))
+                    for (DcTestRunRecord::CompEntry& c : _record.comp)
+                        if (c.guid == slot.guid.GetRawValue())
+                            c.tankStrategy = ai->HasStrategy("tank", BotState::BOT_STATE_COMBAT);
+    }
 }
 
 // File the pull observation currently in flight, if any. `wipedHere` marks the
@@ -2333,6 +2367,8 @@ void DcTestRunJob::TickMonitoring(uint32 dt)
                         }
                 if (kill.name.empty())
                     kill.name = "encounter #" + std::to_string(bit);
+                if (auto const eng = _bossEngageS.find(kill.entry); kill.entry && eng != _bossEngageS.end())
+                    kill.engageT = eng->second;   // schema 13: the fight that killed it began here
                 _record.bossTimeline.push_back(kill);
                 progressed = true;
             }
