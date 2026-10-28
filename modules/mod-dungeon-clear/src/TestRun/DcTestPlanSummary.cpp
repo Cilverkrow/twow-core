@@ -233,6 +233,7 @@ namespace DcTestPlanSummary
           << ",\"seedBase\":" << h.seedBase
           << ",\"gearIlvl\":" << h.gearIlvl
           << ",\"gearQuality\":" << h.gearQuality
+          << ",\"tankClass\":" << h.tankClass   // CLI-GRP G2
           << "},\"startedAtMs\":" << h.startedAtMs
           << ",\"endedAtMs\":" << h.endedAtMs
           << ",\"durationS\":" << h.durationS

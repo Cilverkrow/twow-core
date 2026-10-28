@@ -61,7 +61,8 @@ public:
                                                  uint32 levelOverride, uint32 seed, bool heroic,
                                                  DcTestGearTiers::Spec const& gear,
                                                  std::unordered_set<ObjectGuid> const& reservedGuids,
-                                                 std::string const& planId, std::string* err);
+                                                 std::string const& planId, std::string* err,
+                                                 std::uint8_t tankClass = 0);   // CLI-GRP G2: forced tank seat (0 = drawn)
 
     // One hand-picked party slot: a real player character and the role the human
     // marked it for. Resolved (name -> guid, faction/liveness checked) by

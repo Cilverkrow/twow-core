@@ -94,7 +94,15 @@ namespace DcTestComp
     // three DPS, all five on DISTINCT classes (maximises class diversity and
     // keeps the addclass-pool draw from needing several chars of one class).
     // Pure — no globals, no I/O — so the same seed always yields the same comp.
-    std::array<Slot, kPartySize> BuildComp(std::uint32_t seed);
+    //
+    // CLI-GRP G2 (OB-00 28.10.2026, warrior-prot vs paladin-prot): tankClass != 0 forces the tank seat to that
+    // kTankPool class (`.dc test plan start ... tank=<class>`). The PRNG still consumes the tank draw, so the seed's
+    // stream position is the same; the other seats exclude the forced class as they exclude a drawn one.
+    std::array<Slot, kPartySize> BuildComp(std::uint32_t seed, std::uint8_t tankClass = 0);
+
+    // The class id of a tank-seat class by name ("warrior", "paladin", ...), 0 when the name is no class of
+    // kTankPool - the druid feral seat is disabled there, so "druid" is 0 until it comes back. Pure.
+    std::uint8_t TankClassByName(std::string_view name);
 
     // The pool backing a role token ("tank" | "heal" | "dps"), for callers that
     // must substitute an alternative class when the drawn one has no available

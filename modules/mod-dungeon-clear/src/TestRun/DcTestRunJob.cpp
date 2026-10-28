@@ -369,7 +369,8 @@ std::unique_ptr<DcTestRunJob> DcTestRunJob::Create(Player* gm, DcTestDungeonRegi
                                                    uint32 levelOverride, uint32 seed, bool heroic,
                                                    DcTestGearTiers::Spec const& gear,
                                                    std::unordered_set<ObjectGuid> const& reservedGuids,
-                                                   std::string const& planId, std::string* err)
+                                                   std::string const& planId, std::string* err,
+                                                   std::uint8_t tankClass)
 {
     // Caller (DcTestRunManager::Start) has already validated the registry row
     // (including that heroic is only requested where heroicLevel is set) and
@@ -398,7 +399,7 @@ std::unique_ptr<DcTestRunJob> DcTestRunJob::Create(Player* gm, DcTestDungeonRegi
     job->_record.gearIlvl = job->_gear.ilvl;
     job->_record.gearQuality = job->_gear.quality;
 
-    std::array<DcTestComp::Slot, DcTestComp::kPartySize> const comp = DcTestComp::BuildComp(seed);
+    std::array<DcTestComp::Slot, DcTestComp::kPartySize> const comp = DcTestComp::BuildComp(seed, tankClass);
     for (DcTestComp::Slot const& c : comp)
     {
         Slot s;
@@ -511,6 +512,15 @@ std::unique_ptr<DcTestRunJob> DcTestRunJob::Create(Player* gm, DcTestDungeonRegi
     for (Slot& slot : job->_slots)
     {
         ObjectGuid guid = claim(slot.classId);
+        // CLI-GRP G2: a forced tank seat (`tank=<class>`) is never substituted - a run of another tank class would
+        // quietly sit in the wrong arm of the comparison. It fails its set-up instead, naming the class.
+        if (!guid && tankClass && &slot == &job->_slots.front())
+        {
+            if (err)
+                *err = std::string("no available ") + ClassToken(slot.classId) +
+                       " for the forced tank seat (tank=" + ClassToken(slot.classId) + ", no substitution)";
+            return nullptr;
+        }
         if (!guid)
         {
             for (DcTestComp::Slot const& alt : DcTestComp::RolePool(slot.role))
