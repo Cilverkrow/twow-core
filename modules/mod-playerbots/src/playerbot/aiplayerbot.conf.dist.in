@@ -1554,6 +1554,16 @@ AiPlayerbot.RosterFarMove = 0
 # [FarMove] ... watched arrive_alt arrive_walk. ArriveBackYards 0 = arrive at the target (8.33 behaviour).
 AiPlayerbot.RosterFarMove.ArriveBackYards = 60
 AiPlayerbot.RosterFarMove.WatchRoute = 1
+# twow-repo#601 cand4-B (OB-00 28.10.2026): 382 of 1022 deaths in 3 h came within 60 s of a far-move arrival - the arrival
+# point lies ArriveBackYards before a kill objective, usually inside its camp, and the bot was pulled by several mobs at once.
+# ArriveSafe checks the arrival right before the teleport: a point inside the aggro radius of a hostile creature (the core's
+# proximity aggro: alive, hostile, can start an attack, no victim, within GetAttackDistance + 5 yd and its z range; no LOS
+# test) is given up for one 30 yd further back along the line (navmesh, danger map), at most 4 times (up to 120 yd more,
+# never past the start); none free: the one with the fewest threats (safe_unsafe). A point further back lets the bot walk the
+# rest to that target and pull on its own (no far move to it for 120 s). The arrival grid not loaded in the bot's map, or the
+# point in another continent region: no check (safe_unchecked). [FarMove] gets safe_checked safe_kept safe_shifted
+# safe_unsafe safe_unchecked check_us_avg check_us_max. 0 = off (default), 1 = all bots, 2 = cohort B (A/B).
+AiPlayerbot.RosterFarMove.ArriveSafe = 0
 # twow-repo#595 P4 S0 (OB-00 17.10.2026, shortcuts by player proximity; measurement, no behaviour change): the world
 # thread keeps a snapshot of where the online real players are (map, zone, area, x, y and a camera body that differs;
 # GMs only while visible), built after the map update at most once a second, only while Trace = 1 or NearScope > 0.
