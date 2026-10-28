@@ -217,6 +217,9 @@ private:
     // (0 = in range). Drives the supervisor's distance fence; see
     // SweepPartyGeometry.
     std::unordered_map<uint32, uint32> _farSinceMs;
+    // CLI-GRP G1 probe 28.10.2026: pool slots whose masterless login AddPlayerBot refused (the persistent roster admits
+    // roster members only); TickSpawning ends the set-up with DcTestPool::LoginRefusal at once instead of after 180 s.
+    std::string _loginRefused;
     // Geo fence re-add to the run's group, per slot (DcRunRobust::RegroupMayTry/RegroupRecord: every 30 s at most, the
     // run ends after 5 failures). The sweep only records the give-up; the tick that called it ends the run.
     std::unordered_map<uint32, DcRunRobust::RegroupState> _regroup;
