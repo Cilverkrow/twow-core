@@ -615,6 +615,9 @@ bool PlayerbotAIConfig::Initialize()
     rotationMeleeSkipAttacking = config.GetIntDefault("AiPlayerbot.Rotation.MeleeSkipAttacking", 1);   // twow-repo#602 failure census
     if (rotationMeleeSkipAttacking > 2)
         rotationMeleeSkipAttacking = 1;   // an unknown mode is the default (0 off = rollback, 1 all, 2 cohort B)
+    rotationNeverPossibleSkip = config.GetIntDefault("AiPlayerbot.Rotation.NeverPossibleSkip", 1);   // twow-repo#602 failure census v3
+    if (rotationNeverPossibleSkip > 2)
+        rotationNeverPossibleSkip = 1;   // an unknown mode is the default (0 off = rollback, 1 all, 2 cohort B)
     rotationFleeAway = config.GetIntDefault("AiPlayerbot.Rotation.FleeAway", 0);   // twow-repo#602 (c)
     if (rotationFleeAway > 2)
         rotationFleeAway = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
@@ -1804,6 +1807,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Rotation.MeleeFleeBreak", Value(rotationMeleeFleeBreak)},
             {"Rotation.MeleeFleeBreak.Ranged", Value(rotationMeleeFleeBreakRanged)},
             {"Rotation.MeleeSkipAttacking", Value(rotationMeleeSkipAttacking)},
+            {"Rotation.NeverPossibleSkip", Value(rotationNeverPossibleSkip)},
             {"Rotation.OomBackoff", Value(rotationOomBackoff)},
             {"Rotation.ReachDropEngagement", Value(rotationReachDropEngagement)},
             {"Rotation.ReachLosClose", Value(rotationReachLosClose)},

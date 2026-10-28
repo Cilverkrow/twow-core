@@ -28,6 +28,11 @@ namespace ai
         void RefreshSpellIdOnLearn();
         // twow-repo#541 (audit A27): true only for pet spell actions, whose id comes from the pet's spells.
         virtual bool SpellStampTracksPet() const { return false; }
+        // twow-repo#602 (AiPlayerbot.Rotation.NeverPossibleSkip, NeverPossiblePolicy.h): true for actions whose spell name is a placeholder
+        // or changes at runtime (shoot, pull, paladin blessings, shaman imbue, vehicle spells); they keep the full checks.
+        virtual bool KeepsUnknownSpell() const { return false; }
+        // The spell is unknown to the bot ("spell id" value 0) and the switch applies: no checks, no reach prerequisite.
+        bool NeverPossible();
         // twow-repo#602 ROT-01 D0 (AiPlayerbot.Rotation.CastTrace): counts one isPossible outcome (RotCastPolicy.h
         // code) and returns `possible` unchanged; with the switch off it only returns `possible`.
         bool RotEval(bool possible, uint16 code);
@@ -351,6 +356,7 @@ namespace ai
     {
     public:
         CastShootAction(PlayerbotAI* ai) : CastSpellAction(ai, "shoot"), rangedWeapon(nullptr), weaponDelay(0), needsAmmo(false) {}
+        bool KeepsUnknownSpell() const override { return true; }   // twow-repo#602 (NeverPossibleSkip): runtime spell name
         ActionThreatType getThreatType() override { return ActionThreatType::ACTION_THREAT_NONE; }
         bool Execute(Event& event) override;
         bool isPossible() override;
@@ -487,6 +493,7 @@ namespace ai
             speed = 30.0f;
             SetSpellName(spell, "vehicle spell id", !GetSpellID());
         }
+        bool KeepsUnknownSpell() const override { return true; }   // twow-repo#602 (NeverPossibleSkip): "vehicle spell id", not "spell id"
 
         virtual bool Execute(Event& event) override;
         virtual bool isUseful() override;

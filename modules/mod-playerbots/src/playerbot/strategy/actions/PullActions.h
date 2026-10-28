@@ -60,6 +60,7 @@ namespace ai
     {
     public:
         PullAction(PlayerbotAI* ai, std::string name = "pull action");
+        bool KeepsUnknownSpell() const override { return true; }   // twow-repo#602 (NeverPossibleSkip): InitPullAction picks the spell
         bool Execute(Event& event) override;
         bool isPossible() override;
     private:

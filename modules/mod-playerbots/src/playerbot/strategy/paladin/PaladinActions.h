@@ -133,6 +133,7 @@ namespace ai
     {
     public:
         CastBlessingAction(PlayerbotAI* ai, std::string name, bool greater) : CastSpellAction(ai, name), greater(greater) {}
+        bool KeepsUnknownSpell() const override { return true; }   // twow-repo#602 (NeverPossibleSkip): isPossible picks the blessing
 
     private:
         Unit* GetTarget() override;
@@ -197,6 +198,7 @@ namespace ai
     {
     public:
         CastBlessingOnPartyAction(PlayerbotAI* ai, std::string name, bool greater) : CastSpellAction(ai, name), greater(greater) {}
+        bool KeepsUnknownSpell() const override { return true; }   // twow-repo#602 (NeverPossibleSkip): isPossible picks the blessing
 
     private:
         Unit* GetTarget() override;
