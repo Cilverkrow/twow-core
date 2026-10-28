@@ -155,6 +155,24 @@ AiObjectContext* AiFactory::createAiObjectContext(Player* player, PlayerbotAI* a
     return new AiObjectContext(ai);
 }
 
+int AiFactory::GetPlayerKitTab(const Player* player)
+{
+    int const tab = GetPlayerSpecTab(player);
+    if (!sPlayerbotAIConfig.rotationTankKitFromLevel || !player)
+        return tab;
+
+    uint32 const cls = player->getClass();
+    bool const tankTab = (cls == CLASS_WARRIOR && tab == 2) || (cls == CLASS_PALADIN && tab == 1);
+    PlayerbotAI* const botAi = GetBotAI(player);
+    if (!tankTab || !botAi || !sRandomPlayerbotMgr.IsRandomBot(const_cast<Player*>(player)) || (botAi->GetForcedRole() & BOT_ROLE_TANK))
+        return tab;
+
+    if (!ai::tank_kit::TooEarly(ai::tank_kit::Applies(sPlayerbotAIConfig.rotationTankKitFromLevel, player->GetGUIDLow()), cls, player->GetLevel()))
+        return tab;
+
+    return ai::tank_kit::DpsTab(cls);
+}
+
 int AiFactory::GetPlayerSpecTab(const Player* bot)
 {
     // twow-repo#602 R06a (AiPlayerbot.Rotation.SpecFromPath, owner decision 18.10.2026): from level 10 a bot on a
@@ -385,12 +403,15 @@ BotRoles AiFactory::GetPlayerRoles(const Player* player)
     // warrior who happened to stand in defensive stance would have been handed
     // the tank slot with a fury build, while a feral druid was already
     // recognised through its talents. The aura check is gone. The tree decides.
-    return GetPlayerRoles(player->getClass(), GetPlayerSpecTab(player));
+    return GetPlayerRoles(player->getClass(), GetPlayerKitTab(player));   // twow-repo#602 (Rotation.TankKitFromLevel): the kit tab
 }
 
 void AiFactory::AddDefaultCombatStrategies(Player* player, PlayerbotAI* const facade, Engine* combatEngine)
 {
-    int tab = GetPlayerSpecTab(player);
+    // twow-repo#602 (Rotation.TankKitFromLevel): the kit follows the kit tab (DPS below the level of the tank spells)
+    int tab = GetPlayerKitTab(player);
+    if (tab != GetPlayerSpecTab(player))
+        ai::tank_kit::demoted.fetch_add(1, std::memory_order_relaxed);
 
     combatEngine->addStrategies("mount", NULL);
     combatEngine->addStrategy("avoid mobs");
@@ -460,13 +481,7 @@ void AiFactory::AddDefaultCombatStrategies(Player* player, PlayerbotAI* const fa
 
         case CLASS_WARRIOR:
         {
-            // twow-repo#602 (AiPlayerbot.Rotation.TankKitFromLevel, TankKitPolicy.h): below L10 every warrior has the default tab 2;
-            // with the switch the tank kit waits for Defensive Stance / Taunt (L10) and the warrior gets the arms kit until then.
-            bool const tankEarly = tab == 2 && ai::tank_kit::TooEarly(
-                ai::tank_kit::Applies(sPlayerbotAIConfig.rotationTankKitFromLevel, player->GetGUIDLow()), CLASS_WARRIOR, player->GetLevel());
-            if (tankEarly)
-                ai::tank_kit::demoted.fetch_add(1, std::memory_order_relaxed);
-            if (tab == 2 && !tankEarly)
+            if (tab == 2)
             {
                 combatEngine->addStrategies("protection", "tank assist", "pull", "pull back", "close", NULL);
             }
@@ -520,13 +535,7 @@ void AiFactory::AddDefaultCombatStrategies(Player* player, PlayerbotAI* const fa
 
         case CLASS_PALADIN:
         {
-            // twow-repo#602 (AiPlayerbot.Rotation.TankKitFromLevel, TankKitPolicy.h): with the switch a protection paladin below
-            // Righteous Fury (L16) gets the retribution kit (the else branch) until then.
-            bool const tankEarly = tab == 1 && ai::tank_kit::TooEarly(
-                ai::tank_kit::Applies(sPlayerbotAIConfig.rotationTankKitFromLevel, player->GetGUIDLow()), CLASS_PALADIN, player->GetLevel());
-            if (tankEarly)
-                ai::tank_kit::demoted.fetch_add(1, std::memory_order_relaxed);
-            if (tab == 1 && !tankEarly)
+            if (tab == 1)
             {
                 combatEngine->addStrategies("protection", "tank assist", "pull", "pull back", "close", NULL);
 			}
@@ -861,7 +870,7 @@ Engine* AiFactory::createCombatEngine(Player* player, PlayerbotAI* const facade,
 
 void AiFactory::AddDefaultNonCombatStrategies(Player* player, PlayerbotAI* const facade, Engine* nonCombatEngine)
 {
-    const int tab = GetPlayerSpecTab(player);
+    const int tab = GetPlayerKitTab(player);   // twow-repo#602 (Rotation.TankKitFromLevel): the same kit tab in every engine
     switch (player->getClass())
     {
         case CLASS_PRIEST:
@@ -885,9 +894,7 @@ void AiFactory::AddDefaultNonCombatStrategies(Player* player, PlayerbotAI* const
 
         case CLASS_PALADIN:
         {
-            // twow-repo#602 (Rotation.TankKitFromLevel): the same level gate as in the combat engine (retribution below L16)
-            if (tab == 1 && !ai::tank_kit::TooEarly(ai::tank_kit::Applies(sPlayerbotAIConfig.rotationTankKitFromLevel, player->GetGUIDLow()),
-                    CLASS_PALADIN, player->GetLevel()))
+            if (tab == 1)
             {
                 nonCombatEngine->addStrategies("protection", "tank assist", NULL);
             }
@@ -1054,9 +1061,7 @@ void AiFactory::AddDefaultNonCombatStrategies(Player* player, PlayerbotAI* const
 
         case CLASS_WARRIOR:
         {
-            // twow-repo#602 (Rotation.TankKitFromLevel): the same level gate as in the combat engine (arms below L10)
-            if (tab == 2 && !ai::tank_kit::TooEarly(ai::tank_kit::Applies(sPlayerbotAIConfig.rotationTankKitFromLevel, player->GetGUIDLow()),
-                    CLASS_WARRIOR, player->GetLevel()))
+            if (tab == 2)
             {
                 nonCombatEngine->addStrategies("protection", "tank assist", NULL);
             }
@@ -1333,7 +1338,7 @@ void AiFactory::AddDefaultDeadStrategies(Player* player, PlayerbotAI* const faca
         deadEngine->removeStrategy("follow");
     }
 
-    const int tab = GetPlayerSpecTab(player);
+    const int tab = GetPlayerKitTab(player);   // twow-repo#602 (Rotation.TankKitFromLevel): the same kit tab in every engine
     switch (player->getClass())
     {
         case CLASS_SHAMAN:
@@ -1533,7 +1538,7 @@ void AiFactory::AddDefaultReactionStrategies(Player* player, PlayerbotAI* const 
 {
     reactionEngine->addStrategies("react", "chat", "avoid aoe", "potions", NULL);
 
-    const int tab = GetPlayerSpecTab(player);
+    const int tab = GetPlayerKitTab(player);   // twow-repo#602 (Rotation.TankKitFromLevel): the same kit tab in every engine
     switch (player->getClass())
     {
         case CLASS_SHAMAN:

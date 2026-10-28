@@ -1316,7 +1316,8 @@ void ReportInvalidTarget()
 }
 
 // twow-repo#602 (AiPlayerbot.Rotation.TankKitFromLevel): one [TankKit] line per minute - combat engines (re)built with the DPS kit instead
-// of the tank kit because the bot is below the level of its tank spells (demoted). Nothing is written when off.
+// of the tank kit because the bot is below the level of its tank spells (demoted, a rate), and strategy rebuilds because a level change
+// crossed the key level (rebuilt). Nothing is written when off.
 void ReportTankKit()
 {
     static uint32 lastReport = 0;
@@ -1324,8 +1325,9 @@ void ReportTankKit()
     if (!sPlayerbotAIConfig.rotationTankKitFromLevel || now < lastReport + 60)
         return;
     lastReport = now;
-    sLog.outBasic("[TankKit] mode=%u demoted=%llu", sPlayerbotAIConfig.rotationTankKitFromLevel,
-        (unsigned long long)ai::tank_kit::demoted.exchange(0, std::memory_order_relaxed));
+    sLog.outBasic("[TankKit] mode=%u demoted=%llu rebuilt=%llu", sPlayerbotAIConfig.rotationTankKitFromLevel,
+        (unsigned long long)ai::tank_kit::demoted.exchange(0, std::memory_order_relaxed),
+        (unsigned long long)ai::tank_kit::rebuilt.exchange(0, std::memory_order_relaxed));
 }
 
 // twow-repo#602 #2 (AiPlayerbot.Grind.NeighbourAware): one [GrindNeighbour] line per minute and cohort with scored passes - the

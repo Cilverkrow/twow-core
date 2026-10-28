@@ -43,6 +43,16 @@ int main()
     Require(!TooEarly(true, 11, 5) && !TooEarly(true, 4, 5) && !TooEarly(true, 7, 5), "druid / rogue / shaman: untouched");
     Require(!TooEarly(false, kClassWarrior, 5) && !TooEarly(false, kClassPaladin, 5), "switch off: the old tab decides");
 
+    // 6) The DPS tab a too-early tank gets: warrior arms (0), paladin retribution (2); other classes have none.
+    Require(DpsTab(kClassWarrior) == 0 && DpsTab(kClassPaladin) == 2 && DpsTab(11) == -1, "DPS tabs");
+
+    // 7) Level changes that need a strategy rebuild: across the key level, either way; never on the first pass (from level 0).
+    Require(CrossesKey(kClassWarrior, 9, 10) && CrossesKey(kClassWarrior, 8, 11), "warrior 9 -> 10, 8 -> 11: rebuild");
+    Require(!CrossesKey(kClassWarrior, 10, 11) && !CrossesKey(kClassWarrior, 5, 9), "warrior inside a band: no rebuild");
+    Require(CrossesKey(kClassPaladin, 15, 16) && !CrossesKey(kClassPaladin, 9, 10), "paladin 15 -> 16 rebuilds, 9 -> 10 not");
+    Require(CrossesKey(kClassWarrior, 12, 3), "a level reset across the key level: rebuild");
+    Require(!CrossesKey(kClassWarrior, 0, 12) && !CrossesKey(11, 9, 10), "first pass and other classes: no rebuild");
+
     std::cout << "tank_kit_policy_tests passed\n";
     return 0;
 }
