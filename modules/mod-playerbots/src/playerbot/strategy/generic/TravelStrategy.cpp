@@ -157,6 +157,13 @@ void TravelStrategy::InitNonCombatTriggers(std::list<TriggerNode*>& triggers)
         triggers.push_back(new TriggerNode(
             travel_request::TriggerName("val::should travel named::trainer profession near", gateRequests),
             NextAction::array(0, new NextAction("request named travel target::trainer profession near", 6.36f), NULL)));
+    // P1-y (OB-00 28.10.2026 after M1r run 5: the gap tool trip came twice in 210 min): a vendor of the missing pick / knife within
+    // the same radius, no gap needed - just above the near trainer trip (a learned skill without its tool gathers nothing), with
+    // the same gates.
+    if (sPlayerbotAIConfig.professionUseToolBuy && sPlayerbotAIConfig.professionTrainingNearRadius)
+        triggers.push_back(new TriggerNode(
+            travel_request::TriggerName("val::should travel named::tool vendor near", gateRequests),
+            NextAction::array(0, new NextAction("request named travel target::tool vendor near", 6.361f), NULL)));
 
     triggers.push_back(new TriggerNode(
         "val::not::travel target active",

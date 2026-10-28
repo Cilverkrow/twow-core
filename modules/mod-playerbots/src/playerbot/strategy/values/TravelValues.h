@@ -267,6 +267,9 @@ namespace ai
     };
     std::vector<int32> NearProfessionTrainers(PlayerbotAI* ai, uint32 radius, ProfessionTripDrops* drops = nullptr,
         NearTrainerCounts* counts = nullptr);
+    // P1-y (OB-00 28.10.): the same for the vendors of the missing tool (counts->trainers = its vendors anywhere).
+    std::vector<int32> NearGatherToolVendors(PlayerbotAI* ai, uint32 tool, uint32 radius, ProfessionTripDrops* drops = nullptr,
+        NearTrainerCounts* counts = nullptr);
 
     // P1-v (M1r run 3: 20 requests, no target): the destination list of a profession trip, built like GetPartitions (closest
     // partition per destination, its nearest point) but without the fight gate of IsLocationLevelValid; homeZone != 0 (P1-u)
