@@ -2203,7 +2203,11 @@ bool MovementAction::MoveTo2(const WorldPosition& endPos, bool idle, bool react,
                 uint32 const arriveAlt = counters.arriveAlt.exchange(0, std::memory_order_relaxed);
                 uint32 const arriveWalk = counters.arriveWalk.exchange(0, std::memory_order_relaxed);
                 uint32 const arriveDeaths = counters.arriveDeaths.exchange(0, std::memory_order_relaxed);
-                if (started || retargeted || arrived || watched || arriveAlt || arriveWalk || arriveDeaths)
+                // twow-repo#601 (CLI-PATH ArriveSafe A/B, 28.10.2026): cohort B's share; read apart from the totals, so one minute
+                // may shift a count to the next - sums over a window are exact.
+                uint32 const arrivedB = counters.arrivedB.exchange(0, std::memory_order_relaxed);
+                uint32 const arriveDeathsB = counters.arriveDeathsB.exchange(0, std::memory_order_relaxed);
+                if (started || retargeted || arrived || watched || arriveAlt || arriveWalk || arriveDeaths || arrivedB || arriveDeathsB)
                 {
                     // twow-repo#601 cand4-B (AiPlayerbot.RosterFarMove.ArriveSafe): with the switch the line carries the arrival check
                     // (checked / kept / shifted / unsafe / unchecked and its cost); off, the same line as before.
@@ -2225,8 +2229,8 @@ bool MovementAction::MoveTo2(const WorldPosition& endPos, bool idle, bool react,
                             s.checkUsMax.exchange(0, std::memory_order_relaxed));
                         safe = buf;
                     }
-                    sLog.outBasic("[FarMove] started=%u retargeted=%u arrived=%u watched=%u arrive_alt=%u arrive_walk=%u arrive_deaths=%u%s",
-                        started, retargeted, arrived, watched, arriveAlt, arriveWalk, arriveDeaths, safe.c_str());
+                    sLog.outBasic("[FarMove] started=%u retargeted=%u arrived=%u watched=%u arrive_alt=%u arrive_walk=%u arrive_deaths=%u arrived_b=%u arrive_deaths_b=%u%s",
+                        started, retargeted, arrived, watched, arriveAlt, arriveWalk, arriveDeaths, arrivedB, arriveDeathsB, safe.c_str());
                 }
             }
 
@@ -2299,6 +2303,8 @@ bool MovementAction::MoveTo2(const WorldPosition& endPos, bool idle, bool react,
                     lastMove.farMoveDeclinedUntil = now + far_move::ArriveSafeDeclineSeconds;
                 }
                 counters.arrived.fetch_add(1, std::memory_order_relaxed);
+                if (ai::cohort::InB(bot->GetGUIDLow()))
+                    counters.arrivedB.fetch_add(1, std::memory_order_relaxed);
                 lastMove.farMoveArrivedAt = now;
                 // twow-repo#595 P4 S0 (AiPlayerbot.Shortcut.Trace): counted only, the teleport below is unchanged.
                 if (sPlayerbotAIConfig.shortcutTrace)

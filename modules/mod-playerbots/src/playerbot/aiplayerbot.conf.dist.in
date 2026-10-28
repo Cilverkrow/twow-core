@@ -1551,7 +1551,8 @@ AiPlayerbot.RosterFarMove = 0
 # (straight line, navmesh ground, not in a danger-map cell; else 120 yd; else the bot walks) and the bot
 # walks the rest with its normal mob awareness - no appearing right at Hogger. WatchRoute: a real player
 # within visibility of the straight route (not only at its ends) sees the bot walk the whole way.
-# [FarMove] ... watched arrive_alt arrive_walk. ArriveBackYards 0 = arrive at the target (8.33 behaviour).
+# [FarMove] ... watched arrive_alt arrive_walk arrive_deaths arrived_b arrive_deaths_b (cohort B = odd guid; A = total - b).
+# ArriveBackYards 0 = arrive at the target (8.33 behaviour).
 AiPlayerbot.RosterFarMove.ArriveBackYards = 60
 AiPlayerbot.RosterFarMove.WatchRoute = 1
 # twow-repo#601 cand4-B (OB-00 28.10.2026): 382 of 1022 deaths in 3 h came within 60 s of a far-move arrival - the arrival
