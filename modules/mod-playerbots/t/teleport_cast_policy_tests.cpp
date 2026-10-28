@@ -38,12 +38,40 @@ int main()
     Require(WaitMs(9900, 100) == 10000, "rest 9.9 s + 100 ms");
     Require(WaitMs(0, 100) == 100, "a cast at its end waits one react delay");
 
-    // 4) The hold after a start: the wait from the spell itself; without a PREPARING spell the inner AI wait, at least one
-    //    react delay (no stale outer value, no second jitter of a copied wait).
-    Require(HoldMs(10100, 2525, 100) == 10100, "the spell's own wait wins over a jittered inner wait");
-    Require(HoldMs(10100, 60000, 100) == 10100, "and over a larger stale value");
-    Require(HoldMs(0, 10100, 100) == 10100, "an instant or finished cast: the inner wait");
-    Require(HoldMs(0, 0, 100) == 100, "at least one react delay");
+    // 4) The hold after a start: the wait from the spell itself; nothing PREPARING (instant teleport, a cast that ended or
+    //    failed at once) = one react delay, never an inner or stale wait.
+    Require(HoldMs(10100, 100) == 10100, "the spell's own wait");
+    Require(HoldMs(0, 100) == 100, "nothing to wait for: one react delay");
+
+    // 5) The watch (OB-10 review 28.10.): it ends the hold as soon as the spell is no longer PREPARING.
+    {
+        HoldWatch w;
+        Require(!Watching(w) && Check(w, 0, 0, false, 5000) == WatchStep::Keep, "no watch: nothing to do");
+
+        Arm(w, 0xA0, 8690, 1000, 10100);
+        Require(Watching(w) && w.deadline == 11100, "armed until now + hold");
+        Require(Check(w, 0xA0, 8690, true, 1050) == WatchStep::Keep, "the same spell still PREPARING: keep");
+        // an interrupt in the first second (no SMSG_SPELL_FAILURE needed): the slot is empty
+        Require(Check(w, 0, 0, false, 1100) == WatchStep::Release, "interrupted at once: release");
+        // fear / stun cancel without an interrupt event, or a failed cast: the spell left PREPARING
+        Require(Check(w, 0xA0, 8690, false, 4000) == WatchStep::Release, "no longer PREPARING: release");
+        // the cast was replaced by another one (a reaction cast, a new Spell at the same address with another id)
+        Require(Check(w, 0xB0, 133, true, 4000) == WatchStep::Release, "another Spell object: release");
+        Require(Check(w, 0xA0, 133, true, 4000) == WatchStep::Release, "same address, another id: release");
+        // the hold is over: stop watching, never reset a wait that may belong to something else now
+        Require(Check(w, 0xB0, 133, true, 11100) == WatchStep::Expire, "after the deadline: expire, no release");
+        Require(Check(w, 0xA0, 8690, true, 12000) == WatchStep::Expire, "pushback past the deadline: expire (the guard re-arms)");
+
+        Arm(w, 0xA0, 8690, 0xFFFFFF00u, 0x200);   // the millisecond clock wraps
+        Require(Check(w, 0xA0, 8690, true, 0x50) == WatchStep::Keep, "wrap: before the deadline");
+        Require(Check(w, 0xA0, 8690, true, 0x100) == WatchStep::Expire, "wrap: at the deadline");
+
+        Arm(w, 0, 8690, 1000, 10100);
+        Require(!Watching(w) && w.id == 0 && w.deadline == 0, "no spell: not armed");
+        Arm(w, 0xA0, 8690, 1000, 10100);
+        Clear(w);
+        Require(!Watching(w), "cleared");
+    }
 
     std::cout << "teleport_cast_policy: all checks passed\n";
     return 0;

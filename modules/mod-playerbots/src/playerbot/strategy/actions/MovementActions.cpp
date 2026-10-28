@@ -1714,10 +1714,11 @@ bool MovementAction::HandleSpecialMovement(TravelPath& path)
         uint32 const reactDelay = sPlayerbotAIConfig.reactDelay;
 
         // twow-repo#333 finding 4 (TeleportCastPolicy.h): a hearthstone or teleport the bot already prepares is waited for -
-        // failing the step reset the path, ran the move retries out, and the next movement interrupted the cast.
-        if (uint32 const waitMs = teleport_cast::PreparedWaitMs(bot, nextPoint.entry, reactDelay))
+        // failing the step reset the path, ran the move retries out, and the next movement interrupted the cast. HoldFor arms
+        // the watch that ends the hold when the spell stops PREPARING (PlayerbotAI::UpdateAI).
+        if (teleport_cast::PreparedWaitMs(bot, nextPoint.entry, reactDelay))
         {
-            SetDuration(waitMs);
+            SetDuration(teleport_cast::HoldFor(ai, bot, nextPoint.entry, reactDelay));
             return true;
         }
 
@@ -1728,7 +1729,7 @@ bool MovementAction::HandleSpecialMovement(TravelPath& path)
                 if (!ai->DoSpecificAction("hearthstone", Event("move action"), true))
                     return false;
                 // twow-repo#333 finding 4: hold for the started cast; the engine sets the AI wait to this action's duration.
-                SetDuration(teleport_cast::HoldMs(teleport_cast::PreparedWaitMs(bot, nextPoint.entry, reactDelay), ai->GetAIInternalUpdateDelay(), reactDelay));
+                SetDuration(teleport_cast::HoldFor(ai, bot, nextPoint.entry, reactDelay));
                 return true;
             }
         }
@@ -1747,7 +1748,7 @@ bool MovementAction::HandleSpecialMovement(TravelPath& path)
             if (ai->DoSpecificAction("cast", Event("rpg action", chat->formatWorldobject(bot) + " " + std::to_string(nextPoint.entry)), true))
             {
                 // twow-repo#333 finding 4: hold for the started cast.
-                SetDuration(teleport_cast::HoldMs(teleport_cast::PreparedWaitMs(bot, nextPoint.entry, reactDelay), ai->GetAIInternalUpdateDelay(), reactDelay));
+                SetDuration(teleport_cast::HoldFor(ai, bot, nextPoint.entry, reactDelay));
                 return true;
             }
         }
