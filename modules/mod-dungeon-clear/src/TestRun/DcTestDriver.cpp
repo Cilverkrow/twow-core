@@ -4,6 +4,7 @@
  */
 
 #include "TestRun/DcTestDriver.h"
+#include "TestRun/DcTestPoolPolicy.h"   // CLI-GRP: LoginRefusal
 
 #include <algorithm>
 
@@ -352,7 +353,18 @@ namespace DcTestDriver
         {
             // Masterless fake-session login (the random-bot path; the driver's
             // account is not a random account, so the rotation ignores it).
-            sRandomPlayerbotMgr.AddPlayerBot(_guid, 0);
+            // CLI-GRP G1 probe 28.10.2026: a refused login is a standing refusal, said at once - with
+            // AiPlayerbot.PersistentActiveRoster.Enabled=1 the random-bot holder admits roster members only
+            // ("[PersistentRoster] AddPlayerBot fail-closed"), and the ignored result left the driver "logging in"
+            // until every plan aborted after 2 min. Not latched: the next Ensure tries again.
+            if (!sRandomPlayerbotMgr.AddPlayerBot(_guid, 0))
+            {
+                std::string const refusal = DcTestPool::LoginRefusal("test driver '" + _resolvedName + "'");
+                LOG_WARN("playerbots.dungeonclear", "TESTDRIVER {}", refusal);
+                if (why)
+                    *why = refusal;
+                return Readiness::Unavailable;
+            }
             _loginIssued = true;
             LOG_INFO("playerbots.dungeonclear", "TESTDRIVER logging in '{}' ({})",
                      _resolvedName, _guid.ToString());
