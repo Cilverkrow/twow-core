@@ -14,10 +14,13 @@ namespace ai::thread_cpu
 // the platform headers (windows.h) stay in ThreadCpuClock.cpp.
 std::uint64_t NowUs();
 
-// The part of a wall interval the thread was not on a CPU; pure (CPU time above the wall time - clock granularity - is 0).
+// The part of a wall interval the thread was not on a CPU; pure (CPU time above the wall time - clock granularity - is 0,
+// and so is a CPU clock that went back).
 inline std::uint32_t StallUs(std::uint32_t wallUs, std::uint64_t cpuStartUs, std::uint64_t cpuEndUs)
 {
-    std::uint64_t const cpu = cpuEndUs >= cpuStartUs ? cpuEndUs - cpuStartUs : 0;
+    if (cpuEndUs < cpuStartUs)
+        return 0;   // the CPU clock went back (thread migration, reset): no statement, never a false stall
+    std::uint64_t const cpu = cpuEndUs - cpuStartUs;
     return cpu >= wallUs ? 0u : std::uint32_t(wallUs - cpu);
 }
 }
