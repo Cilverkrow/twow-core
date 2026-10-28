@@ -2782,11 +2782,12 @@ AiPlayerbot.ActivityTrace = 0
 AiPlayerbot.ActivityTrace.StuckDetail = 0
 # twow-repo#601 (OB-00 28.10.2026): 1 = with ActivityTrace on, a roster bot that is idle (no active travel target) two samples in
 # a row writes one line for the episode: "[IdleDetail] state=start bot= level= map= zone= x= y= why=no_target|null_dest|none|
-# cooldown|expired dest=quest|grind|other|none quest= entry= status= status_s= left_s= reselect= purpose='' fetch=none|pending|ready
+# cooldown|expired|other dest=quest|grind|other|none quest= entry= status= status_s= left_s= reselect= purpose='' fetch=none|pending|ready
 # backoff_s= stage= free_slots= state= action='' trigger='' dropped=" - why the target is not active, the inactive target, the
 # empty-camp reselect flag, the last travel purpose and its destination search, the quest route backoff left, the quest search
 # stage, the free quest log slots and the engine's newest executed action with its trigger. The first sample of another kind
-# after it writes "[IdleDetail] state=end bot= level= idle_s= why= next=<kind> dest= quest= status= dropped=". At most 30 lines a
+# after it (or the first after a sampling gap: gap=1) writes "[IdleDetail] state=end bot= level= idle_s= why= next=<kind> dest= quest=
+# status= gap= dropped=" (only after its start line, outside the limit). At most 30 start lines a
 # minute for all bots (its own budget); dropped= counts the lines refused since the previous one. Log only, no behaviour change.
 # 0 = off (default).
 AiPlayerbot.ActivityTrace.IdleDetail = 0
