@@ -1871,6 +1871,13 @@ AiPlayerbot.ProfessionUse.TraceCooldownSeconds = 300
 # 6.297). With the mode on for the bot, a mining/skinning gather purpose also needs its tool, so a bot without a pick no
 # longer travels to an ore vein to fail there until the 15-minute no-skill-up end. The same target filter as for the
 # trainers (not hostile, a reachable spawn; P1-b2). "[ProfTravel] state=request kind=tool".
+# P1-y (OB-00 28.10.2026 after M1r run 5: the gap came twice in 210 min, two skinners went 3 h 45 min without a knife): with
+# ProfessionTraining.NearRadius set, such a bot also travels to a vendor of its missing tool with a spawn within that radius
+# without a quest gap ("request named travel target::tool vendor near" at 6.361, just above the near trainer trip 6.36), under
+# the near trainer trip's gates (open turn-in, band walk, money for the tool, P1-u home zone) and within the same hourly limit
+# as the gap tool trip; it holds 10 min, its whole time counts as hold_over_s. "[ProfTravel] state=request kind=tool ...
+# path=near"; with ProfessionTraining.Trace one "[ProfTravel] state=gate kind=tool path=near ... result=" per bot missing a tool
+# and TraceCooldownSeconds (start, not_eligible, cooldown, turn_in, band, money, no_vendor, not_near, unreachable, home_zone).
 # Mode: 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
 AiPlayerbot.ProfessionUse.ToolBuy = 0
 # twow-repo#333 P1-v (OB-00 26.10.2026, BUG FIX behind a switch: it changes the RPG travel of every bot; profile 1 only after a

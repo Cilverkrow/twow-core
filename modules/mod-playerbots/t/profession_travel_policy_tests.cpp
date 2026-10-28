@@ -173,6 +173,40 @@ int main()
             "unreachable goes before home_zone");
     }
 
+    // 11) P1-y (OB-00 28.10., M1r run 5 FAIL on the tool criterion): the near tool trip - no quest gap, a missing tool, a vendor
+    // within the radius, the gates of the near trainer trip and the hourly limit of the tool trip.
+    {
+        // After learning without the tool: the tool is missing and every gate passes - one trip starts.
+        Require(MissingTool(true, false, false, false) == kMiningPick && MissingTool(false, false, true, false) == kSkinningKnife,
+            "mining without a pick / skinning without a knife: the tool is missing");
+        Require(NearToolGateReason(true, true, false, false, true, true, true, true, true) == nullptr, "all gates passed: start");
+        // Exactly one: the request writes kToolTripValue, the hourly limit refuses the next start for 3600 s.
+        std::uint32_t const requestedAt = 5000;
+        Require(!CooldownOver(requestedAt + 1, requestedAt) && !CooldownOver(requestedAt + kTripCooldownSeconds - 1, requestedAt),
+            "within 3600 s of the request: no second trip");
+        Require(std::strcmp(NearToolGateReason(true, CooldownOver(requestedAt + 60, requestedAt), false, false, true, true, true, true,
+            true), "cooldown") == 0, "the lock refuses as cooldown");
+        Require(CooldownOver(requestedAt + kTripCooldownSeconds, requestedAt), "the lock ends after 3600 s");
+        // With the tool: none (the value returns before the gates, no gate line).
+        Require(MissingTool(true, true, false, false) == 0 && MissingTool(true, true, true, true) == 0 && MissingTool(false, false, false, false) == 0,
+            "with the tool, or without mining / skinning: nothing missing, no trip");
+        // An unreachable or hostile vendor: no trip, and the walk repeats at most once per kNearCheckSeconds (no loop).
+        Require(std::strcmp(NearToolGateReason(true, true, false, false, true, true, true, false, false), "unreachable") == 0,
+            "near but unreachable / hostile: no trip");
+        Require(!NearCheckDue(1059, 1000) && NearCheckDue(1060, 1000), "one walk per 60 s");
+        // The gate order and names of the near trainer trip; no_vendor for the trainer's no_trainer.
+        Require(std::strcmp(NearToolGateReason(false, false, true, true, false, false, false, false, false), "not_eligible") == 0, "not eligible first");
+        Require(std::strcmp(NearToolGateReason(true, true, true, false, true, true, true, true, true), "turn_in") == 0, "an open turn-in goes first");
+        Require(std::strcmp(NearToolGateReason(true, true, false, true, true, true, true, true, true), "band") == 0, "a band walk goes first");
+        Require(std::strcmp(NearToolGateReason(true, true, false, false, false, true, true, true, true), "money") == 0, "money for the tool");
+        Require(std::strcmp(NearToolGateReason(true, true, false, false, true, false, false, false, true), "no_vendor") == 0, "no vendor sells it");
+        Require(std::strcmp(NearToolGateReason(true, true, false, false, true, true, false, false, true), "not_near") == 0, "no vendor within the radius");
+        Require(std::strcmp(NearToolGateReason(true, true, false, false, true, true, true, true, false), "home_zone") == 0, "outside the zone below 10");
+        Require(std::strcmp(kNearToolCheckValue, kNearCheckValue) != 0 && std::strcmp(kNearToolResultValue, kNearResultValue) != 0 &&
+            std::strcmp(kNearToolTraceValue, kNearTraceValue) != 0 && std::strcmp(kToolTripValue, kTrainerTripValue) != 0,
+            "the near tool check keeps its own values (a bot may run both checks in one tick)");
+    }
+
     std::cout << "profession_travel_policy_tests: OK\n";
     return 0;
 }
