@@ -359,7 +359,8 @@ namespace DcTestDriver
             // until every plan aborted after 2 min. Not latched: the next Ensure tries again.
             if (!sRandomPlayerbotMgr.AddPlayerBot(_guid, 0))
             {
-                std::string const refusal = DcTestPool::LoginRefusal("test driver '" + _resolvedName + "'");
+                std::string const refusal = DcTestPool::LoginRefusal("test driver '" + _resolvedName + "'",
+                                                                         sPlayerbotAIConfig.persistentActiveRosterEnabled);
                 LOG_WARN("playerbots.dungeonclear", "TESTDRIVER {}", refusal);
                 if (why)
                     *why = refusal;
@@ -378,10 +379,12 @@ namespace DcTestDriver
     bool EnsureOnline(std::string* whyPending)
     {
         std::string why;
-        if (Ensure(&why) == Readiness::Ready)
+        Readiness const ready = Ensure(&why);
+        if (ready == Readiness::Ready)
             return true;
+        // CLI-GRP pre-review 28.10.: a standing refusal (Unavailable, e.g. a refused login) gets no "retry" hint.
         if (whyPending)
-            *whyPending = why + " — retry in a few seconds";
+            *whyPending = ready == Readiness::Unavailable ? why : why + " — retry in a few seconds";
         return false;
     }
 
