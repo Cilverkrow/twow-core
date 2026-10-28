@@ -33,7 +33,7 @@ require_order("${driver}" "                    *why = refusal;
 require_order("${job}" "        if (!sRandomPlayerbotMgr.AddPlayerBot(slot.guid, 0))" "            job->_loginRefused +=" "pool refusal recorded")
 require_order("${job}" "void DcTestRunJob::TickSpawning()
 {
-    if (!_loginRefused.empty())" "        FailSetup(DcTestPool::LoginRefusal(\"pool characters (\" + _loginRefused + \")\"));" "spawning ends on a refusal first")
+    if (!_loginRefused.empty())" "        FailSetup(DcTestPool::LoginRefusal(\"pool characters (\" + _loginRefused + \")\"," "spawning ends on a refusal first")
 string(FIND "${driver}" "            sRandomPlayerbotMgr.AddPlayerBot(_guid, 0);" ignored)
 if(NOT ignored EQUAL -1)
   message(FATAL_ERROR "login refused: the driver ignores AddPlayerBot's result again")

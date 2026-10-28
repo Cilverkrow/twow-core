@@ -882,7 +882,8 @@ void DcTestRunJob::TickSpawning()
 {
     if (!_loginRefused.empty())
     {
-        FailSetup(DcTestPool::LoginRefusal("pool characters (" + _loginRefused + ")"));
+        FailSetup(DcTestPool::LoginRefusal("pool characters (" + _loginRefused + ")",
+                                           sPlayerbotAIConfig.persistentActiveRosterEnabled));
         return;
     }
 
