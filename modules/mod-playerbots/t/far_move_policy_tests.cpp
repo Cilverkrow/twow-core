@@ -2,6 +2,7 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <string>
 
 namespace
 {
@@ -44,6 +45,16 @@ int main()
 
     Counters counters;
     Require(counters.LogDue(120) && !counters.LogDue(130) && counters.LogDue(180), "one [FarMove] line a minute");
+
+    // twow-repo#601 (OB-00 28.10.2026): the wait state for the activity trace - none without a far move, waiting up to the grace
+    // after its time (Arrive runs at the next MoveTo2 pass), overdue later.
+    Require(WaitStateOf(1000, 0) == WaitState::None, "no far move");
+    Require(WaitStateOf(1000, 1240) == WaitState::Waiting && WaitStateOf(1240, 1240) == WaitState::Waiting, "waiting up to its time");
+    Require(WaitStateOf(1240 + ArriveGraceSeconds, 1240) == WaitState::Waiting, "and up to the grace after it");
+    Require(WaitStateOf(1240 + ArriveGraceSeconds + 1, 1240) == WaitState::Overdue, "overdue after the grace");
+    Require(ArriveGraceSeconds > 10, "the grace covers the wait's longest duration (10 s)");
+    Require(std::string(WaitStateName(WaitState::None)) == "none" && std::string(WaitStateName(WaitState::Waiting)) == "waiting" &&
+        std::string(WaitStateName(WaitState::Overdue)) == "overdue", "names");
 
     std::cout << "far_move_policy_tests passed\n";
     return 0;

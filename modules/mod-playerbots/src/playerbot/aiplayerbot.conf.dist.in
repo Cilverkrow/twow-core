@@ -2763,7 +2763,11 @@ AiPlayerbot.RandomBotUpdateInterval = 500
 # idle (alive, no combat, no active target). The seconds since the last sample go to that kind; a gap over 120 s (bot
 # not updated) counts as gap. One line per bot and clock hour, "[BotActivity] bot= level= zone= hour=<unix time/3600>
 # quest= grind= grind_idle= stuck= combat= other= idle= dead= parked= gap=" (seconds) "quest_log= quest_done=" (occupied
-# quest log slots of 20 and the complete ones not yet handed in, at the end of the hour), and one line per minute,
+# quest log slots of 20 and the complete ones not yet handed in, at the end of the hour) "far_wait=" (twow-repo#601, OB-00
+# 28.10.2026: a roster bot on a RosterFarMove stands for the walking time and is then moved to its target - such a wait is
+# travel, its target's kind, not stuck; far_wait= repeats those seconds, so the stuck of older runs is stuck + far_wait), and
+# one line per far-move arrival death, "[FarMoveDeath] bot= level= map= zone= x= y= after_farmove=1 arrived_s= cohort=",
+# and one line per minute,
 # "[BotActivityMin] L10-14=<samples>/<quest>/<grind>/<grind_idle>/<stuck>/<combat>/<other>/<idle>/<dead>/<parked> ..."
 # per 5-level band (empty bands left out). Log only, no behaviour change; at most one line per roster bot and hour plus
 # one a minute. 0 = off (default).
@@ -2773,8 +2777,19 @@ AiPlayerbot.ActivityTrace = 0
 # status= status_s= left_s= dist= moved= move_retries= motion= moving= state= action='' trigger='' dropped=" - the travel
 # target (quest, entry, yards to its point), the travel status with the seconds held and left, the move retries, the movement
 # generator, and the engine's newest executed action with the trigger that pushed it. At most 30 lines a minute for all bots;
-# dropped= counts the lines refused since the previous one. Log only, no behaviour change. 0 = off (default).
+# dropped= counts the lines refused since the previous one; far_wait=none|overdue the bot's far move (overdue: one that was
+# never ended). Log only, no behaviour change. 0 = off (default).
 AiPlayerbot.ActivityTrace.StuckDetail = 0
+# twow-repo#601 (OB-00 28.10.2026): 1 = with ActivityTrace on, a roster bot that is idle (no active travel target) two samples in
+# a row writes one line for the episode: "[IdleDetail] state=start bot= level= map= zone= x= y= why=no_target|null_dest|none|
+# cooldown|expired dest=quest|grind|other|none quest= entry= status= status_s= left_s= reselect= purpose='' fetch=none|pending|ready
+# backoff_s= stage= free_slots= state= action='' trigger='' dropped=" - why the target is not active, the inactive target, the
+# empty-camp reselect flag, the last travel purpose and its destination search, the quest route backoff left, the quest search
+# stage, the free quest log slots and the engine's newest executed action with its trigger. The first sample of another kind
+# after it writes "[IdleDetail] state=end bot= level= idle_s= why= next=<kind> dest= quest= status= dropped=". At most 30 lines a
+# minute for all bots (its own budget); dropped= counts the lines refused since the previous one. Log only, no behaviour change.
+# 0 = off (default).
+AiPlayerbot.ActivityTrace.IdleDetail = 0
 # twow-repo#541: 1 = one [WorldBots] line per minute with what the bot manager cost the serial world
 # thread (UpdateSessions, ProcessBot loop incl. logins, rest; max pass, share in per mille, logins,
 # teleport ACK calls). Log only; persistent roster and free random-bot path. 0 = off (default).

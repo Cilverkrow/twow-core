@@ -33,6 +33,25 @@ inline Step Next(std::uint64_t now, std::uint64_t pendingAt, bool sameTarget)
     return now >= pendingAt ? Step::Arrive : Step::Wait;
 }
 
+// twow-repo#601 (OB-00 28.10.2026, cli-pathfinding/far-travel-stuck/CAUSE.md): the bot's far move for the activity trace and the
+// stall checks (PlayerbotAI::IsFarMovePending). Arrive runs at the first MoveTo2 pass after pendingAt (the wait's duration is at
+// most 10 s), so a far move is waiting up to ArriveGraceSeconds past it; later it is overdue (no MoveTo2 came to end it).
+constexpr std::uint32_t ArriveGraceSeconds = 15;
+
+enum class WaitState : std::uint8_t { None = 0, Waiting, Overdue };
+
+inline WaitState WaitStateOf(std::uint64_t now, std::uint64_t pendingAt)
+{
+    if (!pendingAt)
+        return WaitState::None;
+    return now <= pendingAt + ArriveGraceSeconds ? WaitState::Waiting : WaitState::Overdue;
+}
+
+inline char const* WaitStateName(WaitState state)
+{
+    return state == WaitState::Waiting ? "waiting" : state == WaitState::Overdue ? "overdue" : "none";
+}
+
 // [FarMove] counters, one line a minute (shared by all map threads).
 struct Counters
 {

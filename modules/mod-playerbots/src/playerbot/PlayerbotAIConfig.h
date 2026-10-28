@@ -603,6 +603,7 @@ public:
     bool worldBotsTrace = false;  // twow-repo#541: [WorldBots] per-minute world-thread cost line
     bool activityTrace = false;  // twow-repo#601 R01 L1: AiPlayerbot.ActivityTrace - [BotActivity] per roster bot and hour, [BotActivityMin]
     bool activityTraceStuckDetail = false;  // twow-repo#601: AiPlayerbot.ActivityTrace.StuckDetail - [StuckDetail] per stuck episode
+    bool activityTraceIdleDetail = false;  // twow-repo#601: AiPlayerbot.ActivityTrace.IdleDetail - [IdleDetail] per idle episode (start, end)
     bool botUpdateTrace = false;  // twow-repo#541: [BotUpdate] per-minute distribution of PlayerbotAI::UpdateAI wall time
     bool botUpdateTraceTick = false;  // twow-repo#597 (TICK-01): [BotUpdateSlow] ends with " tick=<world loop> region=<map>.<inst>"
     bool worldBotsHookTrace = false;  // twow-repo#597 (TICK-01): [WorldBots] ends with hook_ms= remote_ms= ahbot_ms= dungeonclear_ms=
