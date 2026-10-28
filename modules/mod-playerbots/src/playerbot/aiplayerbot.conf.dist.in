@@ -3154,6 +3154,14 @@ AiPlayerbot.Rotation.MeleeFleeBreak = 0
 # by "outnumbered" ended in death, against 3-11 % of their kite episodes; FleeMultiplier's 0.01 did not stop that loop. Only
 # "outnumbered" is held, the kite triggers are untouched. held_ranged in the [MeleeFleeBreak] line. 0 = off (default).
 AiPlayerbot.Rotation.MeleeFleeBreak.Ranged = 0
+# twow-repo#602 ROT-01 failure census (OB-00 27.10.2026, ON by default, 0 = rollback): "melee", the default action of the combat
+# strategies, runs whenever every higher action is impossible (each GCD after an instant, each rage gap). While the bot already
+# attacks its current target it only repeated Attack() (selection, target values, pet, facing, attack emote) and then failed in the
+# core (M1r run 4: druid 27,658 FAILED against 1 OK, AI passes every ~50 ms in the gap). With the switch it is not useful then, if
+# the bot faces the target and its pet is on it; otherwise the old path runs (it turns the bot and sends the pet). The engine goes on
+# exactly as before. "[MeleeSkip] mode= skipped=" once a minute with the mode on.
+# 0 = as before, 1 = every bot (default), 2 = only cohort B (odd low guid). Any other value acts like 1.
+AiPlayerbot.Rotation.MeleeSkipAttacking = 1
 # twow-repo#602 ROT-01 (c) (hunter + adds analysis 25.10.2026, BEHAVIOUR CHANGE, enable only after A/B + owner go): the flee of a
 # bot without a real master is a chase of the enemy at the flee distance. Its angle was the bot's world angle to the enemy, but the
 # core adds the chase angle to the ENEMY's facing, so the flee point lay on an effectively random side of the mob (often across it
