@@ -131,11 +131,13 @@ bool DcTestPlanManager::Start(DcTestPlan::Spec spec, Player* gm, std::string* ms
              gm ? gm->GetName() : "<pending test driver>");
 
     if (msg)
-        *msg = Acore::StringFormat("Test plan started: {} {}{} total={} concurrent={} gear={}{}{}",
+        *msg = Acore::StringFormat("Test plan started: {} {}{} total={} concurrent={} gear={}{}{}{}",
                                    spec.planId, spec.dungeonToken,
                                    spec.heroic ? std::string(" (heroic)") : std::string(),
                                    spec.total, spec.concurrent,
                                    DcTestGearTiers::Describe(spec.gear),
+                                   spec.tankClass ? Acore::StringFormat(" tankClass={}", uint32(spec.tankClass))
+                                                  : std::string(),
                                    spec.seedBase ? Acore::StringFormat(" seedBase={}", spec.seedBase)
                                                  : std::string(),
                                    gm ? std::string()

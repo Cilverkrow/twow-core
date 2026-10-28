@@ -97,7 +97,8 @@ namespace DcTestComp
     //
     // CLI-GRP G2 (OB-00 28.10.2026, warrior-prot vs paladin-prot): tankClass != 0 forces the tank seat to that
     // kTankPool class (`.dc test plan start ... tank=<class>`). The PRNG still consumes the tank draw, so the seed's
-    // stream position is the same; the other seats exclude the forced class as they exclude a drawn one.
+    // stream position is the same; the other seats exclude the forced class as they exclude a drawn one. Replay of a
+    // forced run needs both: the run's compSeed and the plan summary's requested.tankClass (comp[].class shows the result).
     std::array<Slot, kPartySize> BuildComp(std::uint32_t seed, std::uint8_t tankClass = 0);
 
     // The class id of a tank-seat class by name ("warrior", "paladin", ...), 0 when the name is no class of
