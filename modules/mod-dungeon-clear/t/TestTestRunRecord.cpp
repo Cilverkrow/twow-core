@@ -345,11 +345,12 @@ TEST(DcTestRunRecordTest, TankMeasuresSerialize)
     r.aggroCombatTicks = 300;
     r.aggroLossTicks = 21;
     r.aggroLossEvents = 4;
+    r.aggroTankDownTicks = 9;
     std::string const line = ToJsonl(r);
     EXPECT_NE(line.find("\"tankStrategy\":true"), std::string::npos);
     EXPECT_NE(line.find("\"via\":\"mask\",\"engageT\":101}"), std::string::npos);
     EXPECT_NE(line.find("\"combatTicks\":40,\"aggroLossTicks\":6}"), std::string::npos);
-    EXPECT_NE(line.find("\"aggro\":{\"combatTicks\":300,\"lossTicks\":21,\"lossEvents\":4}"), std::string::npos);
+    EXPECT_NE(line.find("\"aggro\":{\"runCombatTicks\":300,\"runLossTicks\":21,\"runLossEvents\":4,\"tankDownTicks\":9}"), std::string::npos);
 }
 
 TEST(DcTestRunRecordTest, TankMeasuresDefaultToZeroAndAreAlwaysPresent)
@@ -357,7 +358,7 @@ TEST(DcTestRunRecordTest, TankMeasuresDefaultToZeroAndAreAlwaysPresent)
     std::string const line = ToJsonl(SampleRecord());
     EXPECT_NE(line.find("\"tankStrategy\":false"), std::string::npos);
     EXPECT_NE(line.find("\"engageT\":0"), std::string::npos);   // a kill never seen in combat
-    EXPECT_NE(line.find("\"aggro\":{\"combatTicks\":0,\"lossTicks\":0,\"lossEvents\":0}"), std::string::npos);
+    EXPECT_NE(line.find("\"aggro\":{\"runCombatTicks\":0,\"runLossTicks\":0,\"runLossEvents\":0,\"tankDownTicks\":0}"), std::string::npos);
 }
 
 TEST(DcAggroTallyTest, CountsCombatLossTicksAndEvents)
@@ -375,4 +376,17 @@ TEST(DcAggroTallyTest, CountsCombatLossTicksAndEvents)
     EXPECT_EQ(t.combatTicks, 6u);
     EXPECT_EQ(t.lossTicks, 4u);
     EXPECT_EQ(t.lossEvents, 3u);
+}
+
+TEST(DcAggroTallyTest, TankDownIsNeverLoss)
+{
+    DcAggro::Tally t;
+    t.Observe(true, true, true);    // tank up, mob on the healer: loss, event 1
+    t.Observe(true, true, false);   // the tank died: nobody holds aggro by design - tank down, no loss
+    t.Observe(true, true, false);
+    t.Observe(true, true, true);    // tank rezzed and still losing: a new event
+    EXPECT_EQ(t.combatTicks, 4u);
+    EXPECT_EQ(t.tankDownTicks, 2u);
+    EXPECT_EQ(t.lossTicks, 2u);
+    EXPECT_EQ(t.lossEvents, 2u);
 }

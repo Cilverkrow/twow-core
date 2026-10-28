@@ -207,6 +207,7 @@ namespace DcTestRunRecord
         std::uint32_t aggroCombatTicks = 0;
         std::uint32_t aggroLossTicks = 0;
         std::uint32_t aggroLossEvents = 0;
+        std::uint32_t aggroTankDownTicks = 0;   // combat with the tank down (dead / off the map): no loss counted
         std::vector<StatusEntry> statusTimeline;
         std::vector<PauseEntry> pauses;
         std::uint32_t finalMap = 0;
