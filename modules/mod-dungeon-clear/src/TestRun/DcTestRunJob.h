@@ -22,6 +22,7 @@
 #include "TestRun/DcTestRunRecord.h"
 #include "TestRun/DcTestRunVerdict.h"
 #include "TestRun/DcWipeContext.h"
+#include "TestRun/DcAggroTally.h"   // CLI-GRP: schema 13 tank measures
 #include "Ai/Dungeon/DungeonClear/Util/DcRunRobustPolicy.h"   // #708 follow-up: the geo fence regroup throttle
 
 class Player;
@@ -420,6 +421,14 @@ private:
     std::uint32_t _pullSeq = 0;
     bool _pullOpen = false;
     DcTestRunRecord::PullEntry _pullEntry;
+    // CLI-GRP 28.10.2026 (schema 13): aggro loss over the run (DcAggroTally.h), the start of the current engagement per
+    // boss entry (for BossKill::engageT) and the boss of the last sample, and whether comp[].tankStrategy was read.
+    DcAggro::Tally _aggro;
+    std::unordered_map<uint32, uint32> _bossEngageS;
+    std::unordered_map<uint32, uint32> _bossLastSeenS;   // last sample with that roster boss (engagement grace)
+    static constexpr uint32 kEngageGraceS = 10;
+    ObjectGuid _aggroTankGuid;                            // the tank seat (slot with role "tank"), resolved once
+    bool _tankStrategyRead = false;
 
     bool _wasPaused = false;
 

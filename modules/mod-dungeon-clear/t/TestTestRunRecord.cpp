@@ -9,6 +9,7 @@
 #include <string>
 
 #include "TestRun/DcTestRunRecord.h"
+#include "TestRun/DcAggroTally.h"
 
 using DcTestRunRecord::CompEntry;
 using DcTestRunRecord::EscapeJson;
@@ -176,9 +177,9 @@ TEST(DcTestRunRecordTest, BossRosterSerializesInProgressionOrder)
               std::string::npos);
 }
 
-TEST(DcTestRunRecordTest, SchemaIsTwelve)
+TEST(DcTestRunRecordTest, SchemaIsThirteen)
 {
-    EXPECT_NE(ToJsonl(SampleRecord()).find("\"schema\":12"), std::string::npos);
+    EXPECT_NE(ToJsonl(SampleRecord()).find("\"schema\":13"), std::string::npos);
 }
 
 // The gear ceiling a run was rolled to. Two runs of the same dungeon are only
@@ -327,4 +328,65 @@ TEST(DcTestRunRecordTest, DefaultCapturePath)
     // The env override is exercised operationally; here just pin the default.
     if (!std::getenv("DC_TESTRUNS_FILE"))
         EXPECT_EQ(DcTestRunRecord::CapturePath(), "dc_testruns.jsonl");
+}
+
+// ---- schema 13: tank measures (CLI-GRP 28.10.2026) -------------------------------
+
+TEST(DcTestRunRecordTest, TankMeasuresSerialize)
+{
+    Record r = SampleRecord();
+    r.comp[0].tankStrategy = true;
+    r.bossTimeline[0].engageT = 101;
+    DcTestRunRecord::PullEntry p;
+    p.t = 90;
+    p.combatTicks = 40;
+    p.aggroLossTicks = 6;
+    r.pulls.push_back(p);
+    r.aggroCombatTicks = 300;
+    r.aggroLossTicks = 21;
+    r.aggroLossEvents = 4;
+    r.aggroTankDownTicks = 9;
+    std::string const line = ToJsonl(r);
+    EXPECT_NE(line.find("\"tankStrategy\":true"), std::string::npos);
+    EXPECT_NE(line.find("\"via\":\"mask\",\"engageT\":101}"), std::string::npos);
+    EXPECT_NE(line.find("\"combatTicks\":40,\"aggroLossTicks\":6}"), std::string::npos);
+    EXPECT_NE(line.find("\"aggro\":{\"runCombatTicks\":300,\"runLossTicks\":21,\"runLossEvents\":4,\"tankDownTicks\":9}"), std::string::npos);
+}
+
+TEST(DcTestRunRecordTest, TankMeasuresDefaultToZeroAndAreAlwaysPresent)
+{
+    std::string const line = ToJsonl(SampleRecord());
+    EXPECT_NE(line.find("\"tankStrategy\":false"), std::string::npos);
+    EXPECT_NE(line.find("\"engageT\":0"), std::string::npos);   // a kill never seen in combat
+    EXPECT_NE(line.find("\"aggro\":{\"runCombatTicks\":0,\"runLossTicks\":0,\"runLossEvents\":0,\"tankDownTicks\":0}"), std::string::npos);
+}
+
+TEST(DcAggroTallyTest, CountsCombatLossTicksAndEvents)
+{
+    DcAggro::Tally t;
+    t.Observe(false, false);   // out of combat
+    t.Observe(false, true);    // an attacker without combat counts nothing
+    t.Observe(true, false);    // the tank holds
+    t.Observe(true, true);     // a mob on the healer: event 1
+    t.Observe(true, true);     // still on the healer: no new event
+    t.Observe(true, false);    // back on the tank
+    t.Observe(true, true);     // lost again: event 2
+    t.Observe(false, false);
+    t.Observe(true, true);     // a new fight that opens on the dps: event 3
+    EXPECT_EQ(t.combatTicks, 6u);
+    EXPECT_EQ(t.lossTicks, 4u);
+    EXPECT_EQ(t.lossEvents, 3u);
+}
+
+TEST(DcAggroTallyTest, TankDownIsNeverLoss)
+{
+    DcAggro::Tally t;
+    t.Observe(true, true, true);    // tank up, mob on the healer: loss, event 1
+    t.Observe(true, true, false);   // the tank died: nobody holds aggro by design - tank down, no loss
+    t.Observe(true, true, false);
+    t.Observe(true, true, true);    // tank rezzed and still losing: a new event
+    EXPECT_EQ(t.combatTicks, 4u);
+    EXPECT_EQ(t.tankDownTicks, 2u);
+    EXPECT_EQ(t.lossTicks, 2u);
+    EXPECT_EQ(t.lossEvents, 2u);
 }

@@ -210,6 +210,12 @@ add_test(NAME dungeon_clear_stay_dead_contract
                  "-DDC_SOURCE_DIR=${DC_MOD_PATH}"
                  -P "${DC_MOD_PATH}/t/stay_dead_contract.cmake")
 
+# CLI-GRP 28.10.2026: the record's tank measures (schema 13; rules DcAggroTally.h / TestTestRunRecord).
+add_test(NAME dungeon_clear_tank_measures_contract
+         COMMAND "${CMAKE_COMMAND}"
+                 "-DDC_SOURCE_DIR=${DC_MOD_PATH}"
+                 -P "${DC_MOD_PATH}/t/test_tank_measures_contract.cmake")
+
 # CLI-GRP G1 probe 28.10.2026: a refused harness login (persistent roster on) is said at once (text: TestTestPoolPolicy).
 add_test(NAME dungeon_clear_login_refused_contract
          COMMAND "${CMAKE_COMMAND}"
