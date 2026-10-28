@@ -45,6 +45,56 @@ int main()
     Counters counters;
     Require(counters.LogDue(120) && !counters.LogDue(130) && counters.LogDue(180), "one [FarMove] line a minute");
 
+    // twow-repo#601 cand4-B (RosterFarMove.ArriveSafe): the core's proximity aggro at the arrival point, without LOS.
+    Require(Threatens(20.0f, 18.0f, 0.0f, false), "inside the aggro radius plus the margin (18 + 5)");
+    Require(Threatens(23.0f, 18.0f, 2.9f, false), "at the margin edge, within the z range");
+    Require(!Threatens(23.1f, 18.0f, 0.0f, false), "beyond radius + margin");
+    Require(!Threatens(10.0f, 18.0f, 3.5f, false), "a walker beyond its z range ignores the bot");
+    Require(Threatens(10.0f, 18.0f, 3.5f, true), "a flier keeps its z range");
+    Require(!Threatens(1.0f, 0.0f, 0.0f, false), "aggro radius 0: never (aggro rate 0, disabled)");
+    Require(ArriveSafeSearchYards >= 45.0f + ArriveSafeMarginYards, "the search covers the largest aggro radius");
+    Require(ArriveSafeSteps * ArriveSafeStepYards == 120.0f, "at most 4 x 30 yd further back");
+    // the height difference as the core counts it (GetDistanceZ: minus both bounding radii)
+    Require(AggroDz(4.0f, 1.5f) == 2.5f && AggroDz(-4.0f, 1.5f) == 2.5f, "4 yd above or below minus 1.5 yd radii");
+    Require(AggroDz(1.0f, 1.5f) == 0.0f, "never below 0");
+    Require(Threatens(10.0f, 18.0f, AggroDz(4.0f, 1.5f), false), "a hillside mob 4 yd up still aggroes, as in the core");
+    // the decline: 8.36 (until 0) until the target changes, ArriveSafe until its time
+    Require(DeclineActive(0, 5000), "8.36 decline: no time limit");
+    Require(DeclineActive(1120, 1000) && !DeclineActive(1120, 1120), "ArriveSafe decline lapses at its time");
+    Require(ArriveSafeDeclineSeconds == 120, "two minutes for the walk of up to 180 yd");
+
+    // The choice: the first free valid point; none free = the farthest valid one; none valid = keep the caller's point.
+    {
+        ArriveCandidate c[5];
+        c[0] = { true, 0 };
+        ArriveChoice ch = ChooseArrival(c, 1);
+        Require(ch.outcome == ArriveOutcome::Kept && ch.index == 0, "first point free: kept");
+        c[0] = { true, 3 }; c[1] = { false, 0 }; c[2] = { true, 0 };
+        ch = ChooseArrival(c, 3);
+        Require(ch.outcome == ArriveOutcome::Shifted && ch.index == 2, "an invalid step is skipped, the next free one taken");
+        c[0] = { true, 3 }; c[1] = { true, 1 }; c[2] = { true, 2 }; c[3] = { false, 0 }; c[4] = { true, 1 };
+        ch = ChooseArrival(c, 5);
+        Require(ch.outcome == ArriveOutcome::Unsafe && ch.index == 4, "none free: the fewest threats, the farthest of equal ones");
+        c[0] = { true, 1 }; c[1] = { true, 4 }; c[2] = { true, 5 };
+        ch = ChooseArrival(c, 3);
+        Require(ch.outcome == ArriveOutcome::Unsafe && ch.index == 0, "a line across a bigger camp: not into it");
+        c[0] = { true, 1 }; c[1] = { false, 0 }; c[2] = { false, 0 };
+        ch = ChooseArrival(c, 3);
+        Require(ch.outcome == ArriveOutcome::Unsafe && ch.index == 0, "only the first is valid and not free: it stays (unsafe)");
+        c[0] = { false, 0 };
+        ch = ChooseArrival(c, 1);
+        Require(ch.outcome == ArriveOutcome::None && ch.index == 0, "nothing valid: none, the caller's point");
+    }
+
+    // The cost counters: sum and maximum.
+    {
+        ArriveSafeCounters s;
+        s.NoteCost(40);
+        s.NoteCost(120);
+        s.NoteCost(80);
+        Require(s.checkUs.load() == 240 && s.checkUsMax.load() == 120, "cost sum and maximum");
+    }
+
     std::cout << "far_move_policy_tests passed\n";
     return 0;
 }

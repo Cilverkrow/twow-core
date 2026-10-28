@@ -33,6 +33,10 @@
 #include "playerbot/MeleeFleeBreakPolicy.h"   // twow-repo#602 (MFB-W): the break's flee dispatch record
 #include "playerbot/FleeAwayPolicy.h"   // twow-repo#602 (c): Rotation.FleeAway
 #include "playerbot/TeleportCastWait.h"   // twow-repo#333 finding 4: hearthstone / teleport cast wait
+#include "Maps/MapManager.h"   // twow-repo#601 cand4-B (RosterFarMove.ArriveSafe): the arrival point's continent region
+#include "Maps/GridNotifiers.h"
+#include "Maps/GridNotifiersImpl.h"
+#include "Maps/CellImpl.h"
 
 using namespace ai;
 
@@ -81,6 +85,111 @@ bool FarMoveArrivalPoint(Player* bot, WorldPosition const& from, WorldPosition c
 
     out = point;
     return true;
+}
+
+// twow-repo#601 cand4-B (AiPlayerbot.RosterFarMove.ArriveSafe, FarMovePolicy.h): the creatures around point that would attack the
+// bot there at once - the core's proximity aggro (AggressorAI / CreatureEventAI MoveInLineOfSight) without the LOS test.
+class ArriveThreatCheck
+{
+public:
+    ArriveThreatCheck(Player* bot, WorldPosition const& point) : bot(bot), point(point) {}
+
+    bool operator()(Creature* creature)
+    {
+        if (!creature->IsAlive() || creature->IsNeutralToAll() || creature->GetVictim() || !creature->CanInitiateAttack() ||
+            !creature->IsHostileTo(bot))
+            return false;
+        float const dx = creature->GetPositionX() - point.getX();
+        float const dy = creature->GetPositionY() - point.getY();
+        float const dz = far_move::AggroDz(creature->GetPositionZ() - point.getZ(),
+            creature->GetObjectBoundingRadius() + bot->GetObjectBoundingRadius());
+        return far_move::Threatens(std::sqrt(dx * dx + dy * dy), creature->GetAttackDistance(bot), dz, creature->CanFly());
+    }
+
+private:
+    Player* bot;
+    WorldPosition const& point;
+};
+
+// The creatures that would attack the bot at point, -1 when the point's grid is not loaded in the bot's map (no creature to see
+// there yet) or the point lies in another continent region (Continents.Instanciate: each region is its own Map, updated by
+// another thread, whose camp creatures a border grid of the bot's map does not hold - a false "free").
+int32 ArriveThreats(Player* bot, WorldPosition const& point)
+{
+    Map* const map = bot->GetMap();
+    if (!map || point.getMapId() != bot->GetMapId() || !map->IsLoaded(point.getX(), point.getY()))
+        return -1;
+    if (sMapMgr.GetContinentInstanceId(point.getMapId(), point.getX(), point.getY()) != map->GetInstanceId())
+        return -1;
+    std::list<Creature*> threats;
+    ArriveThreatCheck check(bot, point);
+    MaNGOS::CreatureListSearcher<ArriveThreatCheck> searcher(threats, check);
+    Cell::VisitGridObjects(point.getX(), point.getY(), map, searcher, far_move::ArriveSafeSearchYards);
+    return int32(threats.size());
+}
+
+// The arrival right before the teleport: arrive (chosen at the start of the far move, up to 240 s ago) and up to
+// ArriveSafeSteps points ArriveSafeStepYards further back each (navmesh, danger map, grid loaded, same region) - the first one
+// where no creature would attack the bot at once, else the one with the fewest threats (the farthest of equal ones). arrive
+// itself when it cannot be checked (unchecked). The steps stop at the route start (a point there is no arrival). walkRest: a point further back was taken - the caller lets the bot walk the rest to this target
+// (a point beyond ReactDistance would otherwise start the next far move back into the camp).
+WorldPosition SafeFarMoveArrival(Player* bot, WorldPosition const& from, WorldPosition const& to, WorldPosition const& arrive,
+    bool& walkRest)
+{
+    walkRest = false;
+    far_move::ArriveSafeCounters& counters = far_move::SharedArriveSafeCounters();
+    std::uint64_t const startUs = ai::bot_update::NowUs();
+    int32 const first = ArriveThreats(bot, arrive);
+    if (first < 0)
+    {
+        counters.unchecked.fetch_add(1, std::memory_order_relaxed);
+        counters.NoteCost(uint32(ai::bot_update::SinceUs(startUs)));
+        return arrive;
+    }
+
+    far_move::ArriveCandidate candidates[far_move::ArriveSafeSteps + 1];
+    WorldPosition points[far_move::ArriveSafeSteps + 1];
+    candidates[0].valid = true;
+    candidates[0].threats = uint32(first);
+    points[0] = arrive;
+    // the steps go back from the first point's own distance to the target (ArriveBackYards, or ArriveAltYards after a danger cell)
+    float const baseBack = std::sqrt((arrive.getX() - to.getX()) * (arrive.getX() - to.getX()) + (arrive.getY() - to.getY()) * (arrive.getY() - to.getY()));
+    float const routeLength = std::sqrt((from.getX() - to.getX()) * (from.getX() - to.getX()) + (from.getY() - to.getY()) * (from.getY() - to.getY()));
+    std::uint32_t count = 1;
+    if (first)
+    {
+        for (; count <= far_move::ArriveSafeSteps; ++count)
+        {
+            float const back = baseBack + far_move::ArriveSafeStepYards * float(count);
+            if (back >= routeLength)
+                break;
+            WorldPosition point;
+            if (FarMoveArrivalPoint(bot, from, to, back, point))
+            {
+                int32 const threats = ArriveThreats(bot, point);
+                candidates[count].valid = threats >= 0;
+                candidates[count].threats = threats > 0 ? uint32(threats) : 0u;
+                points[count] = point;
+                if (threats == 0)
+                {
+                    ++count;
+                    break;
+                }
+            }
+        }
+    }
+
+    far_move::ArriveChoice const choice = far_move::ChooseArrival(candidates, count);
+    counters.checked.fetch_add(1, std::memory_order_relaxed);
+    switch (choice.outcome)
+    {
+        case far_move::ArriveOutcome::Kept: counters.kept.fetch_add(1, std::memory_order_relaxed); break;
+        case far_move::ArriveOutcome::Shifted: counters.shifted.fetch_add(1, std::memory_order_relaxed); break;
+        default: counters.unsafe.fetch_add(1, std::memory_order_relaxed); break;
+    }
+    counters.NoteCost(uint32(ai::bot_update::SinceUs(startUs)));
+    walkRest = choice.index > 0;
+    return points[choice.index];
 }
 
 // twow-repo#575 (PATH-01 #1, AiPlayerbot.Path.RouteFailDetail): one line per failed node route search within the minute's
@@ -2077,7 +2186,8 @@ bool MovementAction::MoveTo2(const WorldPosition& endPos, bool idle, bool react,
         far_move::Counters& counters = far_move::SharedCounters();
         // Hotfix 8.36: a target without a safe arrival point is walked until the target changes.
         bool const declined = lastMove.farMoveDeclinedSet &&
-            lastMove.farMoveDeclined.getMapId() == endPos.getMapId() && lastMove.farMoveDeclined.distance(endPos) <= far_move::SameTargetYards;
+            lastMove.farMoveDeclined.getMapId() == endPos.getMapId() && lastMove.farMoveDeclined.distance(endPos) <= far_move::SameTargetYards &&
+            far_move::DeclineActive(uint64(lastMove.farMoveDeclinedUntil), uint64(time(nullptr)));   // twow-repo#601 cand4-B: an ArriveSafe decline lapses
         if (farDistance > sPlayerbotAIConfig.reactDistance && !declined && !ai->HasPlayerNearby(farStart) && !ai->HasPlayerNearby(endPos) &&
             !(sPlayerbotAIConfig.rosterFarMoveWatchRoute && FarMoveRouteWatched(farStart, endPos)))
         {
@@ -2094,8 +2204,30 @@ bool MovementAction::MoveTo2(const WorldPosition& endPos, bool idle, bool react,
                 uint32 const arriveWalk = counters.arriveWalk.exchange(0, std::memory_order_relaxed);
                 uint32 const arriveDeaths = counters.arriveDeaths.exchange(0, std::memory_order_relaxed);
                 if (started || retargeted || arrived || watched || arriveAlt || arriveWalk || arriveDeaths)
-                    sLog.outBasic("[FarMove] started=%u retargeted=%u arrived=%u watched=%u arrive_alt=%u arrive_walk=%u arrive_deaths=%u",
-                        started, retargeted, arrived, watched, arriveAlt, arriveWalk, arriveDeaths);
+                {
+                    // twow-repo#601 cand4-B (AiPlayerbot.RosterFarMove.ArriveSafe): with the switch the line carries the arrival check
+                    // (checked / kept / shifted / unsafe / unchecked and its cost); off, the same line as before.
+                    std::string safe;
+                    if (sPlayerbotAIConfig.rosterFarMoveArriveSafe)
+                    {
+                        far_move::ArriveSafeCounters& s = far_move::SharedArriveSafeCounters();
+                        // the outcomes before checked (the writer counts checked first), so kept + shifted + unsafe <= checked
+                        uint32 const kept = s.kept.exchange(0, std::memory_order_relaxed);
+                        uint32 const shifted = s.shifted.exchange(0, std::memory_order_relaxed);
+                        uint32 const unsafe = s.unsafe.exchange(0, std::memory_order_relaxed);
+                        uint32 const checked = s.checked.exchange(0, std::memory_order_relaxed);
+                        uint32 const unchecked = s.unchecked.exchange(0, std::memory_order_relaxed);
+                        uint64 const checkUs = s.checkUs.exchange(0, std::memory_order_relaxed);
+                        uint32 const calls = checked + unchecked;
+                        char buf[200];
+                        snprintf(buf, sizeof(buf), " safe_checked=%u safe_kept=%u safe_shifted=%u safe_unsafe=%u safe_unchecked=%u check_us_avg=%u check_us_max=%u",
+                            checked, kept, shifted, unsafe, unchecked, calls ? uint32(checkUs / calls) : 0u,
+                            s.checkUsMax.exchange(0, std::memory_order_relaxed));
+                        safe = buf;
+                    }
+                    sLog.outBasic("[FarMove] started=%u retargeted=%u arrived=%u watched=%u arrive_alt=%u arrive_walk=%u arrive_deaths=%u%s",
+                        started, retargeted, arrived, watched, arriveAlt, arriveWalk, arriveDeaths, safe.c_str());
+                }
             }
 
             if (step == far_move::Step::Start)
@@ -2117,6 +2249,7 @@ bool MovementAction::MoveTo2(const WorldPosition& endPos, bool idle, bool react,
                         counters.arriveWalk.fetch_add(1, std::memory_order_relaxed);
                         lastMove.farMoveDeclined = endPos;
                         lastMove.farMoveDeclinedSet = true;
+                        lastMove.farMoveDeclinedUntil = 0;   // twow-repo#601 cand4-B: the 8.36 decline holds until the target changes
                         lastMove.farMoveAt = 0;
                         useArrive = false;
                     }
@@ -2147,10 +2280,24 @@ bool MovementAction::MoveTo2(const WorldPosition& endPos, bool idle, bool react,
             }
             else
             {
+                // twow-repo#601 cand4-B (AiPlayerbot.RosterFarMove.ArriveSafe, FarMovePolicy.h): the arrival point (ArriveBackYards > 0)
+                // is checked now, right before the teleport - a point where creatures would attack the bot at once is given up for
+                // one further back.
+                bool walkRest = false;
+                if (lastMove.farMoveArriveSet && ai::cohort::Applies(sPlayerbotAIConfig.rosterFarMoveArriveSafe, bot->GetGUIDLow()))
+                    lastMove.farMoveArrive = SafeFarMoveArrival(bot, farStart, endPos, lastMove.farMoveArrive, walkRest);
                 WorldPosition const arrive = lastMove.farMoveArriveSet ? lastMove.farMoveArrive : endPos;
                 lastMove.farMoveArriveSet = false;
                 lastMove.clear();
                 lastMove.farMoveAt = 0;
+                if (walkRest)
+                {
+                    // the bot walks the rest to this target and pulls on its own; the decline lapses after ArriveSafeDeclineSeconds, so
+                    // a bot that died there far-moves to the same target again after its corpse run
+                    lastMove.farMoveDeclined = endPos;
+                    lastMove.farMoveDeclinedSet = true;
+                    lastMove.farMoveDeclinedUntil = now + far_move::ArriveSafeDeclineSeconds;
+                }
                 counters.arrived.fetch_add(1, std::memory_order_relaxed);
                 lastMove.farMoveArrivedAt = now;
                 // twow-repo#595 P4 S0 (AiPlayerbot.Shortcut.Trace): counted only, the teleport below is unchanged.

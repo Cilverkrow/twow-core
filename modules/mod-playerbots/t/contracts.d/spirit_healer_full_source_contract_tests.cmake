@@ -39,7 +39,7 @@ read_source("strategy/actions/ReviveFromCorpseAction.cpp" revive)
 require_text("${dist}" "\nAiPlayerbot.Revive.SpiritHealerFull = 1\n" "dist key, default 1")
 require_text("${config_h}" "uint32 reviveSpiritHealerFull = 1;" "config member, default 1")
 require_text("${config_cpp}" "reviveSpiritHealerFull = config.GetIntDefault(\"AiPlayerbot.Revive.SpiritHealerFull\", 1);   // owner order 27.10.2026\n    if (reviveSpiritHealerFull > 2)\n        reviveSpiritHealerFull = 1;" "config read, > 2 = the default 1")
-require_text("${config_cpp}" "            {\"QuestRescue.KeepRequestWhenFull\", Value(questRescueKeepRequestWhenFull)},\n            {\"Revive.SpiritHealerFull\", Value(reviveSpiritHealerFull)},\n            {\"Rotation.CastLosGate\"" "parsed mode in [ConfigEcho], sorted (owner rule #615, #710)")
+require_text("${config_cpp}" "            {\"QuestRescue.KeepRequestWhenFull\", Value(questRescueKeepRequestWhenFull)},\n            {\"Revive.SpiritHealerFull\", Value(reviveSpiritHealerFull)},\n            {\"RosterFarMove.ArriveSafe\"" "parsed mode in [ConfigEcho], sorted (owner rule #615, #710)")
 
 # 2. Pure policy (std + the cohort rule only).
 string(REGEX MATCHALL "#include [<\"][^>\"]+[>\"]" incs "${policy}")
