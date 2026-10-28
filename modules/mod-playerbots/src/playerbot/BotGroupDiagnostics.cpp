@@ -2,9 +2,11 @@
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/BotGroupDiagnostics.h"
 #include "playerbot/BotGroupPolicy.h"
+#include "playerbot/DeferredLog.h"
 #include "Group/Group.h"
 
 #include <algorithm>
+#include <cstdio>
 #include <set>
 
 namespace ai::bot_group
@@ -63,7 +65,8 @@ void LogMembership(Player* bot, Group* group, char const* event)
                 ++sharedQuests;
     }
 
-    sLog.outBasic("[BotGroup] event=%s bot=%u leader=%u group=%u roster=%u leader_real=%u members=%u bots=%u "
+    char line[512];
+    std::snprintf(line, sizeof(line), "[BotGroup] event=%s bot=%u leader=%u group=%u roster=%u leader_real=%u members=%u bots=%u "
         "level_spread=%u verdict=%s enabled=%u max_bots=%u level_window=%u bot_quests=%u leader_quests=%u shared_quests=%u",
         event, bot->GetGUIDLow(), leader ? leader->GetGUIDLow() : 0u, group->GetId(),
         sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) ? 1u : 0u,
@@ -71,5 +74,10 @@ void LogMembership(Player* bot, Group* group, char const* event)
         VerdictName(verdict), sPlayerbotAIConfig.botGroupsEnabled ? 1u : 0u,
         sPlayerbotAIConfig.botGroupsMaxBots, sPlayerbotAIConfig.botGroupsLevelWindow,
         unsigned(botQuests.size()), leaderQuests, sharedQuests);
+    // s7r (BotGroups.WorldThreadDefer): inside a world-thread manager's scope the bot writes the line on its own thread.
+    if (PlayerbotAI* target = ai::deferred_log::Target())
+        target->PostDeferredLog("", line);
+    else
+        sLog.outBasic("%s", line);
 }
 }

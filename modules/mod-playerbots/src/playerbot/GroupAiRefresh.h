@@ -19,6 +19,9 @@ enum Request : std::uint32_t
     // S7 QuestGroups.StagedOps (S7-A 25.10.: a formation of 2 cost 2.9-4.3 ms of the world tick): the forced quest travel
     // (FindQuestDest + SetTarget) on the bot's own thread, after the set; quest and objective in the bot's questGroupForce.
     ForceTravel = 1u << 4,
+    // s7r (AiPlayerbot.BotGroups.WorldThreadDefer): the rest of AcceptInvitationAction after the core join - event and membership
+    // log, invite chat, formation, hello, reset raids, update gear - on the bot's own thread (after the reset).
+    JoinTail = 1u << 5,
 };
 
 // The event source of the managers' "accept invitation" (AdhocGroupWorld Join, QuestGroupWorld InviteAccept).
@@ -26,6 +29,9 @@ inline bool IsWorldManagerSource(std::string const& source)
 {
     return source == "adhoc group" || source == "quest group";
 }
+
+// s7r: the event source of the posted accept tail (AcceptInvitationAction runs only its tail for it).
+inline constexpr char const* JoinTailSource = "join tail";
 
 // A request posted on top of the pending ones. The last group change wins: a join drops a pending leave and the S7 sets
 // (the manager sets the role again after the join), a leave drops a pending join and the sets, the two S7 sets exclude
@@ -35,7 +41,7 @@ inline std::uint32_t Merge(std::uint32_t pending, std::uint32_t add)
     if (add & JoinReset)
         pending &= ~std::uint32_t(LeaveReset | Follower | TurnIn | ForceTravel);
     if (add & LeaveReset)
-        pending &= ~std::uint32_t(JoinReset | Follower | TurnIn | ForceTravel);
+        pending &= ~std::uint32_t(JoinReset | JoinTail | Follower | TurnIn | ForceTravel);
     if (add & Follower)
         pending &= ~std::uint32_t(TurnIn);
     if (add & TurnIn)
@@ -50,6 +56,7 @@ struct Plan
     bool joinStrategies = false;   // the accept part: movement strategy before, -lfg,-bg after the default strategies
     bool follower = false;
     bool turnIn = false;
+    bool joinTail = false;      // after the reset, before the set
     bool forceTravel = false;   // last: after the reset and the set
 };
 
@@ -60,6 +67,7 @@ inline Plan PlanFor(std::uint32_t requests)
     p.reset = p.joinStrategies || (requests & LeaveReset) != 0;
     p.turnIn = (requests & TurnIn) != 0;
     p.follower = !p.turnIn && (requests & Follower) != 0;
+    p.joinTail = (requests & JoinTail) != 0;
     p.forceTravel = (requests & ForceTravel) != 0;
     return p;
 }
