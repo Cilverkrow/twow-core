@@ -68,5 +68,11 @@ if(NOT cleared EQUAL -1)
   message(FATAL_ERROR "#342 PosStuck dock pause: clear() must not reset transportWaitMs (a path reset at the dock would end the pause)")
 endif()
 
-# The exclusion: after the population expression, before the distance, only when not already excluded.
-require_text("${travel_cpp}" "    if (!observation.excluded)\n        observation.excluded = pos_stuck::DockWaitPaused(observation.now,\n            ai->GetAiObjectContext()->GetValue<LastMovement&>(\"last movement\")->Get().transportWaitMs, pos_stuck::DockWaitPauseMs);\n    observation.distance = observation.excluded ? 0.0f : Distance(bot);" "the dock pause in ObservePosStuck")
+# OB-10 review: the pause has an upper limit - Path.TransportWaitTimeoutMin of continuous waiting, counted from the start of the
+# continuous pause (State::dockPauseSince, not reset by Reset()), then the window runs again.
+require_text("${policy}" "    if (!pausedNow)\n    {\n        since = 0;\n        return false;\n    }\n    if (!since)\n        since = nowMs ? nowMs : 0xFFFFFFFFu;\n    return std::uint32_t(nowMs - since) < maxMs;" "the pause limit rule")
+require_text("${policy}" "    std::uint32_t dockPauseSince = 0;\n\n    void Reset() { initialized = false; }" "the pause start in State, kept by Reset()")
+
+# The exclusion: after the population expression, before the distance; evaluated on every observation (the pause start stays
+# current even while another exclusion holds), limited by the transport wait timeout.
+require_text("${travel_cpp}" "    bool const dockPause = pos_stuck::PauseHolds(posStuck.dockPauseSince, pos_stuck::DockWaitPaused(observation.now,\n            ai->GetAiObjectContext()->GetValue<LastMovement&>(\"last movement\")->Get().transportWaitMs, pos_stuck::DockWaitPauseMs),\n        observation.now, transport_board::WaitTimeoutMsOf(sPlayerbotAIConfig.pathTransportWaitTimeoutMin));\n    observation.excluded = observation.excluded || dockPause;\n    observation.distance = observation.excluded ? 0.0f : Distance(bot);" "the limited dock pause in ObservePosStuck")

@@ -198,6 +198,40 @@ int main()
         Require(!o.excluded && Observe(state, o, 600000, 5.0f) == Verdict::None && state.initialized, "after the ride: a fresh window, no detect");
     }
 
+    // OB-10 review: the pause has an upper limit (Path.TransportWaitTimeoutMin), counted from the start of the continuous wait.
+    {
+        std::uint32_t since = 0;
+        std::uint32_t const max = 900000;   // 15 min
+        Require(!PauseHolds(since, false, 1000, max) && since == 0, "no pause: nothing starts");
+        Require(PauseHolds(since, true, 1000, max) && since == 1000, "the pause starts");
+        Require(PauseHolds(since, true, 900999, max) && since == 1000, "renewed waits keep the start: still within 15 min");
+        Require(!PauseHolds(since, true, 901000, max) && since == 1000, "15 min of continuous waiting: the window runs again");
+        Require(!PauseHolds(since, true, 2000000, max), "and stays open while the bot keeps waiting");
+        Require(!PauseHolds(since, false, 2000500, max) && since == 0, "the wait ends (boarded, left): the start is cleared");
+        Require(PauseHolds(since, true, 2001000, max) && since == 2001000, "a new wait starts a new pause");
+        since = 0;
+        Require(PauseHolds(since, true, 0, max) && since == 0xFFFFFFFFu, "a start at clock 0 is stored as 1 ms before it (0 = none) and holds");
+        since = 0xFFFFFF00u;
+        Require(PauseHolds(since, true, 0x100u, max), "clock wrap: 512 ms into the pause");
+
+        // a stuck dock wait: paused for 15 min, then the window runs and detects a stand 10 min later as before
+        State state;
+        Observation o;
+        o.key = KeyOf(100, 7); o.mapId = 1; o.distance = 900.0f;
+        std::uint32_t pauseSince = 0;
+        for (std::uint32_t t = 1000; t <= 2000000; t += 1000)
+        {
+            o.now = t;
+            o.excluded = PauseHolds(pauseSince, DockWaitPaused(t, t, DockWaitPauseMs), t, max);
+            if (Observe(state, o, 600000, 5.0f) == Verdict::Detect)
+            {
+                Require(t >= 901000 + 600000 && t <= 901000 + 601000, "the stuck dock wait detects one window after the pause limit");
+                break;
+            }
+            Require(t < 901000 + 601000, "a stuck dock wait must not stay paused for good");
+        }
+    }
+
     std::cout << "pos_stuck_policy_tests passed\n";
     return 0;
 }
