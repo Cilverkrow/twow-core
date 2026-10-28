@@ -43,6 +43,9 @@ struct Counters
     std::atomic<std::uint32_t> arriveAlt{0};   // hotfix 8.36: first arrival point in danger, second one used
     std::atomic<std::uint32_t> arriveWalk{0};  // hotfix 8.36: no safe arrival point (danger / no ground) - walked
     std::atomic<std::uint32_t> arriveDeaths{0};  // hotfix 8.36: deaths within ArriveDeathSeconds after a far-move arrival
+    // twow-repo#601 (CLI-PATH ArriveSafe A/B, 28.10.2026): the cohort B share (odd guid) of arrived / arriveDeaths, A = total - b.
+    std::atomic<std::uint32_t> arrivedB{0};
+    std::atomic<std::uint32_t> arriveDeathsB{0};
     std::atomic<std::uint64_t> lastLogMinute{0};
 
     bool LogDue(std::uint64_t nowSeconds)

@@ -91,7 +91,7 @@ require_order("${move_cpp}" "                lastMove.clear();\n                
 # The minute line: the arrival counters and the cost only with the switch; off, the old line.
 require_text("${move_cpp}" "                    if (sPlayerbotAIConfig.rosterFarMoveArriveSafe)\n                    {" "the line part only with the switch")
 require_text("${move_cpp}" "\" safe_checked=%u safe_kept=%u safe_shifted=%u safe_unsafe=%u safe_unchecked=%u check_us_avg=%u check_us_max=%u\"" "the arrival counters and the cost")
-require_text("${move_cpp}" "                    sLog.outBasic(\"[FarMove] started=%u retargeted=%u arrived=%u watched=%u arrive_alt=%u arrive_walk=%u arrive_deaths=%u%s\"," "the old fields first")
+require_text("${move_cpp}" "                    sLog.outBasic(\"[FarMove] started=%u retargeted=%u arrived=%u watched=%u arrive_alt=%u arrive_walk=%u arrive_deaths=%u arrived_b=%u arrive_deaths_b=%u%s\"," "the old fields first, then the cohort B share (farmove_cohort contract)")
 
 # The switch: modes 0/1/2, unknown = off, echoed, documented with default 0.
 require_text("${config_h}" "    uint32 rosterFarMoveArriveSafe = 0;" "the member, default 0")
