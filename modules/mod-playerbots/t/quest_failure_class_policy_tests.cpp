@@ -42,8 +42,9 @@ int main()
 
     // 1) Every RejectCounts reason is in exactly one class sum (a new reason must be classified on purpose).
     {
-        // A 17th reason field changes the size: classify it in QuestFailureClassPolicy.h and count it below.
-        static_assert(sizeof(RejectCounts) == (16 + RejectCounts::InactiveReasons) * sizeof(std::uint32_t),
+        // A 17th reason field changes the size: classify it in QuestFailureClassPolicy.h and count it below. The two diagnostic
+        // splits (notActiveReason, noMarkWhy) are no reasons and sit in the size apart.
+        static_assert(sizeof(RejectCounts) == (16 + RejectCounts::InactiveReasons + ai::quest_search::NoMarkReasons) * sizeof(std::uint32_t),
             "classify the new reject reason (StructuralRejects / TransientRejects / OtherRejects)");
         RejectCounts all;
         all.turnInSuppressed = 1; all.deathSuppressed = 1; all.otherMapGather = 1; all.knownInactive = 1;
@@ -58,6 +59,10 @@ int main()
         RejectCounts split;
         split.notActiveReason[RejectCounts::InactiveNoMark] = 5;
         Require(OtherRejects(split) == 0 && TransientRejects(split) == 0, "the not_active split adds nothing");
+        // twow-repo#601 step 1b: the no_mark split (NoMarkOf) is a split of notActiveReason[InactiveNoMark] - no reason either.
+        RejectCounts noMark;
+        noMark.noMarkWhy[ai::quest_search::NoMarkOther] = 4;
+        Require(StructuralRejects(noMark) == 0 && TransientRejects(noMark) == 0 && OtherRejects(noMark) == 0, "the no_mark split adds nothing");
     }
 
     // 2) Structural: a turn-in-only request whose takers were all deferred - every offered turn-in is parked.
