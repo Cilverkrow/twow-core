@@ -4093,6 +4093,20 @@ add_test(NAME melee_skip_policy
   COMMAND melee_skip_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#333 finding 4: a travel step keeps the hearthstone / teleport cast wait and waits for a prepared one.
+add_executable(teleport_cast_policy_tests
+  "${PB_MODULE_DIR}/t/teleport_cast_policy_tests.cpp")
+
+target_include_directories(teleport_cast_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(teleport_cast_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME teleport_cast_policy
+  COMMAND teleport_cast_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # Owner order 27.10.2026 (AiPlayerbot.Revive.SpiritHealerFull): a bot's spirit healer revive at full health and mana, no sickness.
 add_executable(spirit_healer_revive_policy_tests
   "${PB_MODULE_DIR}/t/spirit_healer_revive_policy_tests.cpp")
