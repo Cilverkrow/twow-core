@@ -422,7 +422,9 @@ private:
     // boss entry (for BossKill::engageT) and the boss of the last sample, and whether comp[].tankStrategy was read.
     DcAggro::Tally _aggro;
     std::unordered_map<uint32, uint32> _bossEngageS;
-    uint32 _prevBossEntry = 0;
+    std::unordered_map<uint32, uint32> _bossLastSeenS;   // last sample with that roster boss (engagement grace)
+    static constexpr uint32 kEngageGraceS = 10;
+    ObjectGuid _aggroTankGuid;                            // the tank seat (slot with role "tank"), resolved once
     bool _tankStrategyRead = false;
 
     bool _wasPaused = false;

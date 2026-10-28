@@ -177,8 +177,9 @@ namespace DcTestRunRecord
               << ",\"aggroLossTicks\":" << p.aggroLossTicks << '}';
         }
         s << "],\"pullsElided\":" << rec.pullsElided
-          << ",\"aggro\":{\"combatTicks\":" << rec.aggroCombatTicks   // 13
-          << ",\"lossTicks\":" << rec.aggroLossTicks << ",\"lossEvents\":" << rec.aggroLossEvents << "}"
+          << ",\"aggro\":{\"runCombatTicks\":" << rec.aggroCombatTicks   // 13 (keys unique: pulls[] carry combatTicks)
+          << ",\"runLossTicks\":" << rec.aggroLossTicks << ",\"runLossEvents\":" << rec.aggroLossEvents
+          << ",\"tankDownTicks\":" << rec.aggroTankDownTicks << "}"
           << ",\"statusTimeline\":[";
         {
             std::vector<StatusEntry> const& st = rec.statusTimeline;
