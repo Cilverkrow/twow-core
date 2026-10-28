@@ -393,6 +393,7 @@ namespace ai
         std::string GetTargetName() override { return "self target"; }
         bool isUseful() override { PickKnownRank(); return CastSpellAction::isUseful(); }
         bool isPossible() override { PickKnownRank(); return CastSpellAction::isPossible(); }
+        bool Execute(Event& event) override { PickKnownRank(); return CastSpellAction::Execute(event); }   // also chat "cast" / events
 
 	private:
         void PickKnownRank()
