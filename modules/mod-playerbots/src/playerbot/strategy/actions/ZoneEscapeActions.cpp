@@ -3,11 +3,15 @@
 #include "playerbot/TravelMgr.h"
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/strategy/triggers/ZoneEscapeTriggers.h"
+#include "playerbot/TeleportCastWait.h"   // twow-repo#333 finding 4: hearthstone cast wait
 
 using namespace ai;
 
 bool ZoneEscapeAction::Execute(Event& event)
 {
+    // twow-repo#333 finding 4: each run starts from the react delay, so neither the wait step's 5 s nor a hearthstone hold
+    // carries over to a later travel step.
+    SetDuration(sPlayerbotAIConfig.reactDelay);
     zone_escape::Facts const facts = GatherZoneEscapeFacts(ai);
     zone_escape::Decision const decision = zone_escape::Decide(facts);
     if (decision.step == zone_escape::Step::None)
@@ -53,7 +57,14 @@ bool ZoneEscapeAction::Execute(Event& event)
         // Counts attempts; reset once the bot is out of the zone (trigger).
         SET_AI_VALUE2(int, "manual int", "zone escape fails", int(facts.failedHearths + 1));
         if (ai->DoSpecificAction("hearthstone", Event("zone escape"), true))
+        {
             state = lastStep == zone_escape::Step::Hearth ? "retry" : "hearth";
+            // twow-repo#333 finding 4 (TeleportCastPolicy.h): hold for the started cast; the engine sets the AI wait to this
+            // action's duration.
+            uint32 const reactDelay = sPlayerbotAIConfig.reactDelay;
+            SetDuration(teleport_cast::HoldMs(teleport_cast::PreparedWaitMs(bot, teleport_cast::kHearthstone, reactDelay),
+                ai->GetAIInternalUpdateDelay(), reactDelay));
+        }
         else
         {
             reason = "hearth_failed";
