@@ -116,9 +116,9 @@ require_text("${choose}" "            std::optional<PlayerTravelInfo> giverInfo;
 require_text("${choose}" "bool const tracedGiverFetch = traceGivers && (purpose & (uint32)TravelDestinationPurpose::QuestGiver);" "giver fetch only")
 require_text("${choose}" "tracedGiverFetch ? *giverInfo : travelInfo," "the copy only for the traced giver fetch")
 require_text("${choose}" "list = sTravelMgr.GetPartitions(center, partitions, traceGivers ? *giverInfo : travelInfo, (uint32)TravelDestinationPurpose::QuestGiver);" "the fallback counted when traced")
-require_order("${choose}" "                SortQuestHubsFirst(list);" "bool const giverFallback = list.empty();" "hub sort before the fallback, as before")
+require_order("${choose}" "                SortQuestHubsFirst(list);" "bool const giverFallback = list.empty()" "hub sort before the fallback, as before")
 require_text("${choose}" "sLog.outBasic(\"[QuestFirstRoute] state=giver_fetch bot=%u level=%u stage=%u radius=%.0f fetch=%s free_slots=%u \"" "the giver_fetch line")
-require_order("${choose}" "bool const giverFallback = list.empty();" "if (traceGivers && (giverFetched || giverFallback))" "the line after the fallback")
+require_order("${choose}" "bool const giverFallback = list.empty()" "if (traceGivers && (giverFetched || giverFallback))" "the line after the fallback")
 
 # 6. no_mark split: inside the TraceInactive block, only for a no_mark, only with TraceTravelDecisions; core checks without messages.
 require_text("${choose}" "if (reason == ai::quest_search::RejectCounts::InactiveNoMark && sPlayerbotAIConfig.questFirstProgressionTraceTravelDecisions)\n                        ++lastRejects.noMarkWhy[NoMarkWhyOf(bot, destination)];" "the split")
