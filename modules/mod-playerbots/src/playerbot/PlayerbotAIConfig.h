@@ -531,6 +531,9 @@ public:
     // a phase-one profession and to the vendor of its missing gathering tool; 0 off, 1 all, 2 cohort B (odd guid).
     uint32 professionTrainingTravel = 0;
     uint32 professionTrainingNearRadius = 0;   // P1-n: yards, 0 = off - the near trainer trip of the same mode and cohort
+    // twow-repo#601 turn_in hold (CLI-Deep 28.10.2026, OB-00 go): the "an open turn-in waits" rule of the profession trips skips a
+    // finished quest whose taker route is stall- or death-suppressed for that quest; 0 off (default), 1 all, 2 cohort B.
+    uint32 professionTrainingTurnInGateSkipSuppressed = 0;
     uint32 professionUseToolBuy = 0;
     uint32 travelRpgAreaLevelFromSpawn = 0;  // twow-repo#333 P1-v: RpgTravelDestination::IsPossible reads the area level at the spawn nearest to the bot, not at the map origin (RpgAreaLevelPolicy.h); 0 off, 1 all, 2 cohort B (odd guid)
     uint32 gatherQuestHerbFilter = 0;  // twow-repo#333 P1-f: a quest herb (lock 259) is picked only with its quest active (modes 0/1/2)
@@ -782,6 +785,13 @@ public:
     // twow-repo#601 (CLI-Deep 26.10.2026, cr2-C gap analysis): a quest giver / taker trip that went inactive because its quest was
     // taken / turned in ends at once instead of a 60 s COOLDOWN at the NPC. Mode 0 off (default), 1 all, 2 cohort B.
     uint32 questLoopGiverTakerDone = 0;
+    // twow-repo#601 turn_in hold (CLI-Deep 28.10.2026, OB-00 go): at a quest giver / taker whose turn-in / accept is still open,
+    // RelationWorkNoGrind skips grind targets without quest need in WORK, RelationArriveRpgTarget sets the NPC as rpg target on
+    // arrival, TurnInWorkDeathNotRoute books a death in WORK at the taker as a turn-in failure instead of a route death.
+    // Mode 0 off (default), 1 all, 2 cohort B.
+    uint32 questLoopRelationWorkNoGrind = 0;
+    uint32 questLoopRelationArriveRpgTarget = 0;
+    uint32 questLoopTurnInWorkDeathNotRoute = 0;
     // twow-repo#601 (CLI-Deep 25.10.2026): an inactive objective whose count grew since the target was set is progress, not an
     // emptied camp - no QL-1, no QL-2, a 1 s cooldown. Mode 0 off (default), 1 all, 2 cohort B.
     uint32 questLoopInactiveAfterProgress = 0;
@@ -861,6 +871,10 @@ public:
     uint32 botGroupsMaxBots = 3;
     uint32 botGroupsLevelWindow = 3;
     bool botGroupsDiagnostics = false;
+    // twow-repo#627/#628 (s7r 26.10.2026, OB-00 go 27.10.): the world-thread managers' accept and leave keep only the core
+    // group change on the world thread; the accept tail (logs, chat, formation, hello, reset raids, update gear) and the
+    // event and membership log lines run on the bot's own thread (GroupAiRefresh JoinTail, DeferredLog.h).
+    bool botGroupsWorldThreadDefer = false;
     // #365 step 2: ad-hoc quest groups.
     uint32 botGroupsAdhocScanIntervalSeconds = 10;
     float botGroupsAdhocRadius = 50.0f;
@@ -869,12 +883,17 @@ public:
     bool botGroupsAdhocWorldThread = false;
     // twow-repo#628: the manager pass spread over this many updates (0/1 = the whole pass in one update).
     uint32 botGroupsAdhocScanSlices = 0;
+    uint32 botGroupsAdhocScanBudgetUs = 0;   // s7r: a slice ends once it took this many us (at least one bot; 0 = by count only)
     bool botGroupsAdhocHelpUntilDone = false;  // twow-repo#365 (owner 25.10.): whoever is done follows a member with the objective open until the group is done
     // twow-repo#627 S7 help groups (QuestGroupPolicy.h, QuestGroupWorld.cpp); Enable: 0 off, 1 all, 2 cohort B, 3 cohort A.
     uint32 questGroupsEnable = 0;
     uint32 questGroupsScanSeconds = 60;
     // twow-repo#628: the S7 scan spread over this many updates (0/1 = the whole scan in one update).
     uint32 questGroupsScanSlices = 0;
+    uint32 questGroupsScanBudgetUs = 0;   // s7r: a slice ends once it took this many us (at least one bot; 0 = by count only)
+    // s7r: one heavy step per manager update - at most one dissolution; no group operation and no scan slice in its update,
+    // no scan slice in an update that ran a group operation (the s7r slow minutes summed parts of one update).
+    bool questGroupsOneHeavyStep = false;
     bool questGroupsStagedOps = false;  // twow-repo#627 S7 (S7-A 25.10.): at most one group operation per manager update, forced travel on the bot thread
     uint32 questGroupsMaxSize = 5;
     uint32 questGroupsMaxSizeDrop = 3;

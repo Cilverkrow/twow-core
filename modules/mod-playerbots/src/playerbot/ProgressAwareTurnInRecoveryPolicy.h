@@ -78,11 +78,16 @@ struct State
     std::uint32_t suppressedEntry = 0;
     std::uint32_t suppressedMapId = 0;
     std::uint32_t suppressUntil = 0;
+    // twow-repo#601 turn_in hold (CLI-Deep 28.10.2026, ProfessionTraining.TurnInGateSkipSuppressed): the quest of the stall
+    // suppression above, so a gate can ask "is this finished quest's turn-in route suppressed" without a taker lookup.
+    std::uint32_t suppressedQuestId = 0;
     // twow-repo#485: the death cooldown (#307, an hour live) has its own slot,
     // so a stall on another target (two minutes live) never overwrites it.
     std::uint32_t deathSuppressedEntry = 0;
     std::uint32_t deathSuppressedMapId = 0;
     std::uint32_t deathSuppressedUntil = 0;
+    // twow-repo#601 turn_in hold: the quest of the death suppression above (same use).
+    std::uint32_t deathSuppressedQuestId = 0;
     // Deaths on the way to one turn-in. Kept apart from the progress fields:
     // the graveyard teleport looks like progress and a revived bot re-selects
     // the same target, so ResetProgress must not clear it (#307).
@@ -121,6 +126,7 @@ inline bool RecordDeathOnRoute(State& state, std::uint32_t targetEntry, std::uin
     state.deathSuppressedEntry = targetEntry;
     state.deathSuppressedMapId = mapId;
     state.deathSuppressedUntil = now + cooldownMs;
+    state.deathSuppressedQuestId = questId;
     return true;
 }
 
@@ -219,6 +225,7 @@ inline RecoveryAction Observe(State& state, Observation const& current, std::uin
     state.suppressedEntry = current.targetEntry;
     state.suppressedMapId = current.targetMapId;
     state.suppressUntil = current.now + cooldownSeconds;
+    state.suppressedQuestId = current.questId;
     return RecoveryAction::SuppressRouteAndCooldown;
 }
 
@@ -229,6 +236,15 @@ inline bool IsSuppressed(State const& state, std::uint32_t now, std::uint32_t en
     bool const died = state.deathSuppressedUntil > now && state.deathSuppressedEntry == entry &&
         state.deathSuppressedMapId == mapId;
     return stalled || died;
+}
+
+// twow-repo#601 turn_in hold (CLI-Deep 28.10.2026, ProfessionTraining.TurnInGateSkipSuppressed): the same two slots, asked by
+// the finished quest instead of the taker. Quest 0 (a suppression without a quest) never matches.
+inline bool IsSuppressedForQuest(State const& state, std::uint32_t now, std::uint32_t questId)
+{
+    bool const stalled = state.suppressUntil > now && state.suppressedQuestId == questId;
+    bool const died = state.deathSuppressedUntil > now && state.deathSuppressedQuestId == questId;
+    return questId != 0 && (stalled || died);
 }
 
 // #329: a target that is dropped and picked again every few seconds must not

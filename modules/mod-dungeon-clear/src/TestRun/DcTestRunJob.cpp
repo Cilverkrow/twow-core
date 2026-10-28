@@ -666,7 +666,9 @@ std::unique_ptr<DcTestRunJob> DcTestRunJob::CreateFromRoster(Player* gm,
             "c.position_y = h.position_y, c.position_z = h.position_z "
             "WHERE c.guid = %u AND c.online = 0",
             slot.guid.GetCounter());
-        sRandomPlayerbotMgr.AddPlayerBot(slot.guid, 0);
+        // CLI-GRP G1 probe 28.10.2026: a refused login (persistent roster on) is recorded, TickSpawning ends on it.
+        if (!sRandomPlayerbotMgr.AddPlayerBot(slot.guid, 0))
+            job->_loginRefused += (job->_loginRefused.empty() ? "" : ", ") + slot.rosterName;
     }
 
     std::string names;
@@ -879,6 +881,13 @@ void DcTestRunJob::Tick(uint32 diff, bool& provisionBudget)
 
 void DcTestRunJob::TickSpawning()
 {
+    if (!_loginRefused.empty())
+    {
+        FailSetup(DcTestPool::LoginRefusal("pool characters (" + _loginRefused + ")",
+                                           sPlayerbotAIConfig.persistentActiveRosterEnabled));
+        return;
+    }
+
     bool allIn = true;
     for (Slot const& slot : _slots)
     {

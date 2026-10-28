@@ -43,6 +43,7 @@
 #include <fstream>
 #include <sstream>
 #include "PlayerbotLoginMgr.h"
+#include "playerbot/DeferredLog.h"   // s7r: lines of a world-thread manager scope go to the bot
 
 std::vector<std::string> ConfigAccess::GetValues(const std::string& name) const
 {
@@ -750,6 +751,25 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[QuestLoop] config key=GiverTakerDone value=%u result=off (0 off, 1 all, 2 cohort B)", questLoopGiverTakerDone);
         questLoopGiverTakerDone = 0;
     }
+    // twow-repo#601 turn_in hold (CLI-Deep 28.10.2026): an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B).
+    questLoopRelationWorkNoGrind = config.GetIntDefault("AiPlayerbot.QuestLoop.RelationWorkNoGrind", 0);
+    if (questLoopRelationWorkNoGrind > 2)
+    {
+        sLog.outError("[QuestLoop] config key=RelationWorkNoGrind value=%u result=off (0 off, 1 all, 2 cohort B)", questLoopRelationWorkNoGrind);
+        questLoopRelationWorkNoGrind = 0;
+    }
+    questLoopRelationArriveRpgTarget = config.GetIntDefault("AiPlayerbot.QuestLoop.RelationArriveRpgTarget", 0);
+    if (questLoopRelationArriveRpgTarget > 2)
+    {
+        sLog.outError("[QuestLoop] config key=RelationArriveRpgTarget value=%u result=off (0 off, 1 all, 2 cohort B)", questLoopRelationArriveRpgTarget);
+        questLoopRelationArriveRpgTarget = 0;
+    }
+    questLoopTurnInWorkDeathNotRoute = config.GetIntDefault("AiPlayerbot.QuestLoop.TurnInWorkDeathNotRoute", 0);
+    if (questLoopTurnInWorkDeathNotRoute > 2)
+    {
+        sLog.outError("[QuestLoop] config key=TurnInWorkDeathNotRoute value=%u result=off (0 off, 1 all, 2 cohort B)", questLoopTurnInWorkDeathNotRoute);
+        questLoopTurnInWorkDeathNotRoute = 0;
+    }
     // twow-repo#601 InactiveAfterProgress: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B).
     questLoopInactiveAfterProgress = config.GetIntDefault("AiPlayerbot.QuestLoop.InactiveAfterProgress", 0);
     if (questLoopInactiveAfterProgress > 2)
@@ -843,15 +863,19 @@ bool PlayerbotAIConfig::Initialize()
     botGroupsMaxBots = ai::bot_group::ClampMaxBots(config.GetIntDefault("AiPlayerbot.BotGroups.MaxBots", 3));
     botGroupsLevelWindow = config.GetIntDefault("AiPlayerbot.BotGroups.LevelWindow", 3);
     botGroupsDiagnostics = config.GetBoolDefault("AiPlayerbot.BotGroups.Diagnostics", false);
+    botGroupsWorldThreadDefer = config.GetBoolDefault("AiPlayerbot.BotGroups.WorldThreadDefer", false);   // s7r
     botGroupsAdhocScanIntervalSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.BotGroups.AdHoc.ScanIntervalSeconds", 10));
     botGroupsAdhocRadius = std::max(5.0f, config.GetFloatDefault("AiPlayerbot.BotGroups.AdHoc.Radius", 50.0f));
     botGroupsAdhocPairCooldownSeconds = (uint32)config.GetIntDefault("AiPlayerbot.BotGroups.AdHoc.PairCooldownSeconds", 600);
     botGroupsAdhocWorldThread = config.GetBoolDefault("AiPlayerbot.BotGroups.AdHoc.WorldThread", false);
     botGroupsAdhocScanSlices = std::min<uint32>(64, (uint32)config.GetIntDefault("AiPlayerbot.BotGroups.AdHoc.ScanSlices", 0));
+    botGroupsAdhocScanBudgetUs = std::min<uint32>(20000, (uint32)config.GetIntDefault("AiPlayerbot.BotGroups.AdHoc.ScanBudgetUs", 0));
     botGroupsAdhocHelpUntilDone = config.GetBoolDefault("AiPlayerbot.BotGroups.AdHoc.HelpUntilDone", false);   // twow-repo#365
     questGroupsEnable = (uint32)config.GetIntDefault("AiPlayerbot.QuestGroups.Enable", 0);
     questGroupsScanSeconds = std::max<uint32>(10, config.GetIntDefault("AiPlayerbot.QuestGroups.ScanSeconds", 60));
     questGroupsScanSlices = std::min<uint32>(64, (uint32)config.GetIntDefault("AiPlayerbot.QuestGroups.ScanSlices", 0));
+    questGroupsScanBudgetUs = std::min<uint32>(20000, (uint32)config.GetIntDefault("AiPlayerbot.QuestGroups.ScanBudgetUs", 0));
+    questGroupsOneHeavyStep = config.GetBoolDefault("AiPlayerbot.QuestGroups.OneHeavyStep", false);   // s7r
     questGroupsStagedOps = config.GetBoolDefault("AiPlayerbot.QuestGroups.StagedOps", false);   // twow-repo#627
     questGroupsMaxSize = std::min<uint32>(5, std::max<uint32>(2, config.GetIntDefault("AiPlayerbot.QuestGroups.MaxSize", 5)));
     questGroupsMaxSizeDrop = std::min<uint32>(5, std::max<uint32>(2, config.GetIntDefault("AiPlayerbot.QuestGroups.MaxSizeDrop", 3)));
@@ -1467,6 +1491,13 @@ bool PlayerbotAIConfig::Initialize()
         professionTrainingTravel = 0;
     // P1-n: yards, 0 = off, at most 1000 (ProfessionTravelPolicy.h ClampNearRadius); the mode and cohort of ProfessionTraining.Travel.
     professionTrainingNearRadius = ai::profession_travel::ClampNearRadius(config.GetIntDefault("AiPlayerbot.ProfessionTraining.NearRadius", 0));
+    // twow-repo#601 turn_in hold (CLI-Deep 28.10.2026): an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B).
+    professionTrainingTurnInGateSkipSuppressed = config.GetIntDefault("AiPlayerbot.ProfessionTraining.TurnInGateSkipSuppressed", 0);
+    if (professionTrainingTurnInGateSkipSuppressed > 2)
+    {
+        sLog.outError("[ProfTravel] config key=TurnInGateSkipSuppressed value=%u result=off (0 off, 1 all, 2 cohort B)", professionTrainingTurnInGateSkipSuppressed);
+        professionTrainingTurnInGateSkipSuppressed = 0;
+    }
     professionUseToolBuy = config.GetIntDefault("AiPlayerbot.ProfessionUse.ToolBuy", 0);
     if (professionUseToolBuy > 2)
         professionUseToolBuy = 0;
@@ -1727,9 +1758,11 @@ bool PlayerbotAIConfig::Initialize()
             {"ActivityTrace.IdleDetail", Value(activityTraceIdleDetail)},
             {"ActivityTrace.StuckDetail", Value(activityTraceStuckDetail)},
             {"BotGroups.AdHoc.HelpUntilDone", Value(botGroupsAdhocHelpUntilDone)},
+            {"BotGroups.AdHoc.ScanBudgetUs", Value(botGroupsAdhocScanBudgetUs)},
             {"BotGroups.AdHoc.ScanSlices", Value(botGroupsAdhocScanSlices)},
             {"BotGroups.AdHoc.WorldThread", Value(botGroupsAdhocWorldThread)},
             {"BotGroups.Enabled", Value(botGroupsEnabled)},
+            {"BotGroups.WorldThreadDefer", Value(botGroupsWorldThreadDefer)},
             {"BotUpdateTrace", Value(botUpdateTrace)},
             {"CastWait.Preparing", Value(castWaitPreparing)},
             {"CustomRaceStartZones", Value(customRaceStartZones)},
@@ -1766,6 +1799,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Perf.RouteTimeTrace", Value(perfRouteTimeTrace)},
             {"ProfessionTraining.NearRadius", Value(professionTrainingNearRadius)},
             {"ProfessionTraining.Travel", Value(professionTrainingTravel)},
+            {"ProfessionTraining.TurnInGateSkipSuppressed", Value(professionTrainingTurnInGateSkipSuppressed)},
             {"ProfessionUse.ToolBuy", Value(professionUseToolBuy)},
             {"QuestFeasibility.Blocklist.count", Value(uint32(questFeasibilityBlocklist.size()))},
             {"QuestFeasibility.BlocklistWhileNoCustomStarts.count", Value(uint32(questFeasibilityBlocklistWhileNoCustomStarts.size()))},
@@ -1794,6 +1828,8 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestFirstProgression.TransientCountsAfter", Value(questFirstProgressionTransientCountsAfter)},
             {"QuestFirstProgression.TurnInParkFailures", Value(questFirstProgressionTurnInParkFailures)},
             {"QuestGroups.Enable", Value(questGroupsEnable)},
+            {"QuestGroups.OneHeavyStep", Value(questGroupsOneHeavyStep)},
+            {"QuestGroups.ScanBudgetUs", Value(questGroupsScanBudgetUs)},
             {"QuestGroups.ScanSlices", Value(questGroupsScanSlices)},
             {"QuestGroups.StagedOps", Value(questGroupsStagedOps)},
             {"QuestLoop.EmptyCampHold", Value(questLoopEmptyCampHold)},
@@ -1801,6 +1837,9 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestLoop.GiverTakerDone", Value(questLoopGiverTakerDone)},
             {"QuestLoop.InactiveAfterProgress", Value(questLoopInactiveAfterProgress)},
             {"QuestLoop.InactiveReselect", Value(questLoopInactiveReselect)},
+            {"QuestLoop.RelationArriveRpgTarget", Value(questLoopRelationArriveRpgTarget)},
+            {"QuestLoop.RelationWorkNoGrind", Value(questLoopRelationWorkNoGrind)},
+            {"QuestLoop.TurnInWorkDeathNotRoute", Value(questLoopTurnInWorkDeathNotRoute)},
             {"QuestRescue.KeepRequestWhenFull", Value(questRescueKeepRequestWhenFull)},
             {"Revive.SpiritHealerFull", Value(reviveSpiritHealerFull)},
             {"RosterFarMove.ArriveSafe", Value(rosterFarMoveArriveSafe)},
@@ -2126,6 +2165,14 @@ void PlayerbotAIConfig::log(std::string fileName, const char* line)
 {
     if (!line)
         return;
+
+    // s7r (BotGroups.WorldThreadDefer): inside a world-thread manager's scope the line goes to the bot and is written on its
+    // own thread - no wait on this mutex (shared with every bot thread) and no fflush on the world thread.
+    if (PlayerbotAI* target = ai::deferred_log::Target())
+    {
+        target->PostDeferredLog(fileName, line);
+        return;
+    }
 
     std::lock_guard<std::mutex> guard(m_logMtx);
 
