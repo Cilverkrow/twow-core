@@ -60,16 +60,24 @@ read_source("aiplayerbot.conf.dist.in" dist)
 require_text("${policy}" "    return attackDistance > 0.0f && distance <= attackDistance + ArriveSafeMarginYards && (canFly || dz <= ArriveSafeZYards);" "the threat rule")
 require_text("${policy}" "constexpr float ArriveSafeStepYards = 30.0f;\nconstexpr std::uint32_t ArriveSafeSteps = 4;" "4 steps of 30 yd")
 require_text("${policy}" "        if (!candidates[i].threats)\n        {\n            choice.outcome = i == 0 ? ArriveOutcome::Kept : ArriveOutcome::Shifted;" "the first free point")
-require_text("${policy}" "    choice.outcome = anyValid ? ArriveOutcome::Unsafe : ArriveOutcome::None;" "else the farthest valid one")
+require_text("${policy}" "        if (!anyValid || candidates[i].threats <= fewest)\n        {\n            fewest = candidates[i].threats;\n            choice.index = i;\n        }" "none free: the fewest threats, the farthest of equal ones (pre-review M2)")
+require_text("${policy}" "    choice.outcome = anyValid ? ArriveOutcome::Unsafe : ArriveOutcome::None;" "unsafe or none")
+require_text("${policy}" "    return !until || now < until;" "the decline lapses (pre-review M3)")
 
 # The threat check mirrors the core's MoveInLineOfSight conditions (no LOS), with the creature's own aggro radius to the bot.
 require_text("${move_cpp}" "        if (!creature->IsAlive() || creature->IsNeutralToAll() || creature->GetVictim() || !creature->CanInitiateAttack() ||\n            !creature->IsHostileTo(bot))\n            return false;" "the core's aggro preconditions")
 require_text("${move_cpp}" "        return far_move::Threatens(std::sqrt(dx * dx + dy * dy), creature->GetAttackDistance(bot), dz, creature->CanFly());" "the core's aggro radius")
-# Only loaded grids are searched (dont_load stays true): an unloaded arrival grid is not loaded from the bot, it counts as unchecked.
-require_text("${move_cpp}" "    if (!map || point.getMapId() != bot->GetMapId() || !map->IsLoaded(point.getX(), point.getY()))\n        return -1;" "no check in an unloaded grid")
+require_text("${move_cpp}" "        float const dz = far_move::AggroDz(creature->GetPositionZ() - point.getZ(),\n            creature->GetObjectBoundingRadius() + bot->GetObjectBoundingRadius());" "the core's z distance (GetDistanceZ minus both radii)")
+# Only loaded grids are searched (dont_load stays true): an unloaded arrival grid is not loaded from the bot, it counts as unchecked;
+# so does a point in another continent region (its camp creatures live in another Map, updated by another thread).
+require_text("${move_cpp}" "    if (!map || point.getMapId() != bot->GetMapId() || !map->IsLoaded(point.getX(), point.getY()))\n        return -1;\n    if (sMapMgr.GetContinentInstanceId(point.getMapId(), point.getX(), point.getY()) != map->GetInstanceId())\n        return -1;" "no check in an unloaded grid or another region (pre-review M1)")
 require_text("${move_cpp}" "    Cell::VisitGridObjects(point.getX(), point.getY(), map, searcher, far_move::ArriveSafeSearchYards);" "the grid search without loading")
-# Every further point goes through FarMoveArrivalPoint (navmesh snap, danger map).
-require_text("${move_cpp}" "            if (FarMoveArrivalPoint(bot, from, to, baseBack + far_move::ArriveSafeStepYards * float(count), point))" "the steps through the navmesh / danger-map check")
+# Every further point goes through FarMoveArrivalPoint (navmesh snap, danger map); the steps stop at the route start.
+require_text("${move_cpp}" "            float const back = baseBack + far_move::ArriveSafeStepYards * float(count);\n            if (back >= routeLength)\n                break;\n            WorldPosition point;\n            if (FarMoveArrivalPoint(bot, from, to, back, point))" "the steps through the navmesh / danger-map check, not past the start")
+# The ArriveSafe decline lapses; the hotfix 8.36 decline keeps no time limit; the decline check reads it.
+require_text("${move_cpp}" "                    lastMove.farMoveDeclinedUntil = now + far_move::ArriveSafeDeclineSeconds;" "the ArriveSafe decline lapses")
+require_text("${move_cpp}" "                        lastMove.farMoveDeclinedUntil = 0;   // twow-repo#601 cand4-B: the 8.36 decline holds until the target changes" "the 8.36 decline unchanged")
+require_text("${move_cpp}" "            far_move::DeclineActive(uint64(lastMove.farMoveDeclinedUntil), uint64(time(nullptr)));" "the decline check")
 require_text("${move_cpp}" "    walkRest = choice.index > 0;\n    return points[choice.index];" "a point further back walks the rest")
 
 # The wiring at the Arrive step: the switch per bot (cohort), before the teleport, the decline after the clear.
@@ -78,7 +86,7 @@ set(arrive_call "                if (lastMove.farMoveArriveSet && ai::cohort::Ap
 require_text("${move_cpp}" "${arrive_call}" "the check at Arrive")
 require_count("${move_cpp}" "SafeFarMoveArrival(bot, " 1 "one check, at Arrive only (not at Start)")
 require_order("${move_cpp}" "${arrive_call}" "                return bot->TeleportTo(arrive.getMapId(), arrive.getX(), arrive.getY(), arrive.getZ(), farStart.getAngleTo(endPos));" "the check before the teleport")
-require_order("${move_cpp}" "                lastMove.clear();\n                lastMove.farMoveAt = 0;\n                if (walkRest)" "                    lastMove.farMoveDeclined = endPos;\n                    lastMove.farMoveDeclinedSet = true;\n                }\n                counters.arrived.fetch_add(1" "the decline after the clear")
+require_order("${move_cpp}" "                lastMove.clear();\n                lastMove.farMoveAt = 0;\n                if (walkRest)" "                    lastMove.farMoveDeclinedUntil = now + far_move::ArriveSafeDeclineSeconds;\n                }\n                counters.arrived.fetch_add(1" "the decline after the clear")
 
 # The minute line: the arrival counters and the cost only with the switch; off, the old line.
 require_text("${move_cpp}" "                    if (sPlayerbotAIConfig.rosterFarMoveArriveSafe)\n                    {" "the line part only with the switch")

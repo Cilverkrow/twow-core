@@ -102,15 +102,34 @@ inline Point2 ArrivalPoint(Point2 start, Point2 target, float backYards)
 constexpr float ArriveSafeStepYards = 30.0f;
 constexpr std::uint32_t ArriveSafeSteps = 4;
 constexpr float ArriveSafeMarginYards = 5.0f;   // on top of the creature's aggro radius
-constexpr float ArriveSafeSearchYards = 60.0f;  // grid search radius: above the largest proximity aggro radius (about 45 yd)
+// Grid search radius: above the largest proximity aggro radius with Rate.Creature.Aggro 1 (detection range 20 + 25 levels
+// = 45 yd, plus the margin). A creature with a larger radius (aggro rate > 1, detect-range auras) is not found beyond it.
+constexpr float ArriveSafeSearchYards = 60.0f;
 constexpr float ArriveSafeZYards = 3.0f;        // CREATURE_Z_ATTACK_RANGE: a creature that cannot fly ignores a bot beyond it
+// A point further back lets the bot walk the rest to its target; that far-move decline lapses after this (the walk of up to
+// 180 yd and its pulls), so a bot that died there far-moves to the same target again after its corpse run.
+constexpr std::uint32_t ArriveSafeDeclineSeconds = 120;
 
-// A creature at distance / height difference dz from the arrival point that would attack the bot there at once: it can start
-// an attack (alive, hostile, not neutral to all, not stunned or passive, no victim - the caller checks those), the point is
-// inside its aggro radius attackDistance (0 = it never aggroes) plus the margin, and within its z range unless it flies.
+// The height difference as the core's WorldObject::GetDistanceZ counts it: minus both bounding radii, never below 0.
+inline float AggroDz(float dz, float radii)
+{
+    float const d = (dz < 0.0f ? -dz : dz) - radii;
+    return d > 0.0f ? d : 0.0f;
+}
+
+// A creature at distance / height difference dz (AggroDz) from the arrival point that would attack the bot there at once: it
+// can start an attack (alive, hostile, not neutral to all, not stunned or passive, no victim - the caller checks those), the
+// point is inside its aggro radius attackDistance (0 = it never aggroes) plus the margin, and within its z range unless it flies.
 inline bool Threatens(float distance, float attackDistance, float dz, bool canFly)
 {
     return attackDistance > 0.0f && distance <= attackDistance + ArriveSafeMarginYards && (canFly || dz <= ArriveSafeZYards);
+}
+
+// A far-move decline is active: the hotfix 8.36 decline (no arrival point at all, until 0) until the target changes, an
+// ArriveSafe decline until its time.
+inline bool DeclineActive(std::uint64_t until, std::uint64_t now)
+{
+    return !until || now < until;
 }
 
 // One arrival candidate, k steps back (k = 0: the point chosen at the start of the far move).
@@ -124,7 +143,7 @@ enum class ArriveOutcome : std::uint8_t
 {
     Kept,       // the first candidate is free
     Shifted,    // a later candidate is free
-    Unsafe,     // none is free: the farthest valid one (no endless search)
+    Unsafe,     // none is free: the valid one with the fewest threats, the farthest of those (no endless search)
     None        // no valid candidate: the caller keeps its point (as before the switch)
 };
 
@@ -134,11 +153,13 @@ struct ArriveChoice
     std::uint32_t index = 0;
 };
 
-// The first free valid candidate, else the farthest valid one.
+// The first free valid candidate, else the valid one with the fewest threats (the farthest of equal ones): a line that crosses
+// a second, bigger camp must not take the bot into it.
 inline ArriveChoice ChooseArrival(ArriveCandidate const* candidates, std::uint32_t count)
 {
     ArriveChoice choice;
     bool anyValid = false;
+    std::uint32_t fewest = 0;
     for (std::uint32_t i = 0; i < count; ++i)
     {
         if (!candidates[i].valid)
@@ -149,8 +170,12 @@ inline ArriveChoice ChooseArrival(ArriveCandidate const* candidates, std::uint32
             choice.index = i;
             return choice;
         }
+        if (!anyValid || candidates[i].threats <= fewest)
+        {
+            fewest = candidates[i].threats;
+            choice.index = i;
+        }
         anyValid = true;
-        choice.index = i;   // the farthest valid one so far
     }
     choice.outcome = anyValid ? ArriveOutcome::Unsafe : ArriveOutcome::None;
     if (!anyValid)
