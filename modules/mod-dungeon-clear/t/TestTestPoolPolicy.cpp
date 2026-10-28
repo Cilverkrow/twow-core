@@ -69,3 +69,12 @@ TEST(DcTestPoolPolicy, RosterTablesFailClosed)
     EXPECT_EQ(DcTestPool::ClassifyRosterTables(1), DcTestPool::RosterTables::Partial);
     EXPECT_EQ(DcTestPool::ClassifyRosterTables(2), DcTestPool::RosterTables::Both);
 }
+
+// CLI-GRP G1 probe 28.10.2026: a refused harness login says why at once (persistent roster on).
+TEST(DcTestPoolPolicy, LoginRefusalNamesWhoAndTheRosterSwitch)
+{
+    std::string const why = DcTestPool::LoginRefusal("test driver 'Dcdriver'");
+    EXPECT_EQ(why.rfind("test driver 'Dcdriver' login rejected", 0), 0u);
+    EXPECT_NE(why.find("AiPlayerbot.PersistentActiveRoster.Enabled=1"), std::string::npos);
+    EXPECT_NE(why.find("roster off"), std::string::npos);
+}
