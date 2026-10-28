@@ -515,8 +515,8 @@ bool InvalidTargetTrigger::IsActive()
     // twow-repo#602 (AiPlayerbot.Rotation.InvalidTargetQuiet, InvalidTargetPolicy.h): an empty current target with nothing attacking the
     // bot has nothing to clear and nobody to pick - quiet instead of "select new target" FAILED on every tick. An empty target while the
     // bot has attackers (the retarget to the next add) and a non-empty invalid target fire as before.
-    if (ai::invalid_target::Applies(sPlayerbotAIConfig.rotationInvalidTargetQuiet, bot->GetGUIDLow()) &&
-        ai::invalid_target::Quiet(true, !AI_VALUE(Unit*, "current target"), AI_VALUE(bool, "has attackers")))
+    if (ai::invalid_target::Applies(sPlayerbotAIConfig.rotationInvalidTargetQuiet, bot->GetGUIDLow()) && !AI_VALUE(Unit*, "current target") &&
+        ai::invalid_target::Quiet(true, true, AI_VALUE(bool, "has attackers")))
     {
         ai::invalid_target::quiet.fetch_add(1, std::memory_order_relaxed);
         return false;

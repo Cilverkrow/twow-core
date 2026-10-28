@@ -63,7 +63,7 @@ string(SUBSTRING "${triggers_cpp}" ${at} 1500 body)
 string(FIND "${body}" "\n}\n" end)
 string(SUBSTRING "${body}" 0 ${end} body)
 require_text("${triggers_cpp}" "#include \"playerbot/InvalidTargetPolicy.h\"" "the policy include in GenericTriggers.cpp")
-require_text("${body}" "    if (ai::invalid_target::Applies(sPlayerbotAIConfig.rotationInvalidTargetQuiet, bot->GetGUIDLow()) &&\n        ai::invalid_target::Quiet(true, !AI_VALUE(Unit*, \"current target\"), AI_VALUE(bool, \"has attackers\")))\n    {\n        ai::invalid_target::quiet.fetch_add(1, std::memory_order_relaxed);\n        return false;\n    }\n" "the quiet block needs the switch, an empty target and no attackers")
+require_text("${body}" "    if (ai::invalid_target::Applies(sPlayerbotAIConfig.rotationInvalidTargetQuiet, bot->GetGUIDLow()) && !AI_VALUE(Unit*, \"current target\") &&\n        ai::invalid_target::Quiet(true, true, AI_VALUE(bool, \"has attackers\")))\n    {\n        ai::invalid_target::quiet.fetch_add(1, std::memory_order_relaxed);\n        return false;\n    }\n" "the quiet block needs the switch, an empty target and no attackers")
 require_text("${body}" "\n    return AI_VALUE2(bool, \"invalid target\", \"current target\");" "the old check stays the result")
 require_order("${body}" "ai::invalid_target::Quiet(" "return AI_VALUE2(bool, \"invalid target\", \"current target\");" "the quiet block before the old check")
 
@@ -74,7 +74,7 @@ if(sat EQUAL -1)
 endif()
 string(SUBSTRING "${choose_cpp}" ${sat} 3000 sel)
 require_text("${choose_cpp}" "#include \"playerbot/InvalidTargetPolicy.h\"" "the policy include in ChooseTargetActions.cpp")
-require_text("${sel}" "    if (target && !sServerFacade.UnitIsDead(target))\n    {\n        ai::invalid_target::droppedLive.fetch_add(1, std::memory_order_relaxed);\n        if (bot->IsNonMeleeSpellCasted(true))\n            ai::invalid_target::interruptedLive.fetch_add(1, std::memory_order_relaxed);\n    }\n\n    // Stop attacking\n    bot->SetSelectionGuid(ObjectGuid());\n    ai->InterruptSpell();\n    bot->AttackStop();\n" "the trace counts before the unchanged stop")
+require_text("${sel}" "    if (target && !sServerFacade.UnitIsDead(target))\n    {\n        ai::invalid_target::droppedLive.fetch_add(1, std::memory_order_relaxed);\n        if (bot->IsNonMeleeSpellCasted(false, true, false))   // what InterruptSpell stops: no delayed spells, no channels\n            ai::invalid_target::interruptedLive.fetch_add(1, std::memory_order_relaxed);\n    }\n\n    // Stop attacking\n    bot->SetSelectionGuid(ObjectGuid());\n    ai->InterruptSpell();\n    bot->AttackStop();\n" "the trace counts before the unchanged stop")
 
 # 5. The [InvalidTarget] minute line: nothing when off, increments (exchange), called from the minute reports.
 require_text("${mgr_cpp}" "#include \"playerbot/InvalidTargetPolicy.h\"" "the policy include in RandomPlayerbotMgr.cpp")

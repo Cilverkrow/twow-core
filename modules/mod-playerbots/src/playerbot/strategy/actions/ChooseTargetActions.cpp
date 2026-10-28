@@ -215,7 +215,7 @@ bool SelectNewTargetAction::Execute(Event& event)
     if (target && !sServerFacade.UnitIsDead(target))
     {
         ai::invalid_target::droppedLive.fetch_add(1, std::memory_order_relaxed);
-        if (bot->IsNonMeleeSpellCasted(true))
+        if (bot->IsNonMeleeSpellCasted(false, true, false))   // what InterruptSpell stops: no delayed spells, no channels
             ai::invalid_target::interruptedLive.fetch_add(1, std::memory_order_relaxed);
     }
 
