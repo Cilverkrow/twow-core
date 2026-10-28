@@ -3607,6 +3607,20 @@ add_test(NAME invalid_target_policy
   COMMAND invalid_target_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#602 (spell-name audit): the names that resolve in the image's spell data, the warlock stone ranks.
+add_executable(spell_name_policy_tests
+  "${PB_MODULE_DIR}/t/spell_name_policy_tests.cpp")
+
+target_include_directories(spell_name_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(spell_name_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME spell_name_policy
+  COMMAND spell_name_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # twow-repo#602 ROT-01 X3 (AiPlayerbot.Rotation.EmergencyLadder, cohort mode, default 0): fight on / class escape / flee for solo free bots
 # below critical health, solo CC on an add; FightTargetHp and SoloCcSpells configurable (OB-00 18.10.2026).
 add_executable(emergency_ladder_policy_tests
@@ -4092,6 +4106,20 @@ set_target_properties(melee_skip_policy_tests PROPERTIES
 
 add_test(NAME melee_skip_policy
   COMMAND melee_skip_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#602 (AiPlayerbot.Rotation.TankKitFromLevel): the tank kit only from the level of the tank spells (warrior 10, paladin 16).
+add_executable(tank_kit_policy_tests
+  "${PB_MODULE_DIR}/t/tank_kit_policy_tests.cpp")
+
+target_include_directories(tank_kit_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(tank_kit_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME tank_kit_policy
+  COMMAND tank_kit_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
 # twow-repo#333 finding 4: a travel step keeps the hearthstone / teleport cast wait and waits for a prepared one.

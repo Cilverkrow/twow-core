@@ -40,6 +40,7 @@ namespace ai
             farMoveDeclinedSet = other.farMoveDeclinedSet;
             farMoveArrivedAt = other.farMoveArrivedAt;
             transportWaitMs = other.transportWaitMs;
+            farMoveDeclinedUntil = other.farMoveDeclinedUntil;
             fleeCount = other.fleeCount;
             lastFleeAttempt = other.lastFleeAttempt;
             fleeBreakAttempt = other.fleeBreakAttempt;
@@ -145,6 +146,9 @@ namespace ai
         // dock (HandleSpecialMovement, the transport not used yet and the bot not aboard), 0 = none. Written and read by the bot's
         // own movement and travel target (bot thread). clear() leaves it alone: the pause lapses by itself.
         uint32 transportWaitMs = 0;
+        // twow-repo#601 cand4-B (RosterFarMove.ArriveSafe): when the far-move decline lapses - 0 for the hotfix 8.36 decline (until
+        // the target changes), now + ArriveSafeDeclineSeconds after an arrival further back (FarMovePolicy.h DeclineActive).
+        time_t farMoveDeclinedUntil = 0;
         // twow-repo#541 (L1, AiPlayerbot.Perf.PartialPathReuse): stamp of the path MovementAction::ResolveMovePath
         // last built - the requested destination, the end point of that path, the bot's map and the build time
         // (WorldTimer ms). Written and read only with the switch on, only by the bot's own movement (own value,

@@ -98,7 +98,17 @@ struct State
     std::uint8_t status = 0;   // TravelTarget status, 0 without a target
     Dest dest = Dest::None;
     float moved = 1e9f;
+    bool farMoveWaiting = false;   // twow-repo#601: a RosterFarMove wait is running (FarMovePolicy.h WaitStateOf)
 };
+
+// twow-repo#601 (OB-00 28.10.2026, CLI-PATH cli-pathfinding/far-travel-stuck/CAUSE.md): a roster bot on a far move (RosterFarMove,
+// Hotfix 8.33a) stands still for the walking time (up to 240 s) and is then moved to its target - travel, not a stall. In cand4-B
+// 74-87 % of the stuck episodes were such waits, and the FUTILE rule read them as standing. A far-move wait in TRAVEL is the target's
+// kind (quest / grind / other); the [BotActivity] line counts those seconds as far_wait= (old stuck = stuck + far_wait).
+inline bool StuckSample(State const& s)
+{
+    return s.status == StatusTravel && !s.taxiFlying && s.moved < StuckYards;
+}
 
 inline Kind Classify(State const& s)
 {
@@ -112,7 +122,7 @@ inline Kind Classify(State const& s)
         return Kind::Group;   // twow-repo#627: no own target, so neither idle nor stuck
     if (TravelActive(s.status) && s.dest != Dest::None)
     {
-        if (s.status == StatusTravel && !s.taxiFlying && s.moved < StuckYards)
+        if (StuckSample(s) && !s.farMoveWaiting)
             return Kind::Stuck;
         if (s.dest == Dest::Grind)
             return s.status == StatusWork && !s.combatSinceSample ? Kind::GrindIdle : Kind::Grind;
@@ -121,6 +131,16 @@ inline Kind Classify(State const& s)
     if (s.taxiFlying)
         return Kind::Other;
     return Kind::Idle;
+}
+
+// A sample that was stuck before the far-move rule and is the target's kind now (its seconds go to far_wait= as well).
+inline bool FarWaitSample(State const& s)
+{
+    if (!s.farMoveWaiting || !StuckSample(s))
+        return false;
+    State before = s;
+    before.farMoveWaiting = false;
+    return Classify(before) == Kind::Stuck;
 }
 
 // Per bot (its own update thread only). The first sample after login credits nothing; each later one credits the
@@ -164,12 +184,18 @@ struct Clock
 
     bool HourDone(std::uint32_t now) const { return lastSample && now / HourSeconds != hour; }
 
+    std::uint32_t farWait = 0;   // twow-repo#601: seconds of far-move waits (FarWaitSample), also in their kind
+
     void StartHour(std::uint32_t now)
     {
         hour = now / HourSeconds;
         seconds = {};
         gap = 0;
+        farWait = 0;
     }
+
+    // the seconds Add just credited, when the sample was a far-move wait
+    void AddFarWait(std::uint32_t credited) { farWait += credited; }
 
     // -> the seconds credited to kind (0: first sample or a gap)
     std::uint32_t Add(Kind kind, std::uint32_t now)
@@ -207,6 +233,7 @@ inline std::string FormatLine(std::uint32_t bot, std::uint32_t level, std::uint3
     line += " gap=" + std::to_string(c.gap);
     if (questLog >= 0)
         line += " quest_log=" + std::to_string(questLog) + " quest_done=" + std::to_string(questDone);
+    line += " far_wait=" + std::to_string(c.farWait);   // twow-repo#601 (OB-00 28.10.2026): far-move waits, last
     return line;
 }
 
@@ -267,6 +294,118 @@ inline StuckDetailLimit& StuckDetailGlobal()
 {
     static StuckDetailLimit limit;
     return limit;
+}
+
+// twow-repo#601 (AiPlayerbot.ActivityTrace.IdleDetail, OB-00 28.10.2026): in cand4-B the quest cohort was idle 20 % of its time
+// (no active travel target) and no log said why. With the switch a bot that is idle IdleDetailSamples samples in a row writes one
+// "[IdleDetail] state=start" line for the episode (why its target is not active, what the target was, the quest search state),
+// and the first sample of another kind after such an episode one "state=end" line (seconds idle, the kind that ended it, the new
+// target). Both lines within IdleDetailGlobal() - its own budget of StuckDetailPerMinute lines a minute. Log only.
+constexpr std::uint8_t IdleDetailSamples = 2;
+
+// Why an idle bot's target is not active (Classify: an inactive status, or an active one without a destination). The bot always
+// holds a travel target object; "no target" is one without a destination (or the null destination).
+enum class IdleWhy : std::uint8_t
+{
+    NoTarget = 0,   // an inactive status and no destination
+    NullDest,       // an active status (prepare / ready / travel / work), no destination
+    None,           // status NONE with a destination
+    Cooldown,       // status COOLDOWN with a destination
+    Expired,        // status EXPIRED with a destination
+    Other           // a status above EXPIRED
+};
+
+inline IdleWhy IdleWhyOf(Dest dest, std::uint8_t status)
+{
+    if (TravelActive(status))
+        return IdleWhy::NullDest;
+    if (dest == Dest::None)
+        return IdleWhy::NoTarget;
+    return status == 0 ? IdleWhy::None : status == 5 ? IdleWhy::Cooldown : status == 6 ? IdleWhy::Expired : IdleWhy::Other;
+}
+
+inline char const* IdleWhyName(IdleWhy why)
+{
+    switch (why)
+    {
+        case IdleWhy::NoTarget: return "no_target";
+        case IdleWhy::NullDest: return "null_dest";
+        case IdleWhy::None: return "none";
+        case IdleWhy::Cooldown: return "cooldown";
+        case IdleWhy::Expired: return "expired";
+        default: return "other";
+    }
+}
+
+enum class IdleNote : std::uint8_t
+{
+    Nothing = 0,
+    Start,   // the sample that makes the episode (IdleDetailSamples idle samples in a row), once per episode
+    End      // the first sample of another kind after an episode, or the first sample after a gap
+};
+
+// Per bot (its own update thread only). A step longer than MaxCreditSeconds since the previous sample (the bot was not sampled: a
+// real master, no update) ends an episode at its last idle sample (End, seconds up to it) and the sample starts afresh. The caller
+// sets startLogged when it wrote the Start line; an End is only written for such an episode (no end line without its start).
+struct IdleEpisode
+{
+    std::uint32_t samples = 0;
+    std::uint32_t since = 0;   // time of the episode's first idle sample
+    std::uint32_t last = 0;    // time of the previous sample
+    IdleWhy why = IdleWhy::NoTarget;   // at its Start
+    std::uint32_t seconds = 0;   // at an End: from the first idle sample to this one (to the last idle one after a gap)
+    bool startLogged = false;
+    bool endedByGap = false;   // at an End: the episode ended at a gap, not at another kind
+
+    IdleNote Note(bool idle, std::uint32_t now, IdleWhy whyNow)
+    {
+        bool const gap = samples && now - last > MaxCreditSeconds;
+        std::uint32_t const previous = last;
+        last = now;
+        if (gap)
+        {
+            bool const episode = samples >= IdleDetailSamples;
+            samples = idle ? 1 : 0;
+            if (episode)
+            {
+                seconds = previous - since;
+                endedByGap = true;
+            }
+            since = now;
+            return episode ? IdleNote::End : IdleNote::Nothing;
+        }
+        if (idle)
+        {
+            if (!samples)
+                since = now;
+            if (samples < 255)
+                ++samples;
+            if (samples != IdleDetailSamples)
+                return IdleNote::Nothing;
+            why = whyNow;
+            return IdleNote::Start;
+        }
+        bool const episode = samples >= IdleDetailSamples;
+        samples = 0;
+        if (!episode)
+            return IdleNote::Nothing;
+        seconds = now - since;
+        endedByGap = false;
+        return IdleNote::End;
+    }
+};
+
+inline StuckDetailLimit& IdleDetailGlobal()
+{
+    static StuckDetailLimit limit;
+    return limit;
+}
+
+// What the bot's pending travel destination search is doing: "none" (no search job), "pending" (running), "ready" (done, not
+// yet taken by the choose action).
+inline char const* FetchStateName(bool valid, bool ready)
+{
+    return !valid ? "none" : ready ? "ready" : "pending";
 }
 
 // What the engine last did, from its trail (Engine::LogAction: "|PUSH:<action> - <relevance> (<kind>)|T:<trigger>|...|A:<action>
