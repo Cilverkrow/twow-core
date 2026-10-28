@@ -162,6 +162,10 @@ bool RpgTaxiAction::Execute(Event& event)
     GuidPosition guidP = rpg->guidP();
 
     ai->Unmount();
+    // twow-repo#333 P1-x: Player::ActivateTaxiPathTo refuses a shapeshifted bot (ERR_TAXIPLAYERSHAPESHIFTED), so a druid
+    // in travel form or a shaman as ghost wolf failed at every flight master.
+    if (bot->GetShapeshiftForm() != FORM_NONE)
+        ai->RemoveShapeshift();
 
     uint32 node = sObjectMgr.GetNearestTaxiNode(guidP.getX(), guidP.getY(), guidP.getZ(), guidP.getMapId(), bot->GetTeam());
 
@@ -196,8 +200,6 @@ bool RpgTaxiAction::Execute(Event& event)
     }
 
     uint32 path = nodes[urand(0, nodes.size() - 1)];
-    uint32 money = bot->GetMoney();
-    bot->SetMoney(money + 100000);
 
     TaxiPathEntry const* entry = sTaxiPathStore.LookupEntry(path);
     if (!entry)
@@ -217,7 +219,13 @@ bool RpgTaxiAction::Execute(Event& event)
 #ifdef MANGOSBOT_TWO                
     bot->OnTaxiFlightEject(true);
 #endif
-    if (!bot->ActivateTaxiPathTo({ entry->from, entry->to }, flightMaster, 0))
+    // The flight is free: the fare is lent for the activation only and the money set back either way. twow-repo#333 P1-x:
+    // the 10 g were lent before four later returns and kept on every failure (gold out of nothing, ADR-0031 gold metric).
+    uint32 const money = bot->GetMoney();
+    bot->SetMoney(money + 100000);
+    bool const flying = bot->ActivateTaxiPathTo({ entry->from, entry->to }, flightMaster, 0);
+    bot->SetMoney(money);
+    if (!flying)
     {
         sLog.outError("Bot %s cannot fly %u (%zu location available)", bot->GetName(), path, nodes.size());
         return false;
@@ -228,7 +236,6 @@ bool RpgTaxiAction::Execute(Event& event)
 #endif
 
     sLog.outDetail("Bot #%d <%s> is flying from %s to %s (%zu location available)", bot->GetGUIDLow(), bot->GetName(), nodeFrom->name[0].c_str(), nodeTo->name[0].c_str(), nodes.size());
-    bot->SetMoney(money);
 
     rpg->AfterExecute();
 
