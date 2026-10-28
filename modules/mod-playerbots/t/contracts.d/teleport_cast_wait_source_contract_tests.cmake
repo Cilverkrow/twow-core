@@ -3,7 +3,8 @@
 # (and the travel step a teleport spell) through DoSpecificAction; the engine then set the AI wait to the outer action's own
 # duration, so the cast wait of the use action was lost, the next pass failed the step and reset the path, and the next
 # movement interrupted the cast. Now every site holds for the cast (the wait taken from the spell), and the travel step and
-# unstuck wait for a teleport the bot already prepares. Rules: t/teleport_cast_policy_tests.cpp; this contract pins the wiring.
+# unstuck wait for a teleport the bot already prepares; an interrupted hearthstone ends the hold (last spell cast).
+# Rules: t/teleport_cast_policy_tests.cpp; this contract pins the wiring.
 
 # cmake 3.x script mode (Debian trixie builder / CI): policies as in the host cmake 4.x.
 cmake_policy(VERSION 3.16)
@@ -75,3 +76,17 @@ require_count("${unstuck_cpp}" "DoSpecificAction(\"hearthstone\"" 1 "the hearths
 # Zone escape: each run from the react delay; the hearthstone step holds for the cast.
 require_text("${escape_cpp}" "bool ZoneEscapeAction::Execute(Event& event)\n{\n    // twow-repo#333 finding 4: each run starts from the react delay" "zone escape starts each run from the react delay")
 require_text("${escape_cpp}" "            SetDuration(teleport_cast::HoldMs(teleport_cast::PreparedWaitMs(bot, teleport_cast::kHearthstone, reactDelay),\n                ai->GetAIInternalUpdateDelay(), reactDelay));" "zone escape holds for the hearthstone")
+
+# The hold ends on an interrupt: the hearthstone is recorded as the last spell cast, so SMSG_SPELL_FAILURE ->
+# PlayerbotAI::SpellInterrupted releases the AI wait (the item path did not record it).
+read_source("strategy/actions/UseItemAction.cpp" use_cpp)
+read_source("PlayerbotAI.cpp" ai_cpp)
+require_text("${use_cpp}" "#include \"playerbot/strategy/values/LastSpellCastValue.h\"" "the LastSpellCast include in UseItemAction.cpp")
+require_text("${use_cpp}" "        if (Spell* const spell = bot->GetCurrentSpell(CURRENT_GENERIC_SPELL))\n            AI_VALUE(LastSpellCast&, \"last spell cast\").Set(spell->m_spellInfo->Id, bot->GetObjectGuid(), time(nullptr));" "the hearthstone recorded as the last spell cast")
+string(FIND "${use_cpp}" "bool UseHearthStoneAction::Execute(Event& event)" hs_at)
+string(FIND "${use_cpp}" "bool UseHearthStoneAction::isUseful()" hs_end)
+string(FIND "${use_cpp}" "AI_VALUE(LastSpellCast&, \"last spell cast\").Set(" set_at)
+if(hs_at EQUAL -1 OR hs_end EQUAL -1 OR set_at EQUAL -1 OR NOT hs_at LESS set_at OR NOT set_at LESS hs_end)
+  message(FATAL_ERROR "#333 finding 4 teleport cast wait: the last spell cast is recorded inside UseHearthStoneAction::Execute")
+endif()
+require_text("${ai_cpp}" "	case SMSG_SPELL_FAILURE:\n	{\n		WorldPacket p(packet);\n		p.rpos(0);\n		ObjectGuid casterGuid;\n        p >> casterGuid.ReadAsPacked();\n		if (casterGuid != bot->GetObjectGuid())\n			return;\n\n		uint32 spellId;\n		p >> spellId;\n		SpellInterrupted(spellId);" "the spell failure release path")
