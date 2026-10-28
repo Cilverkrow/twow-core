@@ -746,6 +746,25 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[QuestLoop] config key=GiverTakerDone value=%u result=off (0 off, 1 all, 2 cohort B)", questLoopGiverTakerDone);
         questLoopGiverTakerDone = 0;
     }
+    // twow-repo#601 turn_in hold (CLI-Deep 28.10.2026): an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B).
+    questLoopRelationWorkNoGrind = config.GetIntDefault("AiPlayerbot.QuestLoop.RelationWorkNoGrind", 0);
+    if (questLoopRelationWorkNoGrind > 2)
+    {
+        sLog.outError("[QuestLoop] config key=RelationWorkNoGrind value=%u result=off (0 off, 1 all, 2 cohort B)", questLoopRelationWorkNoGrind);
+        questLoopRelationWorkNoGrind = 0;
+    }
+    questLoopRelationArriveRpgTarget = config.GetIntDefault("AiPlayerbot.QuestLoop.RelationArriveRpgTarget", 0);
+    if (questLoopRelationArriveRpgTarget > 2)
+    {
+        sLog.outError("[QuestLoop] config key=RelationArriveRpgTarget value=%u result=off (0 off, 1 all, 2 cohort B)", questLoopRelationArriveRpgTarget);
+        questLoopRelationArriveRpgTarget = 0;
+    }
+    questLoopTurnInWorkDeathNotRoute = config.GetIntDefault("AiPlayerbot.QuestLoop.TurnInWorkDeathNotRoute", 0);
+    if (questLoopTurnInWorkDeathNotRoute > 2)
+    {
+        sLog.outError("[QuestLoop] config key=TurnInWorkDeathNotRoute value=%u result=off (0 off, 1 all, 2 cohort B)", questLoopTurnInWorkDeathNotRoute);
+        questLoopTurnInWorkDeathNotRoute = 0;
+    }
     // twow-repo#601 InactiveAfterProgress: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B).
     questLoopInactiveAfterProgress = config.GetIntDefault("AiPlayerbot.QuestLoop.InactiveAfterProgress", 0);
     if (questLoopInactiveAfterProgress > 2)
@@ -1463,6 +1482,13 @@ bool PlayerbotAIConfig::Initialize()
         professionTrainingTravel = 0;
     // P1-n: yards, 0 = off, at most 1000 (ProfessionTravelPolicy.h ClampNearRadius); the mode and cohort of ProfessionTraining.Travel.
     professionTrainingNearRadius = ai::profession_travel::ClampNearRadius(config.GetIntDefault("AiPlayerbot.ProfessionTraining.NearRadius", 0));
+    // twow-repo#601 turn_in hold (CLI-Deep 28.10.2026): an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B).
+    professionTrainingTurnInGateSkipSuppressed = config.GetIntDefault("AiPlayerbot.ProfessionTraining.TurnInGateSkipSuppressed", 0);
+    if (professionTrainingTurnInGateSkipSuppressed > 2)
+    {
+        sLog.outError("[ProfTravel] config key=TurnInGateSkipSuppressed value=%u result=off (0 off, 1 all, 2 cohort B)", professionTrainingTurnInGateSkipSuppressed);
+        professionTrainingTurnInGateSkipSuppressed = 0;
+    }
     professionUseToolBuy = config.GetIntDefault("AiPlayerbot.ProfessionUse.ToolBuy", 0);
     if (professionUseToolBuy > 2)
         professionUseToolBuy = 0;
@@ -1761,6 +1787,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Perf.RouteTimeTrace", Value(perfRouteTimeTrace)},
             {"ProfessionTraining.NearRadius", Value(professionTrainingNearRadius)},
             {"ProfessionTraining.Travel", Value(professionTrainingTravel)},
+            {"ProfessionTraining.TurnInGateSkipSuppressed", Value(professionTrainingTurnInGateSkipSuppressed)},
             {"ProfessionUse.ToolBuy", Value(professionUseToolBuy)},
             {"QuestFeasibility.Blocklist.count", Value(uint32(questFeasibilityBlocklist.size()))},
             {"QuestFeasibility.BlocklistWhileNoCustomStarts.count", Value(uint32(questFeasibilityBlocklistWhileNoCustomStarts.size()))},
@@ -1796,6 +1823,9 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestLoop.GiverTakerDone", Value(questLoopGiverTakerDone)},
             {"QuestLoop.InactiveAfterProgress", Value(questLoopInactiveAfterProgress)},
             {"QuestLoop.InactiveReselect", Value(questLoopInactiveReselect)},
+            {"QuestLoop.RelationArriveRpgTarget", Value(questLoopRelationArriveRpgTarget)},
+            {"QuestLoop.RelationWorkNoGrind", Value(questLoopRelationWorkNoGrind)},
+            {"QuestLoop.TurnInWorkDeathNotRoute", Value(questLoopTurnInWorkDeathNotRoute)},
             {"QuestRescue.KeepRequestWhenFull", Value(questRescueKeepRequestWhenFull)},
             {"Revive.SpiritHealerFull", Value(reviveSpiritHealerFull)},
             {"RosterFarMove.ArriveSafe", Value(rosterFarMoveArriveSafe)},

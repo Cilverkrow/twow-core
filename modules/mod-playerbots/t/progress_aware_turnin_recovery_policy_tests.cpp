@@ -335,4 +335,30 @@ int main()
     std::cout << "near_zone_jitter_stall=PASS near_zone_off_unchanged=PASS near_zone_closer_3yd=PASS "
         "near_zone_wander_back=PASS near_zone_approach_cross_map=PASS near_zone_stale_leg=PASS work_timeout_ring=PASS "
         "combat_keeps_window=PASS\n";
+
+    // twow-repo#601 turn_in hold (ProfessionTraining.TurnInGateSkipSuppressed): the suppression slots also carry their quest, so
+    // the gate can ask by the finished quest. Lorathil / Edrick: 41747 death-suppressed at the taker 62634 for an hour.
+    State azora;
+    assert(!ai::turnin_recovery::RecordDeathOnRoute(azora, 62634, 41747, 0, 100, 2, deathCooldown));
+    assert(!ai::turnin_recovery::IsSuppressedForQuest(azora, 101, 41747));
+    assert(ai::turnin_recovery::RecordDeathOnRoute(azora, 62634, 41747, 0, 200, 2, deathCooldown));
+    assert(ai::turnin_recovery::IsSuppressedForQuest(azora, 201, 41747));
+    assert(ai::turnin_recovery::IsSuppressedForQuest(azora, 3799, 41747));
+    assert(!ai::turnin_recovery::IsSuppressedForQuest(azora, 3800, 41747));
+    assert(!ai::turnin_recovery::IsSuppressedForQuest(azora, 201, 55002));
+    assert(!ai::turnin_recovery::IsSuppressedForQuest(azora, 201, 0));
+    // The stall slot (stage 2) carries its quest too; quest 40273 of At(), not the death's 41747.
+    assert(ai::turnin_recovery::Observe(azora, At(300, 0.0f, 9000.0f), stall, cooldown) == RecoveryAction::None);
+    assert(ai::turnin_recovery::Observe(azora, At(600, 0.0f, 9000.0f), stall, cooldown) == RecoveryAction::RecomputeRoute);
+    assert(ai::turnin_recovery::Observe(azora, At(900, 0.0f, 9000.0f), stall, cooldown) == RecoveryAction::SuppressRouteAndCooldown);
+    assert(ai::turnin_recovery::IsSuppressedForQuest(azora, 901, 40273));
+    assert(ai::turnin_recovery::IsSuppressedForQuest(azora, 1019, 40273));
+    assert(!ai::turnin_recovery::IsSuppressedForQuest(azora, 1020, 40273));
+    assert(ai::turnin_recovery::IsSuppressedForQuest(azora, 1021, 41747));
+    // A slot without a quest (0) never matches quest 0.
+    State noQuest;
+    noQuest.suppressUntil = 500;
+    assert(!ai::turnin_recovery::IsSuppressedForQuest(noQuest, 1, 0));
+
+    std::cout << "suppressed_for_quest=PASS\n";
 }
