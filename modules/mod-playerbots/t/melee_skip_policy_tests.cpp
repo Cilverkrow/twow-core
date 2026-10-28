@@ -28,17 +28,18 @@ int main()
     Require(!Applies(2, 10) && Applies(2, 11), "mode 2: cohort B only");
 
     // 2) Skip exactly where Unit::Attack(target, wantMelee) returns false: already the victim, and swinging or not wanting to swing.
-    Require(Skip(true, true, true, true, true, true), "melee bot already swinging at its target: skip (warrior in a rage gap)");
-    Require(Skip(true, true, false, false, true, true), "ranged bot already attacking its target, no swing wanted: skip (druid in a GCD)");
-    Require(!Skip(true, true, false, true, true, true), "attacking but not swinging, swing wanted: attack (Unit::Attack switches to melee)");
-    Require(!Skip(true, false, true, true, true, true), "the target is not the victim: attack (a new target)");
+    Require(Skip(true, true, true, true, true, true, true), "melee bot already swinging at its target: skip (warrior in a rage gap)");
+    Require(Skip(true, true, false, false, true, true, true), "ranged bot already attacking its target, no swing wanted: skip (druid in a GCD)");
+    Require(!Skip(true, true, false, true, true, true, true), "attacking but not swinging, swing wanted: attack (Unit::Attack switches to melee)");
+    Require(!Skip(true, false, true, true, true, true, true), "the target is not the victim: attack (a new target)");
 
     // 3) Side effects of Attack() that still matter keep the old path.
-    Require(!Skip(true, true, true, true, false, true), "not facing the target: attack (Attack() turns the bot)");
-    Require(!Skip(true, true, true, true, true, false), "living pet not on the target: attack (Attack() sends the pet)");
+    Require(!Skip(true, true, true, true, false, true, true), "not facing the target: attack (Attack() turns the bot)");
+    Require(!Skip(true, true, true, true, true, false, true), "living pet not on the target: attack (Attack() sends the pet)");
+    Require(!Skip(true, true, true, true, true, true, false), "mounted / wait for attack / stealthed: attack (Attack() unmounts, or returns OK)");
 
     // 4) Switch off: never skip (rollback).
-    Require(!Skip(false, true, true, true, true, true), "switch off: the old path");
+    Require(!Skip(false, true, true, true, true, true, true), "switch off: the old path");
 
     std::cout << "melee_skip_policy_tests passed\n";
     return 0;
