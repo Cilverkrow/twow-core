@@ -598,6 +598,9 @@ bool PlayerbotAIConfig::Initialize()
     rotationCastStopFirst = config.GetIntDefault("AiPlayerbot.Rotation.CastStopFirst", 1);   // twow-repo#602 cast-abort loop
     if (rotationCastStopFirst > 2)
         rotationCastStopFirst = 1;   // an unknown mode is the default (0 off = rollback, 1 all, 2 cohort B)
+    rotationInvalidTargetQuiet = config.GetIntDefault("AiPlayerbot.Rotation.InvalidTargetQuiet", 1);   // twow-repo#602 failure census
+    if (rotationInvalidTargetQuiet > 2)
+        rotationInvalidTargetQuiet = 1;   // an unknown mode is the default (0 off = rollback, 1 all, 2 cohort B)
     perfCombatIdleYield = config.GetBoolDefault("AiPlayerbot.Perf.CombatIdleYield", false);
     castWaitPreparing = config.GetIntDefault("AiPlayerbot.CastWait.Preparing", 0);
     if (castWaitPreparing > 2)
@@ -1797,6 +1800,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Rotation.FleeAway.Scope", Value(rotationFleeAwayScope)},
             {"Rotation.FollowUnstealth", Value(rotationFollowUnstealth)},
             {"Rotation.HunterMeleeStart", Value(rotationHunterMeleeStart)},
+            {"Rotation.InvalidTargetQuiet", Value(rotationInvalidTargetQuiet)},
             {"Rotation.MeleeFleeBreak", Value(rotationMeleeFleeBreak)},
             {"Rotation.MeleeFleeBreak.Ranged", Value(rotationMeleeFleeBreakRanged)},
             {"Rotation.MeleeSkipAttacking", Value(rotationMeleeSkipAttacking)},

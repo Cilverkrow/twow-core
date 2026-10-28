@@ -3593,6 +3593,20 @@ add_test(NAME cast_los_gate_policy
   COMMAND cast_los_gate_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#602 (AiPlayerbot.Rotation.InvalidTargetQuiet): "invalid target" stays quiet for an empty target while nothing attacks the bot.
+add_executable(invalid_target_policy_tests
+  "${PB_MODULE_DIR}/t/invalid_target_policy_tests.cpp")
+
+target_include_directories(invalid_target_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(invalid_target_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME invalid_target_policy
+  COMMAND invalid_target_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # twow-repo#602 ROT-01 X3 (AiPlayerbot.Rotation.EmergencyLadder, cohort mode, default 0): fight on / class escape / flee for solo free bots
 # below critical health, solo CC on an add; FightTargetHp and SoloCcSpells configurable (OB-00 18.10.2026).
 add_executable(emergency_ladder_policy_tests

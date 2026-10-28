@@ -72,6 +72,7 @@
 #include "playerbot/CastLosGatePolicy.h"   // twow-repo#602 (Rotation.CastLosGate): [CastLosGate] minute line
 #include "playerbot/CastWhileMovingPolicy.h"   // twow-repo#602 (Rotation.CastStopFirst): [CastStopFirst] minute line
 #include "playerbot/MeleeSkipPolicy.h"   // twow-repo#602 (Rotation.MeleeSkipAttacking): [MeleeSkip] minute line
+#include "playerbot/InvalidTargetPolicy.h"   // twow-repo#602 (Rotation.InvalidTargetQuiet): [InvalidTarget] minute line
 #include "playerbot/PathReusePolicy.h"
 #include "playerbot/RotCastTrace.h"   // twow-repo#602 ROT-01 D0
 #include "playerbot/EmergencyLadderTrace.h"   // twow-repo#602 ROT-01 X3
@@ -1297,6 +1298,22 @@ void ReportMeleeSkip()
         (unsigned long long)ai::melee_skip::skipped.exchange(0, std::memory_order_relaxed));
 }
 
+// twow-repo#602 (AiPlayerbot.Rotation.InvalidTargetQuiet): one [InvalidTarget] line per minute - "invalid target" checks kept quiet (quiet),
+// and the trace for the follow-up (b): "select new target" dropped a live current target (dropped_live), while casting (interrupted_live).
+// Nothing is written when off.
+void ReportInvalidTarget()
+{
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (!sPlayerbotAIConfig.rotationInvalidTargetQuiet || now < lastReport + 60)
+        return;
+    lastReport = now;
+    sLog.outBasic("[InvalidTarget] mode=%u quiet=%llu dropped_live=%llu interrupted_live=%llu", sPlayerbotAIConfig.rotationInvalidTargetQuiet,
+        (unsigned long long)ai::invalid_target::quiet.exchange(0, std::memory_order_relaxed),
+        (unsigned long long)ai::invalid_target::droppedLive.exchange(0, std::memory_order_relaxed),
+        (unsigned long long)ai::invalid_target::interruptedLive.exchange(0, std::memory_order_relaxed));
+}
+
 // twow-repo#602 #2 (AiPlayerbot.Grind.NeighbourAware): one [GrindNeighbour] line per minute and cohort with scored passes - the
 // counters of GrindNeighbourPolicy.h as increments, then cls=<class>:<picks>/<would_change>/<changed> for the stratified readout.
 // Nothing is written when off or for a cohort without passes.
@@ -1948,6 +1965,7 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     ReportCastLosGate();  // twow-repo#602: [CastLosGate] once per minute (AiPlayerbot.Rotation.CastLosGate)
     ReportCastStopFirst();  // twow-repo#602: [CastStopFirst] once per minute (AiPlayerbot.Rotation.CastStopFirst)
     ReportMeleeSkip();      // twow-repo#602: [MeleeSkip] once per minute (AiPlayerbot.Rotation.MeleeSkipAttacking)
+    ReportInvalidTarget();  // twow-repo#602: [InvalidTarget] once per minute (AiPlayerbot.Rotation.InvalidTargetQuiet)
     ReportParkSleep();    // twow-repo#541: core switches + [ParkSleep] once per minute (AiPlayerbot.Park.SleepGrid)
     ReportCombatIdle();   // twow-repo#541 (audit A17): [CombatIdle] once per minute (AiPlayerbot.Perf.CombatIdleYield)
     ReportHunterMelee();  // twow-repo#602: [HunterMelee] once per minute (AiPlayerbot.Rotation.HunterMeleeStart)
