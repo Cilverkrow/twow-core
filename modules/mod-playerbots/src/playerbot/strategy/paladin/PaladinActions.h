@@ -1,5 +1,6 @@
 #pragma once
 #include "playerbot/strategy/actions/GenericActions.h"
+#include "playerbot/SpellNamePolicy.h"
 
 namespace ai
 {
@@ -44,7 +45,13 @@ namespace ai
 	BUFF_ACTION(CastDivineFavorAction, "divine favor");
 
 	// blessings
-	BUFF_ACTION(CastBlessingOfFreedomAction, "blessing of freedom");
+	// twow-repo#602 (spell-name audit, SpellNamePolicy.h): Turtle renamed Blessing of Freedom / Protection / Sacrifice to Hand of ...;
+	// "blessing of ..." never resolved. The action names stay (creators, strategy nodes, triggers).
+	class CastBlessingOfFreedomAction : public CastBuffSpellAction
+	{
+	public:
+		CastBlessingOfFreedomAction(PlayerbotAI* ai) : CastBuffSpellAction(ai, "blessing of freedom") { SetSpellName(ai::spell_names::kHandOfFreedom); }
+	};
 	// fury
 	BUFF_ACTION(CastRighteousFuryAction, "righteous fury");
 	BUFF_ACTION(CastAvengingWrathAction, "avenging wrath");
@@ -633,13 +640,13 @@ namespace ai
 	class CastBlessingOfSacrificeAction : public BuffOnPartyAction
 	{
 	public:
-		CastBlessingOfSacrificeAction(PlayerbotAI* ai) : BuffOnPartyAction(ai, "blessing of sacrifice") {}
+		CastBlessingOfSacrificeAction(PlayerbotAI* ai) : BuffOnPartyAction(ai, "blessing of sacrifice") { SetSpellName(ai::spell_names::kHandOfSacrifice); }   // Turtle: Hand of Sacrifice
 	};
 
     class CastBlessingOfFreedomOnPartyAction : public CastSpellAction
     {
     public:
-		CastBlessingOfFreedomOnPartyAction(PlayerbotAI* ai) : CastSpellAction(ai, "blessing of freedom") {}
+		CastBlessingOfFreedomOnPartyAction(PlayerbotAI* ai) : CastSpellAction(ai, "blessing of freedom") { SetSpellName(ai::spell_names::kHandOfFreedom); }   // Turtle: Hand of Freedom
         bool isUseful() override { return CastSpellAction::isUseful() && !ai->HasAura(GetSpellName(), GetTarget()); }
         std::string GetReachActionName() override { return "reach spell"; }
         std::string GetTargetName() override { return "party member to remove roots"; }
@@ -648,7 +655,7 @@ namespace ai
     class CastBlessingOfProtectionOnPartyAction : public CastProtectSpellAction
     {
     public:
-        CastBlessingOfProtectionOnPartyAction(PlayerbotAI* ai) : CastProtectSpellAction(ai, "blessing of protection") {}
+        CastBlessingOfProtectionOnPartyAction(PlayerbotAI* ai) : CastProtectSpellAction(ai, "blessing of protection") { SetSpellName(ai::spell_names::kHandOfProtection); }   // Turtle: Hand of Protection
         bool isUseful() override 
         { 
             Unit* target = GetTarget();

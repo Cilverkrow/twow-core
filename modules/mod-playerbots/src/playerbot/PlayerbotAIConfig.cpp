@@ -562,6 +562,9 @@ bool PlayerbotAIConfig::Initialize()
     castSpellRefreshOnLearn = config.GetBoolDefault("AiPlayerbot.CastSpell.RefreshOnLearn", false);
     rotationCastTrace = config.GetBoolDefault("AiPlayerbot.Rotation.CastTrace", false);
     rotationSpecFromPath = config.GetIntDefault("AiPlayerbot.Rotation.SpecFromPath", 0);
+    rotationTankKitFromLevel = config.GetIntDefault("AiPlayerbot.Rotation.TankKitFromLevel", 0);   // twow-repo#602 tank count
+    if (rotationTankKitFromLevel > 2)
+        rotationTankKitFromLevel = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
     rotationEmergencyLadder = config.GetIntDefault("AiPlayerbot.Rotation.EmergencyLadder", 0);
     if (rotationEmergencyLadder > 2)
         rotationEmergencyLadder = 0;   // twow-repo#602 X3: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B)
@@ -959,6 +962,9 @@ bool PlayerbotAIConfig::Initialize()
     rosterFarMove = config.GetBoolDefault("AiPlayerbot.RosterFarMove", false);
     rosterFarMoveArriveBackYards = std::max(0.0f, config.GetFloatDefault("AiPlayerbot.RosterFarMove.ArriveBackYards", 60.0f));
     rosterFarMoveWatchRoute = config.GetBoolDefault("AiPlayerbot.RosterFarMove.WatchRoute", true);
+    rosterFarMoveArriveSafe = config.GetIntDefault("AiPlayerbot.RosterFarMove.ArriveSafe", 0);
+    if (rosterFarMoveArriveSafe > 2)
+        rosterFarMoveArriveSafe = 0;   // twow-repo#601 cand4-B: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B)
     shortcutNearScope = ai::shortcut::ClampScope(config.GetIntDefault("AiPlayerbot.Shortcut.NearScope", 0));
     shortcutNearRadius = std::max(0.0f, config.GetFloatDefault("AiPlayerbot.Shortcut.NearRadius", 0.0f));
     shortcutTestWatcherGuids = ai::shortcut::ParseGuidList(config.GetStringDefault("AiPlayerbot.Shortcut.TestWatcherGuids", ""));
@@ -1795,6 +1801,7 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestLoop.InactiveReselect", Value(questLoopInactiveReselect)},
             {"QuestRescue.KeepRequestWhenFull", Value(questRescueKeepRequestWhenFull)},
             {"Revive.SpiritHealerFull", Value(reviveSpiritHealerFull)},
+            {"RosterFarMove.ArriveSafe", Value(rosterFarMoveArriveSafe)},
             {"Rotation.CastLosGate", Value(rotationCastLosGate)},
             {"Rotation.CastStopFirst", Value(rotationCastStopFirst)},
             {"Rotation.DarkRuneGate", Value(rotationDarkRuneGate)},
@@ -1814,6 +1821,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Rotation.ReachPlayerMaster", Value(rotationReachPlayerMaster)},
             {"Rotation.RestGate", Value(rotationRestGate)},
             {"Rotation.SpecFromPath", Value(rotationSpecFromPath)},
+            {"Rotation.TankKitFromLevel", Value(rotationTankKitFromLevel)},
             {"ThrownUsageFix", Value(thrownUsageFix)},
             {"Travel.RpgAreaLevelFromSpawn", Value(travelRpgAreaLevelFromSpawn)},
             {"ZoneExit.TurnInNearRadius", Value(zoneExitTurnInNearRadius)},
