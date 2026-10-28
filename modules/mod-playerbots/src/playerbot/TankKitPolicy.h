@@ -39,6 +39,20 @@ inline bool TooEarly(bool applies, std::uint32_t playerClass, std::uint32_t leve
     return false;
 }
 
-// [TankKit] counter. Strategy (re)inits add, the world thread takes it once per minute.
-inline std::atomic<std::uint64_t> demoted{ 0 };   // combat engines that got the DPS kit instead of the tank kit
+// The DPS tab a too-early tank gets: warrior 0 (arms), paladin 2 (retribution); -1 for other classes.
+inline int DpsTab(std::uint32_t playerClass)
+{
+    return playerClass == kClassWarrior ? 0 : playerClass == kClassPaladin ? 2 : -1;
+}
+
+// Strategies are not rebuilt on a level-up: a level change across the key level of the class (either way) needs one rebuild.
+inline bool CrossesKey(std::uint32_t playerClass, std::uint32_t fromLevel, std::uint32_t toLevel)
+{
+    std::uint32_t const key = playerClass == kClassWarrior ? kWarriorTankLevel : playerClass == kClassPaladin ? kPaladinTankLevel : 0;
+    return key && fromLevel && (fromLevel < key) != (toLevel < key);
+}
+
+// [TankKit] counters. Strategy (re)inits / level crossings add, the world thread takes them once per minute.
+inline std::atomic<std::uint64_t> demoted{ 0 };   // combat-engine builds with the DPS kit instead of the tank kit (a rate, not bots)
+inline std::atomic<std::uint64_t> rebuilt{ 0 };   // strategy rebuilds because a level change crossed the key level
 }

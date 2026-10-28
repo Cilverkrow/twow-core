@@ -61,6 +61,7 @@
 #include "playerbot/DangerMapPolicy.h"
 #include "playerbot/GrindCapPolicy.h"
 #include "playerbot/SpellPowerGatePolicy.h"
+#include "playerbot/TankKitPolicy.h"
 #include "Movement/spline/MoveSplineInitArgs.h"
 #include "Maps/InstanceData.h"
 #include "ChatHelper.h"
@@ -2783,6 +2784,24 @@ void PlayerbotAI::UpdateAIInternal(uint32 elapsed, bool minimal)
     SC_PHASE("UpdateAIInternal.entry", bot ? bot->GetName() : "(null)");
     if (bot->IsBeingTeleported() || !bot->IsInWorld())
         return;
+
+    // twow-repo#602 (AiPlayerbot.Rotation.TankKitFromLevel, TankKitPolicy.h): a level-up does not rebuild the strategies, so a warrior
+    // reaching 10 or a protection paladin reaching 16 would keep its DPS kit until the next relog; a level change across the key level
+    // rebuilds them once (only for bots the switch applies to; the first pass only records the level).
+    if (sPlayerbotAIConfig.rotationTankKitFromLevel && ai::tank_kit::Applies(sPlayerbotAIConfig.rotationTankKitFromLevel, bot->GetGUIDLow()))
+    {
+        uint32 const level = bot->GetLevel();
+        if (level != tankKitLevel)
+        {
+            bool const crossed = ai::tank_kit::CrossesKey(bot->getClass(), tankKitLevel, level);
+            tankKitLevel = level;
+            if (crossed)
+            {
+                ai::tank_kit::rebuilt.fetch_add(1, std::memory_order_relaxed);
+                ResetStrategies();
+            }
+        }
+    }
 
     std::string mapString = WorldPosition(bot).isInstance() ? "I" : std::to_string(bot->GetMapId());
     auto pmo = sPerformanceMonitor.start(PERF_MON_TOTAL, "PlayerbotAI::UpdateAIInternal " + mapString, nullptr, bot->GetMapId(), bot->GetInstanceId());
