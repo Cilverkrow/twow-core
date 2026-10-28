@@ -505,6 +505,7 @@ namespace ai
         // and the refresh), and the way back to the old COOLDOWN when the search after it found no quest target.
         bool IsInactiveReselectMarked(TravelDestination const* destination) const;
         bool TakeInactiveReselectPending() { bool const pending = inactiveReselectPending; inactiveReselectPending = false; return pending; }
+        bool IsInactiveReselectPending() const { return inactiveReselectPending; }   // twow-repo#601 IdleDetail (read only)
         bool FallBackToInactiveCooldown();
         // #307 zone escape: the destination that led into a zone clearly above
         // the bot's level is skipped like a death-suppressed one.
