@@ -2,6 +2,7 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <string>
 
 namespace
 {
@@ -44,6 +45,19 @@ int main()
 
     Counters counters;
     Require(counters.LogDue(120) && !counters.LogDue(130) && counters.LogDue(180), "one [FarMove] line a minute");
+
+    // twow-repo#601 (OB-00 28.10.2026): the wait state for the activity trace - none without a far move, waiting up to the grace
+    // after its time (Arrive runs at the next MoveTo2 pass), overdue later.
+    Require(WaitStateOf(1000, 0, true) == WaitState::None, "no far move");
+    Require(WaitStateOf(1000, 1240, true) == WaitState::Waiting && WaitStateOf(1240, 1240, true) == WaitState::Waiting,
+        "waiting up to its time");
+    Require(WaitStateOf(1240 + ArriveGraceSeconds, 1240, true) == WaitState::Waiting, "and up to the grace after it");
+    Require(WaitStateOf(1240 + ArriveGraceSeconds + 1, 1240, true) == WaitState::Overdue, "overdue after the grace");
+    Require(WaitStateOf(1000, 1240, false) == WaitState::None && WaitStateOf(2000, 1240, false) == WaitState::None,
+        "a far move to another target than the travel target (abandoned, 8.33b keeps its time): none");
+    Require(ArriveGraceSeconds > 10, "the grace covers the wait's longest duration (10 s)");
+    Require(std::string(WaitStateName(WaitState::None)) == "none" && std::string(WaitStateName(WaitState::Waiting)) == "waiting" &&
+        std::string(WaitStateName(WaitState::Overdue)) == "overdue", "names");
 
     // twow-repo#601 cand4-B (RosterFarMove.ArriveSafe): the core's proximity aggro at the arrival point, without LOS.
     Require(Threatens(20.0f, 18.0f, 0.0f, false), "inside the aggro radius plus the margin (18 + 5)");
