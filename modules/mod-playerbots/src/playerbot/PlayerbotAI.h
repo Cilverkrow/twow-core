@@ -28,6 +28,7 @@
 #include "playerbot/QuestSearchPolicy.h"
 #include "playerbot/QuestFeasibilityPolicy.h"
 #include "playerbot/BotActivityPolicy.h"
+#include "playerbot/FarMovePolicy.h"
 #include "playerbot/GatherPurposePolicy.h"
 #include "playerbot/StuckCombatPolicy.h"
 #include "playerbot/FishingPolicy.h"
@@ -983,6 +984,9 @@ protected:
     // twow-repo#601 (AiPlayerbot.ActivityTrace.StuckDetail): one [StuckDetail] line per stuck episode.
     ai::bot_activity::StuckEpisode stuckEpisode;
     void ReportStuckDetail(ai::bot_activity::State const& state);
+    // twow-repo#601 (AiPlayerbot.ActivityTrace.IdleDetail): one [IdleDetail] start and end line per idle episode.
+    ai::bot_activity::IdleEpisode idleEpisode;
+    void ReportIdleDetail(ai::bot_activity::State const& state, ai::bot_activity::Kind kind, ai::bot_activity::IdleNote note, uint32 now);
     // Hotfix 8.2: targets this bot could not get closer to.
     ai::unreachable::Approach reachApproach;
     ai::unreachable::IgnoreList unreachableTargets;
@@ -1122,6 +1126,10 @@ public:
     void OnReturnFromBattleground(uint32 now);
     // twow-repo#541/#551 (rndbot park): a parked bot updates its AI every ai::park::AiIntervalMs only.
     bool IsParked() const { return parked; }
+    // twow-repo#601 (OB-00 28.10.2026, cli-pathfinding/far-travel-stuck/CAUSE.md), the bot's own thread only: the state of its
+    // RosterFarMove (FarMovePolicy.h WaitStateOf on the "last movement" value); pending = waiting, travel and no stall.
+    ai::far_move::WaitState FarMoveWaitState() const;
+    bool IsFarMovePending() const { return FarMoveWaitState() == ai::far_move::WaitState::Waiting; }
     // twow-repo#551 (AiPlayerbot.Park.Persist), world thread only: the stored park state was handled after this login
     // (a new login is a new PlayerbotAI); attempts counts restore tries of a bot that was busy.
     bool parkRestoreChecked = false;
