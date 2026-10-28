@@ -1960,6 +1960,11 @@ bool TravelTarget::ObservePosStuck()
         !bot->IsAlive() || bot->IsTaxiFlying() || bot->GetTransport() || !map || map->Instanceable() ||
         wPosition->getMapId() != bot->GetMapId() || RestGateValue::Resting(ai) ||
         quest_groups::IsFollower(ai);   // twow-repo#627 S7: a follower goes where its leader goes (the leader stays watched)
+    // twow-repo#342 ABBA-1 §6 (OB-00 28.10.2026): a bot waiting at its dock for a ship or zeppelin is held up on purpose - no
+    // window during the wait, a fresh one after the ride (PosStuckPolicy.h DockWaitPaused).
+    if (!observation.excluded)
+        observation.excluded = pos_stuck::DockWaitPaused(observation.now,
+            ai->GetAiObjectContext()->GetValue<LastMovement&>("last movement")->Get().transportWaitMs, pos_stuck::DockWaitPauseMs);
     observation.distance = observation.excluded ? 0.0f : Distance(bot);
 
     if (pos_stuck::Observe(posStuck, observation, sPlayerbotAIConfig.pathPosStuckMinutes * 60 * IN_MILLISECONDS,

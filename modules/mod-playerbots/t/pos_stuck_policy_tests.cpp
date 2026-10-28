@@ -177,6 +177,27 @@ int main()
         Require(d == 2 && u == 1 && t == 0 && l == 1, "every episode counted, one logged");
     }
 
+    // twow-repo#342 ABBA-1 §6: the dock wait pauses the guard while it is renewed, and lapses by itself.
+    {
+        Require(DockWaitPauseMs == 30000, "dock wait pause 30 s");
+        Require(!DockWaitPaused(5000, 0, DockWaitPauseMs), "never waited: no pause");
+        Require(DockWaitPaused(5000, 5000, DockWaitPauseMs), "waiting now: pause");
+        Require(DockWaitPaused(34999, 5000, DockWaitPauseMs), "29.999 s after the last wait: still paused");
+        Require(!DockWaitPaused(35000, 5000, DockWaitPauseMs), "30 s after the last wait: the window runs again");
+        Require(DockWaitPaused(0x00000100u, 0xFFFFFF00u, DockWaitPauseMs), "clock wrap: 512 ms after the wait, paused");
+        Require(!DockWaitPaused(0x00018000u, 0xFFFF0000u, DockWaitPauseMs), "clock wrap: 163 s after the wait, not paused");
+
+        // a paused observation clears the window like every other exclusion: a fresh window after the ride
+        State state;
+        Observation o;
+        o.now = 1000; o.key = KeyOf(100, 7); o.mapId = 1; o.distance = 900.0f;
+        Require(Observe(state, o, 600000, 5.0f) == Verdict::None && state.initialized, "window started before the dock");
+        o.now = 2000; o.excluded = DockWaitPaused(o.now, 1900, DockWaitPauseMs);
+        Require(o.excluded && Observe(state, o, 600000, 5.0f) == Verdict::None && !state.initialized, "dock wait: no window");
+        o.now = 900000; o.excluded = DockWaitPaused(o.now, 870000, DockWaitPauseMs);
+        Require(!o.excluded && Observe(state, o, 600000, 5.0f) == Verdict::None && state.initialized, "after the ride: a fresh window, no detect");
+    }
+
     std::cout << "pos_stuck_policy_tests passed\n";
     return 0;
 }
