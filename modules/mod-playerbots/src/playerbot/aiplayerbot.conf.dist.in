@@ -3051,6 +3051,17 @@ AiPlayerbot.Rotation.CastTrace = 0
 # slot"). At load: "[SpecPath] loaded paths= with_tab= mismatches=" (+ one "[SpecPath] mismatch" line per path whose
 # key disagrees with its level 10 link). 0 = off (default), 1 = all bots, 2 = only cohort B (odd low guid, in-realm A/B).
 AiPlayerbot.Rotation.SpecFromPath = 0
+# twow-repo#602 ROT-01 tank count (OB-00 28.10.2026, BEHAVIOUR CHANGE, A/B with 2 before any profile): the tank kit ("protection",
+# "tank assist", "pull", "pull back", "close") only from the level of the tank spells. Below level 10 (no talent points) every
+# warrior has the default tab Protection and pulled as a tank whatever its path (live540: 47 of 90 warriors), and a protection
+# paladin below Righteous Fury (16) tanked without its threat aura. With the switch a random bot on its tank tab below the key level
+# gets its DPS tab - warrior arms, protection paladin retribution - in all four engines (combat, non-combat, dead, reaction) and
+# in the role offer (dungeon finder), so it is not a tank for itself or its group either. A forced tank role keeps the tank kit;
+# talent choice keeps the spec tab. Druids below 10 already have the leveling kit (no forms yet). Groups (S7, ad-hoc, real
+# players) pick no roles, so this also decides who tanks there. A level change across the key level rebuilds the strategies once.
+# "[TankKit] mode= demoted= rebuilt=" once a minute with the mode on (demoted = kit builds with the DPS tab, a rate).
+# 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
+AiPlayerbot.Rotation.TankKitFromLevel = 0
 # twow-repo#602 ROT-01 X3 (BEHAVIOUR CHANGE, enable only after the OB-30 A/B + owner go): emergency ladder for SOLO FREE BOTS below
 # critical health (no group, no real player, not healers - F1). Today panic -> flee wins every tick and a solo random bot's flee is a
 # MoveChase around the mob that gains no distance. Once per episode the ladder picks: a ready CLASS ESCAPE gets a 2 s window in which panic and
