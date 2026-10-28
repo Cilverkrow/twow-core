@@ -73,6 +73,7 @@
 #include "playerbot/CastWhileMovingPolicy.h"   // twow-repo#602 (Rotation.CastStopFirst): [CastStopFirst] minute line
 #include "playerbot/MeleeSkipPolicy.h"   // twow-repo#602 (Rotation.MeleeSkipAttacking): [MeleeSkip] minute line
 #include "playerbot/InvalidTargetPolicy.h"   // twow-repo#602 (Rotation.InvalidTargetQuiet): [InvalidTarget] minute line
+#include "playerbot/TankKitPolicy.h"   // twow-repo#602 (Rotation.TankKitFromLevel): [TankKit] minute line
 #include "playerbot/PathReusePolicy.h"
 #include "playerbot/RotCastTrace.h"   // twow-repo#602 ROT-01 D0
 #include "playerbot/EmergencyLadderTrace.h"   // twow-repo#602 ROT-01 X3
@@ -1314,6 +1315,21 @@ void ReportInvalidTarget()
         (unsigned long long)ai::invalid_target::interruptedLive.exchange(0, std::memory_order_relaxed));
 }
 
+// twow-repo#602 (AiPlayerbot.Rotation.TankKitFromLevel): one [TankKit] line per minute - combat engines (re)built with the DPS kit instead
+// of the tank kit because the bot is below the level of its tank spells (demoted, a rate), and strategy rebuilds because a level change
+// crossed the key level (rebuilt). Nothing is written when off.
+void ReportTankKit()
+{
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (!sPlayerbotAIConfig.rotationTankKitFromLevel || now < lastReport + 60)
+        return;
+    lastReport = now;
+    sLog.outBasic("[TankKit] mode=%u demoted=%llu rebuilt=%llu", sPlayerbotAIConfig.rotationTankKitFromLevel,
+        (unsigned long long)ai::tank_kit::demoted.exchange(0, std::memory_order_relaxed),
+        (unsigned long long)ai::tank_kit::rebuilt.exchange(0, std::memory_order_relaxed));
+}
+
 // twow-repo#602 #2 (AiPlayerbot.Grind.NeighbourAware): one [GrindNeighbour] line per minute and cohort with scored passes - the
 // counters of GrindNeighbourPolicy.h as increments, then cls=<class>:<picks>/<would_change>/<changed> for the stratified readout.
 // Nothing is written when off or for a cohort without passes.
@@ -1966,6 +1982,7 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     ReportCastStopFirst();  // twow-repo#602: [CastStopFirst] once per minute (AiPlayerbot.Rotation.CastStopFirst)
     ReportMeleeSkip();      // twow-repo#602: [MeleeSkip] once per minute (AiPlayerbot.Rotation.MeleeSkipAttacking)
     ReportInvalidTarget();  // twow-repo#602: [InvalidTarget] once per minute (AiPlayerbot.Rotation.InvalidTargetQuiet)
+    ReportTankKit();        // twow-repo#602: [TankKit] once per minute (AiPlayerbot.Rotation.TankKitFromLevel)
     ReportParkSleep();    // twow-repo#541: core switches + [ParkSleep] once per minute (AiPlayerbot.Park.SleepGrid)
     ReportCombatIdle();   // twow-repo#541 (audit A17): [CombatIdle] once per minute (AiPlayerbot.Perf.CombatIdleYield)
     ReportHunterMelee();  // twow-repo#602: [HunterMelee] once per minute (AiPlayerbot.Rotation.HunterMeleeStart)
