@@ -4065,6 +4065,20 @@ add_test(NAME cast_while_moving_policy
   COMMAND cast_while_moving_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#602 (AiPlayerbot.Rotation.MeleeSkipAttacking): the default "melee" action is USELESS while the bot already attacks its target.
+add_executable(melee_skip_policy_tests
+  "${PB_MODULE_DIR}/t/melee_skip_policy_tests.cpp")
+
+target_include_directories(melee_skip_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(melee_skip_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME melee_skip_policy
+  COMMAND melee_skip_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # Owner order 27.10.2026 (AiPlayerbot.Revive.SpiritHealerFull): a bot's spirit healer revive at full health and mana, no sickness.
 add_executable(spirit_healer_revive_policy_tests
   "${PB_MODULE_DIR}/t/spirit_healer_revive_policy_tests.cpp")
