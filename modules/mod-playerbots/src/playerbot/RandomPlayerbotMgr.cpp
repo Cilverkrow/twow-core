@@ -70,6 +70,10 @@
 #include "playerbot/DarkRuneGatePolicy.h"   // twow-repo#602 ROT-01 3c (Rotation.DarkRuneGate): [DarkRuneGate] minute line
 #include "playerbot/ReachLosPolicy.h"   // twow-repo#594 (Rotation.ReachLosClose): [ReachLos] minute line
 #include "playerbot/CastLosGatePolicy.h"   // twow-repo#602 (Rotation.CastLosGate): [CastLosGate] minute line
+#include "playerbot/CastWhileMovingPolicy.h"   // twow-repo#602 (Rotation.CastStopFirst): [CastStopFirst] minute line
+#include "playerbot/MeleeSkipPolicy.h"   // twow-repo#602 (Rotation.MeleeSkipAttacking): [MeleeSkip] minute line
+#include "playerbot/InvalidTargetPolicy.h"   // twow-repo#602 (Rotation.InvalidTargetQuiet): [InvalidTarget] minute line
+#include "playerbot/TankKitPolicy.h"   // twow-repo#602 (Rotation.TankKitFromLevel): [TankKit] minute line
 #include "playerbot/PathReusePolicy.h"
 #include "playerbot/RotCastTrace.h"   // twow-repo#602 ROT-01 D0
 #include "playerbot/EmergencyLadderTrace.h"   // twow-repo#602 ROT-01 X3
@@ -1267,6 +1271,65 @@ void ReportCastLosGate()
         (unsigned long long)ai::cast_los_gate::skipped.exchange(0, std::memory_order_relaxed));
 }
 
+// twow-repo#602 (AiPlayerbot.Rotation.CastStopFirst): one [CastStopFirst] line per minute - cast-time / channelled casts of a
+// moving bot that went on after StopMoving because of the switch (cast_after_stop), and those still cancelled for bots outside
+// the switch's cohort (cancelled). Nothing is written when off.
+void ReportCastStopFirst()
+{
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (!sPlayerbotAIConfig.rotationCastStopFirst || now < lastReport + 60)
+        return;
+    lastReport = now;
+    sLog.outBasic("[CastStopFirst] mode=%u cast_after_stop=%llu cancelled=%llu", sPlayerbotAIConfig.rotationCastStopFirst,
+        (unsigned long long)ai::cast_moving::castAfterStop.exchange(0, std::memory_order_relaxed),
+        (unsigned long long)ai::cast_moving::cancelled.exchange(0, std::memory_order_relaxed));
+}
+
+// twow-repo#602 (AiPlayerbot.Rotation.MeleeSkipAttacking): one [MeleeSkip] line per minute - "melee" passes made USELESS because the bot
+// already attacks its current target (skipped). Nothing is written when off.
+void ReportMeleeSkip()
+{
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (!sPlayerbotAIConfig.rotationMeleeSkipAttacking || now < lastReport + 60)
+        return;
+    lastReport = now;
+    sLog.outBasic("[MeleeSkip] mode=%u skipped=%llu", sPlayerbotAIConfig.rotationMeleeSkipAttacking,
+        (unsigned long long)ai::melee_skip::skipped.exchange(0, std::memory_order_relaxed));
+}
+
+// twow-repo#602 (AiPlayerbot.Rotation.InvalidTargetQuiet): one [InvalidTarget] line per minute - "invalid target" checks kept quiet (quiet),
+// and the trace for the follow-up (b): "select new target" dropped a live current target (dropped_live), while casting (interrupted_live).
+// Nothing is written when off.
+void ReportInvalidTarget()
+{
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (!sPlayerbotAIConfig.rotationInvalidTargetQuiet || now < lastReport + 60)
+        return;
+    lastReport = now;
+    sLog.outBasic("[InvalidTarget] mode=%u quiet=%llu dropped_live=%llu interrupted_live=%llu", sPlayerbotAIConfig.rotationInvalidTargetQuiet,
+        (unsigned long long)ai::invalid_target::quiet.exchange(0, std::memory_order_relaxed),
+        (unsigned long long)ai::invalid_target::droppedLive.exchange(0, std::memory_order_relaxed),
+        (unsigned long long)ai::invalid_target::interruptedLive.exchange(0, std::memory_order_relaxed));
+}
+
+// twow-repo#602 (AiPlayerbot.Rotation.TankKitFromLevel): one [TankKit] line per minute - combat engines (re)built with the DPS kit instead
+// of the tank kit because the bot is below the level of its tank spells (demoted, a rate), and strategy rebuilds because a level change
+// crossed the key level (rebuilt). Nothing is written when off.
+void ReportTankKit()
+{
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (!sPlayerbotAIConfig.rotationTankKitFromLevel || now < lastReport + 60)
+        return;
+    lastReport = now;
+    sLog.outBasic("[TankKit] mode=%u demoted=%llu rebuilt=%llu", sPlayerbotAIConfig.rotationTankKitFromLevel,
+        (unsigned long long)ai::tank_kit::demoted.exchange(0, std::memory_order_relaxed),
+        (unsigned long long)ai::tank_kit::rebuilt.exchange(0, std::memory_order_relaxed));
+}
+
 // twow-repo#602 #2 (AiPlayerbot.Grind.NeighbourAware): one [GrindNeighbour] line per minute and cohort with scored passes - the
 // counters of GrindNeighbourPolicy.h as increments, then cls=<class>:<picks>/<would_change>/<changed> for the stratified readout.
 // Nothing is written when off or for a cohort without passes.
@@ -1916,6 +1979,10 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     ReportBotUpdate();    // twow-repo#541: [BotUpdate] once per minute (AiPlayerbot.BotUpdateTrace)
     ReportBotActivity();  // twow-repo#601 R01 L1: [BotActivityMin] once per minute (AiPlayerbot.ActivityTrace)
     ReportCastLosGate();  // twow-repo#602: [CastLosGate] once per minute (AiPlayerbot.Rotation.CastLosGate)
+    ReportCastStopFirst();  // twow-repo#602: [CastStopFirst] once per minute (AiPlayerbot.Rotation.CastStopFirst)
+    ReportMeleeSkip();      // twow-repo#602: [MeleeSkip] once per minute (AiPlayerbot.Rotation.MeleeSkipAttacking)
+    ReportInvalidTarget();  // twow-repo#602: [InvalidTarget] once per minute (AiPlayerbot.Rotation.InvalidTargetQuiet)
+    ReportTankKit();        // twow-repo#602: [TankKit] once per minute (AiPlayerbot.Rotation.TankKitFromLevel)
     ReportParkSleep();    // twow-repo#541: core switches + [ParkSleep] once per minute (AiPlayerbot.Park.SleepGrid)
     ReportCombatIdle();   // twow-repo#541 (audit A17): [CombatIdle] once per minute (AiPlayerbot.Perf.CombatIdleYield)
     ReportHunterMelee();  // twow-repo#602: [HunterMelee] once per minute (AiPlayerbot.Rotation.HunterMeleeStart)
@@ -7391,6 +7458,30 @@ std::vector<WorldLocation> RandomPlayerbotMgr::QuestRescueTargets(Player* bot)
     if (ai::quest_search::goblin_island::UsesGoblinStartRescue(bot->getRace(), level))
     {
         namespace gi = ai::quest_search::goblin_island;
+        namespace sz = ai::start_zone;
+        // twow-repo#575 (PATH-01 F2, AiPlayerbot.CustomRaceStartZones, option B): a goblin still on its island stays there -
+        // up to level 9 at an island hub, at level 10 at the flying machine (8.29 takes the flight). Off: Durotar as before.
+        PlayerbotAI* const botAI = GetBotAI(bot);
+        sz::IslandRescue const island = sz::IslandRescueOf(sPlayerbotAIConfig.customRaceStartZones, bot->getRace(), level,
+            sz::TeamOfPoint(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY()) == sz::StartTeam::Horde,
+            bot->IsCurrentQuest(sz::QuestBadNews, 0), bot->IsCurrentQuest(sz::QuestSolutions, 0),
+            botAI && botAI->IslandHubRescueWithoutProgress(),
+            bot->GetDistance(sz::IslandMachineX, sz::IslandMachineY, sz::IslandMachineZ) <= sz::IslandRescueMinYards);
+        if (island == sz::IslandRescue::Hub)
+        {
+            for (WorldLocation const& hub : { WorldLocation(1, sz::IslandStartX, sz::IslandStartY, sz::IslandStartZ, 0.0f),
+                     WorldLocation(1, sz::IslandInnX, sz::IslandInnY, sz::IslandInnZ, 0.0f) })
+                if (botPos.distance(WorldPosition(hub)) > sz::IslandRescueMinYards)
+                    targets.push_back(hub);
+            if (botAI && !targets.empty())
+                botAI->MarkIslandHubRescue();
+            return targets;
+        }
+        if (island == sz::IslandRescue::Machine)
+        {
+            targets.push_back(WorldLocation(1, sz::IslandMachineX, sz::IslandMachineY, sz::IslandMachineZ, 0.0f));
+            return targets;
+        }
         targets.push_back(WorldLocation(1, gi::PortMachineX, gi::PortMachineY, gi::PortMachineZ, 0.0f));
         targets.push_back(WorldLocation(1, gi::RazorHillX, gi::RazorHillY, gi::RazorHillZ, 0.0f));
         return targets;
@@ -7509,8 +7600,12 @@ void RandomPlayerbotMgr::ProcessQuestRescues()
         // next "long stuck" hearthstone (or the 8.14 home step) took the bot straight back to where
         // its route had failed. A rescued roster bot binds its hearthstone at the rescue target
         // (an inn or a level hub of its faction).
+        // twow-repo#575 (PATH-01 F2, AiPlayerbot.CustomRaceStartZones): not at a point of a custom start zone (an island
+        // hub, the machine) - the goblin keeps its island homebind until it has left the island (PlayerbotAI, RebindOffIsland).
         if (ai::quest_search::RebindAtRescue(IsPersistentRosterMember(bot->GetGUIDLow()), ai->HasRealPlayerMaster(),
-                bot->GetHomebindMapId(), target.mapid))
+                bot->GetHomebindMapId(), target.mapid) &&
+            !ai::start_zone::RescueKeepsHomebind(sPlayerbotAIConfig.customRaceStartZones,
+                ai::start_zone::TeamOfPoint(target.mapid, target.coord_x, target.coord_y)))
         {
             AreaTableEntry const* area = WorldPosition(target).GetArea();
             bot->SetHomebindToLocation(target, area ? area->ID : 0);

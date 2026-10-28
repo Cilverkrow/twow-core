@@ -20,6 +20,7 @@
 #include "playerbot/DeathLoopPolicy.h"
 #include "playerbot/DeathAddsPolicy.h"
 #include "playerbot/CastWaitPolicy.h"
+#include "playerbot/TeleportCastPolicy.h"
 #include "playerbot/BotSavePolicy.h"
 #include "playerbot/StallGuardPolicy.h"
 #include <atomic>
@@ -28,6 +29,7 @@
 #include "playerbot/QuestSearchPolicy.h"
 #include "playerbot/QuestFeasibilityPolicy.h"
 #include "playerbot/BotActivityPolicy.h"
+#include "playerbot/FarMovePolicy.h"
 #include "playerbot/GatherPurposePolicy.h"
 #include "playerbot/StuckCombatPolicy.h"
 #include "playerbot/FishingPolicy.h"
@@ -503,6 +505,9 @@ public:
     bool TellDebug(Player* player, std::string text, std::string strategy = "debug", BotState state = BotState::BOT_STATE_NON_COMBAT){ if (HasStrategy(strategy, state)) return TellPlayerNoFacing(player, text, PlayerbotSecurityLevel::PLAYERBOT_SECURITY_ALLOW_ALL, true, false); return false;}
     bool TellError(Player* player, std::string text, PlayerbotSecurityLevel securityLevel = PlayerbotSecurityLevel::PLAYERBOT_SECURITY_ALLOW_ALL, bool ignoreSilent = false);
     void SpellInterrupted(uint32 spellid);
+    // twow-repo#333 finding 4 (TeleportCastPolicy.h): watch a hold of holdMs for the bot's own PREPARING teleport / hearthstone
+    // (0 = nothing prepared: stop watching); UpdateAI ends the hold when the spell is no longer PREPARING.
+    void WatchTeleportHold(uint32 holdMs);
     int32 CalculateGlobalCooldown(uint32 spellid);
     void InterruptSpell(bool withMeleeAndAuto = true);
     bool RemoveAura(const std::string& name);
@@ -735,6 +740,9 @@ public:
     void RecordDeathForSeries();
     // Hotfix 8.1: [TankPath] diagnostic for bots on a tank path (4.3 / 7.3).
     void UpdateTankPathDiag(uint32 now);
+    // twow-repo#575 (PATH-01 F4, AiPlayerbot.CustomRaceStartZones): the walk to the island machine along the travel graph;
+    // false = no graph walk (the caller walks straight as before).
+    bool WalkToMachineByGraph(float x, float y, float z, uint32 now);
     bool IsCautious() const { return deathSeries.Cautious(uint32(time(nullptr))); }
     // Hotfix 8.5: the declared profession purpose ([Purpose]).
     ai::gather_purpose::State& GetGatherPurpose() { return gatherPurpose; }
@@ -977,6 +985,9 @@ protected:
     // twow-repo#601 (AiPlayerbot.ActivityTrace.StuckDetail): one [StuckDetail] line per stuck episode.
     ai::bot_activity::StuckEpisode stuckEpisode;
     void ReportStuckDetail(ai::bot_activity::State const& state);
+    // twow-repo#601 (AiPlayerbot.ActivityTrace.IdleDetail): one [IdleDetail] start and end line per idle episode.
+    ai::bot_activity::IdleEpisode idleEpisode;
+    void ReportIdleDetail(ai::bot_activity::State const& state, ai::bot_activity::Kind kind, ai::bot_activity::IdleNote note, uint32 now);
     // Hotfix 8.2: targets this bot could not get closer to.
     ai::unreachable::Approach reachApproach;
     ai::unreachable::IgnoreList unreachableTargets;
@@ -988,6 +999,12 @@ protected:
     // #421 C: progress watch for the quest rescue teleport.
     ai::quest_search::ProgressTracker questProgress;
     uint32 lastQuestProgressCheck = 0;
+    // twow-repo#575 (PATH-01 F4): until when the dispatched graph walk to the island machine runs (no re-plan while moving),
+    // and the next time a machine_walk_fallback line may be written.
+    uint32 machineWalkUntil = 0;
+    uint32 machineWalkFallbackLog = 0;
+    // twow-repo#575 (PATH-01 F2): set by an island hub rescue, cleared by the bot's next progress.
+    std::atomic<bool> islandHubRescuePending{ false };
     // Hotfix 8.12: combat without progress (bot 27 Nilenata).
     ai::stuck_combat::State stuckCombat;
     ai::gather_purpose::State gatherPurpose;
@@ -1084,6 +1101,10 @@ public:
             questRescueRequested = true;
     }
     void OnQuestRescued(uint32 now) { lastQuestRescue = now; questRescueDone = true; }
+    // twow-repo#575 (PATH-01 F2): an island hub rescue is pending until the bot makes progress (its own thread clears it);
+    // a second hub rescue while it is still pending finds the island empty for this bot (world thread, StartZonePolicy.h).
+    bool IslandHubRescueWithoutProgress() const { return islandHubRescuePending.load(); }
+    void MarkIslandHubRescue() { islandHubRescuePending = true; }
     // twow-repo#601 S1 (ResetOnProgressEvents): any thread asks the bot's own update to reset the grind-fallback
     // counter, the quest route backoff and the quest search stage (ai::quest_failure_class::Reset* bits).
     void RequestQuestRouteReset(uint32 events) { questRouteResetEvents.fetch_or(events); }
@@ -1119,6 +1140,10 @@ public:
     void OnReturnFromBattleground(uint32 now);
     // twow-repo#541/#551 (rndbot park): a parked bot updates its AI every ai::park::AiIntervalMs only.
     bool IsParked() const { return parked; }
+    // twow-repo#601 (OB-00 28.10.2026, cli-pathfinding/far-travel-stuck/CAUSE.md), the bot's own thread only: the state of its
+    // RosterFarMove (FarMovePolicy.h WaitStateOf on the "last movement" value); pending = waiting, travel and no stall.
+    ai::far_move::WaitState FarMoveWaitState() const;
+    bool IsFarMovePending() const { return FarMoveWaitState() == ai::far_move::WaitState::Waiting; }
     // twow-repo#551 (AiPlayerbot.Park.Persist), world thread only: the stored park state was handled after this login
     // (a new login is a new PlayerbotAI); attempts counts restore tries of a bot that was busy.
     bool parkRestoreChecked = false;
@@ -1287,7 +1312,9 @@ protected:
     bool combatIdleTick = false;   // twow-repo#541 (audit A17): last DoNextAction ran the combat engine and executed nothing
     ObjectGuid combatIdleVictim;   // twow-repo#541 (audit A17): victim of a pending stretched wait (empty = none)
     bool oomBackoffPending = false;   // twow-repo#602 ROT-01 3c-B: an out-of-mana backoff wait is running
+    uint32 tankKitLevel = 0;   // twow-repo#602 (Rotation.TankKitFromLevel): the level the strategies were last built for; a crossing of the tank key level rebuilds them
     ai::cast_wait::Watch castWait;   // twow-repo#602 (AiPlayerbot.CastWait.Preparing): pending wait for the bot's own PREPARING cast
+    ai::teleport_cast::HoldWatch teleportHold;   // twow-repo#333 finding 4: pending travel / unstuck / zone-escape hold for a teleport
     bool isPlayerFriend = false;
     bool isMovingToTransport = false;
     bool shouldLogOut = false;

@@ -603,6 +603,7 @@ public:
     bool worldBotsTrace = false;  // twow-repo#541: [WorldBots] per-minute world-thread cost line
     bool activityTrace = false;  // twow-repo#601 R01 L1: AiPlayerbot.ActivityTrace - [BotActivity] per roster bot and hour, [BotActivityMin]
     bool activityTraceStuckDetail = false;  // twow-repo#601: AiPlayerbot.ActivityTrace.StuckDetail - [StuckDetail] per stuck episode
+    bool activityTraceIdleDetail = false;  // twow-repo#601: AiPlayerbot.ActivityTrace.IdleDetail - [IdleDetail] per idle episode (start, end)
     bool botUpdateTrace = false;  // twow-repo#541: [BotUpdate] per-minute distribution of PlayerbotAI::UpdateAI wall time
     bool botUpdateTraceTick = false;  // twow-repo#597 (TICK-01): [BotUpdateSlow] ends with " tick=<world loop> region=<map>.<inst>"
     bool worldBotsHookTrace = false;  // twow-repo#597 (TICK-01): [WorldBots] ends with hook_ms= remote_ms= ahbot_ms= dungeonclear_ms=
@@ -645,6 +646,7 @@ public:
     bool castSpellRefreshOnLearn = false;  // twow-repo#541 (audit A27): spell actions re-read spell id/range when the bot learned spells, levelled, spent talent points or (pet spell actions) got another pet (0 = off)
     bool rotationCastTrace = false;  // twow-repo#602 ROT-01 D0: [RotCast]/[RotCastTotal]/[RotCastUnknown]/[RotRole]/[RotPull] cast diagnostics, measurement only (0 = off)
     uint32 rotationSpecFromPath = 0;  // twow-repo#602 ROT-01 R06a: spec tab from the premade path from level 10, cohort mode 0 off / 1 all / 2 cohort B
+    uint32 rotationTankKitFromLevel = 0;  // twow-repo#602 (tank count 28.10., OB-00, BEHAVIOUR CHANGE, A/B with 2): the tank kit only from the level of the tank spells - warrior below L10 arms kit, protection paladin below L16 retribution kit (TankKitPolicy.h); 0 off, 1 all, 2 cohort B
     uint32 rotationEmergencyLadder = 0;  // twow-repo#602 ROT-01 X3: emergency ladder for solo free bots below critical health, cohort mode 0 off / 1 all / 2 cohort B
     uint32 rotationEmergencyLadderFightTargetHp = 20;  // twow-repo#602 X3 (F2): fight on instead of fleeing when the single target is at or below this HP %
     std::vector<std::string> rotationEmergencyLadderSoloCcSpells;  // twow-repo#602 X3 (F3): spells allowed for solo CC on an add (lower case)
@@ -654,6 +656,8 @@ public:
     uint32 rotationRestGateTargetHp = 90;  // ... and ends at or above this HP %
     uint32 rotationRestGateTargetMana = 85;  // ... and this mana %
     uint32 rotationRestGateMaxRestSeconds = 120;  // ... or after this many seconds (then no new episode for a minute)
+    uint32 rotationCastStopFirst = 1;  // twow-repo#602 (cast-abort loop 27.10., OB-00: code default 1, 0 = rollback): a moving bot without a real player master casts a cast-time or channelled spell after StopMoving instead of cancelling it (CastWhileMovingPolicy.h); 0 off, 1 all, 2 cohort B
+    uint32 rotationInvalidTargetQuiet = 1;  // twow-repo#602 (failure census 28.10., OB-00: code default 1, 0 = rollback): "invalid target" stays quiet for an empty current target while nothing attacks the bot (InvalidTargetPolicy.h); 0 off, 1 all, 2 cohort B
     uint32 rotationCastLosGate = 0;  // twow-repo#602 (hunter LoS 25.10.): a LINE_OF_SIGHT verdict of CheckCast makes the cast IMPOSSIBLE, 8.2-unreachable targets are dropped and skipped (CastLosGatePolicy.h); with Rotation.ReachLosClose; 0 off, 1 all, 2 cohort B
     bool perfCombatIdleYield = false;  // twow-repo#541 (audit A17): a combat AI pass without an action while the bot auto-attacks its current target waits 3x ReactDelay (0 = off)
     uint32 castWaitPreparing = 0;  // twow-repo#602 (L1-b): hold the internal AI until the real end of the bot's own PREPARING cast; 0 off, 1 all, 2 cohort B
@@ -661,6 +665,7 @@ public:
     uint32 rotationMeleeFleeBreak = 0;  // twow-repo#602 (death analysis 21.10.): "outnumbered" stays quiet for a melee bot while its flee loop holds; 0 off, 1 all, 2 cohort B
     uint32 rotationOomBackoff = 0;  // twow-repo#602 ROT-01 3c-B (priest Farathil loop, 24.10.): an out-of-mana priest/mage/warlock without a wand fights in melee, an idle out-of-mana combat pass waits DelayMs (OomBackoffPolicy.h); 0 off, 1 all, 2 cohort B
     uint32 rotationOomBackoffDelayMs = 1000;  // ... the wait after such a pass (ends early when the mana is back or the health low)
+    uint32 rotationMeleeSkipAttacking = 1;  // twow-repo#602 (failure census 27.10., OB-00: code default 1, 0 = rollback): the default "melee" action is USELESS while the bot already attacks its current target, faces it and its pet is on it (MeleeSkipPolicy.h); 0 off, 1 all, 2 cohort B
     bool rotationMeleeFleeBreakRanged = false;  // twow-repo#602 (step 2, 21.10.): the same hold for ranged bots (cohort from Rotation.MeleeFleeBreak); kite triggers untouched
     uint32 rotationFleeAway = 0;  // twow-repo#602 (c) (hunter + adds analysis 25.10.): flee chase angle relative to the enemy's facing, a kept chase (1 s), hunter flee only in the dead zone while the pet holds the enemy (FleeAwayPolicy.h); 0 off, 1 all, 2 cohort B
     uint32 rotationFleeAwayScope = 0;  // twow-repo#602 (c) scope (hunter restart 26.10.): which bots of Rotation.FleeAway's cohort get it; 0 every bot (as before), 1 hunters, 2 hunters + bots with a living pet out
@@ -806,6 +811,9 @@ public:
     // twow-repo#601/#602 G2 (OB-00 go 26.10.2026): short life after a revive is a loop; an evacuation point at the loop
     // is replaced by the race's safe start (0 off, 1 all, 2 cohort B).
     uint32 deathLoopFarEscape = 0;
+    // Owner order 27.10.2026 (via OB-00, code default 1, 0 = rollback): a bot revived by a spirit healer comes back at full
+    // health and mana without Resurrection Sickness (SpiritHealerRevivePolicy.h); 0 off, 1 all, 2 cohort B.
+    uint32 reviveSpiritHealerFull = 1;
     // #307: a roster bot on its own leaves a zone clearly above its level.
     bool zoneEscapeEnabled = false;
     uint32 zoneEscapeCooldownSeconds = 600;
@@ -987,6 +995,7 @@ public:
     bool rosterFarMove = false;  // hotfix 8.33 (#544): cheap movement without a player nearby, 0 = off
     float rosterFarMoveArriveBackYards = 60.0f;  // hotfix 8.36 (#544): end the far move this far before the target, 0 = at it
     bool rosterFarMoveWatchRoute = true;  // hotfix 8.36: walk when a real player is near the route
+    uint32 rosterFarMoveArriveSafe = 0;  // twow-repo#601 cand4-B: check the far-move arrival for aggro right before the teleport; 0 off, 1 all, 2 cohort B
     // twow-repo#595 P4 S0 + B1 (shortcuts by player proximity): all 0 = today's behaviour (ShortcutPolicy.h)
     uint32 shortcutNearScope = 0;  // 0 = off (ShortcutNear answers Unknown), 1 = radius, 2 = same zone or radius
     float shortcutNearRadius = 0.0f;  // yards, 0 = map visibility + ReactDistance

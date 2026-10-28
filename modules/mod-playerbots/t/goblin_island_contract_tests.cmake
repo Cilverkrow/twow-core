@@ -2,7 +2,8 @@
 file(READ "${PB_SOURCE_DIR}/PlayerbotAI.cpp" ai_cpp)
 file(READ "${PB_SOURCE_DIR}/RandomPlayerbotMgr.cpp" mgr)
 foreach (pair
-    "ai_cpp|gi::ShouldLeaveIsland(bot->GetZoneId(), bot->GetLevel(), questProgress.IdleSeconds(now))"
+    "ai_cpp|gi::ShouldLeaveIsland(bot->GetZoneId(), bot->GetLevel(),"
+    "ai_cpp|sz::IslandLeaveIdle(startZones, questProgress.IdleSeconds(now)))"
     "ai_cpp|bot->ActivateTaxiPathTo(gi::IslandPath, 0, true);"
     "ai_cpp|[Travel] state=island_flight bot=%u"
     "ai_cpp|if (realMaster->IsTaxiFlying())"

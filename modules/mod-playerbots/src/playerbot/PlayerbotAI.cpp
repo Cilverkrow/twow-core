@@ -19,6 +19,7 @@
 #include "playerbot/ReachDropPolicy.h"   // twow-repo#630 follow-up (Rotation.ReachDropEngagement)
 #include "playerbot/RotCastPolicy.h"
 #include "playerbot/RotCastTrace.h"     // twow-repo#602 ROT-01 D0 (AiPlayerbot.Rotation.CastTrace)
+#include "playerbot/CastWhileMovingPolicy.h"   // twow-repo#333 P1-w: a loot cast after StopMoving; #602 Rotation.CastStopFirst
 #include "Maps/PathFinder.h"
 #include <stdarg.h>
 #include <array>
@@ -56,9 +57,11 @@
 #include "strategy/values/PositionValue.h"
 #include "playerbot/ServerFacade.h"
 #include "playerbot/TravelMgr.h"
+#include "playerbot/TravelNode.h"   // twow-repo#575 (PATH-01 F4): WalkToMachineByGraph
 #include "playerbot/DangerMapPolicy.h"
 #include "playerbot/GrindCapPolicy.h"
 #include "playerbot/SpellPowerGatePolicy.h"
+#include "playerbot/TankKitPolicy.h"
 #include "Movement/spline/MoveSplineInitArgs.h"
 #include "Maps/InstanceData.h"
 #include "ChatHelper.h"
@@ -655,19 +658,55 @@ void PlayerbotAI::SampleActivity(uint32 now)
     state.taxiFlying = bot->IsTaxiFlying();
     state.helpFollower = questGroupRole.load() == 1;   // twow-repo#627 S7 follower: no own target
     state.moved = activityClock.Move(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY());
+    // twow-repo#601 (OB-00 28.10.2026): a RosterFarMove wait is travel, not a stall (BotActivityPolicy.h StuckSample)
+    ai::far_move::WaitState const farMove = FarMoveWaitState();
+    state.farMoveWaiting = farMove == ai::far_move::WaitState::Waiting;
     ai::bot_activity::Kind const kind = ai::bot_activity::Classify(state);
     // twow-repo#601 (AiPlayerbot.ActivityTrace.StuckDetail): the second stuck sample in a row names the episode, within the
     // per-minute limit. Off: nothing is read or written.
     if (sPlayerbotAIConfig.activityTraceStuckDetail && stuckEpisode.Note(kind == ai::bot_activity::Kind::Stuck) &&
         ai::bot_activity::StuckDetailGlobal().Take(now))
         ReportStuckDetail(state);
+    // twow-repo#601 (AiPlayerbot.ActivityTrace.IdleDetail): the second idle sample in a row names the episode within its own
+    // per-minute limit; the first sample of another kind (or a gap) ends it - written only after its start line, outside the limit
+    // (at most one end per start). Off: nothing is read or written.
+    if (sPlayerbotAIConfig.activityTraceIdleDetail)
+    {
+        ai::bot_activity::IdleNote const note = idleEpisode.Note(kind == ai::bot_activity::Kind::Idle, now,
+            ai::bot_activity::IdleWhyOf(state.dest, state.status));
+        if (note == ai::bot_activity::IdleNote::End && idleEpisode.startLogged)
+        {
+            idleEpisode.startLogged = false;
+            ReportIdleDetail(state, kind, note, now);
+        }
+        else if (note == ai::bot_activity::IdleNote::Start)
+        {
+            idleEpisode.startLogged = ai::bot_activity::IdleDetailGlobal().Take(now);
+            if (idleEpisode.startLogged)
+                ReportIdleDetail(state, kind, note, now);
+        }
+    }
 
     // the seconds since the last sample still belong to its hour; the line for that hour follows
     if (uint32 const credited = activityClock.Add(kind, now))
+    {
         ai::bot_activity::Global().Add(ai::bot_activity::BandOf(bot->GetLevel()), kind, credited);
+        if (ai::bot_activity::FarWaitSample(state))
+            activityClock.AddFarWait(credited);
+    }
     if (activityClock.HourDone(now))
     {
-        sLog.outBasic("%s", ai::bot_activity::FormatLine(bot->GetGUIDLow(), bot->GetLevel(), bot->GetZoneId(), activityClock).c_str());
+        // twow-repo#601 quest acceptance (OB-00 27.10.2026): how full the quest log is, once an hour (20 slots, no lookup).
+        int32 questLog = 0, questDone = 0;
+        for (uint16 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+            if (uint32 const questId = bot->GetQuestSlotQuestId(slot))
+            {
+                ++questLog;
+                if (bot->GetQuestStatus(questId) == QUEST_STATUS_COMPLETE)
+                    ++questDone;
+            }
+        sLog.outBasic("%s", ai::bot_activity::FormatLine(bot->GetGUIDLow(), bot->GetLevel(), bot->GetZoneId(), activityClock,
+            questLog, questDone).c_str());
         activityClock.StartHour(now);
     }
 }
@@ -695,12 +734,81 @@ void PlayerbotAI::ReportStuckDetail(ai::bot_activity::State const& state)
     char const* const dest = state.dest == ai::bot_activity::Dest::Quest ? "quest" :
         state.dest == ai::bot_activity::Dest::Grind ? "grind" : state.dest == ai::bot_activity::Dest::Other ? "other" : "none";
     ai::bot_activity::TrailPick const pick = ai::bot_activity::PickFromTrail(currentEngine ? currentEngine->GetLastAction() : "");
+    // twow-repo#601 (OB-00 28.10.2026): far_wait= the bot's far move - a waiting one is no stall any more (none / overdue left: a far
+    // move that was never ended)
     sLog.outBasic("[StuckDetail] bot=%u level=%u map=%u zone=%u x=%.0f y=%.0f dest=%s quest=%u entry=%d status=%u status_s=%d left_s=%d"
-        " dist=%.0f moved=%.1f move_retries=%u motion=%u moving=%u state=%u action=\"%s\" trigger=\"%s\" dropped=%u",
+        " dist=%.0f moved=%.1f move_retries=%u motion=%u moving=%u state=%u action=\"%s\" trigger=\"%s\" dropped=%u far_wait=%s",
         bot->GetGUIDLow(), bot->GetLevel(), bot->GetMapId(), bot->GetZoneId(), bot->GetPositionX(), bot->GetPositionY(), dest,
         questId, entry, uint32(state.status), statusSeconds, leftSeconds, distance, state.moved, retries,
         uint32(bot->GetMotionMaster()->GetCurrentMovementGeneratorType()), bot->IsMoving() ? 1u : 0u, uint32(currentState),
-        pick.action.c_str(), pick.trigger.c_str(), ai::bot_activity::StuckDetailGlobal().TakeDropped());
+        pick.action.c_str(), pick.trigger.c_str(), ai::bot_activity::StuckDetailGlobal().TakeDropped(),
+        ai::far_move::WaitStateName(FarMoveWaitState()));
+}
+
+ai::far_move::WaitState PlayerbotAI::FarMoveWaitState() const
+{
+    LastMovement const& lastMove = aiObjectContext->GetValue<LastMovement&>("last movement")->Get();
+    if (!lastMove.farMoveAt)
+        return ai::far_move::WaitState::None;
+    // the far move of the bot's travel target only (MoveToTravelTargetAction moves to its point; FarMovePolicy.h)
+    bool sameTarget = false;
+    if (TravelTarget* target = aiObjectContext->GetValue<TravelTarget*>("travel target")->Get())
+        if (WorldPosition const* point = target->GetPosition())
+            sameTarget = point->getMapId() == lastMove.farMoveTarget.getMapId() &&
+                lastMove.farMoveTarget.distance(*point) <= ai::far_move::SameTargetYards;
+    return ai::far_move::WaitStateOf(uint64(time(nullptr)), uint64(lastMove.farMoveAt), sameTarget);
+}
+
+// twow-repo#601 (AiPlayerbot.ActivityTrace.IdleDetail, OB-00 28.10.2026): why an idle bot has no active target - at the start of
+// the episode the reason (BotActivityPolicy.h IdleWhyOf), the inactive target (kind, quest, entry, status with the seconds held
+// and left), the empty-camp reselect flag, the last travel purpose and its destination search, the quest route backoff, the quest
+// search stage, the free quest log slots and the engine's newest executed action; at its end the seconds idle, the kind that
+// ended it and the new target. Only values the bot holds (20 quest slots, no search).
+void PlayerbotAI::ReportIdleDetail(ai::bot_activity::State const& state, ai::bot_activity::Kind kind, ai::bot_activity::IdleNote note,
+    uint32 now)
+{
+    uint32 questId = 0;
+    int32 entry = 0, statusSeconds = -1, leftSeconds = -1;
+    bool reselect = false;
+    if (TravelTarget* target = aiObjectContext->GetValue<TravelTarget*>("travel target")->Get())
+    {
+        if (QuestTravelDestination const* quest = dynamic_cast<QuestTravelDestination const*>(target->GetDestination()))
+            questId = quest->GetQuestId();
+        entry = target->GetEntry();
+        statusSeconds = target->GetExpiredTime() / int32(IN_MILLISECONDS);
+        leftSeconds = target->GetTimeLeft() / int32(IN_MILLISECONDS);
+        reselect = target->IsInactiveReselectPending();
+    }
+    char const* const dest = state.dest == ai::bot_activity::Dest::Quest ? "quest" :
+        state.dest == ai::bot_activity::Dest::Grind ? "grind" : state.dest == ai::bot_activity::Dest::Other ? "other" : "none";
+    if (note == ai::bot_activity::IdleNote::End)
+    {
+        sLog.outBasic("[IdleDetail] state=end bot=%u level=%u idle_s=%u why=%s next=%s dest=%s quest=%u status=%u gap=%u dropped=%u",
+            bot->GetGUIDLow(), bot->GetLevel(), idleEpisode.seconds, ai::bot_activity::IdleWhyName(idleEpisode.why),
+            ai::bot_activity::KindName(kind), dest, questId, uint32(state.status), idleEpisode.endedByGap ? 1u : 0u,
+            ai::bot_activity::IdleDetailGlobal().TakeDropped());
+        return;
+    }
+
+    FutureDestinations* const fetch = aiObjectContext->GetValue<FutureDestinations*>("future travel destinations")->Get();
+    bool const fetchValid = fetch && fetch->valid();
+    bool const fetchReady = fetchValid && fetch->wait_for(std::chrono::seconds(0)) != std::future_status::timeout;
+    std::string const purpose = aiObjectContext->GetValue<std::string>("manual string", "future travel purpose")->Get();
+    int32 const backoffUntil = aiObjectContext->GetValue<int>("manual int", "quest route backoff until")->Get();
+    uint32 freeSlots = 0;
+    for (uint16 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+        if (!bot->GetQuestSlotQuestId(slot))
+            ++freeSlots;
+    ai::bot_activity::TrailPick const pick = ai::bot_activity::PickFromTrail(currentEngine ? currentEngine->GetLastAction() : "");
+    sLog.outBasic("[IdleDetail] state=start bot=%u level=%u map=%u zone=%u x=%.0f y=%.0f why=%s dest=%s quest=%u entry=%d status=%u"
+        " status_s=%d left_s=%d reselect=%u purpose=\"%s\" fetch=%s backoff_s=%d stage=%d free_slots=%u state=%u action=\"%s\""
+        " trigger=\"%s\" dropped=%u",
+        bot->GetGUIDLow(), bot->GetLevel(), bot->GetMapId(), bot->GetZoneId(), bot->GetPositionX(), bot->GetPositionY(),
+        ai::bot_activity::IdleWhyName(idleEpisode.why), dest, questId, entry, uint32(state.status), statusSeconds, leftSeconds,
+        reselect ? 1u : 0u, purpose.c_str(), ai::bot_activity::FetchStateName(fetchValid, fetchReady),
+        backoffUntil > int32(now) ? backoffUntil - int32(now) : 0,
+        aiObjectContext->GetValue<int>("manual int", "quest search stage")->Get(), freeSlots, uint32(currentState),
+        pick.action.c_str(), pick.trigger.c_str(), ai::bot_activity::IdleDetailGlobal().TakeDropped());
 }
 
 bool PlayerbotAI::IsInGroupWithRealPlayer()
@@ -1376,6 +1484,23 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
             bool const freeToTravel = bot->IsAlive() && !bot->IsInCombat() && !bot->IsTaxiFlying() && !bot->GetTransport() &&
                 !bot->IsBeingTeleported();
 
+            // twow-repo#575 (PATH-01 F2, AiPlayerbot.CustomRaceStartZones, option B): the hearthstone leaves the island with
+            // the goblin - from level 10, once it stands outside the island (flown to Sparkwater), it binds at Razor Hill, as
+            // the rescue teleport did before (the 8.26 rule: a roster bot on its own). Off: nothing.
+            if (startZones && bot->getRace() == sz::GoblinRace && freeToTravel && !HasRealPlayerMaster() &&
+                sz::RebindOffIsland(true, bot->getRace(), bot->GetLevel(),
+                    sz::TeamOfPoint(bot->GetHomebindMapId(), bot->GetHomebindX(), bot->GetHomebindY()) == sz::StartTeam::Horde,
+                    sz::TeamOfPoint(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY()) == sz::StartTeam::Horde,
+                    bot->IsCurrentQuest(sz::QuestSolutions, 0)) &&
+                sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()))
+            {
+                WorldLocation const inn(1, gi::RazorHillX, gi::RazorHillY, gi::RazorHillZ, 0.0f);
+                AreaTableEntry const* area = WorldPosition(inn).GetArea();
+                bot->SetHomebindToLocation(inn, area ? area->ID : 0);
+                sLog.outBasic("[Travel] state=island_rebind bot=%u level=%u to_x=%.0f to_y=%.0f area=%u", bot->GetGUIDLow(),
+                    bot->GetLevel(), inn.coord_x, inn.coord_y, area ? area->ID : 0);
+            }
+
             // twow-repo#575 (PATH-01 Q1, AiPlayerbot.CustomRaceStartZones): the goblin chain is a round trip - 41169 is
             // handed in at Nert Blastentom in Sparkwater Port, 41170 back at Taxxlo Rustgate on the island. With one of
             // them in the log the goblin takes the machine of that direction (311 out, 322 back), whatever its level.
@@ -1397,14 +1522,18 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
                 // twow-repo#575 (wave-0 A/B 16.10.): the walk to the machine leads through the island scorpid field (L4-8) and
                 // the spirit healer stands inside it - goblins carrying 41169 died up to 20 times in a row. A bot in a death
                 // series or a death loop waits; the 8.1 rescue or a later check brings it there.
-                else if (!IsCautious() && !IsInDeathLoop())
+                // F4: on the island the walk follows the travel graph round the field (WalkToMachineByGraph).
+                else if (!IsCautious() && !IsInDeathLoop() &&
+                    (questFlight != sz::IslandPath || !WalkToMachineByGraph(machine.x, machine.y, machine.z, now)))
                     bot->GetMotionMaster()->MovePoint(0, machine.x, machine.y, machine.z, MOVE_PATHFINDING);
             }
             else if ((islandCandidate || HasRealPlayerMaster()) && freeToTravel)
             {
                 // PATH-01 Q1: with CustomRaceStartZones every goblin on its own leaves this way, not only roster members.
                 if (islandCandidate && sz::IslandLeaveAllowed(sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()), startZones) &&
-                    !HasRealPlayerMaster() && gi::ShouldLeaveIsland(bot->GetZoneId(), bot->GetLevel(), questProgress.IdleSeconds(now)))
+                    !HasRealPlayerMaster() && gi::ShouldLeaveIsland(bot->GetZoneId(), bot->GetLevel(),
+                        sz::IslandLeaveIdle(startZones, questProgress.IdleSeconds(now))) &&
+                    !sz::IslandLeaveBlocked(startZones, bot->GetLevel(), bot->IsCurrentQuest(sz::QuestSolutions, 0)))
                 {
                     float const dist = bot->GetDistance(gi::IslandMachineX, gi::IslandMachineY, gi::IslandMachineZ);
                     if (dist <= gi::BoardDistance)
@@ -1416,7 +1545,11 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
                     }
                     // Same field: with CustomRaceStartZones the dying bot waits here too; off, 8.29 is unchanged.
                     else if (!startZones || (!IsCautious() && !IsInDeathLoop()))
-                        bot->GetMotionMaster()->MovePoint(0, gi::IslandMachineX, gi::IslandMachineY, gi::IslandMachineZ, MOVE_PATHFINDING);
+                    {
+                        // F4: on, along the travel graph round the field; off, 8.29's straight walk.
+                        if (!startZones || !WalkToMachineByGraph(gi::IslandMachineX, gi::IslandMachineY, gi::IslandMachineZ, now))
+                            bot->GetMotionMaster()->MovePoint(0, gi::IslandMachineX, gi::IslandMachineY, gi::IslandMachineZ, MOVE_PATHFINDING);
+                    }
                 }
                 else if (Player* const realMaster = HasRealPlayerMaster() ? GetMaster() : nullptr)
                 {
@@ -1544,6 +1677,8 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
 
             // Any progress (level, XP, a gathering skill under a purpose) restarts the idle clock (questProgress.lastChange)
             // as before. With ResetOnProgressEvents only a level-up still resets the quest search stage - XP alone does not.
+            if (questProgress.snapshot != snapshot)
+                islandHubRescuePending = false;   // twow-repo#575 (PATH-01 F2): progress after an island hub rescue
             if (questProgress.Update(snapshot, now))
             {
                 if (ai::quest_failure_class::ProgressResetsStage(sPlayerbotAIConfig.questFirstProgressionResetOnProgressEvents &&
@@ -2042,6 +2177,21 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
             ai::cast_wait::Clear(castWait);
             ai::cast_wait::released.fetch_add(1, std::memory_order_relaxed);
         }
+    }
+
+    // twow-repo#333 finding 4 (TeleportCastPolicy.h, OB-10 review 28.10.): a travel / unstuck / zone-escape hold for a hearthstone
+    // or teleport ends as soon as that spell is no longer PREPARING - cast, interrupted, cancelled by fear or stun, failed - so a
+    // bot in combat fights again at once; once the hold is over the watch only stops.
+    if (ai::teleport_cast::Watching(teleportHold))
+    {
+        Spell* const holdSpell = bot->GetCurrentSpell(CURRENT_GENERIC_SPELL);
+        ai::teleport_cast::WatchStep const holdStep = ai::teleport_cast::Check(teleportHold, uint64(uintptr_t(holdSpell)),
+            holdSpell ? holdSpell->m_spellInfo->Id : 0u, holdSpell && holdSpell->getState() == SPELL_STATE_PREPARING,
+            WorldTimer::getMSTime());
+        if (holdStep == ai::teleport_cast::WatchStep::Release)
+            ResetAIInternalUpdateDelay();
+        if (holdStep != ai::teleport_cast::WatchStep::Keep)
+            ai::teleport_cast::Clear(teleportHold);
     }
 
     // Only update the internal ai when no reaction is running and the internal ai can be updated
@@ -2543,7 +2693,15 @@ void PlayerbotAI::OnDeath()
             {
                 LastMovement& farMove = AI_VALUE(LastMovement&, "last movement");
                 if (farMove.farMoveArrivedAt && time(nullptr) - farMove.farMoveArrivedAt <= time_t(far_move::ArriveDeathSeconds))
+                {
                     far_move::SharedCounters().arriveDeaths.fetch_add(1, std::memory_order_relaxed);
+                    // twow-repo#601 (OB-00 28.10.2026): with ActivityTrace one line per such death, so a cand run judges its deaths
+                    // veto with and without the far-move arrival deaths per cohort (arrived_s: seconds since the arrival). Log only.
+                    if (sPlayerbotAIConfig.activityTrace)
+                        sLog.outBasic("[FarMoveDeath] bot=%u level=%u map=%u zone=%u x=%.0f y=%.0f after_farmove=1 arrived_s=%u cohort=%c",
+                            bot->GetGUIDLow(), bot->GetLevel(), bot->GetMapId(), bot->GetZoneId(), bot->GetPositionX(), bot->GetPositionY(),
+                            uint32(time(nullptr) - farMove.farMoveArrivedAt), ai::cohort::Letter(bot->GetGUIDLow()));
+                }
             }
 
             if (sPlayerbotAIConfig.hasLog("deaths.csv"))
@@ -2751,6 +2909,28 @@ void PlayerbotAI::UpdateAIInternal(uint32 elapsed, bool minimal)
     SC_PHASE("UpdateAIInternal.entry", bot ? bot->GetName() : "(null)");
     if (bot->IsBeingTeleported() || !bot->IsInWorld())
         return;
+
+    // twow-repo#602 (AiPlayerbot.Rotation.TankKitFromLevel, TankKitPolicy.h): a level-up does not rebuild the strategies, so a warrior
+    // reaching 10 or a protection paladin reaching 16 would keep its DPS kit until the next relog; a level change across the key level
+    // rebuilds them once - only for random bots the switch applies to (GetPlayerKitTab gates the same way; a player-controlled bot keeps
+    // its own strategies, OB-10 28.10.); the first pass only records the level.
+    if (sPlayerbotAIConfig.rotationTankKitFromLevel && ai::tank_kit::Applies(sPlayerbotAIConfig.rotationTankKitFromLevel, bot->GetGUIDLow()) &&
+        sRandomPlayerbotMgr.IsRandomBot(bot))
+    {
+        uint32 const level = bot->GetLevel();
+        if (level != tankKitLevel)
+        {
+            // only a bot on its tank tab changes its kit at the crossing (an arms warrior reaching 10 stays arms: no rebuild)
+            bool const crossed = ai::tank_kit::CrossesKey(bot->getClass(), tankKitLevel, level) &&
+                ai::tank_kit::IsTankTab(bot->getClass(), AiFactory::GetPlayerSpecTab(bot));
+            tankKitLevel = level;
+            if (crossed)
+            {
+                ai::tank_kit::rebuilt.fetch_add(1, std::memory_order_relaxed);
+                ResetStrategies();
+            }
+        }
+    }
 
     std::string mapString = WorldPosition(bot).isInstance() ? "I" : std::to_string(bot->GetMapId());
     auto pmo = sPerformanceMonitor.start(PERF_MON_TOTAL, "PlayerbotAI::UpdateAIInternal " + mapString, nullptr, bot->GetMapId(), bot->GetInstanceId());
@@ -3619,6 +3799,18 @@ void PlayerbotAI::HandleBotOutgoingPacket(const WorldPacket& packet)
 	}
 }
 
+void PlayerbotAI::WatchTeleportHold(uint32 holdMs)
+{
+    // twow-repo#333 finding 4 (TeleportCastPolicy.h): the caller found its teleport PREPARING in the generic slot (holdMs > 0).
+    Spell* const spell = holdMs ? bot->GetCurrentSpell(CURRENT_GENERIC_SPELL) : nullptr;
+    if (!spell)
+    {
+        ai::teleport_cast::Clear(teleportHold);
+        return;
+    }
+    ai::teleport_cast::Arm(teleportHold, uint64(uintptr_t(spell)), spell->m_spellInfo->Id, WorldTimer::getMSTime(), holdMs);
+}
+
 void PlayerbotAI::SpellInterrupted(uint32 spellid)
 {
     LastSpellCast& lastSpell = aiObjectContext->GetValue<LastSpellCast&>("last spell cast")->Get();
@@ -4358,6 +4550,100 @@ void PlayerbotAI::RecordDeathForSeries()
         sLog.outBasic("[DeathSeries] state=purpose_suppressed bot=%u level=%u purpose=%u minutes=%u map=%u zone=%u",
             bot->GetGUIDLow(), bot->GetLevel(), purpose, ai::death_series::PurposeSuppressSeconds / 60,
             bot->GetMapId(), bot->GetZoneId());
+}
+
+// twow-repo#575 (PATH-01 F4, AiPlayerbot.CustomRaceStartZones, option B): the straight walk to the island machine crossed the
+// scorpid field around the spirit healer (wave-0 A/B: 89 of 110 scorpid deaths carried 41169). The travel graph knows the
+// way round it (v3 dropped the link through the field, v3.3 adds the lumber-yard node 1861): one spline = a navmesh path
+// from the bot to its nearest node, then the route's stored walk-link points (complete links only), run like A20's
+// precomputed path. Unitless A* (no hearthstone / portal stubs, no node writes beyond getRoute's own); the shared graph lock
+// is held only while the points are copied. False: no graph walk - the caller walks straight as before, and one
+// machine_walk_fallback line (at most every 10 minutes per bot) names why.
+bool PlayerbotAI::WalkToMachineByGraph(float x, float y, float z, uint32 now)
+{
+    namespace sz = ai::start_zone;
+    if (!sz::UsesGraphWalk(sPlayerbotAIConfig.customRaceStartZones, bot->GetDistance(x, y, z)))
+        return false;
+    // The walk dispatched before is still on its way (another movement replaced it: re-plan).
+    if (now < machineWalkUntil && bot->IsMoving() && bot->GetMotionMaster()->GetCurrentMovementGeneratorType() == POINT_MOTION_TYPE)
+        return true;
+
+    auto fallback = [&](char const* reason)
+    {
+        if (now >= machineWalkFallbackLog)
+        {
+            machineWalkFallbackLog = now + 600;
+            sLog.outBasic("[Travel] state=machine_walk_fallback bot=%u level=%u reason=%s", bot->GetGUIDLow(), bot->GetLevel(), reason);
+        }
+        return false;
+    };
+
+    WorldPosition const botPos(bot);
+    WorldPosition const machinePos(bot->GetMapId(), x, y, z);
+    std::vector<WorldPosition> route;
+    WorldPosition firstNode;
+    uint32 routeNodes = 0;
+    {
+        std::shared_lock<std::shared_timed_mutex> graphLock(sTravelNodeMap.m_nMapMtx, std::defer_lock);
+        if (!graphLock.try_lock_for(std::chrono::milliseconds(50)))
+            return fallback("lock");
+        std::vector<TravelNode*> const goals = sTravelNodeMap.getNodes(machinePos, sz::GraphWalkMachineNodeYards);
+        std::vector<TravelNode*> const starts = sTravelNodeMap.getNodes(botPos, sz::GraphWalkStartYards);
+        if (goals.empty() || starts.empty())
+            return fallback("no_node");
+        if (starts.front() == goals.front())
+            return fallback("at_machine_node");
+        firstNode = *starts.front()->getPosition();
+        TravelNodeRoute nodeRoute = sTravelNodeMap.getRoute(starts.front(), goals.front(), nullptr);
+        std::vector<TravelNode*> const& nodes = nodeRoute.getNodes();
+        for (size_t i = 0; i + 1 < nodes.size(); ++i)
+        {
+            auto const link = nodes[i]->getPaths()->find(nodes[i + 1]);
+            if (link == nodes[i]->getPaths()->end() || link->second.getPathType() != TravelNodePathType::walk ||
+                !link->second.getComplete())
+                return fallback("link");
+            std::vector<WorldPosition> const points = link->second.getPath();
+            if (points.empty())
+                return fallback("link");
+            route.insert(route.end(), route.empty() ? points.begin() : std::next(points.begin()), points.end());
+        }
+        routeNodes = uint32(nodes.size());
+        if (route.size() < 2)
+            return fallback("no_route");
+    }
+
+#ifdef MANGOSBOT_ZERO
+    // From the bot to the first node on the navmesh (nothing to add when it stands at the node).
+    std::vector<G3D::Vector3> pointPath;
+    if (botPos.distance(firstNode) > sz::GraphWalkNodeReach)
+    {
+        PathFinder prefix(bot);
+        prefix.calculate(firstNode.getX(), firstNode.getY(), firstNode.getZ());
+        if (!(prefix.getPathType() & PATHFIND_NORMAL) || prefix.getPath().size() < 2)
+            return fallback("prefix");
+        pointPath.assign(prefix.getPath().begin(), prefix.getPath().end());
+        pointPath.pop_back();   // the node itself is the route's first point
+    }
+    else
+        pointPath.push_back(G3D::Vector3(botPos.getX(), botPos.getY(), botPos.getZ()));
+    float prefixLength = 0.0f;
+    for (std::size_t i = 1; i < pointPath.size(); ++i)
+        prefixLength += (pointPath[i] - pointPath[i - 1]).length();
+    std::vector<G3D::Vector3> const routePoints = WorldPosition().toPointsArray(route);
+    std::size_t const routeStart = pointPath.size();
+    pointPath.insert(pointPath.end(), routePoints.begin(), routePoints.end());
+    for (std::size_t i = routeStart; i < pointPath.size(); ++i)
+        bot->UpdateAllowedPositionZ(pointPath[i].x, pointPath[i].y, pointPath[i].z);
+    float const length = prefixLength + WorldPosition().getPathLength(route);
+    float const speed = std::max(bot->GetSpeed(MOVE_RUN), 1.0f);
+    bot->GetMotionMaster()->MovePoint(0, x, y, z, MOVE_RUN_MODE | MOVE_PATHFINDING, pointPath, false, false);
+    machineWalkUntil = now + uint32(length / speed) + 10;
+    sLog.outBasic("[Travel] state=machine_walk bot=%u level=%u nodes=%u points=%u yd=%.0f", bot->GetGUIDLow(), bot->GetLevel(),
+        routeNodes, uint32(pointPath.size()), length);
+    return true;
+#else
+    return fallback("build");
+#endif
 }
 
 void PlayerbotAI::UpdateTankPathDiag(uint32 now)
@@ -6645,6 +6931,8 @@ bool PlayerbotAI::CastSpell(uint32 spellId, Unit* target, Item* itemTarget, bool
         targets.setDestination(fx, fy, fz);
     }
 
+    // twow-repo#333 P1-w (CastWhileMovingPolicy.h): whether this is a loot cast with its target found.
+    bool lootTargetFound = false;
     if (pSpellInfo->Effect[0] == SPELL_EFFECT_OPEN_LOCK ||
         pSpellInfo->Effect[0] == SPELL_EFFECT_SKINNING)
     {
@@ -6654,6 +6942,7 @@ bool PlayerbotAI::CastSpell(uint32 spellId, Unit* target, Item* itemTarget, bool
         {
             targets.setGOTarget(go);
             faceTo = go;
+            lootTargetFound = true;
         }
         else
         {
@@ -6662,9 +6951,11 @@ bool PlayerbotAI::CastSpell(uint32 spellId, Unit* target, Item* itemTarget, bool
             {
                 targets.setUnitTarget(creature);
                 faceTo = creature;
+                lootTargetFound = true;
             }
         }
     }
+    bool const lootCast = ai::cast_moving::IsLootCast(pSpellInfo->Effect[0], lootTargetFound, targets.getItemTarget() != nullptr);
 
     // Fail the cast if the bot is moving and the spell is a casting/channeled spell
     if (sServerFacade.isMoving(bot) && ((GetSpellCastTime(pSpellInfo, bot, spell) > 0) || (IsChanneledSpell(pSpellInfo) && (GetSpellDuration(pSpellInfo) > 0))))
@@ -6679,8 +6970,21 @@ bool PlayerbotAI::CastSpell(uint32 spellId, Unit* target, Item* itemTarget, bool
         StopMoving();
 
         // fail if not with real player to avoid movement glitches
-        if (!HasActivePlayerMaster())
+        // twow-repo#333 P1-w (M1r run 4): a loot cast stays - its cancel failed the action, the next action moved the bot again
+        // and every try cancelled (skinning, mining, herbs, chests, quest objects never opened).
+        // twow-repo#602 (AiPlayerbot.Rotation.CastStopFirst, CastWhileMovingPolicy.h): with the switch every cast casts after the
+        // stop - the same loop hit the combat casts (hunt2: 47k cancels, 740 streaks of 10 or more).
+        bool const activeMaster = HasActivePlayerMaster();
+        // A bot StopMoving() cannot stop (vehicle, far teleport) keeps the old cancel: its cast would be interrupted at once.
+        bool const castStopFirst = ai::cast_moving::CastStopFirstApplies(sPlayerbotAIConfig.rotationCastStopFirst, bot->GetGUIDLow())
+            && !sServerFacade.isMoving(bot);
+        if (ai::cast_moving::CastByStopFirst(activeMaster, lootCast, castStopFirst))
+            ai::cast_moving::castAfterStop.fetch_add(1, std::memory_order_relaxed);
+        if (ai::cast_moving::CancelAfterStop(activeMaster, lootCast, castStopFirst))
         {
+            if (sPlayerbotAIConfig.rotationCastStopFirst)
+                ai::cast_moving::cancelled.fetch_add(1, std::memory_order_relaxed);
+
             if (waitForSpell)
             {
                 SetAIInternalUpdateDelay(sPlayerbotAIConfig.globalCoolDown);
@@ -6895,8 +7199,18 @@ bool PlayerbotAI::CastSpell(uint32 spellId, GameObject* goTarget, Item* itemTarg
         StopMoving();
 
         // fail if not with real player to avoid movement glitches
-        if (!HasActivePlayerMaster())
+        // twow-repo#602 (AiPlayerbot.Rotation.CastStopFirst, CastWhileMovingPolicy.h): with the switch the cast goes on after the stop.
+        bool const activeMaster = HasActivePlayerMaster();
+        // A bot StopMoving() cannot stop (vehicle, far teleport) keeps the old cancel: its cast would be interrupted at once.
+        bool const castStopFirst = ai::cast_moving::CastStopFirstApplies(sPlayerbotAIConfig.rotationCastStopFirst, bot->GetGUIDLow())
+            && !sServerFacade.isMoving(bot);
+        if (ai::cast_moving::CastByStopFirst(activeMaster, false, castStopFirst))
+            ai::cast_moving::castAfterStop.fetch_add(1, std::memory_order_relaxed);
+        if (ai::cast_moving::CancelAfterStop(activeMaster, false, castStopFirst))
         {
+            if (sPlayerbotAIConfig.rotationCastStopFirst)
+                ai::cast_moving::cancelled.fetch_add(1, std::memory_order_relaxed);
+
             if (waitForSpell)
             {
                 SetAIInternalUpdateDelay(sPlayerbotAIConfig.globalCoolDown);
@@ -7035,8 +7349,18 @@ bool PlayerbotAI::CastSpell(uint32 spellId, float x, float y, float z, Item* ite
         StopMoving();
 
         // fail if not with real player to avoid movement glitches
-        if (!HasActivePlayerMaster())
+        // twow-repo#602 (AiPlayerbot.Rotation.CastStopFirst, CastWhileMovingPolicy.h): with the switch the cast goes on after the stop.
+        bool const activeMaster = HasActivePlayerMaster();
+        // A bot StopMoving() cannot stop (vehicle, far teleport) keeps the old cancel: its cast would be interrupted at once.
+        bool const castStopFirst = ai::cast_moving::CastStopFirstApplies(sPlayerbotAIConfig.rotationCastStopFirst, bot->GetGUIDLow())
+            && !sServerFacade.isMoving(bot);
+        if (ai::cast_moving::CastByStopFirst(activeMaster, false, castStopFirst))
+            ai::cast_moving::castAfterStop.fetch_add(1, std::memory_order_relaxed);
+        if (ai::cast_moving::CancelAfterStop(activeMaster, false, castStopFirst))
         {
+            if (sPlayerbotAIConfig.rotationCastStopFirst)
+                ai::cast_moving::cancelled.fetch_add(1, std::memory_order_relaxed);
+
             if (waitForSpell)
             {
                 SetAIInternalUpdateDelay(sPlayerbotAIConfig.globalCoolDown);
@@ -7047,7 +7371,11 @@ bool PlayerbotAI::CastSpell(uint32 spellId, float x, float y, float z, Item* ite
         }
     }
 
-    spell->SpellStart(&targets);
+    // twow-repo#602 (AiPlayerbot.Rotation.CastStopFirst): with the switch a moving bot's Blizzard / Volley / Flamestrike gets
+    // here; a start that fails (range, sight, power) returns false as in the other overloads, not true with a cast wait.
+    SpellCastResult const startResult = spell->SpellStart(&targets);
+    if (startResult != SPELL_CAST_OK && ai::cast_moving::CastStopFirstApplies(sPlayerbotAIConfig.rotationCastStopFirst, bot->GetGUIDLow()))
+        return false;
 
     if (pSpellInfo->Effect[0] == SPELL_EFFECT_OPEN_LOCK ||
         pSpellInfo->Effect[0] == SPELL_EFFECT_SKINNING)

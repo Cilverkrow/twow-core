@@ -6,6 +6,7 @@
 #include "playerbot/strategy/generic/PullStrategy.h"
 #include "playerbot/strategy/values/FreeMoveValues.h"
 #include "playerbot/CohortPolicy.h"
+#include "playerbot/InvalidTargetPolicy.h"
 #include "playerbot/RotCastPolicy.h"
 #include "playerbot/RotCastTrace.h"
 #include "playerbot/GrindPickPolicy.h"
@@ -210,6 +211,14 @@ bool SelectNewTargetAction::Execute(Event& event)
         SET_AI_VALUE(Unit*, "current target", nullptr);
     }
     
+    // twow-repo#602 (InvalidTargetPolicy.h, trace for the follow-up (b), log only): the stop below also hits a live but "invalid" target
+    if (target && !sServerFacade.UnitIsDead(target))
+    {
+        ai::invalid_target::droppedLive.fetch_add(1, std::memory_order_relaxed);
+        if (bot->IsNonMeleeSpellCasted(false, true, false))   // what InterruptSpell stops: no delayed spells, no channels
+            ai::invalid_target::interruptedLive.fetch_add(1, std::memory_order_relaxed);
+    }
+
     // Stop attacking
     bot->SetSelectionGuid(ObjectGuid());
     ai->InterruptSpell();

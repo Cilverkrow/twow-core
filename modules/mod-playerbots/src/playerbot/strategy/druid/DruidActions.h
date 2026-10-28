@@ -1,5 +1,6 @@
 #pragma once
 #include "playerbot/strategy/actions/GenericActions.h"
+#include "playerbot/SpellNamePolicy.h"
 
 namespace ai
 {
@@ -197,7 +198,9 @@ namespace ai
     class CastBarskinAction : public CastBuffSpellAction
     {
     public:
-        CastBarskinAction(PlayerbotAI* ai) : CastBuffSpellAction(ai, "barskin") {}
+        // twow-repo#602 (spell-name audit, SpellNamePolicy.h): the spell is Barkskin (druid L44); "barskin" never resolved. The action
+        // name stays "barskin" (creator and strategy nodes).
+        CastBarskinAction(PlayerbotAI* ai) : CastBuffSpellAction(ai, "barskin") { SetSpellName(ai::spell_names::kBarkskin); }
     };
 
     class CastInnervateAction : public CastSpellTargetAction
