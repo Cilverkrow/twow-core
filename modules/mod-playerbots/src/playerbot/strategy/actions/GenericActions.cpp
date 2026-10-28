@@ -8,6 +8,7 @@
 #include "playerbot/MeleeSkipPolicy.h"
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/ServerFacade.h"
+#include "playerbot/strategy/generic/CombatStrategy.h"
 
 using namespace ai;
 
@@ -20,7 +21,8 @@ bool MeleeAction::isUseful()
     // twow-repo#602 (AiPlayerbot.Rotation.MeleeSkipAttacking, MeleeSkipPolicy.h): the bot already attacks its current target, so
     // Unit::Attack would return false (FAILED) after Attack() repeated its side effects - in every GCD / rage gap. The swing decision
     // is the one of AttackAction::Attack (melee unless ranged; a hunter in "close" mode with Rotation.HunterMeleeStart swings). A bot
-    // not facing its target, or whose living pet is not on it, keeps the old path, which turns it and sends the pet.
+    // not facing its target, or whose living pet is not on it, keeps the old path, which turns it and sends the pet; so does a mounted
+    // bot (Attack() unmounts it) and one under "wait for attack" or "stealthed" (there Attack() returns OK without attacking).
     if (ai::melee_skip::Applies(sPlayerbotAIConfig.rotationMeleeSkipAttacking, bot->GetGUIDLow()))
     {
         Unit* const target = GetTarget();
@@ -35,8 +37,13 @@ bool MeleeAction::isUseful()
             bool const inFront = !ai->CanMove() || sServerFacade.IsInFront(bot, target, sPlayerbotAIConfig.sightDistance, CAST_ANGLE_IN_FRONT);
             Pet* const pet = bot->GetPet();
             bool const petOnTarget = !pet || !pet->IsAlive() || pet->GetVictim() == target;
-            if (ai::melee_skip::Skip(true, true, bot->HasUnitState(UNIT_STAT_MELEE_ATTACKING), wantMelee, inFront, petOnTarget))
+            bool const plainAttack = !bot->IsMounted() && !WaitForAttackStrategy::ShouldWait(ai) &&
+                !ai->HasStrategy("stealthed", BotState::BOT_STATE_COMBAT);
+            if (ai::melee_skip::Skip(true, true, bot->HasUnitState(UNIT_STAT_MELEE_ATTACKING), wantMelee, inFront, petOnTarget, plainAttack))
             {
+                // the one value Attack() kept up to date in this case: "old target" = the target (AttackersValue counts the old target)
+                if (AI_VALUE(Unit*, "old target") != target)
+                    SET_AI_VALUE(Unit*, "old target", target);
                 ai::melee_skip::skipped.fetch_add(1, std::memory_order_relaxed);
                 return false;
             }

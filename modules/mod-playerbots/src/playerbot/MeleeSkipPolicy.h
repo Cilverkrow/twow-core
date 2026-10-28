@@ -24,10 +24,11 @@ inline bool Applies(std::uint32_t mode, std::uint32_t guidLow)
 // Unit::Attack(target, wantMelee) would return false: the bot already attacks this target, and it swings already or would not swing.
 // A ranged bot that would now switch to melee (hunter "close" mode, Rotation.HunterMeleeStart) still attacks. A bot not facing its
 // target still runs the old Attack(), which turns it (the melee swing needs the target in front), and so does a bot whose living pet is
-// not on that target (Attack() sends the pet).
-inline bool Skip(bool applies, bool targetIsVictim, bool swinging, bool wantMelee, bool inFront, bool petOnTarget)
+// not on that target (Attack() sends the pet). plainAttack = not mounted (Attack() unmounts) and neither "wait for attack" nor
+// "stealthed" (there Attack() returns OK without attacking, which ends the engine pass).
+inline bool Skip(bool applies, bool targetIsVictim, bool swinging, bool wantMelee, bool inFront, bool petOnTarget, bool plainAttack)
 {
-    return applies && targetIsVictim && inFront && petOnTarget && (swinging || !wantMelee);
+    return applies && targetIsVictim && inFront && petOnTarget && plainAttack && (swinging || !wantMelee);
 }
 
 // [MeleeSkip] counter. Map threads add, the world thread takes it once per minute.
