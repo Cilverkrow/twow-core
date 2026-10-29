@@ -99,6 +99,9 @@ class MapManager : public MaNGOS::Singleton<MapManager, MaNGOS::ClassLevelLockab
         // [RegionSwitch] once per minute: region switches done, and player updates whose switch waited because
         // the player fights in a border cell (map threads).
         void CountRegionSwitchDeferred() { m_regionSwitchDeferred.fetch_add(1, std::memory_order_relaxed); }
+        // twow-repo#575 F9-2: [Repop] once per minute - revives that cleared a stale graveyard repop (Player::ResurrectPlayer,
+        // map threads).
+        void CountStaleRepopCleared() { m_staleRepopCleared.fetch_add(1, std::memory_order_relaxed); }
         Map* CreateMap(uint32 mapId, const WorldObject* obj);
         Map* CreateBgMap(uint32 mapId, BattleGround* bg);
         Map* CreateTestMap(uint32 mapId, bool instanced, float posX, float posY);
@@ -252,6 +255,10 @@ class MapManager : public MaNGOS::Singleton<MapManager, MaNGOS::ClassLevelLockab
         std::atomic<uint64> m_regionSwitchDeferred{ 0 };
         uint32 m_regionSwitchReportMs = 0;
         void ReportRegionSwitches();
+        // twow-repo#575 F9-2: [Repop] counter (any thread) and its minute report (world thread).
+        std::atomic<uint64> m_staleRepopCleared{ 0 };
+        uint32 m_staleRepopReportMs = 0;
+        void ReportStaleRepops();
 
         // Handle creation of new maps for teleport while continents are being updated.
         void CreateNewInstancesForPlayers();

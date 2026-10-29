@@ -1359,6 +1359,14 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
     COMMAND "${CMAKE_COMMAND}"
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_av_item_spells_511_contract.cmake")
+  # twow-repo#575 F9-2: a revive clears a stale graveyard repop (no living player is moved to the graveyard).
+  add_executable(repop_policy_test
+    "${TW_CORE_ROOT}/t/repop_policy_test.cpp")
+  add_test(NAME repop_policy_test COMMAND repop_policy_test)
+  add_test(NAME repop_stale_575_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_repop_stale_575_contract.cmake")
 
   include("${TW_CORE_ROOT}/modules/mod-playerbots/tests.cmake")
   # mod-dungeon-clear's suites, here for the same reason: its own .cmake is
