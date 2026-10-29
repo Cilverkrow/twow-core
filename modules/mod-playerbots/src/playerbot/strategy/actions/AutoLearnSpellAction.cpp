@@ -10,6 +10,7 @@
 #include <vector>
 #include "playerbot/ClassGrantPolicy.h"
 #include "playerbot/SpecAuraPolicy.h"
+#include "playerbot/RogueTankStancePolicy.h"   // twow-repo#654 (Rotation.RogueTankStance)
 #include "playerbot/QuestTeachPolicy.h"
 #include "playerbot/AiFactory.h"
 #include <algorithm>
@@ -356,6 +357,18 @@ void AutoLearnSpellAction::GrantSpecAuras()
     std::vector<uint32> known = ai::spec_aura::ManagedAllAuras(bot->getClass(), auraTalentsAreReal);
     for (uint32 spellId : ai::spec_aura::ManagedAllKit(bot->getClass(), auraTalentsAreReal))
         known.push_back(spellId);
+
+    // twow-repo#654 (Rotation.RogueTankStance): with the switch the Shadow Dance stance is managed here too - taught on the rogue tank
+    // path from 20 while the core switch covers bots, otherwise a known stance goes with its aura. Switch off: as before (untouched).
+    if (bot->getClass() == CLASS_ROGUE && ai::rogue_tank_stance::Applies(sPlayerbotAIConfig.rotationRogueTankStance, bot->GetGUIDLow()))
+    {
+        bool const coreCovers = ai::rogue_tank_stance::CoreCoversBots(sWorld.getConfig(CONFIG_UINT32_FUNSERVER_ROGUE_SHADOW_DANCE_STANCE));
+        known.push_back(ai::rogue_tank_stance::StanceSpell);
+        if (ai::rogue_tank_stance::Teach(true, coreCovers, (path & ai::spec_aura::RogueTank) != 0, bot->GetLevel()))
+            wanted.push_back(ai::rogue_tank_stance::StanceSpell);
+        else
+            bot->RemoveAurasDueToSpell(ai::rogue_tank_stance::StanceSpell);
+    }
 
     // Idempotent. A lower rank the level has outgrown, or an aura of another
     // path after a respec, goes; no lower rank is taught back.

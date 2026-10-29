@@ -221,6 +221,7 @@ namespace ai
                 creators["riposte"] = [](PlayerbotAI* ai) { return new RiposteCastTrigger(ai); };
                 creators["ghostly strike"] = [](PlayerbotAI* ai) { return new GhostlyStrikeTrigger(ai); };
                 creators["shadow dance"] = [](PlayerbotAI* ai) { return new ShadowDanceTrigger(ai); };
+                creators["shadow dance stance off"] = [](PlayerbotAI* ai) { return new ShadowDanceStanceOffTrigger(ai); };   // twow-repo#654
                 creators["apply deadly poison main hand"] = [](PlayerbotAI* ai) { return new ApplyDeadlyPoisonTrigger(ai, true); };
                 creators["apply crippling poison main hand"] = [](PlayerbotAI* ai) { return new ApplyCripplingPoisonTrigger(ai, true); };
                 creators["apply mind poison main hand"] = [](PlayerbotAI* ai) { return new ApplyMindPoisonTrigger(ai, true); };
@@ -256,6 +257,7 @@ namespace ai
                 creators["evasion"] = [](PlayerbotAI* ai) { return new CastEvasionAction(ai); };
                 creators["rogue taunt"] = [](PlayerbotAI* ai) { return new CastRogueTauntAction(ai); };
                 creators["shadow dance"] = [](PlayerbotAI* ai) { return new CastShadowDanceAction(ai); };
+                creators["cancel shadow dance stance"] = [](PlayerbotAI* ai) { return new CancelShadowDanceStanceAction(ai); };   // twow-repo#654
                 creators["kick"] = [](PlayerbotAI* ai) { return new CastKickAction(ai); };
                 creators["feint"] = [](PlayerbotAI* ai) { return new CastFeintAction(ai); };
                 creators["backstab"] = [](PlayerbotAI* ai) { return new CastBackstabAction(ai); };

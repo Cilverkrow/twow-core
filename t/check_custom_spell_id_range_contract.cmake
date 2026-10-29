@@ -29,7 +29,8 @@ endfunction()
 # 2. Files that only name spells by ID (comments carry issue comment numbers).
 foreach (rel
     "modules/mod-playerbots/src/playerbot/SpecAuraPolicy.h"
-    "src/game/FunserverRogueTalents.h")
+    "src/game/FunserverRogueTalents.h"
+    "src/game/FunserverShadowDanceStance.h")
   file(READ "${TW_CORE_ROOT}/${rel}" text)
   string(REGEX REPLACE "//[^\n]*" "" text "${text}")
   reject_large("${text}" "${rel}")

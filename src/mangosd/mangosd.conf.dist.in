@@ -2247,6 +2247,20 @@ Funserver.Rare.Respawn.MinSeconds = 60
 Funserver.Rare.Respawn.MaxSeconds = 1440
 Funserver.Rare.PoolBypass.Enabled = 0
 
+# Funserver.Rogue.ShadowDanceStance
+#   twow-repo#654 (owner 29.10.2026). Shadow Dance becomes a rogue tank stance: the stance
+#   "Shadow Dance" (spell 61230, castable, cancelable) gives damage done -40 % and damage taken
+#   -25 % (all schools). The passive ranks keep their dodge / parry buffs and flat threat only
+#   while the stance is on; each buff then also lowers energy regeneration by 10 % for 3 s
+#   (two at most, 0.81). The rogue's Stealth and Vanish cannot be cast in the stance, and the
+#   stance ends an active Stealth (Shadowmeld and invisibility potions stay allowed).
+#   Needs the spells 61230-61232 (world migration, main train); without them it acts as 0.
+#   Players need the client patch for the stance; until then use 2.
+#   Default: 0 - as before (passive Shadow Dance for every rogue who learned it)
+#            1 - every rogue (players learn the stance with a rank)
+#            2 - bots only (the bot code teaches and uses it; players keep the old passive)
+Funserver.Rogue.ShadowDanceStance = 0
+
 # Funserver.Riding.Stages.Enabled
 #   twow-repo#295. Riding in four stages: skill 762 values 75/150/225/300,
 #   trained at level 10/20/40/60. The server picks the mounted speed of player
