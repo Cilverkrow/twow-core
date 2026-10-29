@@ -8,8 +8,20 @@
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/RotCastPolicy.h"
 #include "playerbot/RotCastTrace.h"
+#include "playerbot/NeverPossiblePolicy.h"
+#include "playerbot/LosCachePolicy.h"
 
 using namespace ai;
+
+bool CastSpellAction::NeverPossible()
+{
+    // the switch first (no value read when off); "mount" is a plain CastSpellAction whose name is no spell (isPossible special-cases it)
+    if (!ai::never_possible::Applies(sPlayerbotAIConfig.rotationNeverPossibleSkip, bot->GetGUIDLow()) || KeepsUnknownSpell() || spellName == "mount")
+        return false;
+
+    // the "spell id" value (refreshed every few seconds), not the spellId member, which stays 0 after a learn without RefreshOnLearn
+    return ai::never_possible::Skip(true, false, AI_VALUE2(uint32, "spell id", spellName));
+}
 
 CastSpellAction::CastSpellAction(PlayerbotAI* ai, std::string spell)
 : Action(ai, spell)
@@ -114,6 +126,14 @@ bool CastSpellAction::isPossible()
         }
     }
 
+    // twow-repo#602 (AiPlayerbot.Rotation.NeverPossibleSkip): a spell the bot does not know is IMPOSSIBLE at once (self-casts skipped the
+    // spellId test below and went into CanCastSpell every time). IMPOSSIBLE as before, so the node's alternatives are still pushed.
+    if (NeverPossible())
+    {
+        ai::never_possible::possible.fetch_add(1, std::memory_order_relaxed);
+        return RotEval(false, ai::rot_cast::EvalNoSpellId);
+    }
+
     Unit* spellTarget = GetTarget();
     if (!spellTarget)
         return RotEval(false, ai::rot_cast::EvalNoTarget);
@@ -164,12 +184,27 @@ bool CastSpellAction::isPossible()
     // unreachable is dropped (its reach is USELESS from then on). Off = the paths below, unchanged.
     if (ai::cast_los_gate::Applies(sPlayerbotAIConfig.rotationCastLosGate, bot->GetGUIDLow()))
     {
+        // twow-repo#602 (AiPlayerbot.Rotation.LosCacheMs, LosCachePolicy.h): a target the cache knows is out of sight is IMPOSSIBLE at
+        // once - no Spell, no CheckCast, no VMap query for every alternative of the node; a spell that ignores line of sight (or whose
+        // entry is unknown) takes the full check.
+        SpellEntry const* const losSpell = spellId ? sServerFacade.LookupSpellInfo(spellId) : nullptr;
+        bool const ignoresLos = !losSpell || losSpell->HasAttribute(SPELL_ATTR_EX2_IGNORE_LOS);
+        bool cachedInLos = true;
+        bool const fresh = ai->LosCacheGet(spellTarget->GetObjectGuid(), cachedInLos);
+        if (ai::los_cache::SkipCast(fresh, true, cachedInLos, ignoresLos))
+        {
+            ai::los_cache::cached.fetch_add(1, std::memory_order_relaxed);
+            return sPlayerbotAIConfig.rotationCastTrace ? RotEval(false, ai::rot_cast::EvalCode(false, uint8(SPELL_FAILED_LINE_OF_SIGHT))) : false;
+        }
+
         SpellCastResult losResult = SPELL_CAST_OK;
         bool losPossible = ai->CanCastSpell(spellName, spellTarget, 0, nullptr, true, false, false, &losResult);
         if (losPossible && losResult == SPELL_FAILED_LINE_OF_SIGHT)
         {
             losPossible = false;
             ai::cast_los_gate::gated.fetch_add(1, std::memory_order_relaxed);
+            if (!ignoresLos)
+                ai->LosCacheSet(spellTarget->GetObjectGuid(), false);   // twow-repo#602 (Rotation.LosCacheMs): remember the verdict
             if (ai->IsUnreachableTarget(spellTarget->GetObjectGuid()) && AI_VALUE(Unit*, "current target") == spellTarget)
             {
                 SET_AI_VALUE(Unit*, "current target", nullptr);
@@ -239,6 +274,14 @@ bool CastSpellAction::isUseful()
 
 NextAction** CastSpellAction::getPrerequisites()
 {
+    // twow-repo#602 (AiPlayerbot.Rotation.NeverPossibleSkip): no reach action for a spell the bot does not know (it was pushed on every
+    // pass and then the cast was IMPOSSIBLE anyway)
+    if (NeverPossible())
+    {
+        ai::never_possible::prereq.fetch_add(1, std::memory_order_relaxed);
+        return Action::getPrerequisites();
+    }
+
     // Set the reach action as the cast spell prerequisite when needed
     const std::string reachAction = GetReachActionName();
     if (!reachAction.empty())

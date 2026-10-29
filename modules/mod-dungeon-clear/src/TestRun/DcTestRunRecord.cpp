@@ -110,6 +110,7 @@ namespace DcTestRunRecord
               << ",\"detectedRole\":";
             AppendEscaped(s, c.detectedRole);
             s << ",\"roleMismatch\":" << (c.roleMismatch ? "true" : "false")
+              << ",\"tankStrategy\":" << (c.tankStrategy ? "true" : "false")   // 13
               << ",\"from\":{\"map\":" << c.fromMap
               << ",\"x\":" << c.fromX << ",\"y\":" << c.fromY << ",\"z\":" << c.fromZ
               << ",\"o\":" << c.fromO << "}}";
@@ -142,7 +143,7 @@ namespace DcTestRunRecord
             AppendEscaped(s, b.name);
             s << ",\"via\":";
             AppendEscaped(s, b.via);
-            s << '}';
+            s << ",\"engageT\":" << b.engageT << '}';   // 13
         }
         s << "],\"deaths\":[";
         for (std::size_t i = 0; i < rec.deaths.size(); ++i)
@@ -171,9 +172,14 @@ namespace DcTestRunRecord
               << ",\"observed\":" << p.observedMax
               << ",\"observedElites\":" << p.observedElites
               << ",\"advanced\":" << (p.advanced ? "true" : "false")
-              << ",\"wipedHere\":" << (p.wipedHere ? "true" : "false") << '}';
+              << ",\"wipedHere\":" << (p.wipedHere ? "true" : "false")
+              << ",\"combatTicks\":" << p.combatTicks            // 13
+              << ",\"aggroLossTicks\":" << p.aggroLossTicks << '}';
         }
         s << "],\"pullsElided\":" << rec.pullsElided
+          << ",\"aggro\":{\"runCombatTicks\":" << rec.aggroCombatTicks   // 13 (keys unique: pulls[] carry combatTicks)
+          << ",\"runLossTicks\":" << rec.aggroLossTicks << ",\"runLossEvents\":" << rec.aggroLossEvents
+          << ",\"tankDownTicks\":" << rec.aggroTankDownTicks << "}"
           << ",\"statusTimeline\":[";
         {
             std::vector<StatusEntry> const& st = rec.statusTimeline;

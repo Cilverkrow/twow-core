@@ -2,6 +2,9 @@
 #include "playerbot/AdhocGroupWorld.h"
 #include "playerbot/BotGroupDiagnostics.h"
 #include "playerbot/GroupAiRefresh.h"
+#include "playerbot/DeferredLog.h"     // s7r: BotGroups.WorldThreadDefer
+#include "playerbot/GroupOpTiming.h"   // s7r: the core share of a join or leave
+#include "playerbot/ThreadCpuClock.h"  // s7r: stall control
 #include "playerbot/ScanSlicePolicy.h"
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/QuestGroupWorld.h"
@@ -231,7 +234,9 @@ bool WorldThreadManager::CheckLeave(Player* bot, Group* group, std::uint32_t now
 
     tracks.erase(bot->GetGUIDLow());
     auto const leaveStart = std::chrono::steady_clock::now();
+    group_op_timing::lastLeaveCoreUs = 0;
     LeaveGroup(bot, group);
+    minute.leaveCoreUsMax = std::max(minute.leaveCoreUsMax, group_op_timing::lastLeaveCoreUs);
     std::uint32_t const leaveUs = UsSince(leaveStart);
     minute.leaveUsMax = std::max(minute.leaveUsMax, leaveUs);
     passLeaveUs += leaveUs;
@@ -244,13 +249,19 @@ bool WorldThreadManager::CheckLeave(Player* bot, Group* group, std::uint32_t now
 void WorldThreadManager::LeaveGroup(Player* bot, Group* group)
 {
     PlayerbotAI* ai = GetBotAI(bot);
-    sPlayerbotAIConfig.logEvent(ai, "LeaveGroupAction", group->GetLeaderName(), std::to_string(group->GetMembersCount() - 1));
-    bot_group::LogMembership(bot, group, "leave");
+    {
+        // s7r (BotGroups.WorldThreadDefer): both lines written later on the bot's own thread.
+        deferred_log::Scope const deferLogs(ai, sPlayerbotAIConfig.botGroupsWorldThreadDefer);
+        sPlayerbotAIConfig.logEvent(ai, "LeaveGroupAction", group->GetLeaderName(), std::to_string(group->GetMembersCount() - 1));
+        bot_group::LogMembership(bot, group, "leave");
+    }
 
     WorldPacket p;
     std::string member = bot->GetName();
     p << uint32(PARTY_OP_LEAVE) << member << uint32(0);
+    auto const coreStart = std::chrono::steady_clock::now();
     bot->GetSession()->HandleGroupDisbandOpcode(p);
+    group_op_timing::lastLeaveCoreUs = group_op_timing::UsSince(coreStart);   // s7r: the core leave alone
 
     if (sRandomPlayerbotMgr.IsFreeBot(bot))
         ai->SetMaster(nullptr);
@@ -281,7 +292,9 @@ bool WorldThreadManager::Join(Player* inviter, Player* invitee, ObjectiveKey con
 
     // The invitee's own accept path (security check, master, strategies), run here
     // instead of on its map thread. Its queued invite event later finds no invite.
+    group_op_timing::lastAcceptCoreUs = 0;
     inviteeAi->DoSpecificAction("accept invitation", Event("adhoc group", "", inviter), true);
+    minute.joinCoreUsMax = std::max(minute.joinCoreUsMax, group_op_timing::lastAcceptCoreUs);   // s7r: the core join alone
 
     Group* group = invitee->GetGroup();
     if (!group || !group->IsMember(inviter->GetObjectGuid()))
@@ -314,9 +327,11 @@ void WorldThreadManager::FlushMinute(std::uint32_t now)
         return;
 
     if (sPlayerbotAIConfig.botGroupsDiagnostics && minute.passes)
-        sLog.outBasic("[BotGroup] kind=adhoc event=minute passes=%u candidates=%u invites=%u joins=%u leaves=%u tracked=%u pass_us_max=%u join_us_max=%u leave_us_max=%u scan_us_max=%u bots=%u slices=%u",
+        sLog.outBasic("[BotGroup] kind=adhoc event=minute passes=%u candidates=%u invites=%u joins=%u leaves=%u tracked=%u pass_us_max=%u join_us_max=%u leave_us_max=%u scan_us_max=%u bots=%u slices=%u join_core_us_max=%u leave_core_us_max=%u stall_us_max=%u scan_budget_us=%u defer=%u",
             minute.passes, minute.candidates, minute.invites, minute.joins, minute.leaves, uint32(tracks.size()), minute.passUsMax,
-            minute.joinUsMax, minute.leaveUsMax, minute.scanUsMax, minute.bots, minute.slices);
+            minute.joinUsMax, minute.leaveUsMax, minute.scanUsMax, minute.bots, minute.slices,
+            minute.joinCoreUsMax, minute.leaveCoreUsMax, minute.stallUsMax, sPlayerbotAIConfig.botGroupsAdhocScanBudgetUs,
+            sPlayerbotAIConfig.botGroupsWorldThreadDefer ? 1u : 0u);
     minute = Minute();
     minute.start = now;
 }
@@ -392,6 +407,7 @@ void WorldThreadManager::Update(std::map<std::uint32_t, Player*> const& bots, st
         minute.bots = std::max(minute.bots, std::uint32_t(bots.size()));
     }
     auto const passStart = std::chrono::steady_clock::now();
+    std::uint64_t const cpuStart = thread_cpu::NowUs();   // s7r: stall control (ThreadCpuClock.h)
     passLeaveUs = 0;
 
     // twow-repo#628 (ScanSlices): this update's share of the bots; 0 or 1 = all of them at once.
@@ -413,7 +429,9 @@ void WorldThreadManager::Update(std::map<std::uint32_t, Player*> const& bots, st
         minute.slices = pass.updates;
         pass = Pass();
     }
-    minute.passUsMax = std::max(minute.passUsMax, UsSince(passStart));
+    std::uint32_t const wallUs = UsSince(passStart);
+    minute.passUsMax = std::max(minute.passUsMax, wallUs);
+    minute.stallUsMax = std::max(minute.stallUsMax, thread_cpu::StallUs(wallUs, cpuStart, thread_cpu::NowUs()));
 }
 
 // Stages 1 and 2 for the bots pass.guids[pass.next, end): first the leave rules of all of them, then their candidates - with
@@ -423,8 +441,14 @@ void WorldThreadManager::ScanSlice(std::map<std::uint32_t, Player*> const& bots,
     // 1. Leave rules for every bot in an ad-hoc group.
     std::vector<Player*> eligible;
     eligible.reserve(end > pass.next ? end - pass.next : 0);
+    // s7r (BotGroups.AdHoc.ScanBudgetUs): the slice also ends once it took the budget; the rest goes to the next update.
+    std::uint32_t const budgetUs = sPlayerbotAIConfig.botGroupsAdhocScanBudgetUs;
+    auto const sliceStart = std::chrono::steady_clock::now();
+    std::size_t const first = pass.next;
     for (; pass.next < end; ++pass.next)
     {
+        if (scan_slice::BudgetSpent(budgetUs, budgetUs ? UsSince(sliceStart) : 0u, pass.next - first))
+            break;
         std::uint32_t const guid = pass.guids[pass.next];
         auto const it = bots.find(guid);
         Player* bot = it == bots.end() ? nullptr : it->second;

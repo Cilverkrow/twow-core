@@ -12,6 +12,7 @@
 #include "TellLosAction.h"
 #include "playerbot/strategy/values/ItemUsageValue.h"
 #include "playerbot/strategy/values/ItemCountValue.h"
+#include "playerbot/strategy/values/LastSpellCastValue.h"   // twow-repo#333 finding 4: the hearthstone as the last spell cast
 #include "playerbot/TravelMgr.h"
 #include "playerbot/HomeBindPolicy.h"
 #include "playerbot/RandomPlayerbotMgr.h"
@@ -1396,6 +1397,12 @@ bool UseHearthStoneAction::Execute(Event& event)
         sPlayerbotAIConfig.logEvent(ai, "UseHearthStoneAction", event.getParam(), event.getSource());
         RESET_AI_VALUE(bool, "combat::self target");
         RESET_AI_VALUE(WorldPosition, "current position");
+
+        // twow-repo#333 finding 4 (TeleportCastPolicy.h): the callers hold the AI for the cast. Recorded as the last spell cast,
+        // an interrupted or failed hearthstone (SMSG_SPELL_FAILURE -> PlayerbotAI::SpellInterrupted) ends that hold at once,
+        // as for every spell cast through PlayerbotAI::CastSpell; the item path did not record it.
+        if (Spell* const spell = bot->GetCurrentSpell(CURRENT_GENERIC_SPELL))
+            AI_VALUE(LastSpellCast&, "last spell cast").Set(spell->m_spellInfo->Id, bot->GetObjectGuid(), time(nullptr));
     }
 
     return used;

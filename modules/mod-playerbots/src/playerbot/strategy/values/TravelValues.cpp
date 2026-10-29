@@ -110,9 +110,15 @@ bool UsesFreePersistentRosterProfessionTraining(Player const* bot)
 bool ProfessionTripTurnInWaiting(Player* bot, TravelTarget const* travelTarget)
 {
     TravelTarget const* turnIns = sPlayerbotAIConfig.questFirstProgressionTurnInParkFailures ? travelTarget : nullptr;
+    // twow-repo#601 turn_in hold (AiPlayerbot.ProfessionTraining.TurnInGateSkipSuppressed, CLI-Deep 28.10.2026): a finished quest whose
+    // taker route is stall- or death-suppressed for that quest cannot be turned in before the suppression ends - it no longer holds the
+    // trips (m1r-C: 318 turn_in refusals, one bot the whole run). Fail closed: a quest without a suppression still counts. Off: as before.
+    TravelTarget const* suppressed = travelTarget &&
+        ai::cohort::Applies(sPlayerbotAIConfig.professionTrainingTurnInGateSkipSuppressed, bot->GetGUIDLow()) ? travelTarget : nullptr;
     uint32 finished = 0;
     for (auto const& [questId, status] : bot->getQuestStatusMap())
-        if (!status.m_rewarded && status.m_status == QUEST_STATUS_COMPLETE && (!turnIns || turnIns->IsTurnInOpen(questId)))
+        if (!status.m_rewarded && status.m_status == QUEST_STATUS_COMPLETE && (!turnIns || turnIns->IsTurnInOpen(questId)) &&
+            (!suppressed || !suppressed->IsTurnInRouteSuppressedForQuest(questId)))
             ++finished;
     return ai::quest_search::GatherYieldsToTurnIn(true, finished);
 }
@@ -248,6 +254,76 @@ bool ProfessionNearTripStartable(PlayerbotAI* ai)
             bot->GetGUIDLow(), bot->GetLevel(), ai::cohort::Letter(bot->GetGUIDLow()), refused ? refused : "start", bot->GetMoney(),
             AI_VALUE2(uint32, "total money needed for", (uint32)NeedMoneyFor::skilltraining), counts.trainers, counts.inRadius,
             drops.hostile, drops.unreachable, radius, drops.homeZone, bot->GetZoneId());
+    }
+    return !refused;
+}
+
+// P1-y (ProfessionTravelPolicy.h NearToolGateReason, OB-00 28.10.2026): may this bot start a near tool trip now? The near trainer
+// trip's rules - no quest gap; group, open turn-in, band walk, money and the hourly limit (of the tool trip) at every calculation;
+// nothing while a travel target is prepared or active; one destination walk per kNearCheckSeconds, its result counts between two
+// walks - for the vendors of the missing pick / knife. A bot that misses no tool returns first, without a gate line. With
+// ProfessionTraining.Trace one "[ProfTravel] state=gate kind=tool path=near" line per eligible bot and trace cooldown.
+bool ProfessionNearToolTripStartable(PlayerbotAI* ai)
+{
+    AiObjectContext* context = ai->GetAiObjectContext();
+    Player* bot = ai->GetBot();
+    uint32 const radius = sPlayerbotAIConfig.professionTrainingNearRadius;
+    if (!radius)
+        return false;
+    uint32 const tool = ai::MissingGatherTool(ai);
+    if (!tool)
+        return false;
+    TravelTarget* travelTarget = AI_VALUE(TravelTarget*, "travel target");
+    if (travelTarget->GetStatus() == TravelStatus::TRAVEL_STATUS_PREPARE || AI_VALUE(bool, "travel target active"))
+        return false;
+
+    uint32 const now = uint32(time(nullptr));
+    bool const applies = ai::cohort::Applies(sPlayerbotAIConfig.professionUseToolBuy, bot->GetGUIDLow());
+    bool const rosterOnItsOwn = applies && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster() &&
+        !bot->GetGroup();
+    bool const eligible = ai::profession_travel::MayStartTrip(applies, rosterOnItsOwn, bot->GetLevel(), true);
+    bool const cooldownOver = ai::profession_travel::CooldownOver(now,
+        uint32(std::max(0, AI_VALUE2(int, "manual int", ai::profession_travel::kToolTripValue))));
+
+    // Each gate only when the ones before passed (NearToolGateReason names the first that refused). Money as the gap tool trip.
+    ItemPrototype const* proto = sObjectMgr.GetItemPrototype(tool);
+    bool turnIn = false, band = false, money = true;
+    if (eligible && cooldownOver)
+    {
+        turnIn = ProfessionTripTurnInWaiting(bot, travelTarget);
+        band = travelTarget->GetBandTripEnd() != 0;
+        if (!turnIn && !band)
+            money = proto && AI_VALUE2(uint32, "free money for", (uint32)NeedMoneyFor::tradeskill) >= proto->BuyPrice;
+    }
+    bool const cheapGates = eligible && cooldownOver && !turnIn && !band && money;
+
+    ai::NearTrainerCounts counts;
+    ai::ProfessionTripDrops drops;
+    bool walked = false, found = false;
+    if (cheapGates)
+    {
+        if (ai::profession_travel::NearCheckDue(now, uint32(std::max(0, AI_VALUE2(int, "manual int", ai::profession_travel::kNearToolCheckValue)))))
+        {
+            SET_AI_VALUE2(int, "manual int", ai::profession_travel::kNearToolCheckValue, int(now));
+            found = !ai::NearGatherToolVendors(ai, tool, radius, &drops, &counts).empty();
+            SET_AI_VALUE2(int, "manual int", ai::profession_travel::kNearToolResultValue, found ? 1 : 0);
+            walked = true;
+        }
+        else
+            found = AI_VALUE2(int, "manual int", ai::profession_travel::kNearToolResultValue) != 0;
+    }
+    char const* const refused = ai::profession_travel::NearToolGateReason(eligible, cooldownOver, turnIn, band, money,
+        !walked || counts.trainers > 0, !walked || counts.inRadius > 0, !walked || found || drops.homeZone > 0, found);
+
+    uint32 const tracedAt = uint32(std::max(0, AI_VALUE2(int, "manual int", ai::profession_travel::kNearToolTraceValue)));
+    if (sPlayerbotAIConfig.professionTrainingTrace && eligible && (walked || !cheapGates) &&
+        (tracedAt == 0 || now >= tracedAt + sPlayerbotAIConfig.professionTrainingTraceCooldownSeconds))
+    {
+        SET_AI_VALUE2(int, "manual int", ai::profession_travel::kNearToolTraceValue, int(now));
+        sLog.outBasic("[ProfTravel] state=gate kind=tool path=near bot=%u level=%u cohort=%c result=%s tool=%u money=%u need=%u vendors=%u in_radius=%u dropped_hostile=%u dropped_unreachable=%u radius=%u dropped_home_zone=%u zone=%u",
+            bot->GetGUIDLow(), bot->GetLevel(), ai::cohort::Letter(bot->GetGUIDLow()), refused ? refused : "start", tool, bot->GetMoney(),
+            proto ? proto->BuyPrice : 0, counts.trainers, counts.inRadius, drops.hostile, drops.unreachable, radius, drops.homeZone,
+            bot->GetZoneId());
     }
     return !refused;
 }
@@ -500,6 +576,24 @@ std::vector<int32> ai::ProfessionTripTargets(PlayerbotAI* ai, std::vector<int32>
     return kept;
 }
 
+namespace
+{
+// The entries with a destination within the radius. GetDestinations drops a destination farther than the radius;
+// WithinNearRadius states the rule on the same distance. Only on the bot's map: DistanceTo to another map is a portal /
+// transport estimate (pre-review), no "near".
+std::vector<int32> NearTripEntries(PlayerbotAI* ai, std::vector<int32> const& entries, TravelDestinationPurpose purpose, uint32 radius)
+{
+    PlayerTravelInfo const info(ai->GetBot());
+    WorldPosition const center = info.GetPosition();
+    std::vector<int32> inRadius;
+    for (TravelDestination* destination : sTravelMgr.GetDestinations(info, uint32(purpose), entries, false, float(radius)))
+        if (destination->HasPointsOnMap(center) && ai::profession_travel::WithinNearRadius(destination->DistanceTo(center), radius) &&
+            std::find(inRadius.begin(), inRadius.end(), destination->GetEntry()) == inRadius.end())
+            inRadius.push_back(destination->GetEntry());
+    return inRadius;
+}
+}
+
 std::vector<int32> ai::NearProfessionTrainers(PlayerbotAI* ai, uint32 radius, ProfessionTripDrops* drops, NearTrainerCounts* counts)
 {
     std::vector<int32> const trainers = PhaseOneProfessionTrainers(ai, true);
@@ -508,19 +602,24 @@ std::vector<int32> ai::NearProfessionTrainers(PlayerbotAI* ai, uint32 radius, Pr
     if (trainers.empty() || !radius)
         return {};
 
-    // GetDestinations drops a destination farther than the radius; WithinNearRadius states the rule on the same distance. Only
-    // on the bot's map: DistanceTo to another map is a portal / transport estimate (pre-review), no "near".
-    PlayerTravelInfo const info(ai->GetBot());
-    WorldPosition const center = info.GetPosition();
-    std::vector<int32> inRadius;
-    for (TravelDestination* destination : sTravelMgr.GetDestinations(info, uint32(TravelDestinationPurpose::Trainer), trainers, false,
-             float(radius)))
-        if (destination->HasPointsOnMap(center) && ai::profession_travel::WithinNearRadius(destination->DistanceTo(center), radius) &&
-            std::find(inRadius.begin(), inRadius.end(), destination->GetEntry()) == inRadius.end())
-            inRadius.push_back(destination->GetEntry());
+    std::vector<int32> const inRadius = NearTripEntries(ai, trainers, TravelDestinationPurpose::Trainer, radius);
     if (counts)
         counts->inRadius = uint32(inRadius.size());
     return inRadius.empty() ? inRadius : ProfessionTripTargets(ai, inRadius, TravelDestinationPurpose::Trainer, drops);
+}
+
+std::vector<int32> ai::NearGatherToolVendors(PlayerbotAI* ai, uint32 tool, uint32 radius, ProfessionTripDrops* drops, NearTrainerCounts* counts)
+{
+    std::vector<int32> const vendors = GatherToolVendors(ai, tool);
+    if (counts)
+        counts->trainers = uint32(vendors.size());
+    if (vendors.empty() || !radius)
+        return {};
+
+    std::vector<int32> const inRadius = NearTripEntries(ai, vendors, TravelDestinationPurpose::Vendor, radius);
+    if (counts)
+        counts->inRadius = uint32(inRadius.size());
+    return inRadius.empty() ? inRadius : ProfessionTripTargets(ai, inRadius, TravelDestinationPurpose::Vendor, drops);
 }
 
 // P1-v (OB-00 26.10.2026, M1r run 3): GetPartitions passes every point through IsLocationLevelValid, whose fight gate (bot
@@ -570,10 +669,10 @@ void ai::ProfessionTripNoTarget(PlayerbotAI* ai, std::string const& travelPurpos
 {
     AiObjectContext* context = ai->GetAiObjectContext();
     Player* bot = ai->GetBot();
-    bool const trainerTrip = travelPurpose != "tool vendor";
+    bool const trainerTrip = travelPurpose != "tool vendor" && travelPurpose != "tool vendor near";
     std::string const key = trainerTrip ? ai::profession_travel::kTrainerTripValue : ai::profession_travel::kToolTripValue;
     char const* const kind = trainerTrip ? "trainer" : "tool";
-    char const* const path = travelPurpose == "trainer profession near" ? "near" : "gap";
+    char const* const path = travelPurpose == "trainer profession near" || travelPurpose == "tool vendor near" ? "near" : "gap";
     sLog.outBasic("[ProfTravel] state=no_target kind=%s bot=%u level=%u cohort=%c ranges=%u points=%u path=%s rejects=%s",
         kind, bot->GetGUIDLow(), bot->GetLevel(), ai::cohort::Letter(bot->GetGUIDLow()), ranges, points, path, rejects.c_str());
 
@@ -1179,6 +1278,16 @@ bool ShouldTravelNamedValue::Calculate()
 
         // P1-b2: only a vendor the bot can reach and that is not hostile starts a trip.
         return !ProfessionTripTargets(ai, GatherToolVendors(ai, tool), TravelDestinationPurpose::Vendor).empty();
+    }
+    // P1-y (OB-00 28.10.2026): a near trip to a vendor of the missing tool within ProfessionTraining.NearRadius, without a quest
+    // gap. The same trip value as the gap tool trip; its hold lasts while the tool is still missing (bought on the way: done).
+    else if (name == "tool vendor near" || name == "tool vendor near hold")
+    {
+        if (name == "tool vendor near hold")
+            return ai::cohort::Applies(sPlayerbotAIConfig.professionUseToolBuy, bot->GetGUIDLow()) &&
+                ProfessionTripHolds(ai, ai::profession_travel::kToolTripValue, "tool", MissingGatherTool(ai) != 0);
+
+        return ProfessionNearToolTripStartable(ai);
     }
     else if (name == "mount")
     {

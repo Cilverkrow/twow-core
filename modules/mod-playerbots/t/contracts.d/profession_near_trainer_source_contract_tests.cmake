@@ -92,7 +92,7 @@ require_text("${values_cpp}" "AI_VALUE2(int, \"manual int\", key + ai::professio
 
 # Request: the same trip value, an empty near request spends nothing, the near hold, the whole trip as hold_over_s, path=.
 require_text("${choose_cpp}" "NearProfessionTrainers(ai, sPlayerbotAIConfig.professionTrainingNearRadius, &drops) :" "the near request entries")
-require_order("${choose_cpp}" "if (nearTrip && entries.empty())\n        {\n            SET_AI_VALUE2(int, \"manual int\", ai::profession_travel::kNearResultValue, 0);\n            return false;\n        }" "SET_AI_VALUE2(int, \"manual int\", key, int(now));" "an empty near request does not spend the hourly limit")
+require_order("${choose_cpp}" "if (nearTrip && entries.empty())\n        {\n            SET_AI_VALUE2(int, \"manual int\", trainerTrip ? ai::profession_travel::kNearResultValue : ai::profession_travel::kNearToolResultValue, 0);\n            return false;\n        }" "SET_AI_VALUE2(int, \"manual int\", key, int(now));" "an empty near request does not spend the hourly limit")
 require_text("${choose_cpp}" "uint32 const backoffUntil = nearTrip ? now : uint32(std::max(0, AI_VALUE2(int, \"manual int\", \"quest route backoff until\")));" "the near trip counts its whole time as hold_over_s")
 require_text("${choose_cpp}" "uint32 const holdUntil = nearTrip ? ai::profession_travel::NearHoldUntil(now) : ai::profession_travel::HoldUntil(now, backoffUntil);" "the near hold")
 require_order("${choose_cpp}" "now - endedAt, AI_VALUE2(int, \"manual int\", key + ai::profession_travel::kNearSuffix) ? \"near\" : \"gap\");" "SET_AI_VALUE2(int, \"manual int\", key + ai::profession_travel::kNearSuffix, nearTrip ? 1 : 0);" "the lost line names the old trip's path before the new one is stored")

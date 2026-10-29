@@ -63,7 +63,7 @@ namespace DcTestDriver
     {
         Ready,         // Get() is usable now
         PendingLogin,  // headless login issued/in flight — retry shortly
-        Unavailable,   // no such character / config empty — retrying won't help
+        Unavailable,   // no such character / config empty / login refused — retrying won't help
     };
 
     // Kick off the headless login if the driver isn't online yet, and report

@@ -20,13 +20,16 @@
 #include "playerbot/DeathLoopPolicy.h"
 #include "playerbot/DeathAddsPolicy.h"
 #include "playerbot/CastWaitPolicy.h"
+#include "playerbot/TeleportCastPolicy.h"
 #include "playerbot/BotSavePolicy.h"
 #include "playerbot/StallGuardPolicy.h"
 #include <atomic>
 #include <functional>
+#include <mutex>
 #include "playerbot/QuestSearchPolicy.h"
 #include "playerbot/QuestFeasibilityPolicy.h"
 #include "playerbot/BotActivityPolicy.h"
+#include "playerbot/FarMovePolicy.h"
 #include "playerbot/GatherPurposePolicy.h"
 #include "playerbot/StuckCombatPolicy.h"
 #include "playerbot/FishingPolicy.h"
@@ -502,6 +505,9 @@ public:
     bool TellDebug(Player* player, std::string text, std::string strategy = "debug", BotState state = BotState::BOT_STATE_NON_COMBAT){ if (HasStrategy(strategy, state)) return TellPlayerNoFacing(player, text, PlayerbotSecurityLevel::PLAYERBOT_SECURITY_ALLOW_ALL, true, false); return false;}
     bool TellError(Player* player, std::string text, PlayerbotSecurityLevel securityLevel = PlayerbotSecurityLevel::PLAYERBOT_SECURITY_ALLOW_ALL, bool ignoreSilent = false);
     void SpellInterrupted(uint32 spellid);
+    // twow-repo#333 finding 4 (TeleportCastPolicy.h): watch a hold of holdMs for the bot's own PREPARING teleport / hearthstone
+    // (0 = nothing prepared: stop watching); UpdateAI ends the hold when the spell is no longer PREPARING.
+    void WatchTeleportHold(uint32 holdMs);
     int32 CalculateGlobalCooldown(uint32 spellid);
     void InterruptSpell(bool withMeleeAndAuto = true);
     bool RemoveAura(const std::string& name);
@@ -583,6 +589,12 @@ public:
     // check uses effect mask 0 (any effect).
     bool TellError(std::string text) { return TellError(GetMaster(), text); }
     bool CanCastSpell(std::string name, Unit* target) { return CanCastSpell(name, target, 0); }
+    // twow-repo#602 (AiPlayerbot.Rotation.LosCacheMs, LosCachePolicy.h): the bot's last line-of-sight verdict to one target, kept for
+    // LosCacheMs (0 = off: nothing is kept, every caller queries as before). LosCacheGet: true with the verdict while fresh.
+    bool LosCacheGet(ObjectGuid guid, bool& inLos) const;
+    void LosCacheSet(ObjectGuid guid, bool inLos);
+    // IsWithinLOSInMap(target, true) through the cache.
+    bool IsWithinLosCached(Unit* target);
     uint32 GetEquipStatsValue(Player* player);
     bool HasSkill(SkillType skill);
     bool IsAllowedCommand(std::string text);
@@ -979,6 +991,9 @@ protected:
     // twow-repo#601 (AiPlayerbot.ActivityTrace.StuckDetail): one [StuckDetail] line per stuck episode.
     ai::bot_activity::StuckEpisode stuckEpisode;
     void ReportStuckDetail(ai::bot_activity::State const& state);
+    // twow-repo#601 (AiPlayerbot.ActivityTrace.IdleDetail): one [IdleDetail] start and end line per idle episode.
+    ai::bot_activity::IdleEpisode idleEpisode;
+    void ReportIdleDetail(ai::bot_activity::State const& state, ai::bot_activity::Kind kind, ai::bot_activity::IdleNote note, uint32 now);
     // Hotfix 8.2: targets this bot could not get closer to.
     ai::unreachable::Approach reachApproach;
     ai::unreachable::IgnoreList unreachableTargets;
@@ -1028,6 +1043,13 @@ protected:
     // taken in the bot's next UpdateAI on its own map thread (ApplyGroupAiRequests).
     std::atomic<uint32> groupAiRequests{ 0 };
     std::atomic<uint32> questGroupForce{ 0 };   // S7 StagedOps: the ForceTravel request's quest/objective (PackForce)
+    // s7r (AiPlayerbot.BotGroups.WorldThreadDefer): log lines a world-thread manager handed to this bot (DeferredLog.h), written
+    // in its next UpdateAI on its own thread; file empty = the core log (sLog). Short mutex: the world thread posts, the bot drains.
+    std::mutex deferredLogMtx;
+    std::vector<std::pair<std::string, std::string>> deferredLogs;
+    uint32 deferredLogsDropped = 0;
+    std::atomic<bool> hasDeferredLogs{ false };   // the drain is free without lines (the key at 0)
+    std::atomic<uint32> joinTailInviter{ 0 };      // JoinTail: the inviter (guid low) of the deferred accept
     uint32 lastParkedUpdateMs = 0;
     // twow-repo#551 (AiPlayerbot.Park.Quiet): when a quiet parked bot may do its next idle emote (seconds, 0 = never).
     std::atomic<uint32> nextParkIdleEmote{ 0 };
@@ -1110,14 +1132,24 @@ public:
     uint32 PendingGroupAiRequests() const { return groupAiRequests.load(); }
     // S7 QuestGroups.StagedOps: the forced quest travel on the bot's own thread (the parameters before the request bit).
     void RequestQuestForce(uint32 packedForce) { questGroupForce.store(packedForce); RequestGroupAi(ai::group_ai_refresh::ForceTravel); }
+    // s7r (BotGroups.WorldThreadDefer): the accept tail on the bot's own thread, for this inviter (the parameter before the bit).
+    void RequestJoinTail(uint32 inviterGuidLow) { joinTailInviter.store(inviterGuidLow); RequestGroupAi(ai::group_ai_refresh::JoinReset | ai::group_ai_refresh::JoinTail); }
     // Bot thread (UpdateAI): run the posted requests - strategy rebuild and reset first, then an S7 role set.
     void ApplyGroupAiRequests();
+    // s7r (world thread, inside an ai::deferred_log::Scope): one line for this bot to write later (file "" = sLog).
+    void PostDeferredLog(std::string const& file, std::string const& line);
+    // Bot thread (UpdateAI, right after ApplyGroupAiRequests): write the posted lines.
+    void DrainDeferredLogs();
     // twow-repo#517 stage a (OB-10): a fill bot is out of its battleground again. Quest search stage 0 and
     // questProgress.lastChange = now, as the questRescueDone path in UpdateAI - but without OnQuestRescued(): that sets
     // lastQuestRescue, and the per-bot rescue limit would then block a later real rescue.
     void OnReturnFromBattleground(uint32 now);
     // twow-repo#541/#551 (rndbot park): a parked bot updates its AI every ai::park::AiIntervalMs only.
     bool IsParked() const { return parked; }
+    // twow-repo#601 (OB-00 28.10.2026, cli-pathfinding/far-travel-stuck/CAUSE.md), the bot's own thread only: the state of its
+    // RosterFarMove (FarMovePolicy.h WaitStateOf on the "last movement" value); pending = waiting, travel and no stall.
+    ai::far_move::WaitState FarMoveWaitState() const;
+    bool IsFarMovePending() const { return FarMoveWaitState() == ai::far_move::WaitState::Waiting; }
     // twow-repo#551 (AiPlayerbot.Park.Persist), world thread only: the stored park state was handled after this login
     // (a new login is a new PlayerbotAI); attempts counts restore tries of a bot that was busy.
     bool parkRestoreChecked = false;
@@ -1286,7 +1318,12 @@ protected:
     bool combatIdleTick = false;   // twow-repo#541 (audit A17): last DoNextAction ran the combat engine and executed nothing
     ObjectGuid combatIdleVictim;   // twow-repo#541 (audit A17): victim of a pending stretched wait (empty = none)
     bool oomBackoffPending = false;   // twow-repo#602 ROT-01 3c-B: an out-of-mana backoff wait is running
+    uint32 tankKitLevel = 0;   // twow-repo#602 (Rotation.TankKitFromLevel): the level the strategies were last built for; a crossing of the tank key level rebuilds them
+    ObjectGuid losCacheGuid;   // twow-repo#602 (Rotation.LosCacheMs): the target of the cached line-of-sight verdict
+    bool losCacheInLos = true;   // the cached verdict
+    uint32 losCacheAt = 0;   // when it was taken (WorldTimer ms)
     ai::cast_wait::Watch castWait;   // twow-repo#602 (AiPlayerbot.CastWait.Preparing): pending wait for the bot's own PREPARING cast
+    ai::teleport_cast::HoldWatch teleportHold;   // twow-repo#333 finding 4: pending travel / unstuck / zone-escape hold for a teleport
     bool isPlayerFriend = false;
     bool isMovingToTransport = false;
     bool shouldLogOut = false;

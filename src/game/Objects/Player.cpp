@@ -79,6 +79,7 @@
 #include "Config/Config.h"
 #include "ZoneScript.h"
 #include "ZoneScriptMgr.h"
+#include "RepopPolicy.h"
 
 // Player-scoped variant of SC_PHASE — stamps the current thread's last-known
 // phase into TLS read by mangosd's crash handler. Symbols defined in
@@ -5916,6 +5917,11 @@ void Player::ResurrectPlayer(float restore_percent, bool applySickness, bool for
     SetByteValue(UNIT_FIELD_BYTES_1, 3, 0x00);
 
     SetDeathState(ALIVE);
+
+    // twow-repo#575 F9-2 (RepopPolicy.h): a graveyard repop still pending from the release is stale now - it must
+    // never move the living player to the graveyard (bots: the death-loop escape landed back in the graveyard camp).
+    if (repop::ClearStale(m_repopAtGraveyardPending))
+        sMapMgr.CountStaleRepopCleared();
 
     if (GetRace() == RACE_NIGHTELF)
         RemoveAurasDueToSpell(20584);                       // speed bonuses

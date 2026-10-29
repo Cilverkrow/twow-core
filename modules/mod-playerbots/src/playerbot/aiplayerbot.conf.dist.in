@@ -1037,6 +1037,19 @@ AiPlayerbot.QuestLoop.InactiveCooldownSeconds = 0
 # the log): the COOLDOWN as before.
 #   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid); other values act like 0.
 AiPlayerbot.QuestLoop.GiverTakerDone = 0
+# twow-repo#601 turn_in hold (CLI-Deep 28.10.2026, cli-quest-organic/turnin-hold/CAUSE.md): the arrival at a quest giver / taker
+# sets the WORK status, which lifted the only grind block - "attack anything" then beat the hand-in while any mob without quest
+# need was in sight (41747 "The Tower of Azora" / 62634: the bots grind the Lesser Arcane Elementals at 49-72 yd, low levels die,
+# death_suppressed locks the turn-in for an hour; hunt2 7 of 10 bots never turned it in).
+# RelationWorkNoGrind: while the bot works at a giver / taker whose turn-in / accept is still open, grind candidates without
+# quest need are skipped (attackers stay). RelationArriveRpgTarget: on arrival at such an NPC it becomes the rpg target with
+# "rpg end quest" (taker) / "rpg start quest" (giver) as the next rpg action; "[QuestCommit] event=progress reason=rpg_target".
+# TurnInWorkDeathNotRoute: a death while working at the taker is no route death (no death_suppressed) but a turn-in failure for
+# the #485 park; only with TurnInParkFailures > 0. "[QuestFirstRoute] state=work_death". Roster bots on their own (not in a group).
+#   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid); other values act like 0.
+AiPlayerbot.QuestLoop.RelationWorkNoGrind = 0
+AiPlayerbot.QuestLoop.RelationArriveRpgTarget = 0
+AiPlayerbot.QuestLoop.TurnInWorkDeathNotRoute = 0
 # twow-repo#601 (CLI-Deep 25.10.2026, root cause of the cand-v466r standing): an objective goes inactive as soon as no living
 # target of its entry is in sight - also right after the bot killed the visible ones. QL-1/QL-2 booked that normal progress as
 # an emptied camp (a failure + InactiveCooldownSeconds of standing; cohort B spent 32 % of its time between an inactive objective
@@ -1216,6 +1229,13 @@ AiPlayerbot.BotGroups.Enabled = 0
 AiPlayerbot.BotGroups.MaxBots = 3
 AiPlayerbot.BotGroups.LevelWindow = 3
 AiPlayerbot.BotGroups.Diagnostics = 0
+# #627/#628 (s7r 26.10.2026: a staged accept cost 1-2.4 ms of the world tick - the core join plus logs, invite chat and
+# update gear on the world thread): 1 = the world-thread managers (ad-hoc WorldThread, S7) keep only the core join or leave
+# on the world thread; the rest of the accept (event and membership log, invite chat, formation, hello, reset raids, update
+# gear) and the event/membership lines of a leave run on the bot's own thread in its next update. The [QuestGroup] and
+# [BotGroup] kind=adhoc state and minute lines stay on the world thread. Minute lines: accept_core_us_max / join_core_us_max,
+# leave_core_us_max (the core opcode alone, always measured; S7: on the StagedOps path), defer=. 0 = as before (default).
+AiPlayerbot.BotGroups.WorldThreadDefer = 0
 
 # #365 step 2 (owner contract 2026-09-27): with BotGroups.Enabled = 1, roster
 # bots working on the same quest objective within AdHoc.Radius yards form an
@@ -1243,6 +1263,9 @@ AiPlayerbot.BotGroups.AdHoc.WorldThread = 0
 # pairs are formed once all slices are done. 0 or 1 = the whole pass in one update.
 # Only if the pass itself costs the world tick too much (minute line scan_us_max).
 AiPlayerbot.BotGroups.AdHoc.ScanSlices = 0
+# s7r: a slice of the pass also ends once it took this many microseconds (at least one bot per update; the rest next
+# update). Guards against single expensive bots in a slice. 0 = by ScanSlices only (default). Max 20000.
+AiPlayerbot.BotGroups.AdHoc.ScanBudgetUs = 0
 # #365 (owner 25.10.2026, world-thread manager only - WorldThread = 1): 1 = a member whose own objective is done stays as a
 # helper while another member still works on it - follower role, it follows the nearest open member (re-picked when that one
 # is done), its idle clock is the group's freshest progress - and leaves with reason=group_done once nobody is left open.
@@ -1269,12 +1292,22 @@ AiPlayerbot.QuestGroups.ScanSeconds = 60
 # #628: the S7 scan (quest logs of all bots) spread over this many manager updates
 # (~0.4 s each); groups form once all slices are done. 0 or 1 = the whole scan at once.
 AiPlayerbot.QuestGroups.ScanSlices = 0
+# s7r (26.10.2026: single slices of ~54 bots cost 3.8-9.9 ms): a slice also ends once it took this many microseconds
+# (at least one bot per update; the rest next update). 0 = by ScanSlices only (default). Max 20000.
+AiPlayerbot.QuestGroups.ScanBudgetUs = 0
 # #627 (S7-A 25.10.2026: a formation of two bots cost 2.9-4.3 ms of the world tick, a dissolution up to 4.5 ms): 1 = at most
 # one group operation per manager update (~0.4 s) - one member's invite and accept, the setup of a formed group, or one
 # member's release, releases first - and the forced quest travel (destination search) on the bot's own thread. A group of
 # five then forms in ~2.5 s. Minute line: staged= invite_us_max= accept_us_max= setup_us_max= release_us_max= ops=
 # ops_queued_max=. 0 = everything in one update, as before (default).
 AiPlayerbot.QuestGroups.StagedOps = 0
+# s7r (26.10.2026: half the slow minutes summed parts of one manager update - a dissolution, a staged operation and a scan
+# slice, each below 2 ms): 1 = one heavy step per manager update (with StagedOps = 1; with StagedOps 0 a formation round
+# and inline releases are not split) - at most one dissolution (further ones wait for their
+# own update; dissolves_deferred= counts each carry), no group operation and no scan slice in an update with a dissolution, no scan slice
+# in an update with a group operation. Minute line: one_step=, tend_us_max=, stall_us_max= (the slowest update's time off
+# the CPU: preemption, blocking faults, lock waits, file I/O - Linux). 0 = as before (default).
+AiPlayerbot.QuestGroups.OneHeavyStep = 0
 AiPlayerbot.QuestGroups.MaxSize = 5
 AiPlayerbot.QuestGroups.MaxSizeDrop = 3
 AiPlayerbot.QuestGroups.LevelWindow = 3
@@ -1572,9 +1605,20 @@ AiPlayerbot.RosterFarMove = 0
 # (straight line, navmesh ground, not in a danger-map cell; else 120 yd; else the bot walks) and the bot
 # walks the rest with its normal mob awareness - no appearing right at Hogger. WatchRoute: a real player
 # within visibility of the straight route (not only at its ends) sees the bot walk the whole way.
-# [FarMove] ... watched arrive_alt arrive_walk. ArriveBackYards 0 = arrive at the target (8.33 behaviour).
+# [FarMove] ... watched arrive_alt arrive_walk arrive_deaths arrived_b arrive_deaths_b (cohort B = odd guid; A = total - b).
+# ArriveBackYards 0 = arrive at the target (8.33 behaviour).
 AiPlayerbot.RosterFarMove.ArriveBackYards = 60
 AiPlayerbot.RosterFarMove.WatchRoute = 1
+# twow-repo#601 cand4-B (OB-00 28.10.2026): 382 of 1022 deaths in 3 h came within 60 s of a far-move arrival - the arrival
+# point lies ArriveBackYards before a kill objective, usually inside its camp, and the bot was pulled by several mobs at once.
+# ArriveSafe checks the arrival right before the teleport: a point inside the aggro radius of a hostile creature (the core's
+# proximity aggro: alive, hostile, can start an attack, no victim, within GetAttackDistance + 5 yd and its z range; no LOS
+# test) is given up for one 30 yd further back along the line (navmesh, danger map), at most 4 times (up to 120 yd more,
+# never past the start); none free: the one with the fewest threats (safe_unsafe). A point further back lets the bot walk the
+# rest to that target and pull on its own (no far move to it for 120 s). The arrival grid not loaded in the bot's map, or the
+# point in another continent region: no check (safe_unchecked). [FarMove] gets safe_checked safe_kept safe_shifted
+# safe_unsafe safe_unchecked check_us_avg check_us_max. 0 = off (default), 1 = all bots, 2 = cohort B (A/B).
+AiPlayerbot.RosterFarMove.ArriveSafe = 0
 # twow-repo#595 P4 S0 (OB-00 17.10.2026, shortcuts by player proximity; measurement, no behaviour change): the world
 # thread keeps a snapshot of where the online real players are (map, zone, area, x, y and a camera body that differs;
 # GMs only while visible), built after the map update at most once a second, only while Trace = 1 or NearScope > 0.
@@ -1864,6 +1908,12 @@ AiPlayerbot.ProfessionTraining.Travel = 0
 # no target writes "[ProfTravel] state=no_target kind= ... ranges= points= path= rejects=" and ends at once with
 # "state=end ... reason=no_target" (before: "lost" an hour later). The hourly limit stays spent.
 AiPlayerbot.ProfessionTraining.NearRadius = 0
+# twow-repo#601 turn_in hold (CLI-Deep 28.10.2026): the profession trips wait while a finished quest can be turned in (gate
+# result=turn_in). A finished quest whose taker route is stall- or death-suppressed for that quest cannot be turned in until the
+# suppression ends, yet it held the gate for hours (m1r-C: 318 turn_in refusals, one bot the whole run). TurnInGateSkipSuppressed
+# skips such a quest in that rule (near trip, gap trips, trip end); a quest the quest system has not suppressed still counts.
+#   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid); other values act like 0.
+AiPlayerbot.ProfessionTraining.TurnInGateSkipSuppressed = 0
 # Profession use (#333), persistent roster bots without a real-player master.
 # GatherDistance: passive gathering radius for such a bot on its own (herbs,
 # ore, skinning); 0 = GatheringDistance. The hostile check stays in force.
@@ -1882,6 +1932,13 @@ AiPlayerbot.ProfessionUse.TraceCooldownSeconds = 300
 # 6.297). With the mode on for the bot, a mining/skinning gather purpose also needs its tool, so a bot without a pick no
 # longer travels to an ore vein to fail there until the 15-minute no-skill-up end. The same target filter as for the
 # trainers (not hostile, a reachable spawn; P1-b2). "[ProfTravel] state=request kind=tool".
+# P1-y (OB-00 28.10.2026 after M1r run 5: the gap came twice in 210 min, two skinners went 3 h 45 min without a knife): with
+# ProfessionTraining.NearRadius set, such a bot also travels to a vendor of its missing tool with a spawn within that radius
+# without a quest gap ("request named travel target::tool vendor near" at 6.361, just above the near trainer trip 6.36), under
+# the near trainer trip's gates (open turn-in, band walk, money for the tool, P1-u home zone) and within the same hourly limit
+# as the gap tool trip; it holds 10 min, its whole time counts as hold_over_s. "[ProfTravel] state=request kind=tool ...
+# path=near"; with ProfessionTraining.Trace one "[ProfTravel] state=gate kind=tool path=near ... result=" per bot missing a tool
+# and TraceCooldownSeconds (start, not_eligible, cooldown, turn_in, band, money, no_vendor, not_near, unreachable, home_zone).
 # Mode: 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
 AiPlayerbot.ProfessionUse.ToolBuy = 0
 # twow-repo#333 P1-v (OB-00 26.10.2026, BUG FIX behind a switch: it changes the RPG travel of every bot; profile 1 only after a
@@ -2783,7 +2840,12 @@ AiPlayerbot.RandomBotUpdateInterval = 500
 # quest giver, objective or taker), grind (active grind target), other (any other active target, or a taxi flight) or
 # idle (alive, no combat, no active target). The seconds since the last sample go to that kind; a gap over 120 s (bot
 # not updated) counts as gap. One line per bot and clock hour, "[BotActivity] bot= level= zone= hour=<unix time/3600>
-# quest= grind= grind_idle= stuck= combat= other= idle= dead= parked= gap=" (seconds), and one line per minute,
+# quest= grind= grind_idle= stuck= combat= other= idle= dead= parked= gap=" (seconds) "quest_log= quest_done=" (occupied
+# quest log slots of 20 and the complete ones not yet handed in, at the end of the hour) "far_wait=" (twow-repo#601, OB-00
+# 28.10.2026: a roster bot on a RosterFarMove stands for the walking time and is then moved to its target - such a wait is
+# travel, its target's kind, not stuck; far_wait= repeats those seconds, so the stuck of older runs is stuck + far_wait), and
+# one line per far-move arrival death, "[FarMoveDeath] bot= level= map= zone= x= y= after_farmove=1 arrived_s= cohort=",
+# and one line per minute,
 # "[BotActivityMin] L10-14=<samples>/<quest>/<grind>/<grind_idle>/<stuck>/<combat>/<other>/<idle>/<dead>/<parked> ..."
 # per 5-level band (empty bands left out). Log only, no behaviour change; at most one line per roster bot and hour plus
 # one a minute. 0 = off (default).
@@ -2793,8 +2855,20 @@ AiPlayerbot.ActivityTrace = 0
 # status= status_s= left_s= dist= moved= move_retries= motion= moving= state= action='' trigger='' dropped=" - the travel
 # target (quest, entry, yards to its point), the travel status with the seconds held and left, the move retries, the movement
 # generator, and the engine's newest executed action with the trigger that pushed it. At most 30 lines a minute for all bots;
-# dropped= counts the lines refused since the previous one. Log only, no behaviour change. 0 = off (default).
+# dropped= counts the lines refused since the previous one; far_wait=none|overdue the bot's far move (overdue: one that was
+# never ended). Log only, no behaviour change. 0 = off (default).
 AiPlayerbot.ActivityTrace.StuckDetail = 0
+# twow-repo#601 (OB-00 28.10.2026): 1 = with ActivityTrace on, a roster bot that is idle (no active travel target) two samples in
+# a row writes one line for the episode: "[IdleDetail] state=start bot= level= map= zone= x= y= why=no_target|null_dest|none|
+# cooldown|expired|other dest=quest|grind|other|none quest= entry= status= status_s= left_s= reselect= purpose='' fetch=none|pending|ready
+# backoff_s= stage= free_slots= state= action='' trigger='' dropped=" - why the target is not active, the inactive target, the
+# empty-camp reselect flag, the last travel purpose and its destination search, the quest route backoff left, the quest search
+# stage, the free quest log slots and the engine's newest executed action with its trigger. The first sample of another kind
+# after it (or the first after a sampling gap: gap=1) writes "[IdleDetail] state=end bot= level= idle_s= why= next=<kind> dest= quest=
+# status= gap= dropped=" (only after its start line, outside the limit). At most 30 start lines a
+# minute for all bots (its own budget); dropped= counts the lines refused since the previous one. Log only, no behaviour change.
+# 0 = off (default).
+AiPlayerbot.ActivityTrace.IdleDetail = 0
 # twow-repo#541: 1 = one [WorldBots] line per minute with what the bot manager cost the serial world
 # thread (UpdateSessions, ProcessBot loop incl. logins, rest; max pass, share in per mille, logins,
 # teleport ACK calls). Log only; persistent roster and free random-bot path. 0 = off (default).
@@ -3071,6 +3145,31 @@ AiPlayerbot.Rotation.CastTrace = 0
 # slot"). At load: "[SpecPath] loaded paths= with_tab= mismatches=" (+ one "[SpecPath] mismatch" line per path whose
 # key disagrees with its level 10 link). 0 = off (default), 1 = all bots, 2 = only cohort B (odd low guid, in-realm A/B).
 AiPlayerbot.Rotation.SpecFromPath = 0
+# twow-repo#602 ROT-01 tank count (OB-00 28.10.2026, BEHAVIOUR CHANGE, A/B with 2 before any profile): the tank kit ("protection",
+# "tank assist", "pull", "pull back", "close") only from the level of the tank spells. Below level 10 (no talent points) every
+# warrior has the default tab Protection and pulled as a tank whatever its path (live540: 47 of 90 warriors), and a protection
+# paladin below Righteous Fury (16) tanked without its threat aura. With the switch a random bot on its tank tab below the key level
+# gets its DPS tab - warrior arms, protection paladin retribution - in all four engines (combat, non-combat, dead, reaction) and
+# in the role offer (dungeon finder), so it is not a tank for itself or its group either. A forced tank role keeps the tank kit;
+# talent choice keeps the spec tab. Druids below 10 already have the leveling kit (no forms yet). Groups (S7, ad-hoc, real
+# players) pick no roles, so this also decides who tanks there. A level change across the key level rebuilds the strategies once.
+# Path default (OB-00 29.10.2026, same switch): a warrior without talent points (below 10, or none spent yet) had the default
+# tab Protection, so an arms or fury warrior reaching 10 was rebuilt to the tank kit; with the switch such a warrior starts from
+# its premade path's tab (its PremadeSpecTab key, else the main tree of the path's first link): arms and fury keep their DPS kit
+# at 10, fury below 10 plays fury instead of arms, protection is demoted to arms below 10 and tanks from 10. Warriors without a
+# path and every other class are unchanged.
+# "[TankKit] mode= demoted= rebuilt= pathed=" once a minute with the mode on (demoted = kit builds with a tab other than the spec
+# tab, pathed = those whose warrior kit follows its path; rates).
+# 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
+AiPlayerbot.Rotation.TankKitFromLevel = 0
+# twow-repo#654 rogue tank poison ping-pong (OB-00 / owner 29.10.2026, a bug fix, ON by default, 0 = rollback): a rogue tank
+# (premade path 4.3) coats its main hand with the threat poison (Agitating Poison), while the combat kit under it keeps its own
+# main-hand poison (Instant Poison); each saw the other as missing, so the two overwrote each other out of combat. The tank's
+# multiplier meant to keep the other main-hand poisons off never matched (it looked for the hand in the action's name) and ran in
+# combat only. With the switch it tells the poisons by the action itself and also runs out of combat: only the threat poison goes
+# on the main hand, the off hand is unchanged.
+# 0 = as before, 1 = every bot (default), 2 = only cohort B (odd low guid). Any other value acts like 1.
+AiPlayerbot.Rotation.TankRoguePoison = 1
 # twow-repo#602 ROT-01 X3 (BEHAVIOUR CHANGE, enable only after the OB-30 A/B + owner go): emergency ladder for SOLO FREE BOTS below
 # critical health (no group, no real player, not healers - F1). Today panic -> flee wins every tick and a solo random bot's flee is a
 # MoveChase around the mob that gains no distance. Once per episode the ladder picks: a ready CLASS ESCAPE gets a 2 s window in which panic and
@@ -3119,9 +3218,19 @@ AiPlayerbot.Rotation.RestGate.MaxRestSeconds = 120
 # marked the target unreachable while the bot kept it. With the switch a LINE_OF_SIGHT verdict makes the cast IMPOSSIBLE (no
 # retry loop, no stop of the walk), a current target that 8.2 marked unreachable is dropped, and target selection skips such
 # units while another candidate exists. Use it together with Rotation.ReachLosClose = 2 (the walk into sight).
-# "[CastLosGate] mode= gated= dropped= skipped=" once a minute with the mode on.
+# "[CastLosGate] mode= gated= dropped= skipped= cached= reach_early=" once a minute with the mode on (cached / reach_early:
+# Rotation.LosCacheMs below).
 # 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
 AiPlayerbot.Rotation.CastLosGate = 0
+# twow-repo#602 ROT-01 REF-next v2 tick (OB-00 / OB-30 29.10.2026, a perf fix, ON by default, 0 = rollback): under REF-next v2
+# [BotUpdate] p99 went from 4 to 33 ms. With CastLosGate a cast on a target out of sight is IMPOSSIBLE, so the engine tried every
+# alternative of the node, and each built a new spell check with the map's line-of-sight query against the same unseen target -
+# every pass; every cast's reach prerequisite ran a full spell check and a second sight query before answering "in sight and in
+# range". With a value, a bot keeps its last line-of-sight verdict for one target for that many milliseconds: a cast on a target it
+# knows is out of sight is IMPOSSIBLE at once (spells that ignore line of sight still take the full check), and reach answers "in
+# sight and in range" first, from that verdict, before its spell check (the same answer it gave after it). The worst effect is a
+# reaction up to this many ms later once sight returns. 0 = off (as before), default 500; values above 5000 act like 500.
+AiPlayerbot.Rotation.LosCacheMs = 500
 # twow-repo#602 ROT-01 cast-abort loop (OB-00 27.10.2026, BEHAVIOUR CHANGE, ON by default, 0 = rollback): a moving bot
 # without a real player master stopped before a spell with a cast time or a channel and then cancelled the cast without
 # casting; the next action moved it again and the next try cancelled again (hunt2 action logs: 47k cancels of Mind Blast,
@@ -3130,6 +3239,14 @@ AiPlayerbot.Rotation.CastLosGate = 0
 # "[CastStopFirst] mode= cast_after_stop= cancelled=" once a minute with the mode on.
 # 0 = as before (cancel), 1 = every bot (default), 2 = only cohort B (odd low guid). Any other value acts like 1.
 AiPlayerbot.Rotation.CastStopFirst = 1
+# twow-repo#602 ROT-01 failure census (OB-00 28.10.2026, ON by default, 0 = rollback): the combat trigger "invalid target" was also
+# true for an EMPTY current target. After a kill, while nothing attacks the bot, "select new target" then ran on every AI pass with
+# nothing to clear and nobody to pick, failed, and the AI re-ticked every 20-40 ms (hunt2: 90,889 fails, 186 streaks of 50 or more).
+# With the switch an empty target fires only while the bot has attackers (the retarget to the next add stays); a non-empty invalid
+# target fires as before. "[InvalidTarget] mode= quiet= dropped_live= interrupted_live=" once a minute with the mode on; the last two
+# are a trace only (a live target dropped by "select new target", and whether that interrupted a cast).
+# 0 = as before, 1 = every bot (default), 2 = only cohort B (odd low guid). Any other value acts like 1.
+AiPlayerbot.Rotation.InvalidTargetQuiet = 1
 # twow-repo#541 (audit A17, BEHAVIOUR CHANGE, enable only after OB-30 measurement + owner go): 1 = a bot AI in
 # combat (no real player master; also non-roster random bots, bot-led groups, battlegrounds and duels) whose AI
 # pass executed no action while it auto-attacks its current target (melee swing with the victim in melee reach,
@@ -3174,6 +3291,23 @@ AiPlayerbot.Rotation.MeleeFleeBreak = 0
 # by "outnumbered" ended in death, against 3-11 % of their kite episodes; FleeMultiplier's 0.01 did not stop that loop. Only
 # "outnumbered" is held, the kite triggers are untouched. held_ranged in the [MeleeFleeBreak] line. 0 = off (default).
 AiPlayerbot.Rotation.MeleeFleeBreak.Ranged = 0
+# twow-repo#602 ROT-01 failure census (OB-00 27.10.2026, ON by default, 0 = rollback): "melee", the default action of the combat
+# strategies, runs whenever every higher action is impossible (each GCD after an instant, each rage gap). While the bot already
+# attacks its current target it only repeated Attack() (selection, target values, pet, facing, attack emote) and then failed in the
+# core (M1r run 4: druid 27,658 FAILED against 1 OK, AI passes every ~50 ms in the gap). With the switch it is not useful then, if
+# the bot faces the target and its pet is on it; otherwise the old path runs (it turns the bot and sends the pet). The engine goes on
+# exactly as before. "[MeleeSkip] mode= skipped=" once a minute with the mode on.
+# 0 = as before, 1 = every bot (default), 2 = only cohort B (odd low guid). Any other value acts like 1.
+AiPlayerbot.Rotation.MeleeSkipAttacking = 1
+# twow-repo#602 ROT-01 failure census v3 (OB-00 28.10.2026, ON by default, 0 = rollback): in hunt2 22.8 % of the engine time of
+# all action checks went to spell actions the bot can never cast (Cone of Cold below L26 alone 11 %, other races' racials ~6.5 %,
+# talent spells). With the switch, a spell action whose spell the bot does not know (its "spell id" value is 0) is IMPOSSIBLE at
+# once - as before, so the node's alternatives are still tried - and pushes no reach prerequisite. The cast itself was impossible
+# before as well; the one change in play is that the bot no longer walks into range (reach spell / reach melee) for a spell it does
+# not know. Actions whose spell name is a placeholder or changes at runtime (shoot, pull, paladin blessings, shaman imbue, vehicle
+# spells, item actions such as the soulstone, mount) keep the full checks. "[NeverPossible] mode= possible= prereq=" once a minute.
+# 0 = as before, 1 = every bot (default), 2 = only cohort B (odd low guid). Any other value acts like 1.
+AiPlayerbot.Rotation.NeverPossibleSkip = 1
 # twow-repo#602 ROT-01 (c) (hunter + adds analysis 25.10.2026, BEHAVIOUR CHANGE, enable only after A/B + owner go): the flee of a
 # bot without a real master is a chase of the enemy at the flee distance. Its angle was the bot's world angle to the enemy, but the
 # core adds the chase angle to the ENEMY's facing, so the flee point lay on an effectively random side of the mob (often across it

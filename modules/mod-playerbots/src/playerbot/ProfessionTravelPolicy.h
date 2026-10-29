@@ -191,6 +191,41 @@ inline char const* NearGateReason(bool eligible, bool cooldownOver, bool turnInW
     return nullptr;
 }
 
+// P1-y (OB-00 28.10.2026 after M1r run 5 FAIL on the tool criterion: the tool trip started only in a quest gap - two skinners
+// went 3 h 45 min without a knife and without one tool request, two miners bought the pick 4 min after learning where a vendor
+// stood near). "tool vendor near" (AiPlayerbot.ProfessionUse.ToolBuy, the radius of ProfessionTraining.NearRadius) sends a bot
+// with mining or skinning but without its tool to a vendor of it with a spawn within the radius, without a quest gap, under the
+// gates of the near trainer trip and within the hourly limit of the tool trip (kToolTripValue, shared with the gap trip). A bot
+// that misses no tool never asks and writes no gate line.
+inline char const* NearToolGateReason(bool eligible, bool cooldownOver, bool turnInWaiting, bool bandWalk, bool money, bool vendors,
+    bool nearVendors, bool reachableVendors, bool homeZoneVendors)
+{
+    if (!eligible)
+        return "not_eligible";
+    if (!cooldownOver)
+        return "cooldown";
+    if (turnInWaiting)
+        return "turn_in";
+    if (bandWalk)
+        return "band";
+    if (!money)
+        return "money";
+    if (!vendors)
+        return "no_vendor";
+    if (!nearVendors)
+        return "not_near";
+    if (!reachableVendors)
+        return "unreachable";
+    if (!homeZoneVendors)
+        return "home_zone";
+    return nullptr;
+}
+
+// "manual int" values of the near tool check, apart from the trainer's (one bot may run both checks in one tick).
+constexpr char const* kNearToolCheckValue = "profession near tool check at";
+constexpr char const* kNearToolTraceValue = "profession near tool trace at";
+constexpr char const* kNearToolResultValue = "profession near tool found";
+
 // P1-u (owner 26.10.2026 via OB-00: early access to the professions yes, leaving the start area only for a profession no;
 // OB-00 go X = 10): below kHomeZoneBelowLevel a profession trip (trainer near or gap,
 // tool vendor) only goes to an entry with a spawn in the zone the bot stands in - the zone, not the sub-area (Elwynn Forest

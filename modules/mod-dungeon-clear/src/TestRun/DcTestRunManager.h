@@ -76,7 +76,7 @@ public:
     bool Start(Player* gm, std::string const& dungeonToken, uint32 levelOverride, uint32 seed,
                bool heroic, DcTestGearTiers::Spec const& gear, std::string* msg,
                std::string const& planId = "", StartErr* errOut = nullptr,
-               std::string* runIdOut = nullptr);
+               std::string* runIdOut = nullptr, std::uint8_t tankClass = 0);   // CLI-GRP G2: forced tank seat
 
     // Validate + launch a HAND-PICKED party (`.dc test start <d> party=a,b,c,d,e`).
     // `partySpec` is the raw comma-separated name list; roles are positional

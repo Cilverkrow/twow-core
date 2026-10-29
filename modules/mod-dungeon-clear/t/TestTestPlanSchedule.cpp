@@ -289,3 +289,19 @@ TEST(DcSettingsRegistryTest, TestRunCapsDefaultToUnlimited)
         EXPECT_FALSE(d->playerFacing) << key << " is server-only";
     }
 }
+
+// CLI-GRP G2 (OB-00 28.10.2026): tank=<class> forces every child run's tank seat; the druid only by force (29.10.).
+TEST(DcTestPlanParseTest, TankClassOption)
+{
+    ParseResult const w = ParseStartArgs("wc total=6 seed=3001 level=boss tank=warrior");
+    ASSERT_TRUE(w.ok) << w.err;
+    EXPECT_EQ(w.spec.tankClass, 1);
+    ParseResult const p = ParseStartArgs("wc total=6 tank=paladin");
+    ASSERT_TRUE(p.ok) << p.err;
+    EXPECT_EQ(p.spec.tankClass, 2);
+    EXPECT_EQ(ParseStartArgs("wc total=6").spec.tankClass, 0);   // drawn by the seed, as before
+    ParseResult const d = ParseStartArgs("wc total=6 tank=druid");   // the druid probe (forced-only seat)
+    ASSERT_TRUE(d.ok) << d.err;
+    EXPECT_EQ(d.spec.tankClass, 11);
+    EXPECT_FALSE(ParseStartArgs("wc total=6 tank=mage").ok);
+}

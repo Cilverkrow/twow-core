@@ -45,13 +45,22 @@ namespace DcTestComp
         }
     }
 
-    std::array<Slot, kPartySize> BuildComp(std::uint32_t seed)
+    std::array<Slot, kPartySize> BuildComp(std::uint32_t seed, std::uint8_t tankClass)
     {
         std::uint32_t state = seed;
         std::set<std::uint8_t> used;
         std::array<Slot, kPartySize> comp{};
 
-        comp[0] = Draw(kTankPool, std::size(kTankPool), used, state);
+        comp[0] = Draw(kTankPool, std::size(kTankPool), used, state);   // consumed even when forced (stream position)
+        if (tankClass)
+        {
+            for (Slot const& s : kTankPool)
+                if (s.classId == tankClass)
+                    comp[0] = s;
+            for (Slot const& s : kForcedOnlyTankPool)   // the druid: forced only (never drawn above)
+                if (s.classId == tankClass)
+                    comp[0] = s;
+        }
         used.insert(comp[0].classId);
 
         comp[1] = Draw(kHealPool, std::size(kHealPool), used, state);
@@ -64,6 +73,25 @@ namespace DcTestComp
         }
 
         return comp;
+    }
+
+    std::uint8_t TankClassByName(std::string_view name)
+    {
+        static constexpr struct { std::string_view name; std::uint8_t classId; } kNames[] = {
+            { "warrior", 1 }, { "paladin", 2 }, { "druid", 11 },
+        };
+        for (auto const& n : kNames)
+        {
+            if (n.name != name)
+                continue;
+            for (Slot const& s : kTankPool)
+                if (s.classId == n.classId)
+                    return n.classId;
+            for (Slot const& s : kForcedOnlyTankPool)   // the druid: forced only
+                if (s.classId == n.classId)
+                    return n.classId;
+        }
+        return 0;
     }
 
     std::vector<Slot> RolePool(std::string_view role)

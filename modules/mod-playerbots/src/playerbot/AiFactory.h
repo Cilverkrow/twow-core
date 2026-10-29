@@ -30,6 +30,13 @@ public:
     // The spec tab every caller uses. twow-repo#602 R06a (AiPlayerbot.Rotation.SpecFromPath): from level 10 the tab of
     // the bot's premade path when the switch applies to it, else the talent point majority (GetPlayerMajorityTab).
     static int GetPlayerSpecTab(const Player* player);
+    // The tab the strategy kit and the role offer follow. twow-repo#602 (AiPlayerbot.Rotation.TankKitFromLevel, TankKitPolicy.h): a
+    // random bot on its tank tab below the level of its tank spells gets its DPS tab (warrior arms, paladin retribution), unless a tank
+    // role is forced on it; otherwise the spec tab. Talent choice and chat keep GetPlayerSpecTab.
+    static int GetPlayerKitTab(const Player* player);
+    // twow-repo#602 tank-kit path default (TankKitPolicy.h BaseTab): the tab the kit decision starts from - with the switch a warrior
+    // without talent points takes its premade path's tab instead of the default Protection tab; otherwise the spec tab.
+    static int GetPlayerKitBaseTab(const Player* player);
     // The talent point majority (ties: the lower tab; below level 10 or without points: the class default).
     static int GetPlayerMajorityTab(const Player* player);
     static std::map<uint32, int32> GetPlayerSpecTabs(const Player* player);

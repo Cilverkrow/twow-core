@@ -99,4 +99,17 @@ namespace DcTestPool
             return RosterRead::Refuse;
         return RosterRead::Ok;
     }
+
+    // CLI-GRP G1 probe 28.10.2026: why a harness login (the test driver, a pool slot) was refused. With
+    // AiPlayerbot.PersistentActiveRoster.Enabled=1 the random-bot holder admits roster members only, and the harness
+    // logs both in through it - so a `.dc test` stack runs with the roster off (see the header). Without the roster the
+    // refusal has another cause (pre-review): no account, a ghost that did not recover, a failed login query.
+    inline std::string LoginRefusal(std::string const& who, bool rosterOn)
+    {
+        if (rosterOn)
+            return who + " login rejected (AddPlayerBot refused it; with AiPlayerbot.PersistentActiveRoster.Enabled=1 "
+                         "only roster members may log in through the random-bot holder - run .dc test with the roster off)";
+        return who + " login rejected (AddPlayerBot refused it: no account, a ghost that did not recover or a failed "
+                     "login query - see the playerbots log)";
+    }
 }

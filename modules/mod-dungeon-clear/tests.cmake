@@ -210,6 +210,30 @@ add_test(NAME dungeon_clear_stay_dead_contract
                  "-DDC_SOURCE_DIR=${DC_MOD_PATH}"
                  -P "${DC_MOD_PATH}/t/stay_dead_contract.cmake")
 
+# CLI-GRP 29.10.2026: the druid tank's bear gate by strategy type, the druid as a forced-only seat (g2/CAUSE-DRUIDE-FERAL-SITZ).
+add_test(NAME dungeon_clear_druid_bear_contract
+         COMMAND "${CMAKE_COMMAND}"
+                 "-DDC_SOURCE_DIR=${DC_MOD_PATH}"
+                 -P "${DC_MOD_PATH}/t/test_druid_bear_contract.cmake")
+
+# CLI-GRP G2 28.10.2026: tank=<class> from the plan to the comp, no substitution (rules TestTestComp / TestTestPlanSchedule).
+add_test(NAME dungeon_clear_plan_tank_contract
+         COMMAND "${CMAKE_COMMAND}"
+                 "-DDC_SOURCE_DIR=${DC_MOD_PATH}"
+                 -P "${DC_MOD_PATH}/t/test_plan_tank_contract.cmake")
+
+# CLI-GRP G1 probe 28.10.2026: a refused harness login (persistent roster on) is said at once (text: TestTestPoolPolicy).
+add_test(NAME dungeon_clear_login_refused_contract
+         COMMAND "${CMAKE_COMMAND}"
+                 "-DDC_SOURCE_DIR=${DC_MOD_PATH}"
+                 -P "${DC_MOD_PATH}/t/test_login_refused_contract.cmake")
+
+# CLI-GRP 28.10.2026: the record's tank measures (schema 13; rules DcAggroTally.h / TestTestRunRecord).
+add_test(NAME dungeon_clear_tank_measures_contract
+         COMMAND "${CMAKE_COMMAND}"
+                 "-DDC_SOURCE_DIR=${DC_MOD_PATH}"
+                 -P "${DC_MOD_PATH}/t/test_tank_measures_contract.cmake")
+
 # Force-include the test prelude, mirroring what the shipping module does with
 # AcCompat.h but with a fraction of its reach — see DcTestPrelude.h for why the
 # module's headers need it and why AcCompat.h itself cannot be used here.

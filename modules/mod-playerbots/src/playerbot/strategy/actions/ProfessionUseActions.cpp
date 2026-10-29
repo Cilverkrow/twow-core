@@ -51,6 +51,8 @@ namespace
 
 bool ProfessionCraftAction::Execute(Event& event)
 {
+    // twow-repo#333 P2-a: each run starts from the react delay, so a cast time never carries over to the next run.
+    SetDuration(sPlayerbotAIConfig.reactDelay);
     SET_AI_VALUE2(time_t, "manual time", "profession craft", time(nullptr));
 
     if (sPlayerbotAIConfig.professionUseRealReagents)
@@ -90,10 +92,17 @@ bool ProfessionCraftAction::Execute(Event& event)
         // so one cast gets exactly one line. "cast_started" only after
         // Spell::SpellStart returned SPELL_CAST_OK (PlayerbotAI::CastSpell);
         // a failure is only logged, the bot says nothing (no requester).
-        bool const ok = ai->CastSpell(spellId, bot);
+        // twow-repo#333 P2-a: hold the AI for the recipe's cast time, as every other cast action does. The engine sets
+        // the AI delay to this action's duration after it ran; with the react delay the next movement action
+        // interrupted the craft (M1r run 4: 29 of 234 bandage / cloth casts INTERRUPTED or SPELL_IN_PROGRESS).
+        uint32 castDuration = 0;
+        bool const ok = ai->CastSpell(spellId, bot, nullptr, true, &castDuration);
         TraceProfessionUse(ai, "craft", ok ? "cast_started" : "failed", ok ? "real_reagents" : "cast_failed", spellId);
         if (ok)
+        {
+            SetDuration(std::max(castDuration, sPlayerbotAIConfig.reactDelay));
             sPlayerbotAIConfig.logEvent(ai, "CraftCastStarted", spell->SpellName[0], std::to_string(spellId));
+        }
         return ok;
     }
 

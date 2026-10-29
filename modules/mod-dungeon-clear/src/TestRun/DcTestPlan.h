@@ -46,6 +46,10 @@ namespace DcTestPlan
         // per-child on purpose: a campaign exists to compare runs against each
         // other, which only means anything at one ceiling.
         DcTestGearTiers::Spec gear;
+        // CLI-GRP G2 (OB-00 28.10.2026): `tank=<class>` forces every child run's tank seat to that class (its classId,
+        // DcTestComp::TankClassByName); 0 = drawn by the seed. No substitution on that seat: a run without a free pool
+        // character of the class fails its set-up rather than quietly comparing another class.
+        std::uint8_t tankClass = 0;
     };
 
     struct Counters

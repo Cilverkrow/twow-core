@@ -34,6 +34,7 @@
 #include "playerbot/TransportBoardPolicy.h"
 #include "playerbot/ConfigEchoPolicy.h"
 #include "playerbot/R01CohortPolicy.h"
+#include "playerbot/LosCachePolicy.h"   // twow-repo#602 (Rotation.LosCacheMs): the read's bounds
 
 #include <iostream>
 #include <numeric>
@@ -43,6 +44,7 @@
 #include <fstream>
 #include <sstream>
 #include "PlayerbotLoginMgr.h"
+#include "playerbot/DeferredLog.h"   // s7r: lines of a world-thread manager scope go to the bot
 
 std::vector<std::string> ConfigAccess::GetValues(const std::string& name) const
 {
@@ -514,6 +516,7 @@ bool PlayerbotAIConfig::Initialize()
     worldBotsTrace = config.GetBoolDefault("AiPlayerbot.WorldBotsTrace", false);
     activityTrace = config.GetBoolDefault("AiPlayerbot.ActivityTrace", false);   // twow-repo#601 R01 L1
     activityTraceStuckDetail = config.GetBoolDefault("AiPlayerbot.ActivityTrace.StuckDetail", false);   // twow-repo#601 (OB-00 26.10.2026)
+    activityTraceIdleDetail = config.GetBoolDefault("AiPlayerbot.ActivityTrace.IdleDetail", false);   // twow-repo#601 (OB-00 28.10.2026)
     botUpdateTrace = config.GetBoolDefault("AiPlayerbot.BotUpdateTrace", false);
     // twow-repo#597 (TICK-01): log-only extensions of [BotUpdateSlow] and [WorldBots], default 0.
     botUpdateTraceTick = config.GetBoolDefault("AiPlayerbot.BotUpdateTraceTick", false);
@@ -562,6 +565,12 @@ bool PlayerbotAIConfig::Initialize()
     castSpellRefreshOnLearn = config.GetBoolDefault("AiPlayerbot.CastSpell.RefreshOnLearn", false);
     rotationCastTrace = config.GetBoolDefault("AiPlayerbot.Rotation.CastTrace", false);
     rotationSpecFromPath = config.GetIntDefault("AiPlayerbot.Rotation.SpecFromPath", 0);
+    rotationTankKitFromLevel = config.GetIntDefault("AiPlayerbot.Rotation.TankKitFromLevel", 0);   // twow-repo#602 tank count
+    if (rotationTankKitFromLevel > 2)
+        rotationTankKitFromLevel = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
+    rotationTankRoguePoison = config.GetIntDefault("AiPlayerbot.Rotation.TankRoguePoison", 1);   // twow-repo#654 poison ping-pong
+    if (rotationTankRoguePoison > 2)
+        rotationTankRoguePoison = 1;   // an unknown mode is the default (0 off = rollback, 1 all, 2 cohort B)
     rotationEmergencyLadder = config.GetIntDefault("AiPlayerbot.Rotation.EmergencyLadder", 0);
     if (rotationEmergencyLadder > 2)
         rotationEmergencyLadder = 0;   // twow-repo#602 X3: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B)
@@ -595,9 +604,15 @@ bool PlayerbotAIConfig::Initialize()
     rotationCastLosGate = config.GetIntDefault("AiPlayerbot.Rotation.CastLosGate", 0);   // twow-repo#602 hunter LoS
     if (rotationCastLosGate > 2)
         rotationCastLosGate = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
+    rotationLosCacheMs = config.GetIntDefault("AiPlayerbot.Rotation.LosCacheMs", 500);   // twow-repo#602 REF-next v2 tick
+    if (rotationLosCacheMs > ai::los_cache::MaxMs)
+        rotationLosCacheMs = ai::los_cache::DefaultMs;   // no cache any more: the default (0 = off = rollback)
     rotationCastStopFirst = config.GetIntDefault("AiPlayerbot.Rotation.CastStopFirst", 1);   // twow-repo#602 cast-abort loop
     if (rotationCastStopFirst > 2)
         rotationCastStopFirst = 1;   // an unknown mode is the default (0 off = rollback, 1 all, 2 cohort B)
+    rotationInvalidTargetQuiet = config.GetIntDefault("AiPlayerbot.Rotation.InvalidTargetQuiet", 1);   // twow-repo#602 failure census
+    if (rotationInvalidTargetQuiet > 2)
+        rotationInvalidTargetQuiet = 1;   // an unknown mode is the default (0 off = rollback, 1 all, 2 cohort B)
     perfCombatIdleYield = config.GetBoolDefault("AiPlayerbot.Perf.CombatIdleYield", false);
     castWaitPreparing = config.GetIntDefault("AiPlayerbot.CastWait.Preparing", 0);
     if (castWaitPreparing > 2)
@@ -609,6 +624,12 @@ bool PlayerbotAIConfig::Initialize()
     if (rotationMeleeFleeBreak > 2)
         rotationMeleeFleeBreak = 0;   // twow-repo#602: an unknown mode is off
     rotationMeleeFleeBreakRanged = config.GetBoolDefault("AiPlayerbot.Rotation.MeleeFleeBreak.Ranged", false);
+    rotationMeleeSkipAttacking = config.GetIntDefault("AiPlayerbot.Rotation.MeleeSkipAttacking", 1);   // twow-repo#602 failure census
+    if (rotationMeleeSkipAttacking > 2)
+        rotationMeleeSkipAttacking = 1;   // an unknown mode is the default (0 off = rollback, 1 all, 2 cohort B)
+    rotationNeverPossibleSkip = config.GetIntDefault("AiPlayerbot.Rotation.NeverPossibleSkip", 1);   // twow-repo#602 failure census v3
+    if (rotationNeverPossibleSkip > 2)
+        rotationNeverPossibleSkip = 1;   // an unknown mode is the default (0 off = rollback, 1 all, 2 cohort B)
     rotationFleeAway = config.GetIntDefault("AiPlayerbot.Rotation.FleeAway", 0);   // twow-repo#602 (c)
     if (rotationFleeAway > 2)
         rotationFleeAway = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
@@ -737,6 +758,25 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[QuestLoop] config key=GiverTakerDone value=%u result=off (0 off, 1 all, 2 cohort B)", questLoopGiverTakerDone);
         questLoopGiverTakerDone = 0;
     }
+    // twow-repo#601 turn_in hold (CLI-Deep 28.10.2026): an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B).
+    questLoopRelationWorkNoGrind = config.GetIntDefault("AiPlayerbot.QuestLoop.RelationWorkNoGrind", 0);
+    if (questLoopRelationWorkNoGrind > 2)
+    {
+        sLog.outError("[QuestLoop] config key=RelationWorkNoGrind value=%u result=off (0 off, 1 all, 2 cohort B)", questLoopRelationWorkNoGrind);
+        questLoopRelationWorkNoGrind = 0;
+    }
+    questLoopRelationArriveRpgTarget = config.GetIntDefault("AiPlayerbot.QuestLoop.RelationArriveRpgTarget", 0);
+    if (questLoopRelationArriveRpgTarget > 2)
+    {
+        sLog.outError("[QuestLoop] config key=RelationArriveRpgTarget value=%u result=off (0 off, 1 all, 2 cohort B)", questLoopRelationArriveRpgTarget);
+        questLoopRelationArriveRpgTarget = 0;
+    }
+    questLoopTurnInWorkDeathNotRoute = config.GetIntDefault("AiPlayerbot.QuestLoop.TurnInWorkDeathNotRoute", 0);
+    if (questLoopTurnInWorkDeathNotRoute > 2)
+    {
+        sLog.outError("[QuestLoop] config key=TurnInWorkDeathNotRoute value=%u result=off (0 off, 1 all, 2 cohort B)", questLoopTurnInWorkDeathNotRoute);
+        questLoopTurnInWorkDeathNotRoute = 0;
+    }
     // twow-repo#601 InactiveAfterProgress: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B).
     questLoopInactiveAfterProgress = config.GetIntDefault("AiPlayerbot.QuestLoop.InactiveAfterProgress", 0);
     if (questLoopInactiveAfterProgress > 2)
@@ -830,15 +870,19 @@ bool PlayerbotAIConfig::Initialize()
     botGroupsMaxBots = ai::bot_group::ClampMaxBots(config.GetIntDefault("AiPlayerbot.BotGroups.MaxBots", 3));
     botGroupsLevelWindow = config.GetIntDefault("AiPlayerbot.BotGroups.LevelWindow", 3);
     botGroupsDiagnostics = config.GetBoolDefault("AiPlayerbot.BotGroups.Diagnostics", false);
+    botGroupsWorldThreadDefer = config.GetBoolDefault("AiPlayerbot.BotGroups.WorldThreadDefer", false);   // s7r
     botGroupsAdhocScanIntervalSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.BotGroups.AdHoc.ScanIntervalSeconds", 10));
     botGroupsAdhocRadius = std::max(5.0f, config.GetFloatDefault("AiPlayerbot.BotGroups.AdHoc.Radius", 50.0f));
     botGroupsAdhocPairCooldownSeconds = (uint32)config.GetIntDefault("AiPlayerbot.BotGroups.AdHoc.PairCooldownSeconds", 600);
     botGroupsAdhocWorldThread = config.GetBoolDefault("AiPlayerbot.BotGroups.AdHoc.WorldThread", false);
     botGroupsAdhocScanSlices = std::min<uint32>(64, (uint32)config.GetIntDefault("AiPlayerbot.BotGroups.AdHoc.ScanSlices", 0));
+    botGroupsAdhocScanBudgetUs = std::min<uint32>(20000, (uint32)config.GetIntDefault("AiPlayerbot.BotGroups.AdHoc.ScanBudgetUs", 0));
     botGroupsAdhocHelpUntilDone = config.GetBoolDefault("AiPlayerbot.BotGroups.AdHoc.HelpUntilDone", false);   // twow-repo#365
     questGroupsEnable = (uint32)config.GetIntDefault("AiPlayerbot.QuestGroups.Enable", 0);
     questGroupsScanSeconds = std::max<uint32>(10, config.GetIntDefault("AiPlayerbot.QuestGroups.ScanSeconds", 60));
     questGroupsScanSlices = std::min<uint32>(64, (uint32)config.GetIntDefault("AiPlayerbot.QuestGroups.ScanSlices", 0));
+    questGroupsScanBudgetUs = std::min<uint32>(20000, (uint32)config.GetIntDefault("AiPlayerbot.QuestGroups.ScanBudgetUs", 0));
+    questGroupsOneHeavyStep = config.GetBoolDefault("AiPlayerbot.QuestGroups.OneHeavyStep", false);   // s7r
     questGroupsStagedOps = config.GetBoolDefault("AiPlayerbot.QuestGroups.StagedOps", false);   // twow-repo#627
     questGroupsMaxSize = std::min<uint32>(5, std::max<uint32>(2, config.GetIntDefault("AiPlayerbot.QuestGroups.MaxSize", 5)));
     questGroupsMaxSizeDrop = std::min<uint32>(5, std::max<uint32>(2, config.GetIntDefault("AiPlayerbot.QuestGroups.MaxSizeDrop", 3)));
@@ -957,6 +1001,9 @@ bool PlayerbotAIConfig::Initialize()
     rosterFarMove = config.GetBoolDefault("AiPlayerbot.RosterFarMove", false);
     rosterFarMoveArriveBackYards = std::max(0.0f, config.GetFloatDefault("AiPlayerbot.RosterFarMove.ArriveBackYards", 60.0f));
     rosterFarMoveWatchRoute = config.GetBoolDefault("AiPlayerbot.RosterFarMove.WatchRoute", true);
+    rosterFarMoveArriveSafe = config.GetIntDefault("AiPlayerbot.RosterFarMove.ArriveSafe", 0);
+    if (rosterFarMoveArriveSafe > 2)
+        rosterFarMoveArriveSafe = 0;   // twow-repo#601 cand4-B: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B)
     shortcutNearScope = ai::shortcut::ClampScope(config.GetIntDefault("AiPlayerbot.Shortcut.NearScope", 0));
     shortcutNearRadius = std::max(0.0f, config.GetFloatDefault("AiPlayerbot.Shortcut.NearRadius", 0.0f));
     shortcutTestWatcherGuids = ai::shortcut::ParseGuidList(config.GetStringDefault("AiPlayerbot.Shortcut.TestWatcherGuids", ""));
@@ -1458,6 +1505,13 @@ bool PlayerbotAIConfig::Initialize()
         professionTrainingTravel = 0;
     // P1-n: yards, 0 = off, at most 1000 (ProfessionTravelPolicy.h ClampNearRadius); the mode and cohort of ProfessionTraining.Travel.
     professionTrainingNearRadius = ai::profession_travel::ClampNearRadius(config.GetIntDefault("AiPlayerbot.ProfessionTraining.NearRadius", 0));
+    // twow-repo#601 turn_in hold (CLI-Deep 28.10.2026): an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B).
+    professionTrainingTurnInGateSkipSuppressed = config.GetIntDefault("AiPlayerbot.ProfessionTraining.TurnInGateSkipSuppressed", 0);
+    if (professionTrainingTurnInGateSkipSuppressed > 2)
+    {
+        sLog.outError("[ProfTravel] config key=TurnInGateSkipSuppressed value=%u result=off (0 off, 1 all, 2 cohort B)", professionTrainingTurnInGateSkipSuppressed);
+        professionTrainingTurnInGateSkipSuppressed = 0;
+    }
     professionUseToolBuy = config.GetIntDefault("AiPlayerbot.ProfessionUse.ToolBuy", 0);
     if (professionUseToolBuy > 2)
         professionUseToolBuy = 0;
@@ -1705,21 +1759,26 @@ bool PlayerbotAIConfig::Initialize()
         sRandomPlayerbotMgr.LoadBattleMastersCache();
 
     // twow-repo#601 R01-A/B (owner rule 18.10., twow-repo#615): the parsed values of the A/B switches the test arms prove in
-    // the running process (R01 steps, the switches the R01 arms pin, P3-a long, #342), one line per Initialize (start and
-    // config reload; an arm takes the line of its own start). No key, no state. A new A/B switch adds its entry here: the
+    // the running process (R01 steps, the switches the R01 arms pin, P3-a long, #342), one set of lines per Initialize
+    // (start and config reload; an arm takes the lines of its own start). The lines are numbered parts of at most kMaxLine
+    // characters, each entry whole in exactly one of them (OB-00 29.10.: the log path cut the single line at about 4096,
+    // see ConfigEchoPolicy.h). No key, no state. A new A/B switch adds its entry here: the
     // config key without "AiPlayerbot." (FormatLine prints the full key) and the parsed member. The entries are sorted by
     // key (byte order), so a new one goes in at its alphabetical place, not at the end: two PRs then only meet when their
     // keys are neighbours. config_echo_source_contract checks the order; the feature's own contract pins its entry.
     {
         using ai::config_echo::Value;
-        sLog.outString("%s", ai::config_echo::FormatLine({
+        for (std::string const& line : ai::config_echo::FormatLines({
             {"ActionLog.Guids.count", Value(uint32(actionLogGuids.size()))},
             {"ActivityTrace", Value(activityTrace)},
+            {"ActivityTrace.IdleDetail", Value(activityTraceIdleDetail)},
             {"ActivityTrace.StuckDetail", Value(activityTraceStuckDetail)},
             {"BotGroups.AdHoc.HelpUntilDone", Value(botGroupsAdhocHelpUntilDone)},
+            {"BotGroups.AdHoc.ScanBudgetUs", Value(botGroupsAdhocScanBudgetUs)},
             {"BotGroups.AdHoc.ScanSlices", Value(botGroupsAdhocScanSlices)},
             {"BotGroups.AdHoc.WorldThread", Value(botGroupsAdhocWorldThread)},
             {"BotGroups.Enabled", Value(botGroupsEnabled)},
+            {"BotGroups.WorldThreadDefer", Value(botGroupsWorldThreadDefer)},
             {"BotUpdateTrace", Value(botUpdateTrace)},
             {"CastWait.Preparing", Value(castWaitPreparing)},
             {"CustomRaceStartZones", Value(customRaceStartZones)},
@@ -1756,6 +1815,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Perf.RouteTimeTrace", Value(perfRouteTimeTrace)},
             {"ProfessionTraining.NearRadius", Value(professionTrainingNearRadius)},
             {"ProfessionTraining.Travel", Value(professionTrainingTravel)},
+            {"ProfessionTraining.TurnInGateSkipSuppressed", Value(professionTrainingTurnInGateSkipSuppressed)},
             {"ProfessionUse.ToolBuy", Value(professionUseToolBuy)},
             {"QuestFeasibility.Blocklist.count", Value(uint32(questFeasibilityBlocklist.size()))},
             {"QuestFeasibility.BlocklistWhileNoCustomStarts.count", Value(uint32(questFeasibilityBlocklistWhileNoCustomStarts.size()))},
@@ -1785,6 +1845,8 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestFirstProgression.TransientCountsAfter", Value(questFirstProgressionTransientCountsAfter)},
             {"QuestFirstProgression.TurnInParkFailures", Value(questFirstProgressionTurnInParkFailures)},
             {"QuestGroups.Enable", Value(questGroupsEnable)},
+            {"QuestGroups.OneHeavyStep", Value(questGroupsOneHeavyStep)},
+            {"QuestGroups.ScanBudgetUs", Value(questGroupsScanBudgetUs)},
             {"QuestGroups.ScanSlices", Value(questGroupsScanSlices)},
             {"QuestGroups.StagedOps", Value(questGroupsStagedOps)},
             {"QuestLoop.EmptyCampHold", Value(questLoopEmptyCampHold)},
@@ -1792,8 +1854,12 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestLoop.GiverTakerDone", Value(questLoopGiverTakerDone)},
             {"QuestLoop.InactiveAfterProgress", Value(questLoopInactiveAfterProgress)},
             {"QuestLoop.InactiveReselect", Value(questLoopInactiveReselect)},
+            {"QuestLoop.RelationArriveRpgTarget", Value(questLoopRelationArriveRpgTarget)},
+            {"QuestLoop.RelationWorkNoGrind", Value(questLoopRelationWorkNoGrind)},
+            {"QuestLoop.TurnInWorkDeathNotRoute", Value(questLoopTurnInWorkDeathNotRoute)},
             {"QuestRescue.KeepRequestWhenFull", Value(questRescueKeepRequestWhenFull)},
             {"Revive.SpiritHealerFull", Value(reviveSpiritHealerFull)},
+            {"RosterFarMove.ArriveSafe", Value(rosterFarMoveArriveSafe)},
             {"Rotation.CastLosGate", Value(rotationCastLosGate)},
             {"Rotation.CastStopFirst", Value(rotationCastStopFirst)},
             {"Rotation.DarkRuneGate", Value(rotationDarkRuneGate)},
@@ -1802,21 +1868,28 @@ bool PlayerbotAIConfig::Initialize()
             {"Rotation.FleeAway.Scope", Value(rotationFleeAwayScope)},
             {"Rotation.FollowUnstealth", Value(rotationFollowUnstealth)},
             {"Rotation.HunterMeleeStart", Value(rotationHunterMeleeStart)},
+            {"Rotation.InvalidTargetQuiet", Value(rotationInvalidTargetQuiet)},
+            {"Rotation.LosCacheMs", Value(rotationLosCacheMs)},
             {"Rotation.MeleeFleeBreak", Value(rotationMeleeFleeBreak)},
             {"Rotation.MeleeFleeBreak.Ranged", Value(rotationMeleeFleeBreakRanged)},
+            {"Rotation.MeleeSkipAttacking", Value(rotationMeleeSkipAttacking)},
+            {"Rotation.NeverPossibleSkip", Value(rotationNeverPossibleSkip)},
             {"Rotation.OomBackoff", Value(rotationOomBackoff)},
             {"Rotation.ReachDropEngagement", Value(rotationReachDropEngagement)},
             {"Rotation.ReachLosClose", Value(rotationReachLosClose)},
             {"Rotation.ReachPlayerMaster", Value(rotationReachPlayerMaster)},
             {"Rotation.RestGate", Value(rotationRestGate)},
             {"Rotation.SpecFromPath", Value(rotationSpecFromPath)},
+            {"Rotation.TankKitFromLevel", Value(rotationTankKitFromLevel)},
+            {"Rotation.TankRoguePoison", Value(rotationTankRoguePoison)},
             {"ThrownUsageFix", Value(thrownUsageFix)},
             {"Travel.RpgAreaLevelFromSpawn", Value(travelRpgAreaLevelFromSpawn)},
             {"ZoneExit.TurnInNearRadius", Value(zoneExitTurnInNearRadius)},
             {"ZoneExit.TurnInStallCounts", Value(zoneExitTurnInStallCounts)},
             {"ZoneExit.TurnInTravelStall", Value(zoneExitTurnInTravelStall)},
             {"ZoneExit.TurnInTravelStallCountsCombat", Value(zoneExitTurnInTravelStallCountsCombat)},
-        }).c_str());
+        }))
+            sLog.outString("%s", line.c_str());
     }
 
     sLog.outString("---------------------------------------");
@@ -2113,6 +2186,14 @@ void PlayerbotAIConfig::log(std::string fileName, const char* line)
     if (!line)
         return;
 
+    // s7r (BotGroups.WorldThreadDefer): inside a world-thread manager's scope the line goes to the bot and is written on its
+    // own thread - no wait on this mutex (shared with every bot thread) and no fflush on the world thread.
+    if (PlayerbotAI* target = ai::deferred_log::Target())
+    {
+        target->PostDeferredLog(fileName, line);
+        return;
+    }
+
     std::lock_guard<std::mutex> guard(m_logMtx);
 
     if (!isLogOpen(fileName))
@@ -2331,6 +2412,8 @@ void PlayerbotAIConfig::LoadTalentSpecs()
                 //Only add paths that have atleast 1 spec.
                 if (talentPath.talentSpec.size() > 0)
                 {
+                    // twow-repo#602 tank-kit path default: the main tree of the first link stands for the path when it has no tab key
+                    talentPath.firstLinkTree = talentPath.talentSpec.front().highestTree();
                     // twow-repo#602 R06a: the tab key and the main tree of the first (level 10) link must agree.
                     ++specPathCount;
                     if (talentPath.tab >= 0)
