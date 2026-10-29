@@ -589,6 +589,12 @@ public:
     // check uses effect mask 0 (any effect).
     bool TellError(std::string text) { return TellError(GetMaster(), text); }
     bool CanCastSpell(std::string name, Unit* target) { return CanCastSpell(name, target, 0); }
+    // twow-repo#602 (AiPlayerbot.Rotation.LosCacheMs, LosCachePolicy.h): the bot's last line-of-sight verdict to one target, kept for
+    // LosCacheMs (0 = off: nothing is kept, every caller queries as before). LosCacheGet: true with the verdict while fresh.
+    bool LosCacheGet(ObjectGuid guid, bool& inLos) const;
+    void LosCacheSet(ObjectGuid guid, bool inLos);
+    // IsWithinLOSInMap(target, true) through the cache.
+    bool IsWithinLosCached(Unit* target);
     uint32 GetEquipStatsValue(Player* player);
     bool HasSkill(SkillType skill);
     bool IsAllowedCommand(std::string text);
@@ -1313,6 +1319,9 @@ protected:
     ObjectGuid combatIdleVictim;   // twow-repo#541 (audit A17): victim of a pending stretched wait (empty = none)
     bool oomBackoffPending = false;   // twow-repo#602 ROT-01 3c-B: an out-of-mana backoff wait is running
     uint32 tankKitLevel = 0;   // twow-repo#602 (Rotation.TankKitFromLevel): the level the strategies were last built for; a crossing of the tank key level rebuilds them
+    ObjectGuid losCacheGuid;   // twow-repo#602 (Rotation.LosCacheMs): the target of the cached line-of-sight verdict
+    bool losCacheInLos = true;   // the cached verdict
+    uint32 losCacheAt = 0;   // when it was taken (WorldTimer ms)
     ai::cast_wait::Watch castWait;   // twow-repo#602 (AiPlayerbot.CastWait.Preparing): pending wait for the bot's own PREPARING cast
     ai::teleport_cast::HoldWatch teleportHold;   // twow-repo#333 finding 4: pending travel / unstuck / zone-escape hold for a teleport
     bool isPlayerFriend = false;
