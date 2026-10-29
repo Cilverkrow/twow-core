@@ -343,6 +343,48 @@ void AutoLearnSpellAction::GrantShamanTotems(std::ostringstream* out)
     }
 }
 
+bool AutoLearnSpellAction::GrantSpecKitForTestSeat()
+{
+    // Only a seat whose path HAS a kit at its level (today the rogue tank 4.3 from 12): every other seat - dps paths of
+    // classes with managed auras included - is left exactly as before, without a line.
+    std::uint8_t const path = ai::spec_aura::PathFor(bot->getClass(), AiFactory::GetPremadePathName(bot));
+    std::vector<uint32> const kit = path ? ai::spec_aura::WantedKit(bot->getClass(), path, bot->GetLevel()) : std::vector<uint32>();
+    if (kit.empty())
+        return false;
+
+    // The kit belongs to SpecAura: switched off, the seat stays without it. Say so - an A/B on such a realm would test a
+    // tank without its taunt.
+    if (!sPlayerbotAIConfig.specAuraEnabled)
+    {
+        sLog.outBasic("[ClassGrant] state=skip source=dc_seat bot=%u level=%u path=%u reason=spec_aura_off",
+            bot->GetGUIDLow(), bot->GetLevel(), uint32(path));
+        return false;
+    }
+
+    auto const knownKit = [&]() {
+        uint32 n = 0;
+        for (uint32 spellId : kit)
+            if (bot->HasSpell(spellId))
+                ++n;
+        return n;
+    };
+    uint32 const before = knownKit();
+    GrantSpecAuras();
+    uint32 const after = knownKit();
+    // kit= counts the path kit only (what GrantSpecAuras manages besides it logs its own [SpecAura] lines).
+    sLog.outBasic("[ClassGrant] state=%s source=dc_seat bot=%u level=%u path=%u kit=%u known_before=%u known_after=%u",
+        after > before ? "granted" : "known", bot->GetGUIDLow(), bot->GetLevel(), uint32(path), uint32(kit.size()), before, after);
+    return true;
+}
+
+bool ai::GrantSpecKitFor(PlayerbotAI* ai)
+{
+    if (!ai || !ai->GetBot())
+        return false;
+    AutoLearnSpellAction action(ai);
+    return action.GrantSpecKitForTestSeat();
+}
+
 void AutoLearnSpellAction::GrantSpecAuras()
 {
     std::uint8_t const path = ai::spec_aura::PathFor(bot->getClass(), AiFactory::GetPremadePathName(bot));
