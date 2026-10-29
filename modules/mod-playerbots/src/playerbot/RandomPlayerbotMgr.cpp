@@ -70,6 +70,7 @@
 #include "playerbot/DarkRuneGatePolicy.h"   // twow-repo#602 ROT-01 3c (Rotation.DarkRuneGate): [DarkRuneGate] minute line
 #include "playerbot/ReachLosPolicy.h"   // twow-repo#594 (Rotation.ReachLosClose): [ReachLos] minute line
 #include "playerbot/CastLosGatePolicy.h"   // twow-repo#602 (Rotation.CastLosGate): [CastLosGate] minute line
+#include "playerbot/LosCachePolicy.h"   // twow-repo#602 (Rotation.LosCacheMs): cached= / reach_early= in the [CastLosGate] line
 #include "playerbot/CastWhileMovingPolicy.h"   // twow-repo#602 (Rotation.CastStopFirst): [CastStopFirst] minute line
 #include "playerbot/MeleeSkipPolicy.h"   // twow-repo#602 (Rotation.MeleeSkipAttacking): [MeleeSkip] minute line
 #include "playerbot/InvalidTargetPolicy.h"   // twow-repo#602 (Rotation.InvalidTargetQuiet): [InvalidTarget] minute line
@@ -1272,7 +1273,9 @@ void ReportNeverPossible()
 
 // twow-repo#602 (AiPlayerbot.Rotation.CastLosGate): one [CastLosGate] line per minute - casts made IMPOSSIBLE by a LINE_OF_SIGHT
 // verdict (gated), current targets dropped because 8.2 marked them unreachable (dropped), unreachable units skipped by target
-// selection (skipped). Nothing is written when off.
+// selection (skipped). twow-repo#602 (Rotation.LosCacheMs, OB-00 29.10.2026), appended last so older parsers stay valid: casts made
+// IMPOSSIBLE from the cached out-of-sight verdict without a CheckCast (cached), and reach answers "in sight and in range" before
+// their CanCastSpell (reach_early). Nothing is written when the gate is off.
 void ReportCastLosGate()
 {
     static uint32 lastReport = 0;
@@ -1280,10 +1283,12 @@ void ReportCastLosGate()
     if (!sPlayerbotAIConfig.rotationCastLosGate || now < lastReport + 60)
         return;
     lastReport = now;
-    sLog.outBasic("[CastLosGate] mode=%u gated=%llu dropped=%llu skipped=%llu", sPlayerbotAIConfig.rotationCastLosGate,
+    sLog.outBasic("[CastLosGate] mode=%u gated=%llu dropped=%llu skipped=%llu cached=%llu reach_early=%llu", sPlayerbotAIConfig.rotationCastLosGate,
         (unsigned long long)ai::cast_los_gate::gated.exchange(0, std::memory_order_relaxed),
         (unsigned long long)ai::cast_los_gate::dropped.exchange(0, std::memory_order_relaxed),
-        (unsigned long long)ai::cast_los_gate::skipped.exchange(0, std::memory_order_relaxed));
+        (unsigned long long)ai::cast_los_gate::skipped.exchange(0, std::memory_order_relaxed),
+        (unsigned long long)ai::los_cache::cached.exchange(0, std::memory_order_relaxed),
+        (unsigned long long)ai::los_cache::reachEarly.exchange(0, std::memory_order_relaxed));
 }
 
 // twow-repo#602 (AiPlayerbot.Rotation.CastStopFirst): one [CastStopFirst] line per minute - cast-time / channelled casts of a
