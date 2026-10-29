@@ -941,6 +941,18 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[QuestFirstRoute] config key=SkipSkillLockedObjectives value=%u result=off (0 off, 1 all, 2 cohort B)", questFirstProgressionSkipSkillLockedObjectives);
         questFirstProgressionSkipSkillLockedObjectives = 0;
     }
+    // twow-repo#601 cand4 (i) StaleObjectiveFilter: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B); the parameters
+    // are clamped (failures and bots fit the 8 failures kept per objective; window and mark 60 s .. 1 day).
+    questFirstProgressionStaleObjectiveFilter = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter", 0);
+    if (questFirstProgressionStaleObjectiveFilter > 2)
+    {
+        sLog.outError("[StaleObjective] config key=StaleObjectiveFilter value=%u result=off (0 off, 1 all, 2 cohort B)", questFirstProgressionStaleObjectiveFilter);
+        questFirstProgressionStaleObjectiveFilter = 0;
+    }
+    questFirstProgressionStaleObjectiveFailures = std::min<uint32>(8, uint32(std::max<int32>(1, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter.Failures", 4))));
+    questFirstProgressionStaleObjectiveBots = std::min<uint32>(8, uint32(std::max<int32>(1, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter.Bots", 3))));
+    questFirstProgressionStaleObjectiveWindowSeconds = std::min<uint32>(86400, uint32(std::max<int32>(60, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter.WindowSeconds", 3600))));
+    questFirstProgressionStaleObjectiveSeconds = std::min<uint32>(86400, uint32(std::max<int32>(60, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter.Seconds", 3600))));
     // twow-repo#601 S5a F4 (OB-00 24.10.2026): the backoff walk toward the next rung, 0 = off, 1..10.
     questFirstProgressionBandWalkAfterEmptySearches = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.BandWalkAfterEmptySearches", 0);
     if (questFirstProgressionBandWalkAfterEmptySearches > 10)
@@ -1831,6 +1843,11 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestFirstProgression.S1Cohort", Value(questFirstProgressionS1Cohort)},
             {"QuestFirstProgression.S3Cohort", Value(questFirstProgressionS3Cohort)},
             {"QuestFirstProgression.SkipSkillLockedObjectives", Value(questFirstProgressionSkipSkillLockedObjectives)},
+            {"QuestFirstProgression.StaleObjectiveFilter", Value(questFirstProgressionStaleObjectiveFilter)},
+            {"QuestFirstProgression.StaleObjectiveFilter.Bots", Value(questFirstProgressionStaleObjectiveBots)},
+            {"QuestFirstProgression.StaleObjectiveFilter.Failures", Value(questFirstProgressionStaleObjectiveFailures)},
+            {"QuestFirstProgression.StaleObjectiveFilter.Seconds", Value(questFirstProgressionStaleObjectiveSeconds)},
+            {"QuestFirstProgression.StaleObjectiveFilter.WindowSeconds", Value(questFirstProgressionStaleObjectiveWindowSeconds)},
             {"QuestFirstProgression.TransientCountsAfter", Value(questFirstProgressionTransientCountsAfter)},
             {"QuestFirstProgression.TurnInParkFailures", Value(questFirstProgressionTurnInParkFailures)},
             {"QuestGroups.Enable", Value(questGroupsEnable)},

@@ -707,6 +707,19 @@ namespace ai
 
 		std::unordered_map<std::pair<uint32, uint32>, std::vector<MapTransfer>, boost::hash<std::pair<uint32, uint32>>> mapTransfersMap;
 	};
+
+	// twow-repo#601 cand4 (i) (AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter, StaleObjectivePolicy.h): the realm-wide stale
+	// objective memory. One store in TravelMgr.cpp behind one short std::mutex (no game call inside the lock). With the switch 0 every
+	// function returns at once.
+	namespace stale_objective
+	{
+		// A failure (work timeout, pos-stuck, emptied camp, death) of a roster bot on its own at this objective; may mark it.
+		void NoteObjectiveFailure(Player* bot, PlayerbotAI* botAI, QuestObjectiveTravelDestination const* objective, char const* reason);
+		// A quest credit (kill or item) of any bot: the quest's objectives are cleared.
+		void NoteQuestCredit(Player* bot, uint32 questId);
+		// Marked now (the skip itself is cohort-gated by the caller).
+		bool IsObjectiveStale(QuestObjectiveTravelDestination const* objective);
+	}
 }
 
 #define sTravelMgr MaNGOS::Singleton<TravelMgr>::Instance()

@@ -38,6 +38,9 @@ namespace ai
         // twow-repo#601 (QuestFirstProgression.SkipSkillLockedObjectives): objects skipped because their lock needs a profession the bot
         // lacks; an own [QuestFirstRoute] state=skill_locked line after an empty search, only when > 0.
         uint32 lastSkillLocked = 0;
+        // twow-repo#601 cand4 (i) (QuestFirstProgression.StaleObjectiveFilter): objectives skipped as realm-wide stale; an own
+        // [QuestFirstRoute] state=stale_objective line after an empty search, only when > 0.
+        uint32 lastStaleObjective = 0;
         // #421 B: no quest target - widen the quest search.
         void WidenQuestSearch(uint32 ranges);
         // twow-repo#601 S5a (AiPlayerbot.QuestFirstProgression.BandLadder): the band step from the empty quest search
