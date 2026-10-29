@@ -1,0 +1,102 @@
+cmake_policy(VERSION 3.16)
+if (NOT DEFINED TW_CORE_ROOT)
+  message(FATAL_ERROR "TW_CORE_ROOT is required")
+endif()
+
+# twow-repo#575 F9 / F-b V1 (owner 29.10.2026, Ä17 "Zwischen-Update"): the 17 spawns around graveyard 149 on Blackstone
+# Island move into their camps (>= 96 yd), positions only.
+# 1. LF, issue, owner quote, rollback, backup before the moves, end-state CHECK; no DELETE / DROP / INSERT INTO creature.
+# 2. Exactly the 17 guids: each moved by one UPDATE that is guarded by guid, entry, map 1 and "still within 80 yd" and that
+#    sets only position_x/y/z; every target lies >= 90 yd from the graveyard point (-124.92 / -7550.25).
+# 3. The CHECK requires that none of the 17 stands within 80 yd any more.
+set(mig "${TW_CORE_ROOT}/sql/database_updates/20261029200000_world.sql")
+set(guids 2579591 2579592 2579593 2579594 2579596 2579597 2579716 2579721 2579733 2579734 2579735 2579739 2579740
+          2579743 2579744 2579745 2579746)
+set(guard "AND SQRT(POW(`position_x` + 124.92, 2) + POW(`position_y` + 7550.25, 2)) < 80")
+
+function(require_text text needle label)
+  string(FIND "${text}" "${needle}" at)
+  if (at EQUAL -1)
+    message(FATAL_ERROR "#575 F-b V1 ${label}: missing ${needle}")
+  endif()
+endfunction()
+
+function(require_order text first second label)
+  string(FIND "${text}" "${first}" a)
+  string(FIND "${text}" "${second}" b)
+  if (a EQUAL -1 OR b EQUAL -1 OR NOT a LESS b)
+    message(FATAL_ERROR "#575 F-b V1 ${label}: '${first}' must come before '${second}'")
+  endif()
+endfunction()
+
+if (NOT EXISTS "${mig}")
+  message(FATAL_ERROR "#575 F-b V1: missing ${mig}")
+endif()
+file(READ "${mig}" text)
+# CR check on the raw bytes (a text read on a Windows host drops the CR).
+file(READ "${mig}" hex HEX)
+if (hex MATCHES "^(..)*0d")
+  message(FATAL_ERROR "#575 F-b V1: CRLF")
+endif()
+
+# 1. header and frame
+require_text("${text}" "twow-repo#575 F9 / F-b V1" "issue")
+require_text("${text}" "\"Setzte bitte v1 und v2 um.\"" "owner quote")
+require_text("${text}" "-- Rollback (exact): UPDATE `creature` c JOIN `creature_bak_gy149` b ON b.`guid` = c.`guid`" "rollback")
+require_text("${text}" "CREATE TABLE IF NOT EXISTS `creature_bak_gy149` LIKE `creature`;" "backup table")
+require_order("${text}" "INSERT IGNORE INTO `creature_bak_gy149`" "UPDATE `creature` SET" "backup before the moves")
+require_text("${text}" "CREATE TEMPORARY TABLE IF NOT EXISTS `tmp_check_gy149` (`ok` TINYINT(1) NOT NULL CHECK (`ok` = 1));" "end-state check")
+string(REGEX REPLACE "(^|\n)--[^\n]*" "\\1" body "${text}")
+string(TOUPPER "${body}" upper)
+foreach (forbidden "DELETE " "DROP TABLE" "TRUNCATE" "REPLACE INTO" "ALTER TABLE" "INSERT INTO `CREATURE`")
+  string(FIND "${upper}" "${forbidden}" at)
+  if (NOT at EQUAL -1)
+    message(FATAL_ERROR "#575 F-b V1: forbidden statement ${forbidden}")
+  endif()
+endforeach()
+
+# 2. one guarded position-only UPDATE per guid, target >= 90 yd
+string(REGEX MATCHALL "UPDATE `creature` SET [^;]*" updates "${body}")
+list(LENGTH updates n)
+if (NOT n EQUAL 17)
+  message(FATAL_ERROR "#575 F-b V1: expected 17 UPDATEs, found ${n}")
+endif()
+foreach (g IN LISTS guids)
+  set(hit "")
+  foreach (u IN LISTS updates)
+    if (u MATCHES "WHERE `guid` = ${g} AND `id` = [0-9]+ AND `map` = 1")
+      set(hit "${u}")
+    endif()
+  endforeach()
+  if (hit STREQUAL "")
+    message(FATAL_ERROR "#575 F-b V1: no guarded UPDATE for guid ${g}")
+  endif()
+  require_text("${hit}" "${guard}" "guard of ${g}")
+  if (NOT hit MATCHES "^UPDATE `creature` SET `position_x` = (-?[0-9.]+), `position_y` = (-?[0-9.]+), `position_z` = -?[0-9.]+\n WHERE")
+    message(FATAL_ERROR "#575 F-b V1: guid ${g} must set only position_x/y/z")
+  endif()
+  # target distance >= 90 yd (squared, integer yards: cmake math has no floats)
+  string(REGEX REPLACE "\\..*" "" tx "${CMAKE_MATCH_1}")
+  string(REGEX REPLACE "\\..*" "" ty "${CMAKE_MATCH_2}")
+  math(EXPR dx "${tx} + 125")
+  math(EXPR dy "${ty} + 7550")
+  math(EXPR d2 "${dx} * ${dx} + ${dy} * ${dy}")
+  if (d2 LESS 8100)
+    message(FATAL_ERROR "#575 F-b V1: guid ${g} target (${tx} / ${ty}) is closer than 90 yd to graveyard 149")
+  endif()
+endforeach()
+string(REGEX MATCHALL "`guid` IN \\([0-9, ]+\\)" lists "${body}")
+foreach (l IN LISTS lists)
+  foreach (g IN LISTS guids)
+    require_text("${l}" "${g}" "guid list (backup / CHECK)")
+  endforeach()
+endforeach()
+list(LENGTH lists nl)
+if (NOT nl EQUAL 2)
+  message(FATAL_ERROR "#575 F-b V1: expected the guid list in the backup and the CHECK, found ${nl}")
+endif()
+
+# 3. end state
+require_text("${body}" "${guard}) = 0;" "CHECK: none of the 17 within 80 yd")
+
+message(STATUS "gy149_v1_575_contract: ok")
