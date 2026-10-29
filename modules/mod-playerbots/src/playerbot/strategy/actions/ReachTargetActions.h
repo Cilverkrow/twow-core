@@ -10,6 +10,7 @@
 #include "GenericSpellActions.h"
 #include "playerbot/PlayerbotFactory.h"
 #include "playerbot/ReachLosPolicy.h"   // twow-repo#594 (Rotation.ReachLosClose)
+#include "playerbot/LosCachePolicy.h"   // twow-repo#602 (Rotation.LosCacheMs)
 
 namespace ai
 {
@@ -162,6 +163,17 @@ namespace ai
                     // Do not move while casting
                     if (!bot->IsNonMeleeSpellCasted(true, false, true))
                     {
+                        // twow-repo#602 (AiPlayerbot.Rotation.LosCacheMs, LosCachePolicy.h): in sight and within range is "not useful"
+                        // whatever CanCastSpell says (both branches below answer false then), so it comes first, from the cached sight
+                        // verdict, without the Spell object and CheckCast of CanCastSpell. Off (0) = the order below, unchanged.
+                        if (sPlayerbotAIConfig.rotationLosCacheMs &&
+                            ai::los_cache::ReachInPlace(true, ai->IsWithinLosCached(target), bot->GetDistance(target, true, DIST_CALC_COMBAT_REACH), range))
+                        {
+                            NoteLos(target, true);
+                            ai::los_cache::reachEarly.fetch_add(1, std::memory_order_relaxed);
+                            return false;
+                        }
+
                         // Check if the spell for which the reach action is used for can be casted
                         if (!spellName.empty() && !ai->CanCastSpell(spellName, target, true, nullptr, true, true, true))
                         {
@@ -169,7 +181,9 @@ namespace ai
                         }
 
                         // Force move if not in los
-                        if (bot->IsWithinLOSInMap(target, true))
+                        // twow-repo#602 (Rotation.LosCacheMs): the sight query through the cache when it is on
+                        bool const inLos = sPlayerbotAIConfig.rotationLosCacheMs ? ai->IsWithinLosCached(target) : bot->IsWithinLOSInMap(target, true);
+                        if (inLos)
                         {
                             // twow-repo#594 (ReachLosClose, CLI-ROT re-review): back in sight - Execute does not run again when
                             // the bot is already in range, so the episode's in_los_after is noted here as well.

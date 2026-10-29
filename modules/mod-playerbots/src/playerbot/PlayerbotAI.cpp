@@ -62,6 +62,7 @@
 #include "playerbot/GrindCapPolicy.h"
 #include "playerbot/SpellPowerGatePolicy.h"
 #include "playerbot/TankKitPolicy.h"
+#include "playerbot/LosCachePolicy.h"   // twow-repo#602 (Rotation.LosCacheMs): the line-of-sight verdict cache
 #include "Movement/spline/MoveSplineInitArgs.h"
 #include "Maps/InstanceData.h"
 #include "ChatHelper.h"
@@ -6266,6 +6267,35 @@ SpellCastResult PlayerbotAI::CheckSpellTargetAlignment(SpellEntry const* spellIn
         return SPELL_FAILED_TARGET_FRIENDLY;
 
     return SPELL_CAST_OK;
+}
+
+// twow-repo#602 (AiPlayerbot.Rotation.LosCacheMs, LosCachePolicy.h): one line-of-sight verdict per bot, kept for LosCacheMs, so the
+// cast checks and the reach prerequisites of a pass do not ask the VMap about the same unseen target again and again.
+bool PlayerbotAI::LosCacheGet(ObjectGuid guid, bool& inLos) const
+{
+    if (guid != losCacheGuid || !ai::los_cache::Fresh(sPlayerbotAIConfig.rotationLosCacheMs, WorldTimer::getMSTimeDiff(losCacheAt, WorldTimer::getMSTime())))
+        return false;
+    inLos = losCacheInLos;
+    return true;
+}
+
+void PlayerbotAI::LosCacheSet(ObjectGuid guid, bool inLos)
+{
+    if (!sPlayerbotAIConfig.rotationLosCacheMs)
+        return;
+    losCacheGuid = guid;
+    losCacheInLos = inLos;
+    losCacheAt = WorldTimer::getMSTime();
+}
+
+bool PlayerbotAI::IsWithinLosCached(Unit* target)
+{
+    bool inLos = true;
+    if (LosCacheGet(target->GetObjectGuid(), inLos))
+        return inLos;
+    inLos = bot->IsWithinLOSInMap(target, true);
+    LosCacheSet(target->GetObjectGuid(), inLos);
+    return inLos;
 }
 
 bool PlayerbotAI::CanCastSpell(std::string name, Unit* target, uint8 effectMask, Item* itemTarget, bool ignoreRange, bool ignoreInCombat, bool ignoreMount, SpellCastResult* checkResult)

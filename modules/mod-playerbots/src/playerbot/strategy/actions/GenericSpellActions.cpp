@@ -9,6 +9,7 @@
 #include "playerbot/RotCastPolicy.h"
 #include "playerbot/RotCastTrace.h"
 #include "playerbot/NeverPossiblePolicy.h"
+#include "playerbot/LosCachePolicy.h"
 
 using namespace ai;
 
@@ -183,12 +184,27 @@ bool CastSpellAction::isPossible()
     // unreachable is dropped (its reach is USELESS from then on). Off = the paths below, unchanged.
     if (ai::cast_los_gate::Applies(sPlayerbotAIConfig.rotationCastLosGate, bot->GetGUIDLow()))
     {
+        // twow-repo#602 (AiPlayerbot.Rotation.LosCacheMs, LosCachePolicy.h): a target the cache knows is out of sight is IMPOSSIBLE at
+        // once - no Spell, no CheckCast, no VMap query for every alternative of the node; a spell that ignores line of sight (or whose
+        // entry is unknown) takes the full check.
+        SpellEntry const* const losSpell = spellId ? sServerFacade.LookupSpellInfo(spellId) : nullptr;
+        bool const ignoresLos = !losSpell || losSpell->HasAttribute(SPELL_ATTR_EX2_IGNORE_LOS);
+        bool cachedInLos = true;
+        bool const fresh = ai->LosCacheGet(spellTarget->GetObjectGuid(), cachedInLos);
+        if (ai::los_cache::SkipCast(fresh, true, cachedInLos, ignoresLos))
+        {
+            ai::los_cache::cached.fetch_add(1, std::memory_order_relaxed);
+            return sPlayerbotAIConfig.rotationCastTrace ? RotEval(false, ai::rot_cast::EvalCode(false, uint8(SPELL_FAILED_LINE_OF_SIGHT))) : false;
+        }
+
         SpellCastResult losResult = SPELL_CAST_OK;
         bool losPossible = ai->CanCastSpell(spellName, spellTarget, 0, nullptr, true, false, false, &losResult);
         if (losPossible && losResult == SPELL_FAILED_LINE_OF_SIGHT)
         {
             losPossible = false;
             ai::cast_los_gate::gated.fetch_add(1, std::memory_order_relaxed);
+            if (!ignoresLos)
+                ai->LosCacheSet(spellTarget->GetObjectGuid(), false);   // twow-repo#602 (Rotation.LosCacheMs): remember the verdict
             if (ai->IsUnreachableTarget(spellTarget->GetObjectGuid()) && AI_VALUE(Unit*, "current target") == spellTarget)
             {
                 SET_AI_VALUE(Unit*, "current target", nullptr);
