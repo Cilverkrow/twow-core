@@ -970,6 +970,14 @@ public:
     // twow-repo#601 (CLI-Deep 26.10.2026, cr2-C GO diagnosis): a game object quest objective whose lock opens only with a profession
     // skill the bot lacks (skill, value or tool) is no quest target. Mode 0 off (default), 1 all, 2 cohort B.
     uint32 questFirstProgressionSkipSkillLockedObjectives = 0;
+    // twow-repo#601 cand4 (i) (CLI-Deep 29.10.2026, OB-00 after CLI-PATH as-1-why; StaleObjectivePolicy.h): an objective with Failures
+    // failures from at least Bots distinct roster bots within WindowSeconds and no credit of its quest since is skipped for Seconds;
+    // any credit of the quest clears it. Mode 0 off (default), 1 all, 2 cohort B (the skip only; failures of every bot count).
+    uint32 questFirstProgressionStaleObjectiveFilter = 0;
+    uint32 questFirstProgressionStaleObjectiveFailures = 4;       // 1..8
+    uint32 questFirstProgressionStaleObjectiveBots = 3;           // 1..8
+    uint32 questFirstProgressionStaleObjectiveWindowSeconds = 3600;
+    uint32 questFirstProgressionStaleObjectiveSeconds = 3600;
     // twow-repo#601 S5a F4 (OB-00 24.10.2026, owner D1 "rumstehen ist keine Option"): from this many quest searches in a row
     // without a route on (the F1 streak), a search that does not step walks toward the rung the step would take until the
     // route backoff ends. 0 = off (default), 1..10; other values act like 0.
