@@ -13,6 +13,9 @@
 #include "playerbot/QuestGrindModePolicy.h"
 #include "playerbot/QuestFirstOrderPolicy.h"   // twow-repo#601 decision order (Grind.QuestFirstOrder)
 #include "playerbot/GrindNeighbourPolicy.h"   // twow-repo#602 #2 (Grind.NeighbourAware)
+#include "playerbot/CohortPolicy.h"
+#include "playerbot/QuestLoopPolicy.h"   // twow-repo#601 turn_in hold (QuestLoop.RelationWorkNoGrind)
+#include "playerbot/TravelMgr.h"
 #include "CreatureGroups.h"
 #include "World.h"
 
@@ -155,6 +158,11 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
     // #307: low-level roster bots grind at most GrindCap.LowLevelMargin levels
     // above themselves and skip creatures that killed them repeatedly.
     bool const rosterOnItsOwn = sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster();
+    // twow-repo#601 turn_in hold (AiPlayerbot.QuestLoop.RelationWorkNoGrind, CLI-Deep 28.10.2026): working at a quest giver / taker
+    // whose turn-in / accept is still open, a roster bot on its own (no group) skips candidates without quest need, so "attack
+    // anything" no longer wins over the hand-in (41747 / 62634). Attackers were taken above. Off: false, nothing else read.
+    bool const relationWorkOpen = ai::cohort::Applies(sPlayerbotAIConfig.questLoopRelationWorkNoGrind, bot->GetGUIDLow()) &&
+        travelTargetWorking && travelTarget && !group && rosterOnItsOwn && QuestRelationOpen(bot, travelTarget->GetDestination());
     // #422: a bot in a death series grinds nothing above its level.
     int const maxLevelsAbove = ai::death_series::GrindMargin(rosterOnItsOwn && ai->IsCautious(),
         grind_cap::MaxLevelsAbove(rosterOnItsOwn, bot->GetLevel(),
@@ -354,6 +362,11 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
 
         if (entry && !needForQuest)
         {
+            if (ai::quest_loop::RelationWorkGrindSkipped(relationWorkOpen, needForQuest))
+            {
+                logGrind(unit, "ignored (QuestLoop.RelationWorkNoGrind: the hand-in / accept at the NPC first).");
+                continue;
+            }
             // twow-repo#601 S2 R4 (GrindMode 1, OB-10 rev. 2): a plain grind candidate of the gap filler's population (no quest
             // need, not on the bot) needs its level inside the window; attackers (loop above), creatures on the bot and quest
             // mobs - grey ones too - stay. Before any urand of the candidate. GrindMode 0 / 2: gapGrind is false.

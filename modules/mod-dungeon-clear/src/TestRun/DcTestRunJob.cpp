@@ -13,6 +13,7 @@
 #include <ctime>
 #include <optional>
 #include <set>
+#include <string_view>
 
 #include "CharacterCache.h"
 #include "Chat.h"
@@ -369,7 +370,8 @@ std::unique_ptr<DcTestRunJob> DcTestRunJob::Create(Player* gm, DcTestDungeonRegi
                                                    uint32 levelOverride, uint32 seed, bool heroic,
                                                    DcTestGearTiers::Spec const& gear,
                                                    std::unordered_set<ObjectGuid> const& reservedGuids,
-                                                   std::string const& planId, std::string* err)
+                                                   std::string const& planId, std::string* err,
+                                                   std::uint8_t tankClass)
 {
     // Caller (DcTestRunManager::Start) has already validated the registry row
     // (including that heroic is only requested where heroicLevel is set) and
@@ -398,7 +400,7 @@ std::unique_ptr<DcTestRunJob> DcTestRunJob::Create(Player* gm, DcTestDungeonRegi
     job->_record.gearIlvl = job->_gear.ilvl;
     job->_record.gearQuality = job->_gear.quality;
 
-    std::array<DcTestComp::Slot, DcTestComp::kPartySize> const comp = DcTestComp::BuildComp(seed);
+    std::array<DcTestComp::Slot, DcTestComp::kPartySize> const comp = DcTestComp::BuildComp(seed, tankClass);
     for (DcTestComp::Slot const& c : comp)
     {
         Slot s;
@@ -511,6 +513,15 @@ std::unique_ptr<DcTestRunJob> DcTestRunJob::Create(Player* gm, DcTestDungeonRegi
     for (Slot& slot : job->_slots)
     {
         ObjectGuid guid = claim(slot.classId);
+        // CLI-GRP G2: a forced tank seat (`tank=<class>`) is never substituted - a run of another tank class would
+        // quietly sit in the wrong arm of the comparison. It fails its set-up instead, naming the class.
+        if (!guid && tankClass && &slot == &job->_slots.front())
+        {
+            if (err)
+                *err = std::string("no available ") + ClassToken(slot.classId) +
+                       " for the forced tank seat (tank=" + ClassToken(slot.classId) + ", no substitution)";
+            return nullptr;
+        }
         if (!guid)
         {
             for (DcTestComp::Slot const& alt : DcTestComp::RolePool(slot.role))
@@ -665,7 +676,9 @@ std::unique_ptr<DcTestRunJob> DcTestRunJob::CreateFromRoster(Player* gm,
             "c.position_y = h.position_y, c.position_z = h.position_z "
             "WHERE c.guid = %u AND c.online = 0",
             slot.guid.GetCounter());
-        sRandomPlayerbotMgr.AddPlayerBot(slot.guid, 0);
+        // CLI-GRP G1 probe 28.10.2026: a refused login (persistent roster on) is recorded, TickSpawning ends on it.
+        if (!sRandomPlayerbotMgr.AddPlayerBot(slot.guid, 0))
+            job->_loginRefused += (job->_loginRefused.empty() ? "" : ", ") + slot.rosterName;
     }
 
     std::string names;
@@ -878,6 +891,13 @@ void DcTestRunJob::Tick(uint32 diff, bool& provisionBudget)
 
 void DcTestRunJob::TickSpawning()
 {
+    if (!_loginRefused.empty())
+    {
+        FailSetup(DcTestPool::LoginRefusal("pool characters (" + _loginRefused + ")",
+                                           sPlayerbotAIConfig.persistentActiveRosterEnabled));
+        return;
+    }
+
     bool allIn = true;
     for (Slot const& slot : _slots)
     {
@@ -1994,6 +2014,20 @@ void DcTestRunJob::TrackEngagement(Player* tank)
         return;
 
     DcTestRun::EngagementSample sample;
+    // schema 13 (DcAggroTally.h): a creature on a member other than the TANK SEAT - the slot with role "tank" (the leader
+    // on pool runs; on a hand-picked roster the marked tank, pre-review M2) - and every roster boss in the sample.
+    if (!_aggroTankGuid)
+    {
+        _aggroTankGuid = _tankGuid;
+        for (Slot const& slot : _slots)
+            if (slot.role && std::string_view(slot.role) == "tank")
+            {
+                _aggroTankGuid = slot.guid;
+                break;
+            }
+    }
+    bool nonTankAttacked = false;
+    std::set<uint32> bossesNow;
 
     auto rosterName = [this](uint32 entry) -> std::string const*
     {
@@ -2011,6 +2045,8 @@ void DcTestRunJob::TrackEngagement(Player* tank)
         if (!creature)
             return;
         std::string const* named = rosterName(creature->GetEntry());
+        if (named)
+            bossesNow.insert(creature->GetEntry());
         if (sample.bossName.empty() &&
             (named || creature->IsWorldBoss()
              /* no IsDungeonBoss flag on 1.12 - the roster names, fed from our
@@ -2040,7 +2076,12 @@ void DcTestRunJob::TrackEngagement(Player* tank)
         // healer, or anyone the pack peeled onto).
         consider(member->GetVictim());
         for (Unit const* attacker : member->getAttackers())
+        {
             consider(attacker);
+            Creature const* c = attacker && attacker->IsAlive() ? attacker->ToCreature() : nullptr;
+            if (member->GetObjectGuid() != _aggroTankGuid && c && !c->IsCritter() && !c->IsTotem())
+                nonTankAttacked = true;
+        }
     };
 
     scan(tank);
@@ -2050,6 +2091,54 @@ void DcTestRunJob::TrackEngagement(Player* tank)
                 scan(member);
 
     _engaged = DcTestRun::UpdateEngagement(_engaged, sample);
+
+    // CLI-GRP 28.10.2026 (schema 13, owner: "tanks have to perform"; descriptive in G1 phase D): aggro loss over the run
+    // and the open pull, and when the party's current engagement with a boss began (BossKill::engageT).
+    // The tank down (dead, or not on the party's map): nobody holds aggro by design - tankDownTicks, never loss (M1).
+    Player* const seat = ObjectAccessor::FindPlayer(_aggroTankGuid);
+    bool const tankUp = seat && seat->IsAlive() && seat->IsInWorld() && seat->GetMapId() == tank->GetMapId();
+    _aggro.Observe(sample.anyAliveInCombat, nonTankAttacked, tankUp);
+    _record.aggroCombatTicks = _aggro.combatTicks;
+    _record.aggroLossTicks = _aggro.lossTicks;
+    _record.aggroLossEvents = _aggro.lossEvents;
+    _record.aggroTankDownTicks = _aggro.tankDownTicks;
+    if (_pullOpen && sample.anyAliveInCombat)   // the tick a new pull opens counts to the old one (TrackPulls runs next)
+    {
+        ++_pullEntry.combatTicks;
+        if (nonTankAttacked && tankUp)
+            ++_pullEntry.aggroLossTicks;
+    }
+    // Every roster boss in the sample starts an engagement when it was not seen for kEngageGraceS (a phase change, a
+    // cast at range or an untargetable stretch is no new fight - pre-review M3/m1); a kill takes the start (engageT).
+    uint32 const nowS = _totalMs / 1000;
+    for (uint32 entry : bossesNow)
+    {
+        auto const seen = _bossLastSeenS.find(entry);
+        if (seen == _bossLastSeenS.end() || nowS - seen->second > kEngageGraceS)
+            _bossEngageS[entry] = nowS;
+        _bossLastSeenS[entry] = nowS;
+    }
+
+    // Who plays tank (comp[].tankStrategy): a TANK-type combat strategy, as PlayerbotAI::IsTank asks - the strategy NAMES
+    // differ per class ("protection", "tank feral", ...; pre-review B1). Read until every slot was found once.
+    if (!_tankStrategyRead)
+    {
+        bool all = true;
+        for (Slot const& slot : _slots)
+        {
+            Player* bot = ObjectAccessor::FindPlayer(slot.guid);
+            PlayerbotAI* ai = bot ? GET_PLAYERBOT_AI(bot) : nullptr;
+            if (!ai)
+            {
+                all = false;
+                continue;
+            }
+            for (DcTestRunRecord::CompEntry& c : _record.comp)
+                if (c.guid == slot.guid.GetRawValue())
+                    c.tankStrategy = ai->ContainsStrategy(ai::STRATEGY_TYPE_TANK);
+        }
+        _tankStrategyRead = all;
+    }
 }
 
 // File the pull observation currently in flight, if any. `wipedHere` marks the
@@ -2324,6 +2413,13 @@ void DcTestRunJob::TickMonitoring(uint32 dt)
                         }
                 if (kill.name.empty())
                     kill.name = "encounter #" + std::to_string(bit);
+                // schema 13: the fight that killed it began at the earliest engagement start of any roster boss of this
+                // encounter (a council / twin fight shares one bit; pre-review M3). 0 = never seen in combat.
+                for (BossRef const& ref : _roster)
+                    if (ref.encounterIndex == bit && ref.isBoss)
+                        if (auto const eng = _bossEngageS.find(ref.entry); eng != _bossEngageS.end() &&
+                            (!kill.engageT || eng->second < kill.engageT))
+                            kill.engageT = eng->second;
                 _record.bossTimeline.push_back(kill);
                 progressed = true;
             }

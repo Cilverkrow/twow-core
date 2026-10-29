@@ -860,7 +860,8 @@ bool ChooseTravelTargetAction::Execute(Event& event)
         // twow-repo#333 P1-v (OB-00 26.10.2026): a profession trip without a target says why and ends now (M1r run 3: every
         // trip ended an hour later as "lost", without a line). Not when the bot moved away while the list was built: that
         // asks for a new list, the trip stays open (pre-review).
-        if ((futureTravelPurpose == "trainer profession" || futureTravelPurpose == "trainer profession near" || futureTravelPurpose == "tool vendor") &&
+        if ((futureTravelPurpose == "trainer profession" || futureTravelPurpose == "trainer profession near" || futureTravelPurpose == "tool vendor" ||
+                futureTravelPurpose == "tool vendor near") &&
             !lastRejects.movedAway)
         {
             uint32 points = 0;
@@ -1198,12 +1199,15 @@ bool ChooseTravelTargetAction::Execute(Event& event)
 
     // twow-repo#333 P1-u (OB-00 26.10.2026): where a profession trip goes - the entry, its zone and distance, the movement
     // evidence of the request line (which only counts the candidates).
-    if (futureTravelPurpose == "trainer profession" || futureTravelPurpose == "trainer profession near" || futureTravelPurpose == "tool vendor")
+    if (futureTravelPurpose == "trainer profession" || futureTravelPurpose == "trainer profession near" || futureTravelPurpose == "tool vendor" ||
+        futureTravelPurpose == "tool vendor near")   // P1-y
         if (WorldPosition* targetPos = newTarget.GetPosition())
             sLog.outBasic("[ProfTravel] state=target kind=%s bot=%u level=%u cohort=%c entry=%d zone=%u target_zone=%u map=%u target_map=%u distance=%.0f path=%s",
-                futureTravelPurpose == "tool vendor" ? "tool" : "trainer", bot->GetGUIDLow(), bot->GetLevel(), ai::cohort::Letter(bot->GetGUIDLow()),
+                futureTravelPurpose == "tool vendor" || futureTravelPurpose == "tool vendor near" ? "tool" : "trainer", bot->GetGUIDLow(), bot->GetLevel(),
+                ai::cohort::Letter(bot->GetGUIDLow()),
                 newTarget.GetEntry(), bot->GetZoneId(), TerrainManager::GetZoneIdByAreaFlag(targetPos->getAreaFlag(), targetPos->getMapId()),
-                bot->GetMapId(), targetPos->getMapId(), newTarget.Distance(bot), futureTravelPurpose == "trainer profession near" ? "near" : "gap");
+                bot->GetMapId(), targetPos->getMapId(), newTarget.Distance(bot),
+                futureTravelPurpose == "trainer profession near" || futureTravelPurpose == "tool vendor near" ? "near" : "gap");
 
     // twow-repo#333 P1-v (AiPlayerbot.Travel.RpgAreaLevelFromSpawn, CLI-Deep 26.10.): with the switch set (any mode), one line per RPG
     // trip - its purpose and arm (1 = the spawn rule applies to the bot), so a cand unit counts sell / repair / trainer trips per
@@ -2839,17 +2843,20 @@ bool RequestNamedTravelTargetAction::Execute(Event& event)
     // the hourly limit, also when no destination comes back (no request loop). One line per request.
     // P1-n (AiPlayerbot.ProfessionTraining.NearRadius): "trainer profession near" is a trainer trip to the trainers of an
     // unlearned phase-one skill within the radius; it holds kNearHoldSeconds and counts its whole time as hold_over_s.
-    else if (travelName == "trainer profession" || travelName == "trainer profession near" || travelName == "tool vendor")
+    // P1-y (OB-00 28.10.2026): "tool vendor near" is the same for the vendors of the missing tool, a tool trip.
+    else if (travelName == "trainer profession" || travelName == "trainer profession near" || travelName == "tool vendor" ||
+        travelName == "tool vendor near")
     {
-        bool const trainerTrip = travelName != "tool vendor";
-        bool const nearTrip = travelName == "trainer profession near";
+        bool const trainerTrip = travelName != "tool vendor" && travelName != "tool vendor near";
+        bool const nearTrip = travelName == "trainer profession near" || travelName == "tool vendor near";
         uint32 const tool = trainerTrip ? 0 : MissingGatherTool(ai);
         TravelDestinationPurpose const purpose = trainerTrip ? TravelDestinationPurpose::Trainer : TravelDestinationPurpose::Vendor;
         // P1-b2 (CLI-PATH 25.10.): GetPartitions checks neither the travel graph nor the faction - the hostile and the
         // unreachable entries go first (ProfessionTripTargets, ProfessionTravelPolicy.h ClassifyTripTarget).
         ProfessionTripDrops drops;
-        std::vector<int32> const entries = nearTrip ?
+        std::vector<int32> const entries = nearTrip ? (trainerTrip ?
             NearProfessionTrainers(ai, sPlayerbotAIConfig.professionTrainingNearRadius, &drops) :
+            NearGatherToolVendors(ai, tool, sPlayerbotAIConfig.professionTrainingNearRadius, &drops)) :
             ProfessionTripTargets(ai, trainerTrip ? PhaseOneProfessionTrainers(ai) : GatherToolVendors(ai, tool), purpose, &drops);
 
         std::string const key = trainerTrip ? ai::profession_travel::kTrainerTripValue : ai::profession_travel::kToolTripValue;
@@ -2860,7 +2867,7 @@ bool RequestNamedTravelTargetAction::Execute(Event& event)
         // next walk decides (no loop: the start condition walks at most once per kNearCheckSeconds).
         if (nearTrip && entries.empty())
         {
-            SET_AI_VALUE2(int, "manual int", ai::profession_travel::kNearResultValue, 0);
+            SET_AI_VALUE2(int, "manual int", trainerTrip ? ai::profession_travel::kNearResultValue : ai::profession_travel::kNearToolResultValue, 0);
             return false;
         }
         // A trip of this kind still open (its target expired without the hold being evaluated again) ends here. P1-b3
@@ -3006,6 +3013,7 @@ bool RequestNamedTravelTargetAction::Execute(Event& event)
         travelName == "trainer profession" ? "should travel named::trainer profession hold" :
         travelName == "trainer profession near" ? "should travel named::trainer profession near hold" :   // P1-n
         travelName == "tool vendor" ? "should travel named::tool vendor hold" :
+        travelName == "tool vendor near" ? "should travel named::tool vendor near hold" :   // P1-y
         event.getSource());
     SET_AI_VALUE2(int, "manual int", "future travel relevance", relevance * 100);
 
@@ -3034,6 +3042,8 @@ bool RequestNamedTravelTargetAction::isAllowed() const
     else if (name == "trainer profession" || name == "tool vendor")   // twow-repo#333 Berufe P1-a / P1-b
         return true;
     else if (name == "trainer profession near")   // P1-n
+        return true;
+    else if (name == "tool vendor near")   // P1-y
         return true;
     else if (name == "guild order")
         return true;

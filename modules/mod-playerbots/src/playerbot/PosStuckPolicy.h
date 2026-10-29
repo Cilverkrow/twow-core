@@ -29,6 +29,32 @@ constexpr float AnchorMaxDistance = 300.0f;
 // detour (around a mountain or a lake) gets no closer either; it is parked, never moved.
 constexpr float StillDisplacement = 20.0f;
 constexpr std::uint32_t DefaultLinesPerMinute = 30;
+// twow-repo#342 ABBA-1 §6 (OB-00 28.10.2026): a bot that waited for a ship or zeppelin at its dock within the last
+// DockWaitPauseMs is held up on purpose - the dock wait (LastMovement::transportWaitMs, renewed about every second while it
+// lasts) runs up to Path.TransportWaitTimeoutMin, beyond the window, and a detect parked or moved a bot that only waited.
+constexpr std::uint32_t DockWaitPauseMs = 30000;
+
+// waitMs = getMSTime of the last dock wait, 0 = none (wrapping millisecond clock).
+inline bool DockWaitPaused(std::uint32_t nowMs, std::uint32_t waitMs, std::uint32_t pauseMs)
+{
+    return waitMs != 0 && std::uint32_t(nowMs - waitMs) < pauseMs;
+}
+
+// OB-10 review (28.10.2026): a pause has an upper limit. The dock wait is renewed on every pass, so a bot that waits for good
+// (the transport never comes, or cannot be boarded) would never be watched again; after maxMs of continuous pause the window
+// runs again, and a stand detects as before. since = the start of the continuous pause (0 = none), kept in State across the
+// windows the pause clears (a start at clock 0 is stored as 1 ms before it); pausedNow = the pause condition at this observation.
+inline bool PauseHolds(std::uint32_t& since, bool pausedNow, std::uint32_t nowMs, std::uint32_t maxMs)
+{
+    if (!pausedNow)
+    {
+        since = 0;
+        return false;
+    }
+    if (!since)
+        since = nowMs ? nowMs : 0xFFFFFFFFu;
+    return std::uint32_t(nowMs - since) < maxMs;
+}
 
 struct Observation
 {
@@ -42,7 +68,7 @@ struct Observation
     float distance = 0.0f;   // bot -> travel target, same map
     bool combat = false;
     // Outside the population or held up on purpose (dead, taxi, transport, real master, battleground or instance, rest,
-    // target on another map, a PartialNoop hit since the window began): no window runs.
+    // target on another map, a PartialNoop hit since the window began, a dock wait): no window runs.
     bool excluded = false;
 };
 
@@ -62,6 +88,8 @@ struct State
     float anchorX = 0.0f;
     float anchorY = 0.0f;
     float anchorZ = 0.0f;
+    // The start of the continuous dock-wait pause (PauseHolds; 0 = none). Reset() leaves it alone: a pause clears the window.
+    std::uint32_t dockPauseSince = 0;
 
     void Reset() { initialized = false; }
 };

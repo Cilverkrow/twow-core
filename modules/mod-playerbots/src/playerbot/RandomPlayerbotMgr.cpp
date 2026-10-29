@@ -70,8 +70,13 @@
 #include "playerbot/DarkRuneGatePolicy.h"   // twow-repo#602 ROT-01 3c (Rotation.DarkRuneGate): [DarkRuneGate] minute line
 #include "playerbot/ReachLosPolicy.h"   // twow-repo#594 (Rotation.ReachLosClose): [ReachLos] minute line
 #include "playerbot/CastLosGatePolicy.h"   // twow-repo#602 (Rotation.CastLosGate): [CastLosGate] minute line
+#include "playerbot/LosCachePolicy.h"   // twow-repo#602 (Rotation.LosCacheMs): cached= / reach_early= in the [CastLosGate] line
 #include "playerbot/CastWhileMovingPolicy.h"   // twow-repo#602 (Rotation.CastStopFirst): [CastStopFirst] minute line
+#include "playerbot/MeleeSkipPolicy.h"   // twow-repo#602 (Rotation.MeleeSkipAttacking): [MeleeSkip] minute line
+#include "playerbot/InvalidTargetPolicy.h"   // twow-repo#602 (Rotation.InvalidTargetQuiet): [InvalidTarget] minute line
+#include "playerbot/TankKitPolicy.h"   // twow-repo#602 (Rotation.TankKitFromLevel): [TankKit] minute line
 #include "playerbot/PathReusePolicy.h"
+#include "playerbot/NeverPossiblePolicy.h"   // twow-repo#602 (Rotation.NeverPossibleSkip): [NeverPossible] minute line
 #include "playerbot/RotCastTrace.h"   // twow-repo#602 ROT-01 D0
 #include "playerbot/EmergencyLadderTrace.h"   // twow-repo#602 ROT-01 X3
 #include "playerbot/RestGateTrace.h"   // twow-repo#602 ROT-01 X1
@@ -1252,9 +1257,25 @@ void ReportCastWait()
         (unsigned long long)ai::cast_wait::savedTicks.exchange(0, std::memory_order_relaxed));
 }
 
+// twow-repo#602 (AiPlayerbot.Rotation.NeverPossibleSkip): one [NeverPossible] line per minute - spell actions answered IMPOSSIBLE at once
+// because the bot does not know the spell (possible), and reach prerequisites not pushed for them (prereq). Nothing is written when off.
+void ReportNeverPossible()
+{
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (!sPlayerbotAIConfig.rotationNeverPossibleSkip || now < lastReport + 60)
+        return;
+    lastReport = now;
+    sLog.outBasic("[NeverPossible] mode=%u possible=%llu prereq=%llu", sPlayerbotAIConfig.rotationNeverPossibleSkip,
+        (unsigned long long)ai::never_possible::possible.exchange(0, std::memory_order_relaxed),
+        (unsigned long long)ai::never_possible::prereq.exchange(0, std::memory_order_relaxed));
+}
+
 // twow-repo#602 (AiPlayerbot.Rotation.CastLosGate): one [CastLosGate] line per minute - casts made IMPOSSIBLE by a LINE_OF_SIGHT
 // verdict (gated), current targets dropped because 8.2 marked them unreachable (dropped), unreachable units skipped by target
-// selection (skipped). Nothing is written when off.
+// selection (skipped). twow-repo#602 (Rotation.LosCacheMs, OB-00 29.10.2026), appended last so older parsers stay valid: casts made
+// IMPOSSIBLE from the cached out-of-sight verdict without a CheckCast (cached), and reach answers "in sight and in range" before
+// their CanCastSpell (reach_early). Nothing is written when the gate is off.
 void ReportCastLosGate()
 {
     static uint32 lastReport = 0;
@@ -1262,10 +1283,12 @@ void ReportCastLosGate()
     if (!sPlayerbotAIConfig.rotationCastLosGate || now < lastReport + 60)
         return;
     lastReport = now;
-    sLog.outBasic("[CastLosGate] mode=%u gated=%llu dropped=%llu skipped=%llu", sPlayerbotAIConfig.rotationCastLosGate,
+    sLog.outBasic("[CastLosGate] mode=%u gated=%llu dropped=%llu skipped=%llu cached=%llu reach_early=%llu", sPlayerbotAIConfig.rotationCastLosGate,
         (unsigned long long)ai::cast_los_gate::gated.exchange(0, std::memory_order_relaxed),
         (unsigned long long)ai::cast_los_gate::dropped.exchange(0, std::memory_order_relaxed),
-        (unsigned long long)ai::cast_los_gate::skipped.exchange(0, std::memory_order_relaxed));
+        (unsigned long long)ai::cast_los_gate::skipped.exchange(0, std::memory_order_relaxed),
+        (unsigned long long)ai::los_cache::cached.exchange(0, std::memory_order_relaxed),
+        (unsigned long long)ai::los_cache::reachEarly.exchange(0, std::memory_order_relaxed));
 }
 
 // twow-repo#602 (AiPlayerbot.Rotation.CastStopFirst): one [CastStopFirst] line per minute - cast-time / channelled casts of a
@@ -1281,6 +1304,52 @@ void ReportCastStopFirst()
     sLog.outBasic("[CastStopFirst] mode=%u cast_after_stop=%llu cancelled=%llu", sPlayerbotAIConfig.rotationCastStopFirst,
         (unsigned long long)ai::cast_moving::castAfterStop.exchange(0, std::memory_order_relaxed),
         (unsigned long long)ai::cast_moving::cancelled.exchange(0, std::memory_order_relaxed));
+}
+
+// twow-repo#602 (AiPlayerbot.Rotation.MeleeSkipAttacking): one [MeleeSkip] line per minute - "melee" passes made USELESS because the bot
+// already attacks its current target (skipped). Nothing is written when off.
+void ReportMeleeSkip()
+{
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (!sPlayerbotAIConfig.rotationMeleeSkipAttacking || now < lastReport + 60)
+        return;
+    lastReport = now;
+    sLog.outBasic("[MeleeSkip] mode=%u skipped=%llu", sPlayerbotAIConfig.rotationMeleeSkipAttacking,
+        (unsigned long long)ai::melee_skip::skipped.exchange(0, std::memory_order_relaxed));
+}
+
+// twow-repo#602 (AiPlayerbot.Rotation.InvalidTargetQuiet): one [InvalidTarget] line per minute - "invalid target" checks kept quiet (quiet),
+// and the trace for the follow-up (b): "select new target" dropped a live current target (dropped_live), while casting (interrupted_live).
+// Nothing is written when off.
+void ReportInvalidTarget()
+{
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (!sPlayerbotAIConfig.rotationInvalidTargetQuiet || now < lastReport + 60)
+        return;
+    lastReport = now;
+    sLog.outBasic("[InvalidTarget] mode=%u quiet=%llu dropped_live=%llu interrupted_live=%llu", sPlayerbotAIConfig.rotationInvalidTargetQuiet,
+        (unsigned long long)ai::invalid_target::quiet.exchange(0, std::memory_order_relaxed),
+        (unsigned long long)ai::invalid_target::droppedLive.exchange(0, std::memory_order_relaxed),
+        (unsigned long long)ai::invalid_target::interruptedLive.exchange(0, std::memory_order_relaxed));
+}
+
+// twow-repo#602 (AiPlayerbot.Rotation.TankKitFromLevel): one [TankKit] line per minute - combat engines (re)built with the DPS kit instead
+// of the tank kit because the bot is below the level of its tank spells (demoted, a rate), and strategy rebuilds because a level change
+// crossed the key level (rebuilt); pathed (tank-kit path default, OB-00 29.10.2026) = the builds among demoted whose warrior kit follows
+// its path instead of the default tab, appended last so older parsers stay valid. Nothing is written when off.
+void ReportTankKit()
+{
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (!sPlayerbotAIConfig.rotationTankKitFromLevel || now < lastReport + 60)
+        return;
+    lastReport = now;
+    sLog.outBasic("[TankKit] mode=%u demoted=%llu rebuilt=%llu pathed=%llu", sPlayerbotAIConfig.rotationTankKitFromLevel,
+        (unsigned long long)ai::tank_kit::demoted.exchange(0, std::memory_order_relaxed),
+        (unsigned long long)ai::tank_kit::rebuilt.exchange(0, std::memory_order_relaxed),
+        (unsigned long long)ai::tank_kit::pathed.exchange(0, std::memory_order_relaxed));
 }
 
 // twow-repo#602 #2 (AiPlayerbot.Grind.NeighbourAware): one [GrindNeighbour] line per minute and cohort with scored passes - the
@@ -1933,10 +2002,14 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     ReportBotActivity();  // twow-repo#601 R01 L1: [BotActivityMin] once per minute (AiPlayerbot.ActivityTrace)
     ReportCastLosGate();  // twow-repo#602: [CastLosGate] once per minute (AiPlayerbot.Rotation.CastLosGate)
     ReportCastStopFirst();  // twow-repo#602: [CastStopFirst] once per minute (AiPlayerbot.Rotation.CastStopFirst)
+    ReportMeleeSkip();      // twow-repo#602: [MeleeSkip] once per minute (AiPlayerbot.Rotation.MeleeSkipAttacking)
+    ReportInvalidTarget();  // twow-repo#602: [InvalidTarget] once per minute (AiPlayerbot.Rotation.InvalidTargetQuiet)
+    ReportTankKit();        // twow-repo#602: [TankKit] once per minute (AiPlayerbot.Rotation.TankKitFromLevel)
     ReportParkSleep();    // twow-repo#541: core switches + [ParkSleep] once per minute (AiPlayerbot.Park.SleepGrid)
     ReportCombatIdle();   // twow-repo#541 (audit A17): [CombatIdle] once per minute (AiPlayerbot.Perf.CombatIdleYield)
     ReportHunterMelee();  // twow-repo#602: [HunterMelee] once per minute (AiPlayerbot.Rotation.HunterMeleeStart)
     ReportCastWait();     // twow-repo#602: [CastWait] once per minute (AiPlayerbot.CastWait.Preparing)
+    ReportNeverPossible();  // twow-repo#602: [NeverPossible] once per minute (AiPlayerbot.Rotation.NeverPossibleSkip)
     ReportGrindNeighbour();   // twow-repo#602 #2: [GrindNeighbour] once per minute (AiPlayerbot.Grind.NeighbourAware)
     ReportOomBackoff();   // twow-repo#602 ROT-01 3c-B: [OomBackoff] once per minute (AiPlayerbot.Rotation.OomBackoff)
     ReportMeleeFleeBreak(); // twow-repo#602: [MeleeFleeBreak] once per minute (AiPlayerbot.Rotation.MeleeFleeBreak)

@@ -98,7 +98,9 @@ require_order("${policy}" "    if (s.parked)\n        return Kind::Parked;" "   
 require_order("${policy}" "    if (!s.alive)\n        return Kind::Dead;" "    if (s.inCombat)\n        return Kind::Combat;" "dead before combat")
 require_order("${policy}" "    if (s.inCombat)\n        return Kind::Combat;" "    if (TravelActive(s.status) && s.dest != Dest::None)" "combat before the target")
 # OB-10 review: an active target must not hide a stall
-require_text("${policy}" "        if (s.status == StatusTravel && !s.taxiFlying && s.moved < StuckYards)\n            return Kind::Stuck;" "stuck: TRAVEL without moving")
+require_text("${policy}" "    return s.status == StatusTravel && !s.taxiFlying && s.moved < StuckYards;" "stuck sample: TRAVEL without moving")
+# twow-repo#601 (OB-00 28.10.2026): a RosterFarMove wait is travel, not stuck (contracts.d/activity_far_wait_idle_detail)
+require_text("${policy}" "        if (StuckSample(s) && !s.farMoveWaiting)\n            return Kind::Stuck;" "stuck: TRAVEL without moving, no far-move wait")
 require_text("${policy}" "            return s.status == StatusWork && !s.combatSinceSample ? Kind::GrindIdle : Kind::Grind;" "grind_idle: WORK without a fight")
 require_order("${policy}" "            return Kind::Stuck;" "            return s.status == StatusWork && !s.combatSinceSample" "stuck before grind_idle")
 require_order("${policy}" "    if (TravelActive(s.status) && s.dest != Dest::None)" "    if (s.taxiFlying)\n        return Kind::Other;" "the target before a flight")
@@ -129,6 +131,12 @@ require_text("${sample}" "    ai::bot_activity::Kind const kind = ai::bot_activi
 require_order("${sample}" "activityClock.Add(kind, now)" "activityClock.HourDone(now)" "credit before the hour line")
 require_order("${sample}" "activityClock.HourDone(now)" "sLog.outBasic(\"%s\", ai::bot_activity::FormatLine(" "hour line when the hour is done")
 require_order("${sample}" "sLog.outBasic(\"%s\", ai::bot_activity::FormatLine(" "activityClock.StartHour(now);" "fresh hour after the line")
+# twow-repo#601 quest acceptance (OB-00 27.10.2026): the quest log fill counted only when the hour line is written, from the
+# 20 slots (no quest status map walk), and passed to the line.
+require_order("${sample}" "activityClock.HourDone(now)" "for (uint16 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)" "quest log counted only for the hour line")
+require_order("${sample}" "for (uint16 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)" "sLog.outBasic(\"%s\", ai::bot_activity::FormatLine(" "counted before the line")
+require_text("${sample}" "activityClock,\n            questLog, questDone).c_str());" "quest log fields on the hour line")
+require_text("${policy}" "        line += \" quest_log=\" + std::to_string(questLog) + \" quest_done=\" + std::to_string(questDone);" "quest_log= quest_done= after gap= (far_wait= is last, #601 28.10.)")
 
 # 3. The minute line: one reporter, switched like ReportBotUpdate, called once per pass.
 function_body("${mgr_cpp}" "void ReportBotActivity()" report)

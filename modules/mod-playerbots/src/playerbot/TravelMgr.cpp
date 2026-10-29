@@ -15,6 +15,7 @@
 #include "playerbot/CohortPolicy.h"
 #include "playerbot/RpgAreaLevelPolicy.h"
 #include "playerbot/ContestedObjectivePolicy.h"
+#include "playerbot/TransportBoardPolicy.h"   // twow-repo#342 ABBA-1 §6: the PosStuck dock pause ends after WaitTimeoutMsOf
 #include <algorithm>
 #include <vector>
 #include <iomanip>
@@ -69,6 +70,20 @@ bool GiverTakerTripDone(Player* bot, TravelDestination const* destination)
     bool const inLog = !rewarded && (status == QUEST_STATUS_INCOMPLETE || status == QUEST_STATUS_COMPLETE);
     return quest_loop::GiverTakerTripDone(relation->GetRelation(), inLog, rewarded);
 }
+}
+
+// twow-repo#601 turn_in hold (QuestLoop.RelationWorkNoGrind / RelationArriveRpgTarget): the destination's own quest, not every quest
+// of the NPC - a taker: finished and not handed in; a giver: not in the log, not rewarded and takeable now (no message).
+bool ai::QuestRelationOpen(Player* bot, TravelDestination const* destination)
+{
+    QuestRelationTravelDestination const* relation = dynamic_cast<QuestRelationTravelDestination const*>(destination);
+    Quest const* quest = relation ? sObjectMgr.GetQuestTemplate(relation->GetQuestId()) : nullptr;
+    if (!bot || !quest || bot->GetQuestRewardStatus(quest->GetQuestId()))
+        return false;
+    QuestStatus const status = bot->GetQuestStatus(quest->GetQuestId());
+    if (relation->GetRelation())
+        return status == QUEST_STATUS_COMPLETE;
+    return status != QUEST_STATUS_INCOMPLETE && status != QUEST_STATUS_COMPLETE && bot->CanTakeQuest(quest, false);
 }
 
 // Penqle's Singleton<> requires an explicit instantiation in a .cpp file.
@@ -1171,6 +1186,22 @@ void TravelTarget::TraceQuestCommit(TravelDestination const* destination, char c
         event, reason, distance, repeats);
 }
 
+void TravelTarget::SetRelationRpgTarget()
+{
+    QuestRelationTravelDestination const* relation = dynamic_cast<QuestRelationTravelDestination const*>(tDestination);
+    if (!relation || relation->GetEntry() <= 0 || !QuestRelationOpen(bot, tDestination))
+        return;
+
+    // One grid search per arrival (IsIn: within 5 yd of the destination point, the NPC stands next to it).
+    Creature* npc = bot->FindNearestCreature(uint32(relation->GetEntry()), INTERACTION_DISTANCE * 4.0f);
+    if (!npc)
+        return;
+
+    context->GetValue<GuidPosition>("rpg target")->Set(GuidPosition(npc));
+    context->GetValue<std::string>("next rpg action")->Set(quest_loop::RelationArriveRpgAction(relation->GetRelation()));
+    TraceQuestCommit(tDestination, "progress", "rpg_target");
+}
+
 bool TravelTarget::CopyTarget(TravelTarget* const target) {
     // Every applied choice (stock or BotBrain intent) passes here.
     // twow-repo#485: so the taker of a parked turn-in is refused here - a BotBrain
@@ -1307,6 +1338,11 @@ bool TravelTarget::IsTurnInRouteSuppressed(TravelDestination const* destination,
             uint32(questDestination->GetEntry()), position->getMapId());
 }
 
+bool TravelTarget::IsTurnInRouteSuppressedForQuest(uint32 questId) const
+{
+    return turnin_recovery::IsSuppressedForQuest(turnInRecovery, WorldTimer::getMSTime(), questId);
+}
+
 turnin_recovery::RecoveryAction TravelTarget::ObserveTurnInProgress()
 {
     // Turn-ins and (#329) objectives share the same progress observation.
@@ -1375,6 +1411,7 @@ turnin_recovery::RecoveryAction TravelTarget::ObserveTurnInProgress()
             turnInRecovery.suppressedEntry = observation.targetEntry;
             turnInRecovery.suppressedMapId = targetMapId;
             turnInRecovery.suppressUntil = observation.now + transport_stall::CooldownMs;
+            turnInRecovery.suppressedQuestId = observation.questId;
             turnInRecovery.ResetProgress();
             return turnin_recovery::RecoveryAction::SuppressTransportAndCooldown;
         }
@@ -1403,6 +1440,22 @@ void TravelTarget::OnDeathOnTurnInRoute()
     uint32 const entry = uint32(destination->GetEntry());
     uint32 const questId = destination->GetQuestId();
     uint32 const mapId = wPosition ? wPosition->getMapId() : bot->GetMapId();
+
+    // twow-repo#601 turn_in hold (QuestLoop.TurnInWorkDeathNotRoute): a death while working at the taker (the route is done; the bot
+    // fought there) is no route death - no death_suppressed for an hour, but a turn-in failure, so the #485 park bounds the deaths.
+    // Only with parking on; off, another cohort or still travelling: the route rule below as before.
+    if (quest_loop::WorkDeathIsTurnInFailure(
+            ai::cohort::Applies(sPlayerbotAIConfig.questLoopTurnInWorkDeathNotRoute, bot->GetGUIDLow()),
+            m_status == TravelStatus::TRAVEL_STATUS_WORK, sPlayerbotAIConfig.questFirstProgressionTurnInParkFailures != 0))
+    {
+        // Always visible (BASIC): one line per death, the measure of the switch.
+        sLog.outBasic("[QuestFirstRoute] state=work_death bot=%u level=%u quest=%u target_entry=%u map=%u action=turnin_failure",
+            bot->GetGUIDLow(), bot->GetLevel(), questId, entry, mapId);
+        NoteTurnInFailure(questId, "work_death");
+        TraceQuestCommit(tDestination, "abandon", "work_death");
+        SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);
+        return;
+    }
 
     if (!turnin_recovery::RecordDeathOnRoute(turnInRecovery, entry, questId, mapId, WorldTimer::getMSTime(),
             sPlayerbotAIConfig.questFirstProgressionTurnInMaxDeathsOnRoute,
@@ -1951,6 +2004,8 @@ void TravelTarget::OnNearTurnInStall(uint32 questId)
     turnInRecovery.suppressedEntry = uint32(tDestination->GetEntry());
     turnInRecovery.suppressedMapId = dmap;
     turnInRecovery.suppressUntil = WorldTimer::getMSTime() + sPlayerbotAIConfig.questFirstProgressionTurnInRouteCooldownSeconds * IN_MILLISECONDS;
+    QuestTravelDestination const* stalledQuest = dynamic_cast<QuestTravelDestination const*>(tDestination);
+    turnInRecovery.suppressedQuestId = stalledQuest ? stalledQuest->GetQuestId() : 0;
     SetStatus(TravelStatus::TRAVEL_STATUS_COOLDOWN);
     SetExpireIn(sPlayerbotAIConfig.questFirstProgressionTurnInRouteCooldownSeconds * IN_MILLISECONDS);
 }
@@ -1986,6 +2041,14 @@ bool TravelTarget::ObservePosStuck()
         !bot->IsAlive() || bot->IsTaxiFlying() || bot->GetTransport() || !map || map->Instanceable() ||
         wPosition->getMapId() != bot->GetMapId() || RestGateValue::Resting(ai) ||
         quest_groups::IsFollower(ai);   // twow-repo#627 S7: a follower goes where its leader goes (the leader stays watched)
+    // twow-repo#342 ABBA-1 §6 (OB-00 28.10.2026): a bot waiting at its dock for a ship or zeppelin is held up on purpose - no
+    // window during the wait, a fresh one after the ride (PosStuckPolicy.h DockWaitPaused). OB-10 review: at most
+    // Path.TransportWaitTimeoutMin of continuous waiting (PauseHolds), then the window runs again - a transport that never
+    // comes or cannot be boarded is a stand like any other. Evaluated on every observation, so the pause start stays current.
+    bool const dockPause = pos_stuck::PauseHolds(posStuck.dockPauseSince, pos_stuck::DockWaitPaused(observation.now,
+            ai->GetAiObjectContext()->GetValue<LastMovement&>("last movement")->Get().transportWaitMs, pos_stuck::DockWaitPauseMs),
+        observation.now, transport_board::WaitTimeoutMsOf(sPlayerbotAIConfig.pathTransportWaitTimeoutMin));
+    observation.excluded = observation.excluded || dockPause;
     observation.distance = observation.excluded ? 0.0f : Distance(bot);
 
     if (pos_stuck::Observe(posStuck, observation, sPlayerbotAIConfig.pathPosStuckMinutes * 60 * IN_MILLISECONDS,
@@ -2172,6 +2235,12 @@ void TravelTarget::CheckStatus()
             // starts a fresh stall window instead of a stale one that stalls it at once. Off: as before.
             if (sPlayerbotAIConfig.zoneExitTurnInTravelStall && sPlayerbotAIConfig.S3For(bot->GetGUIDLow()) && IsProgressAwareTurnIn())
                 turnInRecovery.ResetProgress();
+            // twow-repo#601 turn_in hold (QuestLoop.RelationArriveRpgTarget): at an open giver / taker the hand-in / accept is set up at
+            // once instead of a weighted random rpg pick. A roster bot on its own (a group trip judges a member's quest log); off or
+            // another cohort: as before.
+            if (ai::cohort::Applies(sPlayerbotAIConfig.questLoopRelationArriveRpgTarget, bot->GetGUIDLow()) &&
+                sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster() && !bot->GetGroup())
+                SetRelationRpgTarget();
             // twow-repo#594 / P3-b: arrivals of the direct-target destinations (failure memory, hole_present for fishing).
             if (ai::direct_targets::AnyBuilt())
                 ai::direct_targets::OnArrive(tDestination, ai, wPosition);

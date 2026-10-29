@@ -63,8 +63,10 @@ require_text("${s7}" "memberAi->DoSpecificAction(\"accept invitation\", Event(\"
 
 # Accept: the group change and the master stay; the strategy rebuild and the reset go to the bot for the managers only.
 require_text("${accept}" "bool const worldManager = group_ai_refresh::IsWorldManagerSource(event.getSource());" "manager check in accept")
-require_text("${accept}" "            if (worldManager)
-                ai->RequestGroupAi(group_ai_refresh::JoinReset);
+# s7r (BotGroups.WorldThreadDefer): with the key the manager also posts the tail and returns; without it the reset only.
+require_order("${accept}" "            if (worldManager)
+            {" "                ai->RequestGroupAi(group_ai_refresh::JoinReset);
+            }
             else
             {
                 ai->ResetStrategies();" "deferred join reset, inline otherwise")

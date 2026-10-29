@@ -64,6 +64,15 @@ namespace DcTestComp
         // { 11, "feral",      "feral", "tank" },  // druid
     };
 
+    // CLI-GRP 29.10.2026 (g2/CAUSE-DRUIDE-FERAL-SITZ): the cause above is understood - DcTankForm's bear gate asked a
+    // strategy NAME the engine never holds, so the druid pulled in caster form. With that fixed the druid comes back
+    // as a FORCED seat only (`tank=druid`, the druid probe, OB-00 29.10.): not drawn, so the seeds of every other
+    // campaign keep their comps. It moves into kTankPool once the probe shows the gap closed. Spec: the premade
+    // "bear" path (AiPlayerbot.PremadeSpecName.11.3), fallback "feral".
+    inline constexpr Slot kForcedOnlyTankPool[] = {
+        { 11, "bear",       "feral", "tank" },  // druid
+    };
+
     inline constexpr Slot kHealPool[] = {
         { 5,  "holy",        "holy",  "heal" },  // priest
         { 2,  "holy",        "holy",  "heal" },  // paladin
@@ -94,7 +103,16 @@ namespace DcTestComp
     // three DPS, all five on DISTINCT classes (maximises class diversity and
     // keeps the addclass-pool draw from needing several chars of one class).
     // Pure — no globals, no I/O — so the same seed always yields the same comp.
-    std::array<Slot, kPartySize> BuildComp(std::uint32_t seed);
+    //
+    // CLI-GRP G2 (OB-00 28.10.2026, warrior-prot vs paladin-prot): tankClass != 0 forces the tank seat to that
+    // kTankPool class (`.dc test plan start ... tank=<class>`). The PRNG still consumes the tank draw, so the seed's
+    // stream position is the same; the other seats exclude the forced class as they exclude a drawn one. Replay of a
+    // forced run needs both: the run's compSeed and the plan summary's requested.tankClass (comp[].class shows the result).
+    std::array<Slot, kPartySize> BuildComp(std::uint32_t seed, std::uint8_t tankClass = 0);
+
+    // The class id of a tank-seat class by name ("warrior", "paladin", ...), 0 when the name is no class of
+    // kTankPool or kForcedOnlyTankPool (the druid: forced only, never drawn). Pure.
+    std::uint8_t TankClassByName(std::string_view name);
 
     // The pool backing a role token ("tank" | "heal" | "dps"), for callers that
     // must substitute an alternative class when the drawn one has no available

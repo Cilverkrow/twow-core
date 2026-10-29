@@ -5,15 +5,28 @@
 #include "playerbot/BotSlots.h"
 #include "playerbot/BotGroupDiagnostics.h"
 #include "playerbot/GroupAiRefresh.h"
+#include "playerbot/GroupOpTiming.h"
 namespace ai
 {
-    class AcceptInvitationAction : public Action 
+    class AcceptInvitationAction : public Action
     {
     public:
         AcceptInvitationAction(PlayerbotAI* ai) : Action(ai, "accept invitation") {}
 
         virtual bool Execute(Event& event) override
         {
+            // s7r (BotGroups.WorldThreadDefer): the tail a world-thread manager posted (ApplyGroupAiRequests, bot thread). The
+            // join itself is done; the owner is that join's inviter, still a member of the bot's group.
+            if (event.getSource() == group_ai_refresh::JoinTailSource)
+            {
+                Player* inviter = event.getOwner();
+                Group* joined = bot->GetGroup();
+                if (!inviter || !joined)
+                    return false;
+                JoinTail(joined, inviter, event, /*onBotThread*/ true);
+                return true;
+            }
+
             Group* grp = bot->GetGroupInvite();
             if (!grp)
                 return false;
@@ -37,7 +50,9 @@ namespace ai
             WorldPacket p;
             uint32 roles_mask = 0;
             p << roles_mask;
+            auto const coreStart = std::chrono::steady_clock::now();
             bot->GetSession()->HandleGroupAcceptOpcode(p);
+            group_op_timing::lastAcceptCoreUs = group_op_timing::UsSince(coreStart);   // s7r: the core join alone
 
             if (!bot->GetGroup() || !bot->GetGroup()->IsMember(inviter->GetObjectGuid()))
                 return false;
@@ -59,7 +74,16 @@ namespace ai
             }
 
             if (worldManager)
+            {
+                // s7r (BotGroups.WorldThreadDefer): with the reset the rest of this action goes to the bot's own thread too - the
+                // world thread keeps the core join (s7r: accept 1-2.4 ms with logs, chat, update gear on the world thread).
+                if (sPlayerbotAIConfig.botGroupsWorldThreadDefer)
+                {
+                    ai->RequestJoinTail(inviter->GetGUIDLow());   // JoinReset + JoinTail, the inviter before the bits
+                    return true;
+                }
                 ai->RequestGroupAi(group_ai_refresh::JoinReset);
+            }
             else
             {
                 ai->ResetStrategies();
@@ -68,6 +92,15 @@ namespace ai
                 ai->Reset();
             }
 
+            JoinTail(grp, inviter, event);
+            return true;
+        }
+
+    private:
+        // Everything after the join and the reset: the event and membership log, the invite chat, the master's formation, the
+        // hello, reset raids, update gear. Here at once - or, posted by a world-thread manager, on the bot's own thread.
+        void JoinTail(Group* grp, Player* inviter, Event& event, bool onBotThread = false)
+        {
             sPlayerbotAIConfig.logEvent(ai, "AcceptInvitationAction", grp->GetLeaderName(), std::to_string(grp->GetMembersCount()));
             bot_group::LogMembership(bot, bot->GetGroup(), "join");
 
@@ -93,19 +126,23 @@ namespace ai
                         bot->Say(reply, (bot->GetTeam() == ALLIANCE ? LANG_COMMON : LANG_ORCISH));
                 }
 
-                Formation* masterFormation = MAI_VALUE(Formation*, "formation");
-                FormationValue* value = (FormationValue*)context->GetValue<Formation*>("formation");
-                value->Load(masterFormation->getName());
+                // s7r pre-review: on the bot's own thread the master's AI value is read only when the master shares this map
+                // (the same map thread); otherwise the bot keeps its own formation.
+                if (!onBotThread || master->FindMap() == bot->FindMap())
+                {
+                    Formation* masterFormation = MAI_VALUE(Formation*, "formation");
+                    FormationValue* value = (FormationValue*)context->GetValue<Formation*>("formation");
+                    value->Load(masterFormation->getName());
+                }
             }
 
             ai->TellPlayer(inviter, BOT_TEXT("hello"), PlayerbotSecurityLevel::PLAYERBOT_SECURITY_ALLOW_ALL, false);
 
             ai->DoSpecificAction("reset raids", event, true);
             ai->DoSpecificAction("update gear", event, true);
-
-            return true;
         }
 
+    public:
         virtual bool isUsefulWhenStunned() override { return true; }
 
 #ifdef GenerateBotHelp

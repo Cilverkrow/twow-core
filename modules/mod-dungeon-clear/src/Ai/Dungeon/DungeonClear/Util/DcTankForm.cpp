@@ -33,12 +33,20 @@ namespace DcTankForm
         if (!bot || bot->getClass() != CLASS_DRUID)
             return false;
 
-        // The "bear" combat strategy IS the definition of "fights as a bear" —
-        // it is what AiFactory hands a feral-tank druid, and it owns both the
-        // bear rotation and the (combat-only) shift trigger this gate exists to
-        // pre-empt. A cat/balance/resto druid holding the DC drive is left
-        // alone: shifting it to bear would break its rotation outright.
-        if (!botAI->HasStrategy("bear", BOT_STATE_COMBAT))
+        // A TANK-type combat strategy IS the definition of "fights as a bear" for
+        // a druid - AiFactory hands a feral-tank druid "tank feral" (the bear
+        // rotation and the combat-only shift trigger this gate pre-empts). A
+        // cat/balance/resto druid holding the DC drive is left alone: shifting it
+        // to bear would break its rotation outright.
+        //
+        // CLI-GRP 29.10.2026 (g2/CAUSE-DRUIDE-FERAL-SITZ): this asked HasStrategy
+        // for the name "bear", a NAME the engine never holds - it keys strategies
+        // by getName(), and the "bear" creator builds the same class as "tank
+        // feral", whose getName() is "tank feral". So the gate was always false
+        // and the druid tank pulled in caster form since the port (22.08.); the
+        // feral seat was pulled from the test pool on 29.08. for exactly that
+        // pattern. Ask the type, as PlayerbotAI::IsTank does.
+        if (!botAI->ContainsStrategy(ai::STRATEGY_TYPE_TANK))
             return false;
 
         return botAI->HasSpell(kDireBear) || botAI->HasSpell(kBear);

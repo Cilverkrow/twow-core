@@ -531,6 +531,9 @@ public:
     // a phase-one profession and to the vendor of its missing gathering tool; 0 off, 1 all, 2 cohort B (odd guid).
     uint32 professionTrainingTravel = 0;
     uint32 professionTrainingNearRadius = 0;   // P1-n: yards, 0 = off - the near trainer trip of the same mode and cohort
+    // twow-repo#601 turn_in hold (CLI-Deep 28.10.2026, OB-00 go): the "an open turn-in waits" rule of the profession trips skips a
+    // finished quest whose taker route is stall- or death-suppressed for that quest; 0 off (default), 1 all, 2 cohort B.
+    uint32 professionTrainingTurnInGateSkipSuppressed = 0;
     uint32 professionUseToolBuy = 0;
     uint32 travelRpgAreaLevelFromSpawn = 0;  // twow-repo#333 P1-v: RpgTravelDestination::IsPossible reads the area level at the spawn nearest to the bot, not at the map origin (RpgAreaLevelPolicy.h); 0 off, 1 all, 2 cohort B (odd guid)
     uint32 gatherQuestHerbFilter = 0;  // twow-repo#333 P1-f: a quest herb (lock 259) is picked only with its quest active (modes 0/1/2)
@@ -603,6 +606,7 @@ public:
     bool worldBotsTrace = false;  // twow-repo#541: [WorldBots] per-minute world-thread cost line
     bool activityTrace = false;  // twow-repo#601 R01 L1: AiPlayerbot.ActivityTrace - [BotActivity] per roster bot and hour, [BotActivityMin]
     bool activityTraceStuckDetail = false;  // twow-repo#601: AiPlayerbot.ActivityTrace.StuckDetail - [StuckDetail] per stuck episode
+    bool activityTraceIdleDetail = false;  // twow-repo#601: AiPlayerbot.ActivityTrace.IdleDetail - [IdleDetail] per idle episode (start, end)
     bool botUpdateTrace = false;  // twow-repo#541: [BotUpdate] per-minute distribution of PlayerbotAI::UpdateAI wall time
     bool botUpdateTraceTick = false;  // twow-repo#597 (TICK-01): [BotUpdateSlow] ends with " tick=<world loop> region=<map>.<inst>"
     bool worldBotsHookTrace = false;  // twow-repo#597 (TICK-01): [WorldBots] ends with hook_ms= remote_ms= ahbot_ms= dungeonclear_ms=
@@ -645,6 +649,8 @@ public:
     bool castSpellRefreshOnLearn = false;  // twow-repo#541 (audit A27): spell actions re-read spell id/range when the bot learned spells, levelled, spent talent points or (pet spell actions) got another pet (0 = off)
     bool rotationCastTrace = false;  // twow-repo#602 ROT-01 D0: [RotCast]/[RotCastTotal]/[RotCastUnknown]/[RotRole]/[RotPull] cast diagnostics, measurement only (0 = off)
     uint32 rotationSpecFromPath = 0;  // twow-repo#602 ROT-01 R06a: spec tab from the premade path from level 10, cohort mode 0 off / 1 all / 2 cohort B
+    uint32 rotationTankKitFromLevel = 0;  // twow-repo#602 (tank count 28.10., OB-00, BEHAVIOUR CHANGE, A/B with 2): the tank kit only from the level of the tank spells - warrior below L10 arms kit, protection paladin below L16 retribution kit (TankKitPolicy.h); 0 off, 1 all, 2 cohort B
+    uint32 rotationTankRoguePoison = 1;  // twow-repo#654 (poison ping-pong 29.10., OB-00 / owner: code default 1, 0 = rollback): the rogue tank keeps every main-hand poison but its threat poison off, told by the action (hand + threat poison), in and out of combat (TankRoguePoisonPolicy.h); 0 off, 1 all, 2 cohort B
     uint32 rotationEmergencyLadder = 0;  // twow-repo#602 ROT-01 X3: emergency ladder for solo free bots below critical health, cohort mode 0 off / 1 all / 2 cohort B
     uint32 rotationEmergencyLadderFightTargetHp = 20;  // twow-repo#602 X3 (F2): fight on instead of fleeing when the single target is at or below this HP %
     std::vector<std::string> rotationEmergencyLadderSoloCcSpells;  // twow-repo#602 X3 (F3): spells allowed for solo CC on an add (lower case)
@@ -655,6 +661,8 @@ public:
     uint32 rotationRestGateTargetMana = 85;  // ... and this mana %
     uint32 rotationRestGateMaxRestSeconds = 120;  // ... or after this many seconds (then no new episode for a minute)
     uint32 rotationCastStopFirst = 1;  // twow-repo#602 (cast-abort loop 27.10., OB-00: code default 1, 0 = rollback): a moving bot without a real player master casts a cast-time or channelled spell after StopMoving instead of cancelling it (CastWhileMovingPolicy.h); 0 off, 1 all, 2 cohort B
+    uint32 rotationInvalidTargetQuiet = 1;  // twow-repo#602 (failure census 28.10., OB-00: code default 1, 0 = rollback): "invalid target" stays quiet for an empty current target while nothing attacks the bot (InvalidTargetPolicy.h); 0 off, 1 all, 2 cohort B
+    uint32 rotationLosCacheMs = 500;  // twow-repo#602 (REF-next v2 tick 29.10., OB-00: code default 500, 0 = rollback): a bot keeps one line-of-sight verdict per target for this many ms (LosCachePolicy.h): the CastLosGate cast checks and the reach prerequisite reuse it
     uint32 rotationCastLosGate = 0;  // twow-repo#602 (hunter LoS 25.10.): a LINE_OF_SIGHT verdict of CheckCast makes the cast IMPOSSIBLE, 8.2-unreachable targets are dropped and skipped (CastLosGatePolicy.h); with Rotation.ReachLosClose; 0 off, 1 all, 2 cohort B
     bool perfCombatIdleYield = false;  // twow-repo#541 (audit A17): a combat AI pass without an action while the bot auto-attacks its current target waits 3x ReactDelay (0 = off)
     uint32 castWaitPreparing = 0;  // twow-repo#602 (L1-b): hold the internal AI until the real end of the bot's own PREPARING cast; 0 off, 1 all, 2 cohort B
@@ -662,6 +670,8 @@ public:
     uint32 rotationMeleeFleeBreak = 0;  // twow-repo#602 (death analysis 21.10.): "outnumbered" stays quiet for a melee bot while its flee loop holds; 0 off, 1 all, 2 cohort B
     uint32 rotationOomBackoff = 0;  // twow-repo#602 ROT-01 3c-B (priest Farathil loop, 24.10.): an out-of-mana priest/mage/warlock without a wand fights in melee, an idle out-of-mana combat pass waits DelayMs (OomBackoffPolicy.h); 0 off, 1 all, 2 cohort B
     uint32 rotationOomBackoffDelayMs = 1000;  // ... the wait after such a pass (ends early when the mana is back or the health low)
+    uint32 rotationMeleeSkipAttacking = 1;  // twow-repo#602 (failure census 27.10., OB-00: code default 1, 0 = rollback): the default "melee" action is USELESS while the bot already attacks its current target, faces it and its pet is on it (MeleeSkipPolicy.h); 0 off, 1 all, 2 cohort B
+    uint32 rotationNeverPossibleSkip = 1;  // twow-repo#602 (failure census v3 28.10., OB-00: code default 1, 0 = rollback): a spell action whose spell the bot does not know is IMPOSSIBLE at once and pushes no reach prerequisite (NeverPossiblePolicy.h); 0 off, 1 all, 2 cohort B
     bool rotationMeleeFleeBreakRanged = false;  // twow-repo#602 (step 2, 21.10.): the same hold for ranged bots (cohort from Rotation.MeleeFleeBreak); kite triggers untouched
     uint32 rotationFleeAway = 0;  // twow-repo#602 (c) (hunter + adds analysis 25.10.): flee chase angle relative to the enemy's facing, a kept chase (1 s), hunter flee only in the dead zone while the pet holds the enemy (FleeAwayPolicy.h); 0 off, 1 all, 2 cohort B
     uint32 rotationFleeAwayScope = 0;  // twow-repo#602 (c) scope (hunter restart 26.10.): which bots of Rotation.FleeAway's cohort get it; 0 every bot (as before), 1 hunters, 2 hunters + bots with a living pet out
@@ -777,6 +787,13 @@ public:
     // twow-repo#601 (CLI-Deep 26.10.2026, cr2-C gap analysis): a quest giver / taker trip that went inactive because its quest was
     // taken / turned in ends at once instead of a 60 s COOLDOWN at the NPC. Mode 0 off (default), 1 all, 2 cohort B.
     uint32 questLoopGiverTakerDone = 0;
+    // twow-repo#601 turn_in hold (CLI-Deep 28.10.2026, OB-00 go): at a quest giver / taker whose turn-in / accept is still open,
+    // RelationWorkNoGrind skips grind targets without quest need in WORK, RelationArriveRpgTarget sets the NPC as rpg target on
+    // arrival, TurnInWorkDeathNotRoute books a death in WORK at the taker as a turn-in failure instead of a route death.
+    // Mode 0 off (default), 1 all, 2 cohort B.
+    uint32 questLoopRelationWorkNoGrind = 0;
+    uint32 questLoopRelationArriveRpgTarget = 0;
+    uint32 questLoopTurnInWorkDeathNotRoute = 0;
     // twow-repo#601 (CLI-Deep 25.10.2026): an inactive objective whose count grew since the target was set is progress, not an
     // emptied camp - no QL-1, no QL-2, a 1 s cooldown. Mode 0 off (default), 1 all, 2 cohort B.
     uint32 questLoopInactiveAfterProgress = 0;
@@ -856,6 +873,10 @@ public:
     uint32 botGroupsMaxBots = 3;
     uint32 botGroupsLevelWindow = 3;
     bool botGroupsDiagnostics = false;
+    // twow-repo#627/#628 (s7r 26.10.2026, OB-00 go 27.10.): the world-thread managers' accept and leave keep only the core
+    // group change on the world thread; the accept tail (logs, chat, formation, hello, reset raids, update gear) and the
+    // event and membership log lines run on the bot's own thread (GroupAiRefresh JoinTail, DeferredLog.h).
+    bool botGroupsWorldThreadDefer = false;
     // #365 step 2: ad-hoc quest groups.
     uint32 botGroupsAdhocScanIntervalSeconds = 10;
     float botGroupsAdhocRadius = 50.0f;
@@ -864,12 +885,17 @@ public:
     bool botGroupsAdhocWorldThread = false;
     // twow-repo#628: the manager pass spread over this many updates (0/1 = the whole pass in one update).
     uint32 botGroupsAdhocScanSlices = 0;
+    uint32 botGroupsAdhocScanBudgetUs = 0;   // s7r: a slice ends once it took this many us (at least one bot; 0 = by count only)
     bool botGroupsAdhocHelpUntilDone = false;  // twow-repo#365 (owner 25.10.): whoever is done follows a member with the objective open until the group is done
     // twow-repo#627 S7 help groups (QuestGroupPolicy.h, QuestGroupWorld.cpp); Enable: 0 off, 1 all, 2 cohort B, 3 cohort A.
     uint32 questGroupsEnable = 0;
     uint32 questGroupsScanSeconds = 60;
     // twow-repo#628: the S7 scan spread over this many updates (0/1 = the whole scan in one update).
     uint32 questGroupsScanSlices = 0;
+    uint32 questGroupsScanBudgetUs = 0;   // s7r: a slice ends once it took this many us (at least one bot; 0 = by count only)
+    // s7r: one heavy step per manager update - at most one dissolution; no group operation and no scan slice in its update,
+    // no scan slice in an update that ran a group operation (the s7r slow minutes summed parts of one update).
+    bool questGroupsOneHeavyStep = false;
     bool questGroupsStagedOps = false;  // twow-repo#627 S7 (S7-A 25.10.): at most one group operation per manager update, forced travel on the bot thread
     uint32 questGroupsMaxSize = 5;
     uint32 questGroupsMaxSizeDrop = 3;
@@ -985,6 +1011,7 @@ public:
     bool rosterFarMove = false;  // hotfix 8.33 (#544): cheap movement without a player nearby, 0 = off
     float rosterFarMoveArriveBackYards = 60.0f;  // hotfix 8.36 (#544): end the far move this far before the target, 0 = at it
     bool rosterFarMoveWatchRoute = true;  // hotfix 8.36: walk when a real player is near the route
+    uint32 rosterFarMoveArriveSafe = 0;  // twow-repo#601 cand4-B: check the far-move arrival for aggro right before the teleport; 0 off, 1 all, 2 cohort B
     // twow-repo#595 P4 S0 + B1 (shortcuts by player proximity): all 0 = today's behaviour (ShortcutPolicy.h)
     uint32 shortcutNearScope = 0;  // 0 = off (ShortcutNear answers Unknown), 1 = radius, 2 = same zone or radius
     float shortcutNearRadius = 0.0f;  // yards, 0 = map visibility + ReactDistance

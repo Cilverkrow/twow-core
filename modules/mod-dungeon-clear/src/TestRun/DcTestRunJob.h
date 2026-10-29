@@ -22,6 +22,7 @@
 #include "TestRun/DcTestRunRecord.h"
 #include "TestRun/DcTestRunVerdict.h"
 #include "TestRun/DcWipeContext.h"
+#include "TestRun/DcAggroTally.h"   // CLI-GRP: schema 13 tank measures
 #include "Ai/Dungeon/DungeonClear/Util/DcRunRobustPolicy.h"   // #708 follow-up: the geo fence regroup throttle
 
 class Player;
@@ -61,7 +62,8 @@ public:
                                                  uint32 levelOverride, uint32 seed, bool heroic,
                                                  DcTestGearTiers::Spec const& gear,
                                                  std::unordered_set<ObjectGuid> const& reservedGuids,
-                                                 std::string const& planId, std::string* err);
+                                                 std::string const& planId, std::string* err,
+                                                 std::uint8_t tankClass = 0);   // CLI-GRP G2: forced tank seat (0 = drawn)
 
     // One hand-picked party slot: a real player character and the role the human
     // marked it for. Resolved (name -> guid, faction/liveness checked) by
@@ -217,6 +219,9 @@ private:
     // (0 = in range). Drives the supervisor's distance fence; see
     // SweepPartyGeometry.
     std::unordered_map<uint32, uint32> _farSinceMs;
+    // CLI-GRP G1 probe 28.10.2026: pool slots whose masterless login AddPlayerBot refused (the persistent roster admits
+    // roster members only); TickSpawning ends the set-up with DcTestPool::LoginRefusal at once instead of after 180 s.
+    std::string _loginRefused;
     // Geo fence re-add to the run's group, per slot (DcRunRobust::RegroupMayTry/RegroupRecord: every 30 s at most, the
     // run ends after 5 failures). The sweep only records the give-up; the tick that called it ends the run.
     std::unordered_map<uint32, DcRunRobust::RegroupState> _regroup;
@@ -417,6 +422,14 @@ private:
     std::uint32_t _pullSeq = 0;
     bool _pullOpen = false;
     DcTestRunRecord::PullEntry _pullEntry;
+    // CLI-GRP 28.10.2026 (schema 13): aggro loss over the run (DcAggroTally.h), the start of the current engagement per
+    // boss entry (for BossKill::engageT) and the boss of the last sample, and whether comp[].tankStrategy was read.
+    DcAggro::Tally _aggro;
+    std::unordered_map<uint32, uint32> _bossEngageS;
+    std::unordered_map<uint32, uint32> _bossLastSeenS;   // last sample with that roster boss (engagement grace)
+    static constexpr uint32 kEngageGraceS = 10;
+    ObjectGuid _aggroTankGuid;                            // the tank seat (slot with role "tank"), resolved once
+    bool _tankStrategyRead = false;
 
     bool _wasPaused = false;
 

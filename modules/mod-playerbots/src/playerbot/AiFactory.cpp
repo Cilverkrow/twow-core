@@ -20,6 +20,7 @@
 #include "playerbot/TankPathPolicy.h"
 #include "playerbot/CohortPolicy.h"
 #include "playerbot/SpecPathPolicy.h"
+#include "playerbot/TankKitPolicy.h"
 
 namespace
 {
@@ -80,6 +81,24 @@ int PremadePathTab(Player const* player)
     for (TalentPath const& path : sPlayerbotAIConfig.classSpecs[player->getClass()].talentPath)
         if (path.id >= 0 && uint32(path.id) + 1 == specNo)
             return path.tab;
+
+    return -1;
+}
+
+// twow-repo#602 tank-kit path default (Rotation.TankKitFromLevel, OB-00 29.10.2026): the tab of the bot's premade path for the kit -
+// its PremadeSpecTab key, else the main tree of its first link (TankKitPolicy.h PathKitTab); -1 = no path.
+int PremadePathKitTab(Player const* player)
+{
+    if (!player)
+        return -1;
+
+    uint32 const specNo = sRandomPlayerbotMgr.GetValue(player->GetGUIDLow(), "specNo");
+    if (!specNo)
+        return -1;
+
+    for (TalentPath const& path : sPlayerbotAIConfig.classSpecs[player->getClass()].talentPath)
+        if (path.id >= 0 && uint32(path.id) + 1 == specNo)
+            return ai::tank_kit::PathKitTab(path.tab, path.firstLinkTree);
 
     return -1;
 }
@@ -152,6 +171,45 @@ AiObjectContext* AiFactory::createAiObjectContext(Player* player, PlayerbotAI* a
 #endif
     }
     return new AiObjectContext(ai);
+}
+
+int AiFactory::GetPlayerKitTab(const Player* player)
+{
+    int const tab = GetPlayerSpecTab(player);
+    if (!sPlayerbotAIConfig.rotationTankKitFromLevel || !player)
+        return tab;
+
+    uint32 const cls = player->getClass();
+    PlayerbotAI* const botAi = GetBotAI(player);
+    if (!botAi || !sRandomPlayerbotMgr.IsRandomBot(const_cast<Player*>(player)) || (botAi->GetForcedRole() & BOT_ROLE_TANK))
+        return tab;
+
+    // twow-repo#602 tank-kit path default (OB-00 29.10.2026): a warrior without talent points starts from its path's tab
+    int const base = GetPlayerKitBaseTab(player);
+    bool const tankTab = ai::tank_kit::IsTankTab(cls, base);
+    if (!tankTab)
+        return base;
+
+    if (!ai::tank_kit::TooEarly(ai::tank_kit::Applies(sPlayerbotAIConfig.rotationTankKitFromLevel, player->GetGUIDLow()), cls, player->GetLevel()))
+        return base;
+
+    return ai::tank_kit::DpsTab(cls);
+}
+
+// twow-repo#602 tank-kit path default (Rotation.TankKitFromLevel, OB-00 29.10.2026, TankKitPolicy.h BaseTab): the tab the kit decision
+// starts from. A warrior without talent points (below 10, or none spent yet) has the default tab 2 (Protection) from
+// GetPlayerMajorityTab; with the switch it takes its premade path's tab instead, so an arms or fury warrior reaching 10 keeps its DPS
+// kit (tank-B 28.10.). Warriors only; no path = the spec tab as before. The callers gate on random bots.
+int AiFactory::GetPlayerKitBaseTab(const Player* player)
+{
+    int const tab = GetPlayerSpecTab(player);
+    if (!sPlayerbotAIConfig.rotationTankKitFromLevel || !player || player->getClass() != CLASS_WARRIOR)
+        return tab;
+
+    std::map<uint32, int32> tabs = GetPlayerSpecTabs(player);
+    bool const noTalentPoints = player->GetLevel() < 10 || (tabs[0] + tabs[1] + tabs[2]) == 0;
+    return ai::tank_kit::BaseTab(ai::tank_kit::Applies(sPlayerbotAIConfig.rotationTankKitFromLevel, player->GetGUIDLow()),
+        player->getClass(), tab, noTalentPoints, PremadePathKitTab(player));
 }
 
 int AiFactory::GetPlayerSpecTab(const Player* bot)
@@ -384,12 +442,18 @@ BotRoles AiFactory::GetPlayerRoles(const Player* player)
     // warrior who happened to stand in defensive stance would have been handed
     // the tank slot with a fury build, while a feral druid was already
     // recognised through its talents. The aura check is gone. The tree decides.
-    return GetPlayerRoles(player->getClass(), GetPlayerSpecTab(player));
+    return GetPlayerRoles(player->getClass(), GetPlayerKitTab(player));   // twow-repo#602 (Rotation.TankKitFromLevel): the kit tab
 }
 
 void AiFactory::AddDefaultCombatStrategies(Player* player, PlayerbotAI* const facade, Engine* combatEngine)
 {
-    int tab = GetPlayerSpecTab(player);
+    // twow-repo#602 (Rotation.TankKitFromLevel): the kit follows the kit tab (DPS below the level of the tank spells)
+    int tab = GetPlayerKitTab(player);
+    if (tab != GetPlayerSpecTab(player))
+        ai::tank_kit::demoted.fetch_add(1, std::memory_order_relaxed);
+    // twow-repo#602 tank-kit path default: the kit follows the warrior's path instead of the default tab (a subset of demoted)
+    if (tab != GetPlayerSpecTab(player) && tab == GetPlayerKitBaseTab(player))
+        ai::tank_kit::pathed.fetch_add(1, std::memory_order_relaxed);
 
     combatEngine->addStrategies("mount", NULL);
     combatEngine->addStrategy("avoid mobs");
@@ -848,7 +912,7 @@ Engine* AiFactory::createCombatEngine(Player* player, PlayerbotAI* const facade,
 
 void AiFactory::AddDefaultNonCombatStrategies(Player* player, PlayerbotAI* const facade, Engine* nonCombatEngine)
 {
-    const int tab = GetPlayerSpecTab(player);
+    const int tab = GetPlayerKitTab(player);   // twow-repo#602 (Rotation.TankKitFromLevel): the same kit tab in every engine
     switch (player->getClass())
     {
         case CLASS_PRIEST:
@@ -1316,7 +1380,7 @@ void AiFactory::AddDefaultDeadStrategies(Player* player, PlayerbotAI* const faca
         deadEngine->removeStrategy("follow");
     }
 
-    const int tab = GetPlayerSpecTab(player);
+    const int tab = GetPlayerKitTab(player);   // twow-repo#602 (Rotation.TankKitFromLevel): the same kit tab in every engine
     switch (player->getClass())
     {
         case CLASS_SHAMAN:
@@ -1516,7 +1580,7 @@ void AiFactory::AddDefaultReactionStrategies(Player* player, PlayerbotAI* const 
 {
     reactionEngine->addStrategies("react", "chat", "avoid aoe", "potions", NULL);
 
-    const int tab = GetPlayerSpecTab(player);
+    const int tab = GetPlayerKitTab(player);   // twow-repo#602 (Rotation.TankKitFromLevel): the same kit tab in every engine
     switch (player->getClass())
     {
         case CLASS_SHAMAN:

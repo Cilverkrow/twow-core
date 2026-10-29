@@ -3598,6 +3598,34 @@ add_test(NAME cast_los_gate_policy
   COMMAND cast_los_gate_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#602 (AiPlayerbot.Rotation.InvalidTargetQuiet): "invalid target" stays quiet for an empty target while nothing attacks the bot.
+add_executable(invalid_target_policy_tests
+  "${PB_MODULE_DIR}/t/invalid_target_policy_tests.cpp")
+
+target_include_directories(invalid_target_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(invalid_target_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME invalid_target_policy
+  COMMAND invalid_target_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#602 (spell-name audit): the names that resolve in the image's spell data, the warlock stone ranks.
+add_executable(spell_name_policy_tests
+  "${PB_MODULE_DIR}/t/spell_name_policy_tests.cpp")
+
+target_include_directories(spell_name_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(spell_name_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME spell_name_policy
+  COMMAND spell_name_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # twow-repo#602 ROT-01 X3 (AiPlayerbot.Rotation.EmergencyLadder, cohort mode, default 0): fight on / class escape / flee for solo free bots
 # below critical health, solo CC on an add; FightTargetHp and SoloCcSpells configurable (OB-00 18.10.2026).
 add_executable(emergency_ladder_policy_tests
@@ -3834,8 +3862,9 @@ add_test(NAME oom_backoff_policy
   COMMAND oom_backoff_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
-# twow-repo#601 R01-A/B (owner rule 18.10.2026, twow-repo#615): one "[ConfigEcho] <full key>=<parsed value> ..." line at the
-# end of PlayerbotAIConfig::Initialize, so every test arm proves its A/B switches in the running process; no key, no state.
+# twow-repo#601 R01-A/B (owner rule 18.10.2026, twow-repo#615): numbered "[ConfigEcho] <full key>=<parsed value> ... part=<i>/<n>"
+# lines (each <= kMaxLine, OB-00 29.10.2026) at the end of PlayerbotAIConfig::Initialize, so every test arm proves its A/B
+# switches in the running process; no key, no state.
 add_executable(config_echo_policy_tests
   "${PB_MODULE_DIR}/t/config_echo_policy_tests.cpp")
 
@@ -4063,6 +4092,90 @@ set_target_properties(cast_while_moving_policy_tests PROPERTIES
 
 add_test(NAME cast_while_moving_policy
   COMMAND cast_while_moving_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#602 (AiPlayerbot.Rotation.NeverPossibleSkip): a spell action whose spell the bot does not know skips its checks.
+add_executable(never_possible_policy_tests
+  "${PB_MODULE_DIR}/t/never_possible_policy_tests.cpp")
+
+target_include_directories(never_possible_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(never_possible_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME never_possible_policy
+  COMMAND never_possible_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#602 (AiPlayerbot.Rotation.LosCacheMs): one line-of-sight verdict per bot and target for the cast checks and the reach.
+add_executable(los_cache_policy_tests
+  "${PB_MODULE_DIR}/t/los_cache_policy_tests.cpp")
+
+target_include_directories(los_cache_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(los_cache_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME los_cache_policy
+  COMMAND los_cache_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#654 (AiPlayerbot.Rotation.TankRoguePoison): the rogue tank keeps every main-hand poison but its threat poison off.
+add_executable(tank_rogue_poison_policy_tests
+  "${PB_MODULE_DIR}/t/tank_rogue_poison_policy_tests.cpp")
+
+target_include_directories(tank_rogue_poison_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(tank_rogue_poison_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME tank_rogue_poison_policy
+  COMMAND tank_rogue_poison_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#602 (AiPlayerbot.Rotation.MeleeSkipAttacking): the default "melee" action is USELESS while the bot already attacks its target.
+add_executable(melee_skip_policy_tests
+  "${PB_MODULE_DIR}/t/melee_skip_policy_tests.cpp")
+
+target_include_directories(melee_skip_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(melee_skip_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME melee_skip_policy
+  COMMAND melee_skip_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#602 (AiPlayerbot.Rotation.TankKitFromLevel): the tank kit only from the level of the tank spells (warrior 10, paladin 16).
+add_executable(tank_kit_policy_tests
+  "${PB_MODULE_DIR}/t/tank_kit_policy_tests.cpp")
+
+target_include_directories(tank_kit_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(tank_kit_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME tank_kit_policy
+  COMMAND tank_kit_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#333 finding 4: a travel step keeps the hearthstone / teleport cast wait and waits for a prepared one.
+add_executable(teleport_cast_policy_tests
+  "${PB_MODULE_DIR}/t/teleport_cast_policy_tests.cpp")
+
+target_include_directories(teleport_cast_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(teleport_cast_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME teleport_cast_policy
+  COMMAND teleport_cast_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
 # Owner order 27.10.2026 (AiPlayerbot.Revive.SpiritHealerFull): a bot's spirit healer revive at full health and mana, no sickness.
