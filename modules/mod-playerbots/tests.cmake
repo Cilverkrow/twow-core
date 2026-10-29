@@ -3862,8 +3862,9 @@ add_test(NAME oom_backoff_policy
   COMMAND oom_backoff_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
-# twow-repo#601 R01-A/B (owner rule 18.10.2026, twow-repo#615): one "[ConfigEcho] <full key>=<parsed value> ..." line at the
-# end of PlayerbotAIConfig::Initialize, so every test arm proves its A/B switches in the running process; no key, no state.
+# twow-repo#601 R01-A/B (owner rule 18.10.2026, twow-repo#615): numbered "[ConfigEcho] <full key>=<parsed value> ... part=<i>/<n>"
+# lines (each <= kMaxLine, OB-00 29.10.2026) at the end of PlayerbotAIConfig::Initialize, so every test arm proves its A/B
+# switches in the running process; no key, no state.
 add_executable(config_echo_policy_tests
   "${PB_MODULE_DIR}/t/config_echo_policy_tests.cpp")
 

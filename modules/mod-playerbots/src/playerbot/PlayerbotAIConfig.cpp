@@ -1745,14 +1745,16 @@ bool PlayerbotAIConfig::Initialize()
         sRandomPlayerbotMgr.LoadBattleMastersCache();
 
     // twow-repo#601 R01-A/B (owner rule 18.10., twow-repo#615): the parsed values of the A/B switches the test arms prove in
-    // the running process (R01 steps, the switches the R01 arms pin, P3-a long, #342), one line per Initialize (start and
-    // config reload; an arm takes the line of its own start). No key, no state. A new A/B switch adds its entry here: the
+    // the running process (R01 steps, the switches the R01 arms pin, P3-a long, #342), one set of lines per Initialize
+    // (start and config reload; an arm takes the lines of its own start). The lines are numbered parts of at most kMaxLine
+    // characters, each entry whole in exactly one of them (OB-00 29.10.: the log path cut the single line at about 4096,
+    // see ConfigEchoPolicy.h). No key, no state. A new A/B switch adds its entry here: the
     // config key without "AiPlayerbot." (FormatLine prints the full key) and the parsed member. The entries are sorted by
     // key (byte order), so a new one goes in at its alphabetical place, not at the end: two PRs then only meet when their
     // keys are neighbours. config_echo_source_contract checks the order; the feature's own contract pins its entry.
     {
         using ai::config_echo::Value;
-        sLog.outString("%s", ai::config_echo::FormatLine({
+        for (std::string const& line : ai::config_echo::FormatLines({
             {"ActionLog.Guids.count", Value(uint32(actionLogGuids.size()))},
             {"ActivityTrace", Value(activityTrace)},
             {"ActivityTrace.IdleDetail", Value(activityTraceIdleDetail)},
@@ -1869,7 +1871,8 @@ bool PlayerbotAIConfig::Initialize()
             {"ZoneExit.TurnInStallCounts", Value(zoneExitTurnInStallCounts)},
             {"ZoneExit.TurnInTravelStall", Value(zoneExitTurnInTravelStall)},
             {"ZoneExit.TurnInTravelStallCountsCombat", Value(zoneExitTurnInTravelStallCountsCombat)},
-        }).c_str());
+        }))
+            sLog.outString("%s", line.c_str());
     }
 
     sLog.outString("---------------------------------------");
