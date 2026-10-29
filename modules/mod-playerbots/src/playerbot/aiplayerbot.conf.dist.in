@@ -3210,6 +3210,14 @@ AiPlayerbot.Rotation.CastLosGate = 0
 # sight and in range" first, from that verdict, before its spell check (the same answer it gave after it). The worst effect is a
 # reaction up to this many ms later once sight returns. 0 = off (as before), default 500; values above 5000 act like 500.
 AiPlayerbot.Rotation.LosCacheMs = 500
+# twow-repo#654 rogue tank stance (owner 29.10.2026, BEHAVIOUR CHANGE, A/B with 2 first): the core makes Shadow Dance a rogue tank
+# stance (mangosd.conf Funserver.Rogue.ShadowDanceStance: the stance gives damage done -40 % and damage taken -25 %, the dodge /
+# parry buffs and the flat threat come only while it is up, no Stealth / Vanish in it). With this switch a bot on the rogue tank
+# path (4.3) learns the stance from level 20 when the core switch covers bots (1 or 2), keeps it up while it tanks ("tank rogue"
+# strategy) and cancels it otherwise, and does not try Stealth or Vanish while it is up. The core switch 0 unlearns the stance
+# again (rollback); this switch off leaves it untouched.
+# 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
+AiPlayerbot.Rotation.RogueTankStance = 0
 # twow-repo#602 ROT-01 cast-abort loop (OB-00 27.10.2026, BEHAVIOUR CHANGE, ON by default, 0 = rollback): a moving bot
 # without a real player master stopped before a spell with a cast time or a channel and then cancelled the cast without
 # casting; the next action moved it again and the next try cancelled again (hunt2 action logs: 47k cancels of Mind Blast,
