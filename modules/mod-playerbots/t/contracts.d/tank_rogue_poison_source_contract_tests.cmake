@@ -52,7 +52,8 @@ foreach(inc ${incs})
   endif()
 endforeach()
 require_text("${policy}" "return ai::cohort::Applies(mode, guidLow);" "the switch through CohortPolicy (0 off, 1 all, 2 cohort B)")
-require_text("${policy}" "return isPoisonAction && mainHand && !isThreatPoison;" "only a foreign main-hand poison is blocked")
+require_text("${policy}" "return isPoisonAction && mainHand && !isThreatPoison && threatPoisonUsable;" "only a foreign main-hand poison is blocked, and only while a threat poison is usable (OB-10)")
+require_text("${policy}" "constexpr std::uint32_t ThreatPoisonItems[] = { 90140, 65032 };" "the threat poison items")
 
 # 3. The poison actions carry the hand and the threat-poison flag (not their names).
 require_text("${actions_h}" "        bool IsMainHand() const { return mainHand; }\n        virtual bool IsThreatPoison() const { return false; }" "ApplyPoisonAction: hand + threat-poison accessors")
@@ -62,6 +63,7 @@ if(ag EQUAL -1)
 endif()
 string(SUBSTRING "${actions_h}" ${ag} 400 agitating)
 require_text("${agitating}" "bool IsThreatPoison() const override { return true; }" "Agitating Poison is the threat poison")
+require_text("${agitating}" "ApplyPoisonAction(ai, inMainHand, { 90140, 65032 }, \"apply agitating poison\")" "the action's items = ThreatPoisonItems")
 
 # 4. The multiplier: the rule by the action comes first (switch on); the old suffix check stays as the rollback path.
 string(FIND "${strategy_cpp}" "float TankRogueThreatMultiplier::GetValue(Action* action)" gv)
@@ -69,7 +71,22 @@ if(gv EQUAL -1)
   message(FATAL_ERROR "#654 TankRoguePoison: TankRogueThreatMultiplier::GetValue not found")
 endif()
 string(SUBSTRING "${strategy_cpp}" ${gv} 2000 getvalue)
-require_text("${getvalue}" "    if (ai::tank_rogue_poison::Applies(sPlayerbotAIConfig.rotationTankRoguePoison, bot->GetGUIDLow()))\n    {\n        ApplyPoisonAction const* poison = dynamic_cast<ApplyPoisonAction const*>(action);\n        if (poison && ai::tank_rogue_poison::BlocksMainHand(true, poison->IsMainHand(), poison->IsThreatPoison()))\n            return 0.0f;\n\n        return 1.0f;\n    }" "the rule by the action, switch on")
+require_text("${getvalue}" "    if (ai::tank_rogue_poison::Applies(sPlayerbotAIConfig.rotationTankRoguePoison, bot->GetGUIDLow()))
+    {
+        ApplyPoisonAction const* poison = dynamic_cast<ApplyPoisonAction const*>(action);
+        // the bag check only for a foreign main-hand poison (the cheap tests first)
+        if (poison && poison->IsMainHand() && !poison->IsThreatPoison() &&
+            ai::tank_rogue_poison::BlocksMainHand(true, poison->IsMainHand(), poison->IsThreatPoison(), HasUsableThreatPoison()))
+            return 0.0f;
+
+        return 1.0f;
+    }" "the rule by the action, switch on")
+require_text("${strategy_cpp}" "    for (uint32 const itemId : ai::tank_rogue_poison::ThreatPoisonItems)
+    {
+        ItemPrototype const* proto = sObjectMgr.GetItemPrototype(itemId);
+        if (proto && bot->GetLevel() >= proto->RequiredLevel && (ai->HasCheat(BotCheatMask::item) || bot->HasItemCount(itemId, 1)))
+            return true;
+    }" "usable threat poison = level + bags (as isPossible, no grant)")
 require_order("${getvalue}" "if (name == \"feint\" || name == \"vanish\")" "ai::tank_rogue_poison::Applies(" "Feint / Vanish stay blocked first")
 require_order("${getvalue}" "ai::tank_rogue_poison::Applies(" "std::string const mainHand = \" poison main hand\";" "the new rule before the old suffix check (rollback path)")
 require_text("${strategy_cpp}" "#include \"playerbot/TankRoguePoisonPolicy.h\"" "the policy include")
