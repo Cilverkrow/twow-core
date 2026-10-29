@@ -607,6 +607,9 @@ bool PlayerbotAIConfig::Initialize()
     rotationLosCacheMs = config.GetIntDefault("AiPlayerbot.Rotation.LosCacheMs", 500);   // twow-repo#602 REF-next v2 tick
     if (rotationLosCacheMs > ai::los_cache::MaxMs)
         rotationLosCacheMs = ai::los_cache::DefaultMs;   // no cache any more: the default (0 = off = rollback)
+    rotationRogueTankStance = config.GetIntDefault("AiPlayerbot.Rotation.RogueTankStance", 0);   // twow-repo#654 Shadow Dance stance
+    if (rotationRogueTankStance > 2)
+        rotationRogueTankStance = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
     rotationCastStopFirst = config.GetIntDefault("AiPlayerbot.Rotation.CastStopFirst", 1);   // twow-repo#602 cast-abort loop
     if (rotationCastStopFirst > 2)
         rotationCastStopFirst = 1;   // an unknown mode is the default (0 off = rollback, 1 all, 2 cohort B)
@@ -1871,6 +1874,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Rotation.ReachLosClose", Value(rotationReachLosClose)},
             {"Rotation.ReachPlayerMaster", Value(rotationReachPlayerMaster)},
             {"Rotation.RestGate", Value(rotationRestGate)},
+            {"Rotation.RogueTankStance", Value(rotationRogueTankStance)},
             {"Rotation.SpecFromPath", Value(rotationSpecFromPath)},
             {"Rotation.TankKitFromLevel", Value(rotationTankKitFromLevel)},
             {"Rotation.TankRoguePoison", Value(rotationTankRoguePoison)},

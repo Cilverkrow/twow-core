@@ -133,6 +133,7 @@ namespace HttpApi
 #include <chrono>
 #include "FunserverRareRespawn.h"
 #include "FunserverRidingStages.h"
+#include "FunserverShadowDanceStance.h"
 
 volatile bool World::m_stopEvent = false;
 uint8 World::m_ExitCode = SHUTDOWN_EXIT_CODE;
@@ -1598,6 +1599,8 @@ void World::LoadConfigSettingsFromFile(bool reload)
     setConfigMinMax(CONFIG_UINT32_FUNSERVER_RARE_RESPAWN_DIVISOR, "Funserver.Rare.Respawn.Divisor", FUNSERVER_RARE_RESPAWN_DEFAULT_DIVISOR, 1, 86400);
     setConfigMinMax(CONFIG_UINT32_FUNSERVER_RARE_RESPAWN_MIN_SECONDS, "Funserver.Rare.Respawn.MinSeconds", FUNSERVER_RARE_RESPAWN_DEFAULT_MIN_SECONDS, 1, 604800);
     setConfigMinMax(CONFIG_UINT32_FUNSERVER_RARE_RESPAWN_MAX_SECONDS, "Funserver.Rare.Respawn.MaxSeconds", FUNSERVER_RARE_RESPAWN_DEFAULT_MAX_SECONDS, 1, 604800);
+    // twow-repo#654: Shadow Dance as a rogue tank stance (0 = as before, 1 = every rogue, 2 = bots only until the client patch).
+    setConfigMinMax(CONFIG_UINT32_FUNSERVER_ROGUE_SHADOW_DANCE_STANCE, "Funserver.Rogue.ShadowDanceStance", 0, 0, 2);
     setConfigMinMax(CONFIG_UINT32_FUNSERVER_LOOT_UNITS_RARE, "Funserver.Loot.Units.Rare", 6, 1, 16);
     setConfigMinMax(CONFIG_UINT32_FUNSERVER_LOOT_UNITS_DUNGEON, "Funserver.Loot.Units.Dungeon", 8, 1, 16);
     setConfigMinMax(CONFIG_UINT32_FUNSERVER_LOOT_UNITS_RAID, "Funserver.Loot.Units.Raid", 16, 1, 16);
@@ -2211,6 +2214,16 @@ void LoadPlayerEggLoot();
 
     // Hotfix 8.10 (twow-repo#484): own player spells created without the passive bit.
     sSpellMgr.ApplyFunserverPassiveSpells();
+
+    // twow-repo#654: the stance needs its spells 61230-61232 (world migration, main train); without them the switch acts as 0.
+    if (getConfig(CONFIG_UINT32_FUNSERVER_ROGUE_SHADOW_DANCE_STANCE) &&
+        (!sSpellMgr.GetSpellEntry(SHADOW_DANCE_STANCE) || !sSpellMgr.GetSpellEntry(SHADOW_DANCE_STANCE_ENERGY_AFTER_PARRY) ||
+         !sSpellMgr.GetSpellEntry(SHADOW_DANCE_STANCE_ENERGY_AFTER_DODGE)))
+    {
+        sLog.outError("Funserver.Rogue.ShadowDanceStance = %u, but the spells %u-%u are missing (world migration of twow-repo#654): the switch acts as 0",
+            getConfig(CONFIG_UINT32_FUNSERVER_ROGUE_SHADOW_DANCE_STANCE), uint32(SHADOW_DANCE_STANCE), uint32(SHADOW_DANCE_STANCE_ENERGY_AFTER_DODGE));
+        setConfig(CONFIG_UINT32_FUNSERVER_ROGUE_SHADOW_DANCE_STANCE, 0);
+    }
 
     ///- Loads existing IDs in the database.
     sLog.outString("Loading existing IDs in the database...");

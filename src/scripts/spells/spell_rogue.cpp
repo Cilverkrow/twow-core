@@ -2,6 +2,10 @@
 #include "ThreatManager.h"
 #include "DBCStores.h"
 #include "FunserverRogueTalents.h"
+#include "FunserverShadowDanceStance.h"
+#include "ScriptObjects.h"
+#include "SpellMgr.h"
+#include "World.h"
 #include <map>
 #include <mutex>
 #include <string>
@@ -746,8 +750,29 @@ struct spell_rogue_spit : public SpellScript
     }
 };
 
+// twow-repo#654 (Funserver.Rogue.ShadowDanceStance): the switch as it acts - 0 without the stance spells 61230-61232 (world
+// migration, main train; also after a config reload).
+static uint32 ShadowDanceStanceMode()
+{
+    uint32 const mode = sWorld.getConfig(CONFIG_UINT32_FUNSERVER_ROGUE_SHADOW_DANCE_STANCE);
+    if (mode && (!sSpellMgr.GetSpellEntry(SHADOW_DANCE_STANCE) || !sSpellMgr.GetSpellEntry(SHADOW_DANCE_STANCE_ENERGY_AFTER_PARRY) ||
+                 !sSpellMgr.GetSpellEntry(SHADOW_DANCE_STANCE_ENERGY_AFTER_DODGE)))
+        return SHADOW_DANCE_STANCE_OFF;
+    return mode;
+}
+
+// The switch covers this unit: mode 1 every rogue, mode 2 AI-controlled players (bots) only.
+static bool ShadowDanceStanceCoversUnit(Unit const* unit)
+{
+    uint32 const mode = ShadowDanceStanceMode();
+    Player const* player = unit ? unit->ToPlayer() : nullptr;
+    return mode != SHADOW_DANCE_STANCE_OFF && player && ShadowDanceStanceCovers(mode, Script_IsAIControlled(player));
+}
+
 // #367 D-4/D-9 Shadow Dance (bots): parry -> +5 % dodge for 3 s, dodge -> +5 % parry for
 // 3 s; every dodge and parry adds the rank's flat threat (50/90/130) on the attacker.
+// twow-repo#654: for a rogue the switch covers, all of it only in the stance 61230, and each buff
+// then also casts its energy helper (-10 % energy regeneration for 3 s); without the stance nothing.
 struct spell_rogue_shadow_dance : public AuraScript
 {
     std::optional<SpellAuraProcResult> OnProc(Unit* owner, Unit* victim, uint32 /*amount*/, int32 /*originalAmount*/, Aura* aura, SpellEntry const* /*procSpell*/, uint32 /*procFlag*/, uint32 procEx, uint32 /*cooldown*/) override
@@ -755,18 +780,96 @@ struct spell_rogue_shadow_dance : public AuraScript
         if (!owner || !aura)
             return std::nullopt;
 
+        uint32 buff = 0;
         if (procEx & PROC_EX_PARRY)
-            owner->CastSpell(owner, SPELL_ROGUE_SHADOW_DANCE_DODGE_BUFF, true, nullptr, aura);
+            buff = SPELL_ROGUE_SHADOW_DANCE_DODGE_BUFF;
         else if (procEx & PROC_EX_DODGE)
-            owner->CastSpell(owner, SPELL_ROGUE_SHADOW_DANCE_PARRY_BUFF, true, nullptr, aura);
+            buff = SPELL_ROGUE_SHADOW_DANCE_PARRY_BUFF;
         else
             return SPELL_AURA_PROC_FAILED;
+
+        ShadowDanceProc const proc = ShadowDanceProcFor(ShadowDanceStanceCoversUnit(owner), owner->HasAura(SHADOW_DANCE_STANCE));
+        if (proc == ShadowDanceProc::None)
+            return SPELL_AURA_PROC_FAILED;
+
+        owner->CastSpell(owner, buff, true, nullptr, aura);
+        if (proc == ShadowDanceProc::Stance)
+            owner->CastSpell(owner, ShadowDanceEnergyHelperFor(buff), true, nullptr, aura);
 
         int32 const threat = aura->GetModifier()->m_amount;
         if (victim && threat > 0 && victim->IsAlive() && victim->CanHaveThreatList())
             victim->AddThreat(owner, float(threat), false, SPELL_SCHOOL_MASK_NORMAL, aura->GetSpellProto());
 
         return SPELL_AURA_PROC_OK;
+    }
+};
+
+// twow-repo#654: the stance 61230 itself (damage done -40 %, taken -25 % come from its data). Refused while the switch does not
+// cover the caster (mode 0, or a real player in mode 2); casting it ends an active rogue Stealth (owner: "Nur Stealth und Vanish",
+// Shadowmeld stays).
+struct spell_rogue_shadow_dance_stance : public SpellScript
+{
+    SpellCastResult OnCheckCast(Spell* spell, bool /*strict*/) const override
+    {
+        if (!ShadowDanceStanceCoversUnit(spell->m_casterUnit))
+            return SPELL_FAILED_DONT_REPORT;
+
+        return SPELL_CAST_OK;
+    }
+
+    void OnSuccessfulFinish(Spell* spell) const override
+    {
+        Unit* caster = spell->m_casterUnit;
+        if (!caster)
+            return;
+
+        for (uint32 const stealth : SHADOW_DANCE_STANCE_BLOCKED_SPELLS)
+            caster->RemoveAurasDueToSpell(stealth);
+    }
+};
+
+// twow-repo#654: who knows the stance. Mode 1: a rogue who knows a Shadow Dance rank learns it (login, learning a rank);
+// mode 0: it is unlearned and its aura removed (rollback); mode 2: the bot code teaches it (the AI is attached after the login
+// hook), and a real player's leftover stance aura is removed at login.
+class ShadowDanceStancePlayerScript final : public PlayerScript
+{
+public:
+    ShadowDanceStancePlayerScript() : PlayerScript("ShadowDanceStancePlayerScript", { PLAYERHOOK_ON_LOGIN, PLAYERHOOK_ON_LEARN_SPELL }) {}
+
+    void OnLogin(Player* player) override { Sync(player, true); }
+
+    void OnLearnSpell(Player* player, uint32 spellId) override
+    {
+        if (IsShadowDanceRank(spellId))
+            Sync(player, false);
+    }
+
+private:
+    static void Sync(Player* player, bool login)
+    {
+        if (!player || player->GetClass() != CLASS_ROGUE)
+            return;
+
+        uint32 const mode = ShadowDanceStanceMode();
+        bool knowsRank = false;
+        for (uint32 rank = SHADOW_DANCE_RANK_1; rank <= SHADOW_DANCE_RANK_3; ++rank)
+            knowsRank = knowsRank || player->HasSpell(rank);
+
+        switch (ShadowDanceLearnFor(mode, knowsRank, player->HasSpell(SHADOW_DANCE_STANCE)))
+        {
+            case ShadowDanceLearn::Learn:
+                player->learnSpell(SHADOW_DANCE_STANCE, false);
+                break;
+            case ShadowDanceLearn::Unlearn:
+                player->RemoveAurasDueToSpell(SHADOW_DANCE_STANCE);
+                player->removeSpell(SHADOW_DANCE_STANCE);
+                break;
+            case ShadowDanceLearn::Keep:
+                break;
+        }
+
+        if (login && mode == SHADOW_DANCE_STANCE_BOTS && !Script_IsAIControlled(player))
+            player->RemoveAurasDueToSpell(SHADOW_DANCE_STANCE);
     }
 };
 
@@ -1029,6 +1132,8 @@ void AddSC_rogue_spell_scripts()
     RegisterSpellScript("spell_rogue_agitating_poison", &GetSpellScript<spell_rogue_agitating_poison>);
     RegisterSpellScript("spell_rogue_spit", &GetSpellScript<spell_rogue_spit>);
     RegisterAuraScript("spell_rogue_shadow_dance", &GetAuraScript<spell_rogue_shadow_dance>);
+    RegisterSpellScript("spell_rogue_shadow_dance_stance", &GetSpellScript<spell_rogue_shadow_dance_stance>);   // twow-repo#654
+    new ShadowDanceStancePlayerScript();   // twow-repo#654: who knows the stance (Funserver.Rogue.ShadowDanceStance)
     RegisterSpellScript("spell_rogue_eviscerate", &GetSpellScript<spell_rogue_eviscerate>);
     RegisterSpellScript("spell_rogue_surprise_attack", &GetSpellScript<spell_rogue_surprise_attack>);
     RegisterSpellScript("spell_rogue_noxious_assault", &GetSpellScript<spell_rogue_noxious_assault>);
