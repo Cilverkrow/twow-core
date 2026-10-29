@@ -365,6 +365,10 @@ namespace ai
         , mainHand(inMainHand)
         , poisonItemIds(inPoisonItemIds) {}
 
+        // twow-repo#654 (Rotation.TankRoguePoison): the hand lives here, not in the action's name ("apply instant poison").
+        bool IsMainHand() const { return mainHand; }
+        virtual bool IsThreatPoison() const { return false; }
+
         bool isUseful() override
         {
             // Always allow poison on offhand
@@ -513,6 +517,7 @@ namespace ai
     public:
         ApplyAgitatingPoisonAction(PlayerbotAI* ai, bool inMainHand) : ApplyPoisonAction(ai, inMainHand, { 90140, 65032 }, "apply agitating poison") {}
         bool isPossible() override;
+        bool IsThreatPoison() const override { return true; }   // twow-repo#654: the rogue tank's main-hand poison
     };
 
     class ApplyMindPoisonAction : public ApplyPoisonAction
