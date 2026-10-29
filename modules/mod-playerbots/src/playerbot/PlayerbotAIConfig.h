@@ -650,6 +650,7 @@ public:
     bool rotationCastTrace = false;  // twow-repo#602 ROT-01 D0: [RotCast]/[RotCastTotal]/[RotCastUnknown]/[RotRole]/[RotPull] cast diagnostics, measurement only (0 = off)
     uint32 rotationSpecFromPath = 0;  // twow-repo#602 ROT-01 R06a: spec tab from the premade path from level 10, cohort mode 0 off / 1 all / 2 cohort B
     uint32 rotationTankKitFromLevel = 0;  // twow-repo#602 (tank count 28.10., OB-00, BEHAVIOUR CHANGE, A/B with 2): the tank kit only from the level of the tank spells - warrior below L10 arms kit, protection paladin below L16 retribution kit (TankKitPolicy.h); 0 off, 1 all, 2 cohort B
+    uint32 rotationTankRoguePoison = 1;  // twow-repo#654 (poison ping-pong 29.10., OB-00 / owner: code default 1, 0 = rollback): the rogue tank keeps every main-hand poison but its threat poison off, told by the action (hand + threat poison), in and out of combat (TankRoguePoisonPolicy.h); 0 off, 1 all, 2 cohort B
     uint32 rotationEmergencyLadder = 0;  // twow-repo#602 ROT-01 X3: emergency ladder for solo free bots below critical health, cohort mode 0 off / 1 all / 2 cohort B
     uint32 rotationEmergencyLadderFightTargetHp = 20;  // twow-repo#602 X3 (F2): fight on instead of fleeing when the single target is at or below this HP %
     std::vector<std::string> rotationEmergencyLadderSoloCcSpells;  // twow-repo#602 X3 (F3): spells allowed for solo CC on an add (lower case)
