@@ -109,3 +109,43 @@ TEST(DcTestComp, RolePoolLookup)
     for (Slot const& s : RolePool("dps"))
         EXPECT_STREQ(s.role, "dps");
 }
+
+// ---- CLI-GRP G2 (28.10.2026): the forced tank seat (`tank=<class>`) ------------------
+
+TEST(DcTestComp, ForcedTankSeatTakesThatClassForEverySeed)
+{
+    for (std::uint32_t seed = 1; seed < 200; ++seed)
+        for (std::uint8_t tank : { std::uint8_t(1), std::uint8_t(2) })   // warrior, paladin
+        {
+            auto const comp = BuildComp(seed, tank);
+            EXPECT_EQ(comp[0].classId, tank);
+            EXPECT_EQ(std::string_view(comp[0].role), "tank");
+            std::set<std::uint8_t> classes;
+            for (Slot const& s : comp)
+                classes.insert(s.classId);
+            EXPECT_EQ(classes.size(), kPartySize) << "seed " << seed;   // the other seats exclude the forced class
+        }
+}
+
+TEST(DcTestComp, ForcingTheDrawnClassChangesNothing)
+{
+    for (std::uint32_t seed = 1; seed < 200; ++seed)
+    {
+        auto const drawn = BuildComp(seed);
+        auto const forced = BuildComp(seed, drawn[0].classId);
+        for (std::size_t i = 0; i < kPartySize; ++i)
+            EXPECT_EQ(forced[i].classId, drawn[i].classId) << "seed " << seed << " seat " << i;
+        auto const zero = BuildComp(seed, 0);
+        for (std::size_t i = 0; i < kPartySize; ++i)
+            EXPECT_EQ(zero[i].classId, drawn[i].classId);   // 0 = drawn, as before
+    }
+}
+
+TEST(DcTestComp, TankClassByNameKnowsOnlyTheTankPool)
+{
+    EXPECT_EQ(DcTestComp::TankClassByName("warrior"), 1);
+    EXPECT_EQ(DcTestComp::TankClassByName("paladin"), 2);
+    EXPECT_EQ(DcTestComp::TankClassByName("druid"), 0);   // the feral seat is disabled in kTankPool
+    EXPECT_EQ(DcTestComp::TankClassByName("mage"), 0);
+    EXPECT_EQ(DcTestComp::TankClassByName(""), 0);
+}
