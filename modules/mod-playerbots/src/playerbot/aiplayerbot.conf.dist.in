@@ -3140,7 +3140,13 @@ AiPlayerbot.Rotation.SpecFromPath = 0
 # in the role offer (dungeon finder), so it is not a tank for itself or its group either. A forced tank role keeps the tank kit;
 # talent choice keeps the spec tab. Druids below 10 already have the leveling kit (no forms yet). Groups (S7, ad-hoc, real
 # players) pick no roles, so this also decides who tanks there. A level change across the key level rebuilds the strategies once.
-# "[TankKit] mode= demoted= rebuilt=" once a minute with the mode on (demoted = kit builds with the DPS tab, a rate).
+# Path default (OB-00 29.10.2026, same switch): a warrior without talent points (below 10, or none spent yet) had the default
+# tab Protection, so an arms or fury warrior reaching 10 was rebuilt to the tank kit; with the switch such a warrior starts from
+# its premade path's tab (its PremadeSpecTab key, else the main tree of the path's first link): arms and fury keep their DPS kit
+# at 10, fury below 10 plays fury instead of arms, protection is demoted to arms below 10 and tanks from 10. Warriors without a
+# path and every other class are unchanged.
+# "[TankKit] mode= demoted= rebuilt= pathed=" once a minute with the mode on (demoted = kit builds with a tab other than the spec
+# tab, pathed = those whose warrior kit follows its path; rates).
 # 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
 AiPlayerbot.Rotation.TankKitFromLevel = 0
 # twow-repo#602 ROT-01 X3 (BEHAVIOUR CHANGE, enable only after the OB-30 A/B + owner go): emergency ladder for SOLO FREE BOTS below

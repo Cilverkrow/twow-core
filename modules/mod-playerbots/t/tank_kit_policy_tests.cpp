@@ -1,5 +1,6 @@
 // twow-repo#602 ROT-01 tank count (TankKitPolicy.h, OB-00 28.10.2026, Rotation.TankKitFromLevel default 0): the tank kit only from the level
-// of the tank spells - warrior below 10 and protection paladin below 16 get their DPS kit with the switch.
+// of the tank spells - warrior below 10 and protection paladin below 16 get their DPS kit with the switch; path default (OB-00 29.10.):
+// a warrior without talent points starts from its path's tab, warriors only.
 // Hand-rolled Require(), std::exit(1) on failure, no gtest, no game library.
 #include "TankKitPolicy.h"
 
@@ -56,6 +57,28 @@ int main()
     // 8) The tank tabs: warrior 2, paladin 1 (an arms warrior reaching 10 is no tank: no rebuild).
     Require(IsTankTab(kClassWarrior, 2) && IsTankTab(kClassPaladin, 1), "warrior 2, paladin 1");
     Require(!IsTankTab(kClassWarrior, 0) && !IsTankTab(kClassPaladin, 2) && !IsTankTab(11, 1), "arms, retribution, druid: no tank tab");
+
+    // 9) Path default (OB-00 29.10.2026): the path's tab is its key, else the main tree of its first link; nothing usable = -1.
+    Require(PathKitTab(1, 0) == 1 && PathKitTab(-1, 0) == 0 && PathKitTab(-1, 2) == 2, "key first, else the first link's tree");
+    Require(PathKitTab(-1, -1) == -1 && PathKitTab(3, -1) == -1 && PathKitTab(-1, 5) == -1, "no usable tab: -1");
+
+    // 10) The kit base tab per warrior path, without talent points (the live config: tabs from the first links; default tab 2).
+    //     arms (0): arms below and at 10 - the fix (it was rebuilt to the tank kit at 10, tank-B 28.10.);
+    //     fury (1): fury below and at 10 (below 10 it was demoted to arms before);
+    //     protection (2): the tank tab, so it is demoted to arms below 10 (TooEarly) and tanks from 10 - as before;
+    //     no path (-1): the default tab 2 as before.
+    Require(BaseTab(true, kClassWarrior, 2, true, 0) == 0, "arms warrior without points: arms");
+    Require(BaseTab(true, kClassWarrior, 2, true, 1) == 1, "fury warrior without points: fury");
+    Require(BaseTab(true, kClassWarrior, 2, true, 2) == 2 && IsTankTab(kClassWarrior, BaseTab(true, kClassWarrior, 2, true, 2)), "protection warrior: tank tab");
+    Require(BaseTab(true, kClassWarrior, 2, true, -1) == 2, "warrior without a path: the default tab");
+    Require(!IsTankTab(kClassWarrior, BaseTab(true, kClassWarrior, 2, true, 0)) && !IsTankTab(kClassWarrior, BaseTab(true, kClassWarrior, 2, true, 1)),
+        "arms / fury reaching 10: no tank tab, so no rebuild to the tank kit");
+
+    // 11) With talent points the spec tab decides; the switch off and every other class: untouched.
+    Require(BaseTab(true, kClassWarrior, 2, false, 0) == 2 && BaseTab(true, kClassWarrior, 0, false, 2) == 0, "talent points spent: the spec tab");
+    Require(BaseTab(false, kClassWarrior, 2, true, 0) == 2, "switch off / other cohort: the default tab");
+    Require(BaseTab(true, kClassPaladin, 2, true, 0) == 2 && BaseTab(true, kClassPaladin, 2, true, 1) == 2, "paladin (holy / protection path): retribution default kept");
+    Require(BaseTab(true, 11, 0, true, 1) == 0 && BaseTab(true, 5, 1, true, 2) == 1 && BaseTab(true, 7, 1, true, 0) == 1, "druid / priest / shaman: untouched");
 
     std::cout << "tank_kit_policy_tests passed\n";
     return 0;

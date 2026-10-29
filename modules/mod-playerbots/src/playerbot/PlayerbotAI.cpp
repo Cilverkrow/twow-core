@@ -2928,9 +2928,10 @@ void PlayerbotAI::UpdateAIInternal(uint32 elapsed, bool minimal)
         uint32 const level = bot->GetLevel();
         if (level != tankKitLevel)
         {
-            // only a bot on its tank tab changes its kit at the crossing (an arms warrior reaching 10 stays arms: no rebuild)
+            // only a bot on its tank tab changes its kit at the crossing (an arms warrior reaching 10 stays arms: no rebuild); the tab
+            // is the kit base tab, so a warrior without talent points counts with its path's tab (tank-kit path default, OB-00 29.10.)
             bool const crossed = ai::tank_kit::CrossesKey(bot->getClass(), tankKitLevel, level) &&
-                ai::tank_kit::IsTankTab(bot->getClass(), AiFactory::GetPlayerSpecTab(bot));
+                ai::tank_kit::IsTankTab(bot->getClass(), AiFactory::GetPlayerKitBaseTab(bot));
             tankKitLevel = level;
             if (crossed)
             {
