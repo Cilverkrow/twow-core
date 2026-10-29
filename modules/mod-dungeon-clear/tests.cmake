@@ -210,6 +210,12 @@ add_test(NAME dungeon_clear_stay_dead_contract
                  "-DDC_SOURCE_DIR=${DC_MOD_PATH}"
                  -P "${DC_MOD_PATH}/t/stay_dead_contract.cmake")
 
+# CLI-GRP G2 28.10.2026: tank=<class> from the plan to the comp, no substitution (rules TestTestComp / TestTestPlanSchedule).
+add_test(NAME dungeon_clear_plan_tank_contract
+         COMMAND "${CMAKE_COMMAND}"
+                 "-DDC_SOURCE_DIR=${DC_MOD_PATH}"
+                 -P "${DC_MOD_PATH}/t/test_plan_tank_contract.cmake")
+
 # CLI-GRP 28.10.2026: the record's tank measures (schema 13; rules DcAggroTally.h / TestTestRunRecord).
 add_test(NAME dungeon_clear_tank_measures_contract
          COMMAND "${CMAKE_COMMAND}"
