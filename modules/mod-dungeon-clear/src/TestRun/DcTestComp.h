@@ -64,6 +64,15 @@ namespace DcTestComp
         // { 11, "feral",      "feral", "tank" },  // druid
     };
 
+    // CLI-GRP 29.10.2026 (g2/CAUSE-DRUIDE-FERAL-SITZ): the cause above is understood - DcTankForm's bear gate asked a
+    // strategy NAME the engine never holds, so the druid pulled in caster form. With that fixed the druid comes back
+    // as a FORCED seat only (`tank=druid`, the druid probe, OB-00 29.10.): not drawn, so the seeds of every other
+    // campaign keep their comps. It moves into kTankPool once the probe shows the gap closed. Spec: the premade
+    // "bear" path (AiPlayerbot.PremadeSpecName.11.3), fallback "feral".
+    inline constexpr Slot kForcedOnlyTankPool[] = {
+        { 11, "bear",       "feral", "tank" },  // druid
+    };
+
     inline constexpr Slot kHealPool[] = {
         { 5,  "holy",        "holy",  "heal" },  // priest
         { 2,  "holy",        "holy",  "heal" },  // paladin
@@ -102,7 +111,7 @@ namespace DcTestComp
     std::array<Slot, kPartySize> BuildComp(std::uint32_t seed, std::uint8_t tankClass = 0);
 
     // The class id of a tank-seat class by name ("warrior", "paladin", ...), 0 when the name is no class of
-    // kTankPool - the druid feral seat is disabled there, so "druid" is 0 until it comes back. Pure.
+    // kTankPool or kForcedOnlyTankPool (the druid: forced only, never drawn). Pure.
     std::uint8_t TankClassByName(std::string_view name);
 
     // The pool backing a role token ("tank" | "heal" | "dps"), for callers that
