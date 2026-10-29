@@ -3197,9 +3197,19 @@ AiPlayerbot.Rotation.RestGate.MaxRestSeconds = 120
 # marked the target unreachable while the bot kept it. With the switch a LINE_OF_SIGHT verdict makes the cast IMPOSSIBLE (no
 # retry loop, no stop of the walk), a current target that 8.2 marked unreachable is dropped, and target selection skips such
 # units while another candidate exists. Use it together with Rotation.ReachLosClose = 2 (the walk into sight).
-# "[CastLosGate] mode= gated= dropped= skipped=" once a minute with the mode on.
+# "[CastLosGate] mode= gated= dropped= skipped= cached= reach_early=" once a minute with the mode on (cached / reach_early:
+# Rotation.LosCacheMs below).
 # 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
 AiPlayerbot.Rotation.CastLosGate = 0
+# twow-repo#602 ROT-01 REF-next v2 tick (OB-00 / OB-30 29.10.2026, a perf fix, ON by default, 0 = rollback): under REF-next v2
+# [BotUpdate] p99 went from 4 to 33 ms. With CastLosGate a cast on a target out of sight is IMPOSSIBLE, so the engine tried every
+# alternative of the node, and each built a new spell check with the map's line-of-sight query against the same unseen target -
+# every pass; every cast's reach prerequisite ran a full spell check and a second sight query before answering "in sight and in
+# range". With a value, a bot keeps its last line-of-sight verdict for one target for that many milliseconds: a cast on a target it
+# knows is out of sight is IMPOSSIBLE at once (spells that ignore line of sight still take the full check), and reach answers "in
+# sight and in range" first, from that verdict, before its spell check (the same answer it gave after it). The worst effect is a
+# reaction up to this many ms later once sight returns. 0 = off (as before), default 500; values above 5000 act like 500.
+AiPlayerbot.Rotation.LosCacheMs = 500
 # twow-repo#602 ROT-01 cast-abort loop (OB-00 27.10.2026, BEHAVIOUR CHANGE, ON by default, 0 = rollback): a moving bot
 # without a real player master stopped before a spell with a cast time or a channel and then cancelled the cast without
 # casting; the next action moved it again and the next try cancelled again (hunt2 action logs: 47k cancels of Mind Blast,

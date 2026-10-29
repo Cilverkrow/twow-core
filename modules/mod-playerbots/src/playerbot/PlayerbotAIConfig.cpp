@@ -34,6 +34,7 @@
 #include "playerbot/TransportBoardPolicy.h"
 #include "playerbot/ConfigEchoPolicy.h"
 #include "playerbot/R01CohortPolicy.h"
+#include "playerbot/LosCachePolicy.h"   // twow-repo#602 (Rotation.LosCacheMs): the read's bounds
 
 #include <iostream>
 #include <numeric>
@@ -600,6 +601,9 @@ bool PlayerbotAIConfig::Initialize()
     rotationCastLosGate = config.GetIntDefault("AiPlayerbot.Rotation.CastLosGate", 0);   // twow-repo#602 hunter LoS
     if (rotationCastLosGate > 2)
         rotationCastLosGate = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
+    rotationLosCacheMs = config.GetIntDefault("AiPlayerbot.Rotation.LosCacheMs", 500);   // twow-repo#602 REF-next v2 tick
+    if (rotationLosCacheMs > ai::los_cache::MaxMs)
+        rotationLosCacheMs = ai::los_cache::DefaultMs;   // no cache any more: the default (0 = off = rollback)
     rotationCastStopFirst = config.GetIntDefault("AiPlayerbot.Rotation.CastStopFirst", 1);   // twow-repo#602 cast-abort loop
     if (rotationCastStopFirst > 2)
         rotationCastStopFirst = 1;   // an unknown mode is the default (0 off = rollback, 1 all, 2 cohort B)
@@ -1854,6 +1858,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Rotation.FollowUnstealth", Value(rotationFollowUnstealth)},
             {"Rotation.HunterMeleeStart", Value(rotationHunterMeleeStart)},
             {"Rotation.InvalidTargetQuiet", Value(rotationInvalidTargetQuiet)},
+            {"Rotation.LosCacheMs", Value(rotationLosCacheMs)},
             {"Rotation.MeleeFleeBreak", Value(rotationMeleeFleeBreak)},
             {"Rotation.MeleeFleeBreak.Ranged", Value(rotationMeleeFleeBreakRanged)},
             {"Rotation.MeleeSkipAttacking", Value(rotationMeleeSkipAttacking)},

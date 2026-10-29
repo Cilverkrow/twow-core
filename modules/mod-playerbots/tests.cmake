@@ -4109,6 +4109,20 @@ add_test(NAME never_possible_policy
   COMMAND never_possible_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#602 (AiPlayerbot.Rotation.LosCacheMs): one line-of-sight verdict per bot and target for the cast checks and the reach.
+add_executable(los_cache_policy_tests
+  "${PB_MODULE_DIR}/t/los_cache_policy_tests.cpp")
+
+target_include_directories(los_cache_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(los_cache_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME los_cache_policy
+  COMMAND los_cache_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # twow-repo#602 (AiPlayerbot.Rotation.MeleeSkipAttacking): the default "melee" action is USELESS while the bot already attacks its target.
 add_executable(melee_skip_policy_tests
   "${PB_MODULE_DIR}/t/melee_skip_policy_tests.cpp")

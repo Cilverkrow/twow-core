@@ -73,15 +73,17 @@ require_text("${reach_h}" "if (!losClosedAt || target->GetObjectGuid() != losClo
 # CLI-ROT re-review: in_los_after from Execute AND isUseful's in-sight branch (one helper).
 string(REGEX MATCHALL "NoteLos[(]target, " note_calls "${reach_h}")
 list(LENGTH note_calls note_count)
-if(NOT note_count EQUAL 2)
-  message(FATAL_ERROR "#594 ReachLosClose: NoteLos must be called from Execute and isUseful (found ${note_count})")
+# twow-repo#602 (Rotation.LosCacheMs, 29.10.): isUseful's cached in-sight-and-in-range early answer notes it too (a third call).
+if(NOT note_count EQUAL 3)
+  message(FATAL_ERROR "#594 ReachLosClose: NoteLos must be called from Execute, isUseful's LoS-cache early answer and isUseful's in-sight branch (found ${note_count})")
 endif()
-require_text("${reach_h}" "                        if (bot->IsWithinLOSInMap(target, true))\n                        {\n                            // twow-repo#594 (ReachLosClose, CLI-ROT re-review): back in sight - Execute does not run again when\n                            // the bot is already in range, so the episode's in_los_after is noted here as well.\n                            NoteLos(target, true);" "NoteLos in isUseful's in-sight branch")
+require_text("${reach_h}" "                            NoteLos(target, true);\n                            ai::los_cache::reachEarly.fetch_add(1, std::memory_order_relaxed);\n                            return false;" "NoteLos in the LoS-cache early answer (Rotation.LosCacheMs)")
+require_text("${reach_h}" "                        if (inLos)\n                        {\n                            // twow-repo#594 (ReachLosClose, CLI-ROT re-review): back in sight - Execute does not run again when\n                            // the bot is already in range, so the episode's in_los_after is noted here as well.\n                            NoteLos(target, true);" "NoteLos in isUseful's in-sight branch")
 require_text("${reach_h}" "        void NoteLos(Unit* target, bool inLos)\n        {\n            if (!losClosedAt)\n                return;" "NoteLos only with an open episode")
 forbid_text("${reach_h}" "(isFriend ? std::min(distanceToTarget * 0.9f, preferredDist) : preferredDist)" "the old inline rule")
 require_text("${reach_h}" "if (!isFriend && ai->CheckReachProgress(target, distanceToTarget))" "the 8.2 progress check (stop condition)")
 require_order("${reach_h}" "ai->CheckReachProgress(target, distanceToTarget)" "ai::reach_los::ChaseDistance(" "progress check before the chase distance")
-require_text("${reach_h}" "                        // Force move if not in los\n                        if (bot->IsWithinLOSInMap(target, true))" "isUseful forces a move without LOS")
+require_text("${reach_h}" "                        // Force move if not in los\n                        // twow-repo#602 (Rotation.LosCacheMs): the sight query through the cache when it is on\n                        bool const inLos = sPlayerbotAIConfig.rotationLosCacheMs ? ai->IsWithinLosCached(target) : bot->IsWithinLOSInMap(target, true);" "isUseful forces a move without LOS (off = the old query)")
 
 # Minute line: gated by the mode alone, called from the world update.
 require_text("${mgr_cpp}" "if (!sPlayerbotAIConfig.rotationReachLosClose || now < lastReport + 60)\n        return;" "minute line gated by the mode")
