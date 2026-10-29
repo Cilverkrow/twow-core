@@ -1757,6 +1757,7 @@ void World::LoadConfigSettingsFromFile(bool reload)
 
     setConfig(CONFIG_BOOL_PERFORMANCE_ENABLE, "Perf.Enable", true);
     setConfig(CONFIG_BOOL_SOLO_DUNGEON_REPOP_ALIVE, "SoloDungeonRepopAlive.Enable", false);
+    setConfig(CONFIG_BOOL_GRAVEYARD_CUSTOM_ENABLE, "Graveyard.Custom.Enable", true);
     setConfig(CONFIG_BOOL_LFT_BOTFILL_ENABLE, "LFT.BotFill.Enable", false);
     setConfig(CONFIG_UINT32_LFT_BOTFILL_DELAY, "LFT.BotFill.DelaySeconds", 90);
     setConfig(CONFIG_UINT32_LFT_BOTFILL_LEVEL_BELOW, "LFT.BotFill.LevelRangeBelow", 2);
@@ -2406,6 +2407,8 @@ void LoadPlayerEggLoot();
     sScriptMgr.LoadEventIdScripts();
     sLog.outString("Loading graveyard zones...");
     sObjectMgr.LoadGraveyardZones();
+    sLog.outString("Loading custom graveyards...");
+    sObjectMgr.LoadCustomGraveyards();
     sLog.outString("Loading spell target positions...");
     sSpellMgr.LoadSpellTargetPositions();
     sLog.outString("Loading spell affects...");

@@ -461,6 +461,19 @@ struct GraveYardData
     Team team;
 };
 
+// twow-repo#575 F9 / F-b V2 (CustomGraveyardPolicy.h): one custom_graveyards row for one team, with its own synthetic
+// WorldSafeLocs entry (custom_graveyard::SyntheticId), so GetClosestGraveYard can return it like a DBC graveyard.
+struct CustomGraveyardData
+{
+    uint32 rowId;
+    uint32 rowMap;
+    uint32 zoneId;
+    uint32 areaId;
+    uint32 maxLevel;
+    bool horde;
+    WorldSafeLocsEntry loc;
+};
+
 typedef std::multimap<uint32, GraveYardData> GraveYardMap;
 typedef std::pair<GraveYardMap::const_iterator, GraveYardMap::const_iterator> GraveYardMapBounds;
 typedef robin_hood::unordered_map<uint32, float> WorldSafeLocsFacingMap;
@@ -875,10 +888,12 @@ class ObjectMgr
             return m_GameObjectForQuestSet.find(entry) != m_GameObjectForQuestSet.end();
         }
 
-        WorldSafeLocsEntry const *GetClosestGraveYard(float x, float y, float z, uint32 MapId, Team team);
+        // level: the dead player's level for the level-limited custom graveyards (twow-repo#575 F-b V2); 0 = none of them.
+        WorldSafeLocsEntry const *GetClosestGraveYard(float x, float y, float z, uint32 MapId, Team team, uint32 level = 0);
         bool AddGraveYardLink(uint32 id, uint32 zone, Team team, bool inDB = true);
         void RemoveGraveYardLink(uint32 id, uint32 zone, Team team, bool inDB = false);
         void LoadGraveyardZones();
+        void LoadCustomGraveyards();
         GraveYardData const* FindGraveYardData(uint32 id, uint32 zone) const;
         void LoadWorldSafeLocsFacing();
         float GetWorldSafeLocFacing(uint32 id) const;
@@ -1791,6 +1806,9 @@ class ObjectMgr
         ReservedNamesMap    m_ReservedNames;
 
         GraveYardMap        m_GraveYardMap;
+        // Loaded once at startup (no reload), so the pointers GetClosestGraveYard hands out stay valid.
+        std::vector<CustomGraveyardData> m_customGraveyards;
+        WorldSafeLocsEntry const* GetCustomGraveYard(float x, float y, float z, uint32 MapId, uint32 zoneId, Team team, uint32 level) const;
 
         WorldSafeLocsFacingMap m_worldSafeLocsFacingMap;
 
