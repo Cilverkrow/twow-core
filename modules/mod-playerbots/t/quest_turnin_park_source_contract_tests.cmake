@@ -165,7 +165,8 @@ require_text("${chosen}" "chooseBudgetExceeded, lastRejects.crossMap + lastRejec
 require_text("${chosen}"
   "lastRejects.movedAway + lastRejects.rangeSkip + lastRejects.resumeSkipped,\n            sPlayerbotAIConfig.questFirstProgressionTurnInParkCountsRouteDanger));"
   "same unjudged inputs after a choice")
-# Exactly these two calls, each with all groups - no call site with fewer reasons.
+# Exactly these calls, each with all groups - no call site with fewer reasons. Four since twow-repo#601 no-route gate (CLI-Deep
+# 29.10.2026): NoteTurnInRouteResults judges the same request with the same inputs right before each NoteNoRouteTurnIns.
 string(REGEX MATCHALL "CountsAsNoRoute\\(" no_route_calls "${choose}")
 string(REGEX MATCHALL "lastRejects\\.crossMap \\+ lastRejects\\.zoneLevel \\+ lastRejects\\.dangerMap, lastRejects\\.turnInSuppressed,"
   route_danger_groups "${choose}")
@@ -177,8 +178,8 @@ reject_text("${choose}" "+ lastRejects.hubFilter" "hub filter is not unjudged: a
 list(LENGTH no_route_calls no_route_call_count)
 list(LENGTH route_danger_groups route_danger_group_count)
 list(LENGTH unjudged_groups unjudged_group_count)
-if(NOT no_route_call_count EQUAL 2 OR NOT route_danger_group_count EQUAL 2 OR NOT unjudged_group_count EQUAL 2)
-  message(FATAL_ERROR "Expected 2 CountsAsNoRoute calls with all reject groups, found ${no_route_call_count} calls, "
+if(NOT no_route_call_count EQUAL 4 OR NOT route_danger_group_count EQUAL 4 OR NOT unjudged_group_count EQUAL 4)
+  message(FATAL_ERROR "Expected 4 CountsAsNoRoute calls with all reject groups, found ${no_route_call_count} calls, "
     "${route_danger_group_count} route danger and ${unjudged_group_count} unjudged groups")
 endif()
 # The resumed choice counts what it skips; RejectCounts carries it into [QuestFirstRoute] state=rejected.

@@ -115,12 +115,64 @@ bool ProfessionTripTurnInWaiting(Player* bot, TravelTarget const* travelTarget)
     // trips (m1r-C: 318 turn_in refusals, one bot the whole run). Fail closed: a quest without a suppression still counts. Off: as before.
     TravelTarget const* suppressed = travelTarget &&
         ai::cohort::Applies(sPlayerbotAIConfig.professionTrainingTurnInGateSkipSuppressed, bot->GetGUIDLow()) ? travelTarget : nullptr;
+    // twow-repo#601 no-route gate (AiPlayerbot.ProfessionTraining.TurnInGateSkipNoRoute, CLI-Deep 29.10.2026; CLI-Berufe M1r6b): a finished
+    // quest whose last turn-in route request found no taker route (every taker judged) no longer holds the trips until a request finds
+    // one - 55002 held 54 gates with 2 of the 3 park counts. Fail closed: an unmarked quest still counts. Off: as before.
+    TravelTarget const* noRoute = travelTarget &&
+        ai::cohort::Applies(sPlayerbotAIConfig.professionTrainingTurnInGateSkipNoRoute, bot->GetGUIDLow()) ? travelTarget : nullptr;
     uint32 finished = 0;
     for (auto const& [questId, status] : bot->getQuestStatusMap())
         if (!status.m_rewarded && status.m_status == QUEST_STATUS_COMPLETE && (!turnIns || turnIns->IsTurnInOpen(questId)) &&
+            (!noRoute || !noRoute->IsTurnInNoRoute(questId)) &&
             (!suppressed || !suppressed->IsTurnInRouteSuppressedForQuest(questId)))
             ++finished;
     return ai::quest_search::GatherYieldsToTurnIn(true, finished);
+}
+
+// twow-repo#601 no-route gate (CLI-Deep 29.10.2026, CLI-Berufe): for the gate trace only - the first finished quest that holds the gate
+// (the same rule as ProfessionTripTurnInWaiting, 0 when none) and how many the no-route skip let pass. Read only when the line is written.
+void ProfessionTripTurnInDetail(Player* bot, TravelTarget const* travelTarget, uint32& holdingQuest, uint32& skippedNoRoute)
+{
+    holdingQuest = 0;
+    skippedNoRoute = 0;
+    TravelTarget const* turnIns = sPlayerbotAIConfig.questFirstProgressionTurnInParkFailures ? travelTarget : nullptr;
+    bool const suppressedOn = travelTarget && ai::cohort::Applies(sPlayerbotAIConfig.professionTrainingTurnInGateSkipSuppressed, bot->GetGUIDLow());
+    bool const noRouteOn = travelTarget && ai::cohort::Applies(sPlayerbotAIConfig.professionTrainingTurnInGateSkipNoRoute, bot->GetGUIDLow());
+    for (auto const& [questId, status] : bot->getQuestStatusMap())
+    {
+        if (status.m_rewarded || status.m_status != QUEST_STATUS_COMPLETE || (turnIns && !turnIns->IsTurnInOpen(questId)) ||
+            (suppressedOn && travelTarget->IsTurnInRouteSuppressedForQuest(questId)))
+            continue;
+        if (noRouteOn && travelTarget->IsTurnInNoRoute(questId))
+            ++skippedNoRoute;
+        else if (!holdingQuest)
+            holdingQuest = questId;
+    }
+}
+
+// twow-repo#601 no-route gate (CLI-Deep 29.10.2026, CLI-Berufe diagnosis): the nearest trip target of these entries on the bot's map,
+// without the near radius (NearTripEntries' rule otherwise) - read only for a written not_near gate line. 0 / 0 when none.
+void NearestTripEntry(PlayerbotAI* ai, std::vector<int32> const& entries, TravelDestinationPurpose purpose, uint32& distance, int32& entry)
+{
+    distance = 0;
+    entry = 0;
+    if (entries.empty())
+        return;
+    PlayerTravelInfo const info(ai->GetBot());
+    WorldPosition const center = info.GetPosition();
+    float best = -1.0f;
+    for (TravelDestination* destination : sTravelMgr.GetDestinations(info, uint32(purpose), entries, false))
+    {
+        if (!destination->HasPointsOnMap(center))
+            continue;
+        float const d = destination->DistanceTo(center);
+        if (best < 0.0f || d < best)
+        {
+            best = d;
+            entry = destination->GetEntry();
+        }
+    }
+    distance = best < 0.0f ? 0 : uint32(best);
 }
 
 // twow-repo#333 Berufe P1-a / P1-b (ProfessionTravelPolicy.h): may this bot start a profession trip of this kind now?
@@ -250,10 +302,17 @@ bool ProfessionNearTripStartable(PlayerbotAI* ai)
         (tracedAt == 0 || now >= tracedAt + sPlayerbotAIConfig.professionTrainingTraceCooldownSeconds))
     {
         SET_AI_VALUE2(int, "manual int", ai::profession_travel::kNearTraceValue, int(now));
-        sLog.outBasic("[ProfTravel] state=gate kind=trainer path=near bot=%u level=%u cohort=%c result=%s money=%u need=%u trainers=%u in_radius=%u dropped_hostile=%u dropped_unreachable=%u radius=%u dropped_home_zone=%u zone=%u",
+        // twow-repo#601 no-route gate (CLI-Deep 29.10.2026, CLI-Berufe): the quest that holds the gate, the no-route skips, and at
+        // not_near the nearest trainer without the radius - fields at the end, so the existing parsers stay valid.
+        uint32 holdingQuest = 0, skippedNoRoute = 0, nearest = 0;
+        int32 nearestEntry = 0;
+        ProfessionTripTurnInDetail(bot, travelTarget, holdingQuest, skippedNoRoute);
+        if (refused && std::string(refused) == "not_near")
+            NearestTripEntry(ai, ai::PhaseOneProfessionTrainers(ai, true), TravelDestinationPurpose::Trainer, nearest, nearestEntry);
+        sLog.outBasic("[ProfTravel] state=gate kind=trainer path=near bot=%u level=%u cohort=%c result=%s money=%u need=%u trainers=%u in_radius=%u dropped_hostile=%u dropped_unreachable=%u radius=%u dropped_home_zone=%u zone=%u quest=%u nearest=%u nearest_entry=%d skip_no_route=%u",
             bot->GetGUIDLow(), bot->GetLevel(), ai::cohort::Letter(bot->GetGUIDLow()), refused ? refused : "start", bot->GetMoney(),
             AI_VALUE2(uint32, "total money needed for", (uint32)NeedMoneyFor::skilltraining), counts.trainers, counts.inRadius,
-            drops.hostile, drops.unreachable, radius, drops.homeZone, bot->GetZoneId());
+            drops.hostile, drops.unreachable, radius, drops.homeZone, bot->GetZoneId(), holdingQuest, nearest, nearestEntry, skippedNoRoute);
     }
     return !refused;
 }
@@ -320,10 +379,17 @@ bool ProfessionNearToolTripStartable(PlayerbotAI* ai)
         (tracedAt == 0 || now >= tracedAt + sPlayerbotAIConfig.professionTrainingTraceCooldownSeconds))
     {
         SET_AI_VALUE2(int, "manual int", ai::profession_travel::kNearToolTraceValue, int(now));
-        sLog.outBasic("[ProfTravel] state=gate kind=tool path=near bot=%u level=%u cohort=%c result=%s tool=%u money=%u need=%u vendors=%u in_radius=%u dropped_hostile=%u dropped_unreachable=%u radius=%u dropped_home_zone=%u zone=%u",
+        // twow-repo#601 no-route gate (CLI-Deep 29.10.2026, CLI-Berufe): as the trainer line - holding quest, no-route skips, and at
+        // not_near the nearest vendor of the tool without the radius.
+        uint32 holdingQuest = 0, skippedNoRoute = 0, nearest = 0;
+        int32 nearestEntry = 0;
+        ProfessionTripTurnInDetail(bot, travelTarget, holdingQuest, skippedNoRoute);
+        if (refused && std::string(refused) == "not_near")
+            NearestTripEntry(ai, ai::GatherToolVendors(ai, tool), TravelDestinationPurpose::Vendor, nearest, nearestEntry);
+        sLog.outBasic("[ProfTravel] state=gate kind=tool path=near bot=%u level=%u cohort=%c result=%s tool=%u money=%u need=%u vendors=%u in_radius=%u dropped_hostile=%u dropped_unreachable=%u radius=%u dropped_home_zone=%u zone=%u quest=%u nearest=%u nearest_entry=%d skip_no_route=%u",
             bot->GetGUIDLow(), bot->GetLevel(), ai::cohort::Letter(bot->GetGUIDLow()), refused ? refused : "start", tool, bot->GetMoney(),
             proto ? proto->BuyPrice : 0, counts.trainers, counts.inRadius, drops.hostile, drops.unreachable, radius, drops.homeZone,
-            bot->GetZoneId());
+            bot->GetZoneId(), holdingQuest, nearest, nearestEntry, skippedNoRoute);
     }
     return !refused;
 }
