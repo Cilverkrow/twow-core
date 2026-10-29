@@ -2395,6 +2395,8 @@ void PlayerbotAIConfig::LoadTalentSpecs()
                 //Only add paths that have atleast 1 spec.
                 if (talentPath.talentSpec.size() > 0)
                 {
+                    // twow-repo#602 tank-kit path default: the main tree of the first link stands for the path when it has no tab key
+                    talentPath.firstLinkTree = talentPath.talentSpec.front().highestTree();
                     // twow-repo#602 R06a: the tab key and the main tree of the first (level 10) link must agree.
                     ++specPathCount;
                     if (talentPath.tab >= 0)

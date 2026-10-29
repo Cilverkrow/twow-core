@@ -51,6 +51,27 @@ inline int DpsTab(std::uint32_t playerClass)
     return playerClass == kClassWarrior ? 0 : playerClass == kClassPaladin ? 2 : -1;
 }
 
+// twow-repo#602 tank-kit path default (OB-00 29.10.2026, same switch): a warrior without talent points (below 10, or none spent yet)
+// has the default tab 2 (Protection) from GetPlayerMajorityTab, so an arms or fury warrior reaching 10 was rebuilt to the tank kit
+// (tank-B 28.10.: Wendell / Aelanthil arms, Kriakka fury). With the switch such a warrior starts from the tab of its premade path.
+// The path's tab: its AiPlayerbot.PremadeSpecTab key, else the main tree of its first link (the live config has no keys for
+// warriors); -1 = no usable tab.
+inline int PathKitTab(int pathTab, int firstLinkTree)
+{
+    if (pathTab >= 0 && pathTab <= 2)
+        return pathTab;
+    return firstLinkTree >= 0 && firstLinkTree <= 2 ? firstLinkTree : -1;
+}
+
+// The tab the kit decision starts from: warriors only (a paladin already defaults to retribution; every other class keeps its
+// engines), only without talent points and only with a path; else the spec tab as before.
+inline int BaseTab(bool applies, std::uint32_t playerClass, int specTab, bool noTalentPoints, int pathKitTab)
+{
+    if (applies && playerClass == kClassWarrior && noTalentPoints && pathKitTab >= 0 && pathKitTab <= 2)
+        return pathKitTab;
+    return specTab;
+}
+
 // Strategies are not rebuilt on a level-up: a level change across the key level of the class (either way) needs one rebuild.
 inline bool CrossesKey(std::uint32_t playerClass, std::uint32_t fromLevel, std::uint32_t toLevel)
 {
@@ -61,4 +82,5 @@ inline bool CrossesKey(std::uint32_t playerClass, std::uint32_t fromLevel, std::
 // [TankKit] counters. Strategy (re)inits / level crossings add, the world thread takes them once per minute.
 inline std::atomic<std::uint64_t> demoted{ 0 };   // combat-engine builds with the DPS kit instead of the tank kit (a rate, not bots)
 inline std::atomic<std::uint64_t> rebuilt{ 0 };   // strategy rebuilds because a level change crossed the key level
+inline std::atomic<std::uint64_t> pathed{ 0 };    // combat-engine builds of a warrior whose kit follows its path, not the default tab (a rate)
 }
