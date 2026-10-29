@@ -21,9 +21,13 @@ inline bool Applies(std::uint32_t mode, std::uint32_t guidLow)
     return ai::cohort::Applies(mode, guidLow);
 }
 
-// A poison action for the main hand that is not the threat poison: the tank's multiplier makes it useless (0).
-inline bool BlocksMainHand(bool isPoisonAction, bool mainHand, bool isThreatPoison)
+// The threat poison items (ApplyAgitatingPoisonAction): the bot item 90140 (level 20) and Agitating Poison 65032 (level 60).
+constexpr std::uint32_t ThreatPoisonItems[] = { 90140, 65032 };
+
+// A poison action for the main hand that is not the threat poison: the tank's multiplier makes it useless (0) - but only while
+// the bot carries a threat poison it can use (OB-10 review 29.10.: otherwise the kit's own main-hand poison stays, no empty hand).
+inline bool BlocksMainHand(bool isPoisonAction, bool mainHand, bool isThreatPoison, bool threatPoisonUsable)
 {
-    return isPoisonAction && mainHand && !isThreatPoison;
+    return isPoisonAction && mainHand && !isThreatPoison && threatPoisonUsable;
 }
 }

@@ -29,5 +29,8 @@ namespace ai
     public:
         TankRogueThreatMultiplier(PlayerbotAI* ai) : Multiplier(ai, "tank rogue threat") {}
         float GetValue(Action* action) override;
+
+    private:
+        bool HasUsableThreatPoison() const;   // twow-repo#654 (OB-10): a usable Agitating Poison in the bags
     };
 }
