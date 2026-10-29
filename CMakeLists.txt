@@ -1354,6 +1354,14 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
     COMMAND "${CMAKE_COMMAND}"
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_shaman_talents_357_stage2_contract.cmake")
+  # twow-repo#575 F9 / F-b V2: level-limited graveyards from custom_graveyards (Blackstone Island up to L10 at the hub).
+  add_executable(custom_graveyard_policy_test
+    "${TW_CORE_ROOT}/t/custom_graveyard_policy_test.cpp")
+  add_test(NAME custom_graveyard_policy_test COMMAND custom_graveyard_policy_test)
+  add_test(NAME custom_graveyard_575_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_custom_graveyard_575_contract.cmake")
   # twow-repo#511 train 9: Alterac event item spells 61002-61007 without donor leftovers.
   add_test(NAME av_item_spells_511_contract
     COMMAND "${CMAKE_COMMAND}"

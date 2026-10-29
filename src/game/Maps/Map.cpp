@@ -110,9 +110,9 @@ Map::~Map()
 }
 
 // stub graveyard manager forwards to sObjectMgr.
-WorldSafeLocsEntry const* Map::GraveyardManagerStub::GetClosestGraveYard(float x, float y, float z, uint32 MapId, Team team) const
+WorldSafeLocsEntry const* Map::GraveyardManagerStub::GetClosestGraveYard(float x, float y, float z, uint32 MapId, Team team, uint32 level) const
 {
-    return sObjectMgr.GetClosestGraveYard(x, y, z, MapId, team);
+    return sObjectMgr.GetClosestGraveYard(x, y, z, MapId, team, level);
 }
 
 void Map::LoadMapAndVMap(int gx, int gy)
