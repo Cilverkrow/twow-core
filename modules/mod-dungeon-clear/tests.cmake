@@ -216,6 +216,12 @@ add_test(NAME dungeon_clear_druid_bear_contract
                  "-DDC_SOURCE_DIR=${DC_MOD_PATH}"
                  -P "${DC_MOD_PATH}/t/test_druid_bear_contract.cmake")
 
+# CLI-GRP 30.10.2026: the rogue tank as a forced-only seat with its path kit from the claim; the world's roster gate untouched.
+add_test(NAME dungeon_clear_rogue_tank_seat_contract
+         COMMAND "${CMAKE_COMMAND}"
+                 "-DDC_SOURCE_DIR=${DC_MOD_PATH}"
+                 -P "${DC_MOD_PATH}/t/test_rogue_tank_seat_contract.cmake")
+
 # CLI-GRP G2 28.10.2026: tank=<class> from the plan to the comp, no substitution (rules TestTestComp / TestTestPlanSchedule).
 add_test(NAME dungeon_clear_plan_tank_contract
          COMMAND "${CMAKE_COMMAND}"

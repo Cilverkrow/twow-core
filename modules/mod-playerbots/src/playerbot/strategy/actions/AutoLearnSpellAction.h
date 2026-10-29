@@ -14,7 +14,12 @@ namespace ai
         virtual bool Execute(Event& event) override;
         virtual bool isUsefulWhenStunned() override { return true; }
 
-    private: 
+        // CLI-GRP 30.10.2026 (OB-00 method decision, test harness only): the premade path's kit for a dungeon-clear test
+        // seat. A test seat is a pool bot outside the persistent roster, so LearnSpells' roster gate gives it nothing;
+        // this runs the same GrantSpecAuras (incl. what later PRs manage there) without that gate. False = no path kit.
+        bool GrantSpecKitForTestSeat();
+
+    private:
         void LearnSpells(std::ostringstream* out);
         void LearnTrainerSpells(std::ostringstream* out);
         void LearnQuestSpells(std::ostringstream* out);
@@ -30,4 +35,7 @@ namespace ai
         bool IsValidSpell(uint32 spellId);
         bool IsTeachingSpellListedAsSpell(uint32 spellId);
     };
+
+    // The only caller is the dungeon-clear test claim (DcTestRunJob); the world keeps the roster gate in LearnSpells.
+    bool GrantSpecKitFor(PlayerbotAI* ai);
 }
