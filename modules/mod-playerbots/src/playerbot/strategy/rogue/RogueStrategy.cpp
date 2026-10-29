@@ -87,11 +87,21 @@ void RogueStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
     triggers.push_back(new TriggerNode(
         "sprint",
         NextAction::array(0, new NextAction("sprint", ACTION_HIGH + 1), NULL)));
+
+    // twow-repo#654 (Rotation.RogueTankStance): the Shadow Dance stance goes when the bot does not tank.
+    triggers.push_back(new TriggerNode(
+        "shadow dance stance off",
+        NextAction::array(0, new NextAction("cancel shadow dance stance", ACTION_HIGH + 6), NULL)));
 }
 
 void RogueStrategy::InitNonCombatTriggers(std::list<TriggerNode*>& triggers)
 {
     ClassStrategy::InitNonCombatTriggers(triggers);
+
+    // twow-repo#654 (Rotation.RogueTankStance): the Shadow Dance stance goes when the bot does not tank.
+    triggers.push_back(new TriggerNode(
+        "shadow dance stance off",
+        NextAction::array(0, new NextAction("cancel shadow dance stance", ACTION_HIGH + 6), NULL)));
 }
 
 void RogueStrategy::InitReactionTriggers(std::list<TriggerNode*>& triggers)

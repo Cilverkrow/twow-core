@@ -4136,6 +4136,20 @@ add_test(NAME melee_skip_policy
   COMMAND melee_skip_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#654 (AiPlayerbot.Rotation.RogueTankStance): the rogue tank learns, keeps up and drops the Shadow Dance stance.
+add_executable(rogue_tank_stance_policy_tests
+  "${PB_MODULE_DIR}/t/rogue_tank_stance_policy_tests.cpp")
+
+target_include_directories(rogue_tank_stance_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(rogue_tank_stance_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME rogue_tank_stance_policy
+  COMMAND rogue_tank_stance_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # twow-repo#602 (AiPlayerbot.Rotation.TankKitFromLevel): the tank kit only from the level of the tank spells (warrior 10, paladin 16).
 add_executable(tank_kit_policy_tests
   "${PB_MODULE_DIR}/t/tank_kit_policy_tests.cpp")
