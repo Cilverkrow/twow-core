@@ -210,6 +210,12 @@ add_test(NAME dungeon_clear_stay_dead_contract
                  "-DDC_SOURCE_DIR=${DC_MOD_PATH}"
                  -P "${DC_MOD_PATH}/t/stay_dead_contract.cmake")
 
+# CLI-GRP 29.10.2026: the druid tank's bear gate by strategy type, the druid as a forced-only seat (g2/CAUSE-DRUIDE-FERAL-SITZ).
+add_test(NAME dungeon_clear_druid_bear_contract
+         COMMAND "${CMAKE_COMMAND}"
+                 "-DDC_SOURCE_DIR=${DC_MOD_PATH}"
+                 -P "${DC_MOD_PATH}/t/test_druid_bear_contract.cmake")
+
 # CLI-GRP G2 28.10.2026: tank=<class> from the plan to the comp, no substitution (rules TestTestComp / TestTestPlanSchedule).
 add_test(NAME dungeon_clear_plan_tank_contract
          COMMAND "${CMAKE_COMMAND}"

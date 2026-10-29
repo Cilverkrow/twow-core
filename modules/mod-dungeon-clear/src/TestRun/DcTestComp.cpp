@@ -53,9 +53,14 @@ namespace DcTestComp
 
         comp[0] = Draw(kTankPool, std::size(kTankPool), used, state);   // consumed even when forced (stream position)
         if (tankClass)
+        {
             for (Slot const& s : kTankPool)
                 if (s.classId == tankClass)
                     comp[0] = s;
+            for (Slot const& s : kForcedOnlyTankPool)   // the druid: forced only (never drawn above)
+                if (s.classId == tankClass)
+                    comp[0] = s;
+        }
         used.insert(comp[0].classId);
 
         comp[1] = Draw(kHealPool, std::size(kHealPool), used, state);
@@ -76,10 +81,16 @@ namespace DcTestComp
             { "warrior", 1 }, { "paladin", 2 }, { "druid", 11 },
         };
         for (auto const& n : kNames)
-            if (n.name == name)
-                for (Slot const& s : kTankPool)
-                    if (s.classId == n.classId)
-                        return n.classId;
+        {
+            if (n.name != name)
+                continue;
+            for (Slot const& s : kTankPool)
+                if (s.classId == n.classId)
+                    return n.classId;
+            for (Slot const& s : kForcedOnlyTankPool)   // the druid: forced only
+                if (s.classId == n.classId)
+                    return n.classId;
+        }
         return 0;
     }
 
