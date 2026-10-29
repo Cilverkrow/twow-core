@@ -1901,6 +1901,16 @@ AiPlayerbot.ProfessionTraining.NearRadius = 0
 # skips such a quest in that rule (near trip, gap trips, trip end); a quest the quest system has not suppressed still counts.
 #   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid); other values act like 0.
 AiPlayerbot.ProfessionTraining.TurnInGateSkipSuppressed = 0
+# twow-repo#601 no-route gate (CLI-Deep 29.10.2026; CLI-Berufe M1r6b: the turn_in gate was held by finished quests WITHOUT a route,
+# not by suppressed ones - 55002 "Supplies to the Port!" 54 gates; bots 86 / 4517 got 2 of the 3 no_route counts the #485 park
+# needs and then no further route request, so the quest held the gate to the end). TurnInGateSkipNoRoute skips in the same rule a
+# finished quest whose last turn-in route request found no taker route (every taker judged: no budget overrun, no unjudged or
+# suppressed taker); a later request that finds a taker ends it. Each turn-in request without a taker writes one line
+# [ProfTravel] state=turnin_no_route bot= quests=N mark=1|0 (1: marked, 0: not every taker judged), and the gate lines carry
+# skip_no_route=N. Both only with the switch on for the bot; the gate lines also carry quest= (the quest that holds the gate, 0
+# when none) and nearest= / nearest_entry= (the nearest trainer / vendor without the radius, at result=not_near; 0 otherwise).
+#   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid); other values act like 0.
+AiPlayerbot.ProfessionTraining.TurnInGateSkipNoRoute = 0
 # Profession use (#333), persistent roster bots without a real-player master.
 # GatherDistance: passive gathering radius for such a bot on its own (herbs,
 # ore, skinning); 0 = GatheringDistance. The hostile check stays in force.

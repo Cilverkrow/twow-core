@@ -393,6 +393,25 @@ bool NoteNoRouteTurnIns(AiObjectContext* context, TravelTarget* travelTarget, bo
     return parked;
 }
 
+// twow-repo#601 no-route gate (ProfessionTraining.TurnInGateSkipNoRoute, CLI-Deep 29.10.2026): the offered finished quests and the
+// request's result for the profession trip gate, handed over before NoteNoRouteTurnIns reads and clears the list (read here, never
+// cleared). The list exists only with turn-in parking on (TurnInParkFailures > 0, key 0 stores none). Switch off: nothing happens.
+void NoteTurnInRouteResults(AiObjectContext* context, TravelTarget* travelTarget, bool noRoute, bool takerFound)
+{
+    if (!sPlayerbotAIConfig.professionTrainingTurnInGateSkipNoRoute)
+        return;
+
+    std::string const quests = AI_VALUE2(std::string, "manual string", HandInQuestsValue);
+    if (quests.empty())
+        return;
+
+    std::vector<uint32> questIds;
+    for (std::string const& questId : split(quests, ','))
+        if (uint32 const id = uint32(atoi(questId.c_str())))
+            questIds.push_back(id);
+    travelTarget->NoteTurnInRouteResult(questIds, noRoute, takerFound);
+}
+
 // twow-repo#601 S1 (OB-10 answer 4): the per-candidate skips of SetBestTarget as one predicate. The main loop counts
 // its answer per reason; with AiPlayerbot.QuestFirstProgression.FailureClasses the local quest hub pre-loop asks the
 // same predicate, so a local candidate the main loop would skip no longer switches the hub filter on (soak 17.10.:
@@ -1021,6 +1040,12 @@ bool ChooseTravelTargetAction::Execute(Event& event)
                 SET_AI_VALUE2(int, "manual int", "quest route backoff until", 0);
             }
 
+            // twow-repo#601 no-route gate: the same no-route judgement for the profession trip gate, before #485 below clears the list.
+            NoteTurnInRouteResults(context, travelTarget, ai::turnin_park::CountsAsNoRoute(ai::turnin_park::RouteOutcome::NoTarget,
+                chooseBudgetExceeded, lastRejects.crossMap + lastRejects.zoneLevel + lastRejects.dangerMap, lastRejects.turnInSuppressed,
+                lastRejects.movedAway + lastRejects.rangeSkip + lastRejects.resumeSkipped,
+                sPlayerbotAIConfig.questFirstProgressionTurnInParkCountsRouteDanger), false);
+
             // twow-repo#485: no way to any offered taker - unless not every taker was judged (a stale
             // list, a random range skip, candidates a resumed choice skipped) or a filter that lifts
             // by itself took one: a suppressed turn-in route (counted already) or, unless
@@ -1124,6 +1149,15 @@ bool ChooseTravelTargetAction::Execute(Event& event)
         if (stage > 0 && UsesQuestFirstProgression(bot))
             sLog.outBasic("[QuestSearch] state=found bot=%u level=%u stage=%d distance=%.0f",
                 bot->GetGUIDLow(), bot->GetLevel(), stage, newTarget.Distance(bot));
+
+        // twow-repo#601 no-route gate: a taker found unmarks the offered quests, the giver fallback marks them as below (before #485
+        // clears the list).
+        bool const takerFound = newTarget.GetDestination()->GetPurpose() == TravelDestinationPurpose::QuestTaker;
+        NoteTurnInRouteResults(context, travelTarget, ai::turnin_park::CountsAsNoRoute(
+            takerFound ? ai::turnin_park::RouteOutcome::Taker : ai::turnin_park::RouteOutcome::Fallback,
+            chooseBudgetExceeded, lastRejects.crossMap + lastRejects.zoneLevel + lastRejects.dangerMap, lastRejects.turnInSuppressed,
+            lastRejects.movedAway + lastRejects.rangeSkip + lastRejects.resumeSkipped,
+            sPlayerbotAIConfig.questFirstProgressionTurnInParkCountsRouteDanger), takerFound);
 
         // twow-repo#485: another target than a taker is the quest giver fallback - the job found
         // no taker at all. Same inputs as in the no-target branch.

@@ -86,7 +86,7 @@ require_text("${values_cpp}" "bool const rosterOnItsOwn = applies && sRandomPlay
 require_order("${values_cpp}" "bool const cheapGates = eligible && cooldownOver && !turnIn && !band && money;" "SET_AI_VALUE2(int, \"manual int\", ai::profession_travel::kNearCheckValue, int(now));" "the cheap gates before the walk slot is spent")
 require_order("${values_cpp}" "SET_AI_VALUE2(int, \"manual int\", ai::profession_travel::kNearCheckValue, int(now));" "found = !ai::NearProfessionTrainers(ai, radius, &drops, &counts).empty();" "the check time before the destination walk")
 require_text("${values_cpp}" "found = AI_VALUE2(int, \"manual int\", ai::profession_travel::kNearResultValue) != 0;" "between two walks the last result counts (pre-review)")
-require_text("${values_cpp}" "sLog.outBasic(\"[ProfTravel] state=gate kind=trainer path=near bot=%u level=%u cohort=%c result=%s money=%u need=%u trainers=%u in_radius=%u dropped_hostile=%u dropped_unreachable=%u radius=%u dropped_home_zone=%u zone=%u\"," "the gate trace")
+require_text("${values_cpp}" "sLog.outBasic(\"[ProfTravel] state=gate kind=trainer path=near bot=%u level=%u cohort=%c result=%s money=%u need=%u trainers=%u in_radius=%u dropped_hostile=%u dropped_unreachable=%u radius=%u dropped_home_zone=%u zone=%u quest=%u nearest=%u nearest_entry=%d skip_no_route=%u\"," "the gate trace")
 require_text("${values_cpp}" "if (sPlayerbotAIConfig.professionTrainingTrace && eligible && (walked || !cheapGates) &&" "the trace only with ProfessionTraining.Trace, eligible bots, from a walk or a refusing cheap gate")
 require_text("${values_cpp}" "AI_VALUE2(int, \"manual int\", key + ai::profession_travel::kNearSuffix) ? \"near\" : \"gap\");" "path= on the end line")
 

@@ -1330,6 +1330,37 @@ bool TravelTarget::IsTurnInRouteSuppressedForQuest(uint32 questId) const
     return turnin_recovery::IsSuppressedForQuest(turnInRecovery, WorldTimer::getMSTime(), questId);
 }
 
+// twow-repo#601 no-route gate (ProfessionTraining.TurnInGateSkipNoRoute, CLI-Deep 29.10.2026): a request that judged every taker and
+// found no route marks its offered quests, one that found a taker unmarks them, anything else (budget overrun, unjudged takers,
+// a suppressed route) leaves them. The line is the switch's effect proof: one per request without a taker, only with the switch on.
+void TravelTarget::NoteTurnInRouteResult(std::vector<uint32> const& questIds, bool noRoute, bool takerFound)
+{
+    if (!bot || questIds.empty() || !ai::cohort::Applies(sPlayerbotAIConfig.professionTrainingTurnInGateSkipNoRoute, bot->GetGUIDLow()))
+        return;
+
+    if (takerFound)
+    {
+        for (uint32 questId : questIds)
+            noRouteTurnIns.erase(questId);
+        return;
+    }
+
+    if (noRoute)
+    {
+        // Bounded like the park book: a bot holds at most 20 finished quests.
+        if (noRouteTurnIns.size() > 32)
+            noRouteTurnIns.clear();
+        noRouteTurnIns.insert(questIds.begin(), questIds.end());
+    }
+    sLog.outBasic("[ProfTravel] state=turnin_no_route bot=%u level=%u quests=%u mark=%u", bot->GetGUIDLow(), bot->GetLevel(),
+        uint32(questIds.size()), noRoute ? 1u : 0u);
+}
+
+bool TravelTarget::IsTurnInNoRoute(uint32 questId) const
+{
+    return !noRouteTurnIns.empty() && noRouteTurnIns.count(questId) != 0;
+}
+
 turnin_recovery::RecoveryAction TravelTarget::ObserveTurnInProgress()
 {
     // Turn-ins and (#329) objectives share the same progress observation.
