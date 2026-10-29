@@ -145,7 +145,21 @@ TEST(DcTestComp, TankClassByNameKnowsOnlyTheTankPool)
 {
     EXPECT_EQ(DcTestComp::TankClassByName("warrior"), 1);
     EXPECT_EQ(DcTestComp::TankClassByName("paladin"), 2);
-    EXPECT_EQ(DcTestComp::TankClassByName("druid"), 0);   // the feral seat is disabled in kTankPool
+    EXPECT_EQ(DcTestComp::TankClassByName("druid"), 11);   // forced only (kForcedOnlyTankPool), never drawn
     EXPECT_EQ(DcTestComp::TankClassByName("mage"), 0);
     EXPECT_EQ(DcTestComp::TankClassByName(""), 0);
+}
+
+// CLI-GRP 29.10.2026 (g2/CAUSE-DRUIDE-FERAL-SITZ): the druid is a forced-only tank seat - tank=druid gives it, the draw
+// never does (the seeds of every other campaign keep their comps).
+TEST(DcTestComp, DruidTankIsForcedOnlyNeverDrawn)
+{
+    for (std::uint32_t seed = 1; seed < 500; ++seed)
+    {
+        EXPECT_NE(BuildComp(seed)[0].classId, 11) << "seed " << seed;   // never drawn
+        auto const forced = BuildComp(seed, 11);
+        EXPECT_EQ(forced[0].classId, 11);
+        EXPECT_EQ(std::string_view(forced[0].specName), "bear");
+        EXPECT_EQ(std::string_view(forced[0].role), "tank");
+    }
 }
