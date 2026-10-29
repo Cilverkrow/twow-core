@@ -73,6 +73,7 @@ class TalentSpec {
         std::string name = "";
         int probability = 100;
         int tab = -1;  // twow-repo#602 R06a: tab of the path's named tree (AiPlayerbot.PremadeSpecTab), -1 = not given
+        int firstLinkTree = -1;  // twow-repo#602 tank-kit path default: main tree of the path's first link (set at load), -1 = none
         std::vector<TalentSpec> talentSpec;
     };
 
