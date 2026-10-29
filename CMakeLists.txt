@@ -1367,6 +1367,11 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
     COMMAND "${CMAKE_COMMAND}"
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_repop_stale_575_contract.cmake")
+  # twow-repo#575 F9 / F-b V1: the 17 spawns around graveyard 149 (Blackstone Island) move into their camps.
+  add_test(NAME gy149_v1_575_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_gy149_v1_575_contract.cmake")
 
   include("${TW_CORE_ROOT}/modules/mod-playerbots/tests.cmake")
   # mod-dungeon-clear's suites, here for the same reason: its own .cmake is
