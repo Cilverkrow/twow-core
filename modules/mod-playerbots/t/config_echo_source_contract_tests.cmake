@@ -1,7 +1,10 @@
 cmake_policy(VERSION 3.16)
-# twow-repo#601 R01-A/B (owner rule 18.10.2026, twow-repo#615): one "[ConfigEcho] <full key>=<parsed value> ..." line at the
-# end of PlayerbotAIConfig::Initialize, so every test arm proves its A/B switches in the running process. Values come from
-# the parsed members (after clamps / defaults), never from a second config read; one line per start, no key, no state.
+# twow-repo#601 R01-A/B (owner rule 18.10.2026, twow-repo#615): "[ConfigEcho] <full key>=<parsed value> ... part=<i>/<n>"
+# lines at the end of PlayerbotAIConfig::Initialize, so every test arm proves its A/B switches in the running process.
+# Values come from the parsed members (after clamps / defaults), never from a second config read; one set of lines per
+# start, no key, no state. OB-00 29.10.2026: the log path cut the single line at about 4096, so the entries go out in
+# numbered parts of at most kMaxLine (3500) characters, each part with the same tag, each entry whole in exactly one part
+# (config_echo_policy_tests pins the packing; this file pins that every entry goes through it, once).
 # Reads named files only.
 if(NOT DEFINED PB_SOURCE_DIR)
   message(FATAL_ERROR "PB_SOURCE_DIR is required")
@@ -62,15 +65,21 @@ forbid_text("${policy}" "sLog" "logging in the policy")
 require_text("${policy}" "namespace ai::config_echo" "policy namespace")
 require_text("${policy}" "std::string line = \"[ConfigEcho]\";" "line tag")
 require_text("${policy}" "line += \" AiPlayerbot.\";\n        line += e.first;\n        line += '=';\n        line += e.second;" "one ' AiPlayerbot.<key>=value' token per entry")
+# the parts: under the log path's ~4096 cut, each a FormatLine of whole entries, " part=<i>/<n>" last
+require_text("${policy}" "inline constexpr std::size_t kMaxLine = 3500;" "the part cap")
+require_text("${policy}" "if (!runs.back().empty() && len + token + kPartRoom > maxLine)" "a new part only when the next entry would not fit")
+require_text("${policy}" "lines.push_back(FormatLine(runs[i]) + \" part=\" + std::to_string(i + 1) + \"/\" + std::to_string(runs.size()));" "each part a FormatLine, part=<i>/<n> last")
 
-# 2. One echo, at the end of Initialize: after the last loader, before the banner; nothing else prints it.
+# 2. One echo, at the end of Initialize: after the last loader, before the banner; nothing else prints it. Every part goes
+#    out as its own outString line; the single-line FormatLine is not called here (its line would be cut again).
 require_text("${config_cpp}" "#include \"playerbot/ConfigEchoPolicy.h\"" "policy include")
-count_text("${config_cpp}" "ai::config_echo::FormatLine(" 1 "echo call")
-require_order("${config_cpp}" "sRandomPlayerbotMgr.LoadBattleMastersCache();" "ai::config_echo::FormatLine(" "echo after the last loader")
-require_order("${config_cpp}" "ai::config_echo::FormatLine(" "        AI Playerbot initialized       " "echo before the banner")
-string(FIND "${config_cpp}" "ai::config_echo::FormatLine(" echo_at)
+count_text("${config_cpp}" "ai::config_echo::FormatLines(" 1 "echo call")
+count_text("${config_cpp}" "ai::config_echo::FormatLine(" 0 "single-line echo call")
+require_order("${config_cpp}" "sRandomPlayerbotMgr.LoadBattleMastersCache();" "ai::config_echo::FormatLines(" "echo after the last loader")
+require_order("${config_cpp}" "ai::config_echo::FormatLines(" "        AI Playerbot initialized       " "echo before the banner")
+string(FIND "${config_cpp}" "ai::config_echo::FormatLines(" echo_at)
 string(SUBSTRING "${config_cpp}" ${echo_at} -1 echo_rest)
-string(FIND "${echo_rest}" "}).c_str());" echo_end)
+string(FIND "${echo_rest}" "        }))\n            sLog.outString(\"%s\", line.c_str());\n" echo_end)
 if(echo_end EQUAL -1)
   message(FATAL_ERROR "#601 ConfigEcho: echo block end not found")
 endif()
@@ -79,14 +88,15 @@ forbid_text("${echo}" "config.Get" "a second config read in the echo (values mus
 forbid_text("${echo}" "sConfig" "a raw config read in the echo")
 # entries carry the key without the prefix, so every other contract that counts a quoted full key in this file stays at 1
 forbid_text("${echo}" "\"AiPlayerbot." "a quoted full key in the echo (FormatLine adds the prefix)")
-require_text("${config_cpp}" "sLog.outString(\"%s\", ai::config_echo::FormatLine({" "echo printed with outString")
+require_text("${config_cpp}" "        for (std::string const& line : ai::config_echo::FormatLines({" "echo parts in a loop")
 
 # 3. Every echoed entry, generically: no hand list here, so a new switch PR does not touch this file (OB-00 26.10.2026; its
 #    own contract pins its entry). Each line of the echo block is one entry {"<key>", Value(<member>)}, with the key without
 #    "AiPlayerbot."; the member is parsed from exactly that key (a "<key>.count" entry echoes the parsed size of a list
 #    key: Value(uint32(<member>.size()))); the keys are sorted in byte order, each once, so a new entry goes in at its
-#    alphabetical place and two PRs only meet when their keys are neighbours. check_echo returns "" when all of that holds,
-#    else the reason; the negative probes after it reuse it.
+#    alphabetical place and two PRs only meet when their keys are neighbours. Each key, with the longest value Value() can
+#    print (48), fits one part with tag and part field, so no part goes over kMaxLine (OB-00 29.10.). check_echo returns ""
+#    when all of that holds, else the reason; the negative probes after it reuse it.
 function(check_echo echo config_cpp out)
   set(r "")
   set(prev "")
@@ -118,6 +128,13 @@ function(check_echo echo config_cpp out)
     endif()
     if(NOT prev STREQUAL "" AND NOT prev STRLESS key)
       set(r "not sorted: ${key} after ${prev}")
+      break()
+    endif()
+    # tag (12) + " AiPlayerbot." (13) + key + "=" + value (<= 48) + " part=9999/9999" (15) <= kMaxLine
+    string(LENGTH "${key}" klen)
+    math(EXPR worst "12 + 13 + ${klen} + 1 + 48 + 15")
+    if(worst GREATER 3500)
+      set(r "${key} too long for one part (${worst} > 3500)")
       break()
     endif()
     string(REPLACE "." "\\." key_re "${parsed_key}")
@@ -174,6 +191,10 @@ expect_caught("member of another key" "is not parsed from")
 # d) a size echo without .count
 string(REPLACE "{\"ActionLog.Guids.count\"" "{\"ActionLog.Guids\"" probe "${echo}")
 expect_caught("size echo without .count" "ending in .count")
+# d2) a key too long for one part (it would push its part over kMaxLine)
+string(REPEAT "X" 3420 long_tail)
+string(REPLACE "{\"ActionLog.Guids.count\"" "{\"ActionLog.Guids${long_tail}.count\"" probe "${echo}")
+expect_caught("key too long for one part" "too long for one part")
 # e) something else in the block (a comment, a second statement)
 string(REPLACE "${E_SECOND}" "${E_SECOND}            // later\n" probe "${echo}")
 expect_caught("a comment in the block" "not an echo entry")
