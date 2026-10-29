@@ -489,6 +489,7 @@ void MapManager::Update(uint32 diff)
     SwitchPlayersInstances();
     if (sWorld.getConfig(CONFIG_BOOL_CONTINENTS_INSTANCIATE) && (GetContinentLayout() != 0 || sWorld.WorldTickWindowOn()))
         ReportRegionSwitches();  // twow-repo#541 part C: [RegionSwitch] once per minute
+    ReportStaleRepops();         // twow-repo#575 F9-2: [Repop] once per minute
     asyncMapUpdating = false;
 
     CreateNewInstancesForPlayersSync();
@@ -874,6 +875,22 @@ void MapManager::ReportRegionSwitches()
     sLog.out(LOG_PERFORMANCE, "[RegionSwitch] layout=%u switches=%llu deferred_combat_updates=%llu", GetContinentLayout(),
         (unsigned long long)m_regionSwitches, (unsigned long long)deferred);
     m_regionSwitches = 0;
+}
+
+// twow-repo#575 F9-2: one line per minute, also with 0 - the proof that the fix is in the build (F9-3).
+void MapManager::ReportStaleRepops()
+{
+    uint32 const now = WorldTimer::getMSTime();
+    if (m_staleRepopReportMs == 0)
+    {
+        m_staleRepopReportMs = now;
+        return;
+    }
+    if (WorldTimer::getMSTimeDiff(m_staleRepopReportMs, now) < MINUTE * IN_MILLISECONDS)
+        return;
+    m_staleRepopReportMs = now;
+    uint64 const cleared = m_staleRepopCleared.exchange(0, std::memory_order_relaxed);
+    sLog.outBasic("[Repop] stale_cleared=%llu", (unsigned long long)cleared);
 }
 
 bool IsNorthTo(float x, float y, float const* limits, int count /* last case is limits[2*count - 1] */)
