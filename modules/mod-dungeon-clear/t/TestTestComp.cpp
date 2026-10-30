@@ -146,6 +146,7 @@ TEST(DcTestComp, TankClassByNameKnowsOnlyTheTankPool)
     EXPECT_EQ(DcTestComp::TankClassByName("warrior"), 1);
     EXPECT_EQ(DcTestComp::TankClassByName("paladin"), 2);
     EXPECT_EQ(DcTestComp::TankClassByName("druid"), 11);   // forced only (kForcedOnlyTankPool), never drawn
+    EXPECT_EQ(DcTestComp::TankClassByName("rogue"), 4);    // forced only (kForcedOnlyTankPool), never drawn
     EXPECT_EQ(DcTestComp::TankClassByName("mage"), 0);
     EXPECT_EQ(DcTestComp::TankClassByName(""), 0);
 }
@@ -161,5 +162,21 @@ TEST(DcTestComp, DruidTankIsForcedOnlyNeverDrawn)
         EXPECT_EQ(forced[0].classId, 11);
         EXPECT_EQ(std::string_view(forced[0].specName), "bear");
         EXPECT_EQ(std::string_view(forced[0].role), "tank");
+    }
+}
+
+// CLI-GRP 30.10.2026 (OB-00, twow-repo#654): the rogue tank (premade path 4.3) is a forced-only seat as well - tank=rogue
+// gives it, the draw never does; with the seat forced no other seat is a rogue (distinct classes, the rogue dps drop out).
+TEST(DcTestComp, RogueTankIsForcedOnlyNeverDrawn)
+{
+    for (std::uint32_t seed = 1; seed < 500; ++seed)
+    {
+        EXPECT_NE(BuildComp(seed)[0].classId, 4) << "seed " << seed;   // never drawn
+        auto const forced = BuildComp(seed, 4);
+        EXPECT_EQ(forced[0].classId, 4);
+        EXPECT_EQ(std::string_view(forced[0].specName), "rogue tank");
+        EXPECT_EQ(std::string_view(forced[0].role), "tank");
+        for (std::size_t i = 1; i < forced.size(); ++i)
+            EXPECT_NE(forced[i].classId, 4) << "seed " << seed << " seat " << i;
     }
 }

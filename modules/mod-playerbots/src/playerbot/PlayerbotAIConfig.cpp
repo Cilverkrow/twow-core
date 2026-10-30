@@ -568,6 +568,9 @@ bool PlayerbotAIConfig::Initialize()
     rotationTankKitFromLevel = config.GetIntDefault("AiPlayerbot.Rotation.TankKitFromLevel", 0);   // twow-repo#602 tank count
     if (rotationTankKitFromLevel > 2)
         rotationTankKitFromLevel = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
+    rotationTankRoguePoison = config.GetIntDefault("AiPlayerbot.Rotation.TankRoguePoison", 1);   // twow-repo#654 poison ping-pong
+    if (rotationTankRoguePoison > 2)
+        rotationTankRoguePoison = 1;   // an unknown mode is the default (0 off = rollback, 1 all, 2 cohort B)
     rotationEmergencyLadder = config.GetIntDefault("AiPlayerbot.Rotation.EmergencyLadder", 0);
     if (rotationEmergencyLadder > 2)
         rotationEmergencyLadder = 0;   // twow-repo#602 X3: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B)
@@ -604,6 +607,9 @@ bool PlayerbotAIConfig::Initialize()
     rotationLosCacheMs = config.GetIntDefault("AiPlayerbot.Rotation.LosCacheMs", 500);   // twow-repo#602 REF-next v2 tick
     if (rotationLosCacheMs > ai::los_cache::MaxMs)
         rotationLosCacheMs = ai::los_cache::DefaultMs;   // no cache any more: the default (0 = off = rollback)
+    rotationRogueTankStance = config.GetIntDefault("AiPlayerbot.Rotation.RogueTankStance", 0);   // twow-repo#654 Shadow Dance stance
+    if (rotationRogueTankStance > 2)
+        rotationRogueTankStance = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
     rotationCastStopFirst = config.GetIntDefault("AiPlayerbot.Rotation.CastStopFirst", 1);   // twow-repo#602 cast-abort loop
     if (rotationCastStopFirst > 2)
         rotationCastStopFirst = 1;   // an unknown mode is the default (0 off = rollback, 1 all, 2 cohort B)
@@ -933,6 +939,13 @@ bool PlayerbotAIConfig::Initialize()
     {
         sLog.outError("[QuestBand] config key=BandLadderSameZoneNext value=%u result=off (0 off, 1..10)", questFirstProgressionBandLadderSameZoneNext);
         questFirstProgressionBandLadderSameZoneNext = 0;
+    }
+    // twow-repo#601 quest acceptance lever (iv) GiverFetchAnyQuest: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B).
+    questFirstProgressionGiverFetchAnyQuest = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.GiverFetchAnyQuest", 0);
+    if (questFirstProgressionGiverFetchAnyQuest > 2)
+    {
+        sLog.outError("[QuestFirstRoute] config key=GiverFetchAnyQuest value=%u result=off (0 off, 1 all, 2 cohort B)", questFirstProgressionGiverFetchAnyQuest);
+        questFirstProgressionGiverFetchAnyQuest = 0;
     }
     // twow-repo#601 SkipSkillLockedObjectives: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B).
     questFirstProgressionSkipSkillLockedObjectives = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.SkipSkillLockedObjectives", 0);
@@ -1834,6 +1847,7 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestFirstProgression.Enabled", Value(questFirstProgressionEnabled)},
             {"QuestFirstProgression.FailureClasses", Value(questFirstProgressionFailureClasses)},
             {"QuestFirstProgression.FailureClasses.GroupNeeded", Value(questFirstProgressionFailureClassesGroupNeeded)},
+            {"QuestFirstProgression.GiverFetchAnyQuest", Value(questFirstProgressionGiverFetchAnyQuest)},
             {"QuestFirstProgression.GrindFallbackFailures", Value(questFirstProgressionGrindFallbackFailures)},
             {"QuestFirstProgression.GrindFallbackMinutes", Value(questFirstProgressionGrindFallbackMinutes)},
             {"QuestFirstProgression.GrindMode", Value(questFirstProgressionGrindMode)},
@@ -1885,8 +1899,10 @@ bool PlayerbotAIConfig::Initialize()
             {"Rotation.ReachLosClose", Value(rotationReachLosClose)},
             {"Rotation.ReachPlayerMaster", Value(rotationReachPlayerMaster)},
             {"Rotation.RestGate", Value(rotationRestGate)},
+            {"Rotation.RogueTankStance", Value(rotationRogueTankStance)},
             {"Rotation.SpecFromPath", Value(rotationSpecFromPath)},
             {"Rotation.TankKitFromLevel", Value(rotationTankKitFromLevel)},
+            {"Rotation.TankRoguePoison", Value(rotationTankRoguePoison)},
             {"ThrownUsageFix", Value(thrownUsageFix)},
             {"Travel.RpgAreaLevelFromSpawn", Value(travelRpgAreaLevelFromSpawn)},
             {"ZoneExit.TurnInNearRadius", Value(zoneExitTurnInNearRadius)},

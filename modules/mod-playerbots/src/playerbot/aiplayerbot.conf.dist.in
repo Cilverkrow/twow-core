@@ -1209,7 +1209,8 @@ AiPlayerbot.QuestFirstProgression.LocalHubRadius = 1200
 # twow-repo#601 quest acceptance step 1b (OB-00 27.10.2026): each such request whose fetch asks for quest givers also writes
 # "[QuestFirstRoute] state=giver_fetch bot= level= stage= radius= fetch=radius|fallback free_slots= can_fight_equal=
 # giver_drops=strategy:,focus:,quest_level:,min_max:,band_grey:,condition:,free_slots:,elite: giver_kept= giver_out_of_range=
-# giver_points=" - the givers in reach that QuestRelationTravelDestination::IsPossible dropped, by rule, those it kept, and the
+# giver_points= any_quest=" (any_quest=1: QuestFirstProgression.GiverFetchAnyQuest applies to the bot) - the givers in reach that
+# QuestRelationTravelDestination::IsPossible dropped, by rule, those it kept, and the
 # giver points the fetch returned; fetch=fallback: the whole-map giver fetch ran because the list came back empty (counted
 # too). With DirectTargets.TraceInactive = 1 as well, the rejected line splits no_mark by the first Player::CanTakeQuest check
 # the giver point's own quest fails, or for a takeable quest by its own dialog status ("no_mark_why=done:,in_log:,prev_quest:,
@@ -1504,6 +1505,18 @@ AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter.Failures = 4
 AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter.Bots = 3
 AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter.WindowSeconds = 3600
 AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter.Seconds = 3600
+# twow-repo#601 quest acceptance lever (iv) (OB-00 28.10.2026, BUG FIX behind a switch, cli-quest-organic/quest-acceptance/STEP2.md):
+# the radius quest giver fetch of a quest route request (GiverRadius, the #421 B stages) asked TravelMgr for entry 0, but every
+# quest giver is filed under its quest id - so it never returned a giver. Givers reached the route choice only through the
+# whole-map fallback when no objective and no taker came back (idsets-ab-2: 51 giver trips in 6572 route choices, 5 quests).
+# With the mode on for the bot (a roster bot of the quest-first flow without a real player master) the radius fetch asks for
+# every giver in range, IsPossible judges them as before, and IsActive counts a giver only while it offers the destination's own
+# quest (DIALOG_STATUS_AVAILABLE, as BandLadder's filter F) - the NPC-wide mark alone could send the bot to a giver whose only open
+# quest it would refuse. Givers come first in their distance band (from search stage 1 on, by giver quests within 150 yd).
+# Expected: giver trips and accepts per bot-h up, turn-ins not down. Cost: an every-giver fetch takes the range before IsPossible
+# (the fallback too; same list), and the whole-map fallback is skipped when the radius fetch already reached 10000 yd.
+#   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid); other values act like 0.
+AiPlayerbot.QuestFirstProgression.GiverFetchAnyQuest = 0
 # twow-repo#601 S5a F4 (OB-00 24.10.2026; owner D1 "rumstehen ist keine Option"): a failed quest search that does not step
 # leaves the bot standing through the route backoff (2, 4, 8, then 10 min). With BandLadder on, from this many failed
 # searches in a row on (the streak F1 counts), such a search sends the bot toward the hub the step would take until the
@@ -3164,6 +3177,14 @@ AiPlayerbot.Rotation.SpecFromPath = 0
 # tab, pathed = those whose warrior kit follows its path; rates).
 # 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
 AiPlayerbot.Rotation.TankKitFromLevel = 0
+# twow-repo#654 rogue tank poison ping-pong (OB-00 / owner 29.10.2026, a bug fix, ON by default, 0 = rollback): a rogue tank
+# (premade path 4.3) coats its main hand with the threat poison (Agitating Poison), while the combat kit under it keeps its own
+# main-hand poison (Instant Poison); each saw the other as missing, so the two overwrote each other out of combat. The tank's
+# multiplier meant to keep the other main-hand poisons off never matched (it looked for the hand in the action's name) and ran in
+# combat only. With the switch it tells the poisons by the action itself and also runs out of combat: only the threat poison goes
+# on the main hand, the off hand is unchanged.
+# 0 = as before, 1 = every bot (default), 2 = only cohort B (odd low guid). Any other value acts like 1.
+AiPlayerbot.Rotation.TankRoguePoison = 1
 # twow-repo#602 ROT-01 X3 (BEHAVIOUR CHANGE, enable only after the OB-30 A/B + owner go): emergency ladder for SOLO FREE BOTS below
 # critical health (no group, no real player, not healers - F1). Today panic -> flee wins every tick and a solo random bot's flee is a
 # MoveChase around the mob that gains no distance. Once per episode the ladder picks: a ready CLASS ESCAPE gets a 2 s window in which panic and
@@ -3225,6 +3246,14 @@ AiPlayerbot.Rotation.CastLosGate = 0
 # sight and in range" first, from that verdict, before its spell check (the same answer it gave after it). The worst effect is a
 # reaction up to this many ms later once sight returns. 0 = off (as before), default 500; values above 5000 act like 500.
 AiPlayerbot.Rotation.LosCacheMs = 500
+# twow-repo#654 rogue tank stance (owner 29.10.2026, BEHAVIOUR CHANGE, A/B with 2 first): the core makes Shadow Dance a rogue tank
+# stance (mangosd.conf Funserver.Rogue.ShadowDanceStance: the stance gives damage done -40 % and damage taken -25 %, the dodge /
+# parry buffs and the flat threat come only while it is up, no Stealth / Vanish in it). With this switch a bot on the rogue tank
+# path (4.3) learns the stance from level 20 when the core switch covers bots (1 or 2), keeps it up while it tanks ("tank rogue"
+# strategy) and cancels it otherwise, and does not try Stealth or Vanish while it is up. The core switch 0 unlearns the stance
+# again (rollback); this switch off leaves it untouched.
+# 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
+AiPlayerbot.Rotation.RogueTankStance = 0
 # twow-repo#602 ROT-01 cast-abort loop (OB-00 27.10.2026, BEHAVIOUR CHANGE, ON by default, 0 = rollback): a moving bot
 # without a real player master stopped before a spell with a cast time or a channel and then cancelled the cast without
 # casting; the next action moved it again and the next try cancelled again (hunt2 action logs: 47k cancels of Mind Blast,

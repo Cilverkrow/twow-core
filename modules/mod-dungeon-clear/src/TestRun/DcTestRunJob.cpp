@@ -40,6 +40,7 @@
 #include "PlayerbotMgr.h"
 #include "RandomPlayerbotMgr.h"
 #include "Util.h"  // urand lives here on this engine
+#include "playerbot/strategy/actions/AutoLearnSpellAction.h"   // CLI-GRP: GrantSpecKitFor (the rogue tank seat's kit)
 
 #include "DcStrategyGate.h"
 #include "Ai/Dungeon/DungeonClear/Action/DcActionShared.h"
@@ -1062,6 +1063,12 @@ void DcTestRunJob::TickProvisioning(bool& provisionBudget)
         // first when the current tree does not match).
         sRandomPlayerbotMgr.SetValue(bot, "specNo", uint32(specNo));
         GetBotAI(bot)->DoSpecificAction("auto talents");
+        // CLI-GRP 30.10.2026 (OB-00 method decision, test harness only): a premade path with a kit (the rogue tank 4.3:
+        // Spit, Shadow Dance, and what later PRs manage in GrantSpecAuras) gets it here. The pool bot is no persistent
+        // roster member, so the world's roster gate in AutoLearnSpellAction::LearnSpells leaves the seat without it and
+        // the tank would fight without its taunt. No-op (no line) for every path without a kit at its level; a skip line
+        // when SpecAura is off. Log: [ClassGrant] state=granted|known|skip source=dc_seat.
+        ai::GrantSpecKitFor(GetBotAI(bot));
         factory.EquipGear();
         // (no glyphs on 1.12)
 

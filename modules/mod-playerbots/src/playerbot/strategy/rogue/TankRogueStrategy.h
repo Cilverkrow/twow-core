@@ -21,6 +21,7 @@ namespace ai
         void InitCombatTriggers(std::list<TriggerNode*>& triggers) override;
         void InitNonCombatTriggers(std::list<TriggerNode*>& triggers) override;
         void InitCombatMultipliers(std::list<Multiplier*>& multipliers) override;
+        void InitNonCombatMultipliers(std::list<Multiplier*>& multipliers) override;   // twow-repo#654
     };
 
     class TankRogueThreatMultiplier : public Multiplier
@@ -28,5 +29,8 @@ namespace ai
     public:
         TankRogueThreatMultiplier(PlayerbotAI* ai) : Multiplier(ai, "tank rogue threat") {}
         float GetValue(Action* action) override;
+
+    private:
+        bool HasUsableThreatPoison() const;   // twow-repo#654 (OB-10): a usable Agitating Poison in the bags
     };
 }

@@ -302,6 +302,11 @@ ai::quest_search::RejectCounts::InactiveReason InactiveReasonOf(PlayerbotAI* ai,
             if (!closestPoint || closestPoint->getMapId() != bot->GetMapId())
                 return Counts::InactiveMap;
         }
+        // twow-repo#601 lever (iv): the own-quest rule of QuestRelationTravelDestination::IsActive for a bot of the lever - a giver that
+        // does not offer THIS quest counts as no_mark (no_mark_why then says why).
+        if (!info.HasFocusQuest() && info.HasGiverAnyQuest() &&
+            DialogStatusValue::getDialogStatus(bot, relation->GetEntry(), relation->GetQuestId()) != DIALOG_STATUS_AVAILABLE)
+            return Counts::InactiveNoMark;
         if (!AI_VALUE2(bool, "group or", "following party,can accept quest npc::" + entry))
         {
             if (!AI_VALUE2(bool, "group or", "following party,can accept quest low level npc::" + entry))
@@ -3322,8 +3327,9 @@ bool RequestQuestTravelTargetAction::Execute(Event& event)
     // twow-repo#601 quest acceptance step 1b (TraceTravelDecisions, the same bots as the request line): the giver fetches of this
     // request - the radius one and the whole-map fallback when the list came back empty - count what
     // QuestRelationTravelDestination::IsPossible drops, by rule, on their own PlayerTravelInfo copy; the job writes one
-    // "[QuestFirstRoute] state=giver_fetch" line. fetch=radius: no fallback ran (the radius fetch asks for entry 0, under which no
-    // giver is filed - review 27.10.); fetch=fallback: the counts include the fallback. Without the trace: no copy, no count.
+    // "[QuestFirstRoute] state=giver_fetch" line. fetch=radius: no fallback ran (without GiverFetchAnyQuest the radius fetch asks for
+    // entry 0, under which no giver is filed - review 27.10.); fetch=fallback: the counts include the fallback. any_quest=1: lever
+    // (iv) applied. Without the trace: no copy, no count.
     bool const traceGivers = sPlayerbotAIConfig.questFirstProgressionTraceTravelDecisions && UsesQuestFirstProgression(bot);
     uint32 const traceBot = bot->GetGUIDLow();
     *AI_VALUE(FutureDestinations*, "future travel destinations") = std::async(std::launch::async,
@@ -3338,6 +3344,9 @@ bool RequestQuestTravelTargetAction::Execute(Event& event)
                 giverInfo->SetGiverDrops(&giverDrops);
             }
             bool giverFetched = false;
+            // twow-repo#601 quest acceptance lever (iv) (GiverFetchAnyQuest): the bit from the bot-thread snapshot (PlayerTravelInfo).
+            bool const giverAnyQuest = travelInfo.HasGiverAnyQuest();
+            float anyGiverRange = 0.0f;   // the widest giver fetch that asked for every giver
             float giverRange = 0.0f;
             uint32 giverPoints = 0;
 
@@ -3345,8 +3354,11 @@ bool RequestQuestTravelTargetAction::Execute(Event& event)
             for (auto [purpose, questId, range] : destinationFetches)
             {
                 bool const tracedGiverFetch = traceGivers && (purpose & (uint32)TravelDestinationPurpose::QuestGiver);
+                if (giverAnyQuest && (purpose & (uint32)TravelDestinationPurpose::QuestGiver))
+                    anyGiverRange = std::max(anyGiverRange, range);
                 PartitionedTravelList subList = sTravelMgr.GetPartitions(center, partitions, tracedGiverFetch ? *giverInfo : travelInfo,
-                    purpose, { questId }, true, range);
+                    purpose, ai::quest_search::FetchEntries(giverAnyQuest && (purpose & (uint32)TravelDestinationPurpose::QuestGiver), questId),
+                    true, range);
                 if (tracedGiverFetch)
                 {
                     giverFetched = true;
@@ -3363,7 +3375,9 @@ bool RequestQuestTravelTargetAction::Execute(Event& event)
             if (hubsFirst)
                 SortQuestHubsFirst(list);
 
-            bool const giverFallback = list.empty();
+            // Lever (iv): an any-quest giver fetch at least as wide as the whole-map fallback (GetPartitions' default 10000 yd, same purpose,
+            // every giver, onlyPossible) has walked every giver the fallback could return (review 28.10.). Off: anyGiverRange 0, as before.
+            bool const giverFallback = list.empty() && anyGiverRange < 10000.0f;
             if (giverFallback)
             {
                 list = sTravelMgr.GetPartitions(center, partitions, traceGivers ? *giverInfo : travelInfo, (uint32)TravelDestinationPurpose::QuestGiver);
@@ -3374,10 +3388,10 @@ bool RequestQuestTravelTargetAction::Execute(Event& event)
 
             if (traceGivers && (giverFetched || giverFallback))
                 sLog.outBasic("[QuestFirstRoute] state=giver_fetch bot=%u level=%u stage=%u radius=%.0f fetch=%s free_slots=%u "
-                    "can_fight_equal=%u %s giver_points=%u",
+                    "can_fight_equal=%u %s giver_points=%u any_quest=%u",
                     traceBot, travelInfo.GetLevel(), giverStage, giverRange, giverFallback ? "fallback" : "radius",
                     uint32(travelInfo.GetUint8Value("free quest log slots")), travelInfo.GetBoolValue("can fight equal") ? 1u : 0u,
-                    giverDrops.Format().c_str(), giverPoints);
+                    giverDrops.Format().c_str(), giverPoints, giverAnyQuest ? 1u : 0u);
 
             return list;
         }
