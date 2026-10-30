@@ -14,6 +14,8 @@
 #include "strategy/AiObject.h"
 #include <boost/functional/hash.hpp>
 #include <map>
+#include <set>      // twow-repo#601 no-route gate (TravelTarget::noRouteTurnIns)
+#include <vector>
 #include <string>
 #include "GuidPosition.h"
 #include "strategy/values/TravelValues.h"
@@ -481,6 +483,12 @@ namespace ai
         // twow-repo#601 turn_in hold (ProfessionTraining.TurnInGateSkipSuppressed): the turn-in route of this finished quest is stall- or
         // death-suppressed now (turnin_recovery::IsSuppressedForQuest).
         bool IsTurnInRouteSuppressedForQuest(uint32 questId) const;
+        // twow-repo#601 no-route gate (ProfessionTraining.TurnInGateSkipNoRoute): the result of a turn-in route request for its offered
+        // finished quests - marked when it found no taker route with every taker judged, unmarked when it found a taker; anything
+        // else leaves the mark as it is. Only with the switch on for this bot; one [ProfTravel] state=turnin_no_route line per request
+        // without a taker.
+        void NoteTurnInRouteResult(std::vector<uint32> const& questIds, bool noRoute, bool takerFound);
+        bool IsTurnInNoRoute(uint32 questId) const;
         // twow-repo#485: a finished quest whose turn-in failed TurnInParkFailures times within
         // TurnInParkWindowSeconds is parked for TurnInParkSeconds (roster bots on their own).
         // True when this failure parked the quest.
@@ -591,6 +599,8 @@ namespace ai
         bool OnContestedObjectiveTimeout();
         // twow-repo#485: parked turn-ins of this bot (at most 16 quests, in memory only).
         turnin_park::Book turnInParks;
+        // twow-repo#601 no-route gate: finished quests whose last turn-in route request found no taker route (at most 32, in memory only).
+        std::set<uint32> noRouteTurnIns;
         // twow-repo#601 S1: quests abandoned after two structural parks (at most 8, in memory only).
         turnin_park::AbandonMarks abandonedTurnIns;
         // twow-repo#601 S3c (ZoneExit.TurnInTravelStall): quests of the last turn-in work timeouts (at most 8, in memory only).
