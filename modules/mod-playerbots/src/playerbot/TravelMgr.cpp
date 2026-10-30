@@ -1965,6 +1965,11 @@ bool TravelTarget::ObservePosStuck()
     if (!observation.excluded)
         observation.excluded = pos_stuck::DockWaitPaused(observation.now,
             ai->GetAiObjectContext()->GetValue<LastMovement&>("last movement")->Get().transportWaitMs, pos_stuck::DockWaitPauseMs);
+    // twow-repo#601 (OB-00 28.10.2026, CLI-PATH far-travel-stuck/CAUSE.md): a RosterFarMove wait for this travel target is travel
+    // on purpose - the bot stands for the walking time and then appears at the target. No window during it (pending = waiting,
+    // within the arrival grace; an overdue far move or one for another target does not pause, PlayerbotAI::IsFarMovePending).
+    if (!observation.excluded)
+        observation.excluded = ai->IsFarMovePending();
     observation.distance = observation.excluded ? 0.0f : Distance(bot);
 
     if (pos_stuck::Observe(posStuck, observation, sPlayerbotAIConfig.pathPosStuckMinutes * 60 * IN_MILLISECONDS,

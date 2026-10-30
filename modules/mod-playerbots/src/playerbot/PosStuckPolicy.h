@@ -52,7 +52,7 @@ struct Observation
     float distance = 0.0f;   // bot -> travel target, same map
     bool combat = false;
     // Outside the population or held up on purpose (dead, taxi, transport, real master, battleground or instance, rest,
-    // target on another map, a PartialNoop hit since the window began, a dock wait): no window runs.
+    // target on another map, a PartialNoop hit since the window began, a dock wait, a far-move wait): no window runs.
     bool excluded = false;
 };
 
