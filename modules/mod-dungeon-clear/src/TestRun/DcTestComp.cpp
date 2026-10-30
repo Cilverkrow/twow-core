@@ -57,7 +57,7 @@ namespace DcTestComp
             for (Slot const& s : kTankPool)
                 if (s.classId == tankClass)
                     comp[0] = s;
-            for (Slot const& s : kForcedOnlyTankPool)   // the druid: forced only (never drawn above)
+            for (Slot const& s : kForcedOnlyTankPool)   // the druid and the rogue: forced only (never drawn above)
                 if (s.classId == tankClass)
                     comp[0] = s;
         }
@@ -78,7 +78,7 @@ namespace DcTestComp
     std::uint8_t TankClassByName(std::string_view name)
     {
         static constexpr struct { std::string_view name; std::uint8_t classId; } kNames[] = {
-            { "warrior", 1 }, { "paladin", 2 }, { "druid", 11 },
+            { "warrior", 1 }, { "paladin", 2 }, { "druid", 11 }, { "rogue", 4 },
         };
         for (auto const& n : kNames)
         {
@@ -87,7 +87,7 @@ namespace DcTestComp
             for (Slot const& s : kTankPool)
                 if (s.classId == n.classId)
                     return n.classId;
-            for (Slot const& s : kForcedOnlyTankPool)   // the druid: forced only
+            for (Slot const& s : kForcedOnlyTankPool)   // the druid and the rogue: forced only
                 if (s.classId == n.classId)
                     return n.classId;
         }

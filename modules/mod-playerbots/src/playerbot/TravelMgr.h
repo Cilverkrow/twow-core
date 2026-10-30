@@ -88,6 +88,9 @@ namespace ai
 		// twow-repo#333 P1-v (AiPlayerbot.Travel.RpgAreaLevelFromSpawn): the area level of an RPG target from its spawn nearest to the
 		// bot (RpgAreaLevelPolicy.h), set in the constructor on the bot thread; false for every bot with the switch off.
 		bool UsesRpgAreaFromSpawn() const { return rpgAreaFromSpawn; }
+		// twow-repo#601 quest acceptance lever (iv) (QuestFirstProgression.GiverFetchAnyQuest): the lever applies to this bot (a roster
+		// bot without a real player master in the mode's cohort), set in the constructor on the bot thread; false with the mode off.
+		bool HasGiverAnyQuest() const { return giverAnyQuest; }
 		uint32 GetBandGreyLevel() const { return bandGreyLevel; }
 		// twow-repo#601 quest acceptance step 1b (TraceTravelDecisions): the drop counters of one traced giver fetch. Set only on the
 		// copy the async quest fetch job passes to GetPartitions, counted by QuestRelationTravelDestination::IsPossible in that job's
@@ -103,6 +106,7 @@ namespace ai
 		uint32 gapWindowHigh = 0;
 		bool bandGiverFilter = false;    // twow-repo#601 S5a: false for every bot but an in-scope BandLadder bot with a usable row
 		bool rpgAreaFromSpawn = false;   // twow-repo#333 P1-v: Travel.RpgAreaLevelFromSpawn applies to this bot
+		bool giverAnyQuest = false;     // twow-repo#601 lever (iv): QuestFirstProgression.GiverFetchAnyQuest applies to this bot
 		uint32 bandGreyLevel = 0;
 		uint16 currentSkill[MAX_SKILL_TYPE] = {0};
 		uint16 skillMax[MAX_SKILL_TYPE] = { 0 };

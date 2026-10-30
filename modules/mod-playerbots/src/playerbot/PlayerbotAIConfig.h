@@ -663,6 +663,7 @@ public:
     uint32 rotationCastStopFirst = 1;  // twow-repo#602 (cast-abort loop 27.10., OB-00: code default 1, 0 = rollback): a moving bot without a real player master casts a cast-time or channelled spell after StopMoving instead of cancelling it (CastWhileMovingPolicy.h); 0 off, 1 all, 2 cohort B
     uint32 rotationInvalidTargetQuiet = 1;  // twow-repo#602 (failure census 28.10., OB-00: code default 1, 0 = rollback): "invalid target" stays quiet for an empty current target while nothing attacks the bot (InvalidTargetPolicy.h); 0 off, 1 all, 2 cohort B
     uint32 rotationLosCacheMs = 500;  // twow-repo#602 (REF-next v2 tick 29.10., OB-00: code default 500, 0 = rollback): a bot keeps one line-of-sight verdict per target for this many ms (LosCachePolicy.h): the CastLosGate cast checks and the reach prerequisite reuse it
+    uint32 rotationRogueTankStance = 0;  // twow-repo#654 (owner 29.10., BEHAVIOUR CHANGE, A/B with 2): a rogue on the tank path learns the Shadow Dance stance from 20 when the core switch covers bots, keeps it up while it tanks and drops it otherwise, no Stealth / Vanish in it (RogueTankStancePolicy.h); 0 off, 1 all, 2 cohort B
     uint32 rotationCastLosGate = 0;  // twow-repo#602 (hunter LoS 25.10.): a LINE_OF_SIGHT verdict of CheckCast makes the cast IMPOSSIBLE, 8.2-unreachable targets are dropped and skipped (CastLosGatePolicy.h); with Rotation.ReachLosClose; 0 off, 1 all, 2 cohort B
     bool perfCombatIdleYield = false;  // twow-repo#541 (audit A17): a combat AI pass without an action while the bot auto-attacks its current target waits 3x ReactDelay (0 = off)
     uint32 castWaitPreparing = 0;  // twow-repo#602 (L1-b): hold the internal AI until the real end of the bot's own PREPARING cast; 0 off, 1 all, 2 cohort B
@@ -967,6 +968,9 @@ public:
     // twow-repo#601 S5a F2: when every rung of the bot's band lies in the zone it stands in, the next band is a candidate
     // from this many levels below its min on (instead of 2). 0 = off (default), 1..10; other values act like 0.
     uint32 questFirstProgressionBandLadderSameZoneNext = 0;
+    // twow-repo#601 quest acceptance lever (iv) (OB-00 28.10.2026): the radius quest giver fetch asks for every giver in range ({}),
+    // not for entry 0, under which no giver is filed. Mode 0 off (default), 1 all, 2 cohort B.
+    uint32 questFirstProgressionGiverFetchAnyQuest = 0;
     // twow-repo#601 (CLI-Deep 26.10.2026, cr2-C GO diagnosis): a game object quest objective whose lock opens only with a profession
     // skill the bot lacks (skill, value or tool) is no quest target. Mode 0 off (default), 1 all, 2 cohort B.
     uint32 questFirstProgressionSkipSkillLockedObjectives = 0;

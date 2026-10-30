@@ -61,6 +61,7 @@
 #include "FunserverRogueTalents.h"
 #include "FunserverRidingStages.h"
 #include "FunserverPlayerSnare.h"
+#include "FunserverShadowDanceStance.h"
 
 #include <memory>
 
@@ -5617,6 +5618,10 @@ SpellCastResult Spell::CheckCast(bool strict)
             !(m_spellInfo->Attributes & SPELL_ATTR_CASTABLE_WHILE_SITTING) && !m_spellInfo->HasEffect(SPELL_EFFECT_LEARN_SPELL))
         return SPELL_FAILED_NOT_STANDING;
     
+    // twow-repo#654 (owner 29.10.2026 "Nur Stealth und Vanish"): no Stealth / Vanish in the Shadow Dance stance.
+    if (m_casterUnit && ShadowDanceStanceBlocks(m_spellInfo->Id) && m_casterUnit->HasAura(SHADOW_DANCE_STANCE))
+        return SPELL_FAILED_CASTER_AURASTATE;
+
     /*  Check cooldowns to prevent cheating (ignore passive spells, that client side visual only)
 
         If the cast is an item cast, check the spell proto on the item for the category

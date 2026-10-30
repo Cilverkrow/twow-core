@@ -145,6 +145,12 @@ PlayerTravelInfo::PlayerTravelInfo(Player* player, bool gapGrind)
     // twow-repo#333 P1-v (AiPlayerbot.Travel.RpgAreaLevelFromSpawn): the RPG area level bit, here on the bot thread; read by
     // RpgTravelDestination::IsPossible only as a value. Mode 0: false for every bot, as before.
     rpgAreaFromSpawn = ai::cohort::Applies(sPlayerbotAIConfig.travelRpgAreaLevelFromSpawn, player->GetGUIDLow());
+
+    // twow-repo#601 quest acceptance lever (iv) (QuestFirstProgression.GiverFetchAnyQuest, review 28.10.): a roster bot of the quest-first
+    // flow without a real player master, in the mode's cohort, as SkipSkillLockedObjectives / ContestedObjectiveWait. Read by the quest
+    // fetch job (every giver in range) and QuestRelationTravelDestination::IsActive (the destination's own quest) only as a value.
+    giverAnyQuest = sPlayerbotAIConfig.questFirstProgressionEnabled && sRandomPlayerbotMgr.IsPersistentRosterMember(player->GetGUIDLow()) &&
+        !ai->HasRealPlayerMaster() && ai::cohort::Applies(sPlayerbotAIConfig.questFirstProgressionGiverFetchAnyQuest, player->GetGUIDLow());
 }
 
 std::string EntryTravelDestination::GetShortName() const
@@ -305,6 +311,13 @@ bool QuestRelationTravelDestination::IsActive(Player* bot, const PlayerTravelInf
         // row the giver counts only while it offers this quest to the bot (DIALOG_STATUS_AVAILABLE; a quest in the log, done or
         // repeatable is no reason to stay). One static per-quest status, no value per creature. Snapshot bit false: as before.
         if (!forceThisQuest && info.HasBandGiverFilter() &&
+            DialogStatusValue::getDialogStatus(bot, GetEntry(), GetQuestId()) != DIALOG_STATUS_AVAILABLE)
+            return false;
+
+        // twow-repo#601 quest acceptance lever (iv) (GiverFetchAnyQuest, review 28.10.): the radius fetch now offers every giver in range,
+        // and the NPC check below looks at all of the NPC's quests - a bot of the lever counts a giver only while it offers THIS quest
+        // (filter F's rule; each takeable quest of the NPC has its own destination). Off: false, as before.
+        if (!forceThisQuest && info.HasGiverAnyQuest() &&
             DialogStatusValue::getDialogStatus(bot, GetEntry(), GetQuestId()) != DIALOG_STATUS_AVAILABLE)
             return false;
 
@@ -4367,14 +4380,20 @@ DestinationList TravelMgr::GetDestinations(const PlayerTravelInfo& info, uint32 
     // twow-repo#601 quest acceptance step 1b: a traced giver fetch (GiverDropCounts on its PlayerTravelInfo) takes the range first,
     // so its drop counts cover only the givers in reach. The list is the same - a destination needs both checks. Null: as before.
     ai::quest_search::GiverDropCounts* const tracedGivers = onlyPossible ? info.GetGiverDrops() : nullptr;
+    // twow-repo#601 quest acceptance lever (iv) (review 28.10.): a giver fetch for every giver (entries {}: the whole-map fallback, and
+    // the radius fetch with GiverFetchAnyQuest) takes the range first too - it walks every quest giver of every map, and IsPossible is
+    // the costly check. Same list, as above.
+    bool const rangeFirst = tracedGivers ||
+        (onlyPossible && entries.empty() && (purposeFlag & (uint32)TravelDestinationPurpose::QuestGiver));
     auto const outOfTracedRange = [&](TravelDestination* dest)
     {
-        if (!tracedGivers)
+        if (!rangeFirst)
             return false;
         float const reach = dest->DistanceTo(center);
         if ((maxDistance > 0 && reach > maxDistance) || reach == FLT_MAX)
         {
-            ++tracedGivers->outOfRange;
+            if (tracedGivers)
+                ++tracedGivers->outOfRange;
             return true;
         }
         return false;

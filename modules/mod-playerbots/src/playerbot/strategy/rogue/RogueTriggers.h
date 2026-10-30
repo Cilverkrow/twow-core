@@ -17,7 +17,22 @@ namespace ai
     // #367: the rogue tank keeps Ghostly Strike (+dodge) up.
     BUFF_TRIGGER(GhostlyStrikeTrigger, "ghostly strike");
     // #367 kit (core#188): the rogue tank keeps its Shadow Dance toggle up.
-    BUFF_TRIGGER(ShadowDanceTrigger, "shadow dance");
+    // twow-repo#654 (Rotation.RogueTankStance): with the switch it is the stance 61230 - the ranks are passive auras of the same
+    // name, so the name check never fired. Active while the bot knows the stance, the core switch covers bots and it is not up.
+    class ShadowDanceTrigger : public BuffTrigger
+    {
+    public:
+        ShadowDanceTrigger(PlayerbotAI* ai) : BuffTrigger(ai, "shadow dance") {}
+        bool IsActive() override;
+    };
+
+    // twow-repo#654: the stance is up while the bot does not tank, or a switch no longer covers it: cancel it.
+    class ShadowDanceStanceOffTrigger : public Trigger
+    {
+    public:
+        ShadowDanceStanceOffTrigger(PlayerbotAI* ai) : Trigger(ai, "shadow dance stance off", 2) {}
+        bool IsActive() override;
+    };
 
     class SliceAndDiceTrigger : public NoBuffAndComboPointsAvailableTrigger
     {
