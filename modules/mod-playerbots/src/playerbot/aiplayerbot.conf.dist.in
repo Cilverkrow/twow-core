@@ -1209,7 +1209,8 @@ AiPlayerbot.QuestFirstProgression.LocalHubRadius = 1200
 # twow-repo#601 quest acceptance step 1b (OB-00 27.10.2026): each such request whose fetch asks for quest givers also writes
 # "[QuestFirstRoute] state=giver_fetch bot= level= stage= radius= fetch=radius|fallback free_slots= can_fight_equal=
 # giver_drops=strategy:,focus:,quest_level:,min_max:,band_grey:,condition:,free_slots:,elite: giver_kept= giver_out_of_range=
-# giver_points=" - the givers in reach that QuestRelationTravelDestination::IsPossible dropped, by rule, those it kept, and the
+# giver_points= any_quest=" (any_quest=1: QuestFirstProgression.GiverFetchAnyQuest applies to the bot) - the givers in reach that
+# QuestRelationTravelDestination::IsPossible dropped, by rule, those it kept, and the
 # giver points the fetch returned; fetch=fallback: the whole-map giver fetch ran because the list came back empty (counted
 # too). With DirectTargets.TraceInactive = 1 as well, the rejected line splits no_mark by the first Player::CanTakeQuest check
 # the giver point's own quest fails, or for a takeable quest by its own dialog status ("no_mark_why=done:,in_log:,prev_quest:,
@@ -1489,6 +1490,18 @@ AiPlayerbot.QuestFirstProgression.BandLadderSameZoneNext = 0
 # keeps the object a target for every bot. After an empty quest search: [QuestFirstRoute] state=skill_locked bot= skipped=N.
 #   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid); other values act like 0.
 AiPlayerbot.QuestFirstProgression.SkipSkillLockedObjectives = 0
+# twow-repo#601 quest acceptance lever (iv) (OB-00 28.10.2026, BUG FIX behind a switch, cli-quest-organic/quest-acceptance/STEP2.md):
+# the radius quest giver fetch of a quest route request (GiverRadius, the #421 B stages) asked TravelMgr for entry 0, but every
+# quest giver is filed under its quest id - so it never returned a giver. Givers reached the route choice only through the
+# whole-map fallback when no objective and no taker came back (idsets-ab-2: 51 giver trips in 6572 route choices, 5 quests).
+# With the mode on for the bot (a roster bot of the quest-first flow without a real player master) the radius fetch asks for
+# every giver in range, IsPossible judges them as before, and IsActive counts a giver only while it offers the destination's own
+# quest (DIALOG_STATUS_AVAILABLE, as BandLadder's filter F) - the NPC-wide mark alone could send the bot to a giver whose only open
+# quest it would refuse. Givers come first in their distance band (from search stage 1 on, by giver quests within 150 yd).
+# Expected: giver trips and accepts per bot-h up, turn-ins not down. Cost: an every-giver fetch takes the range before IsPossible
+# (the fallback too; same list), and the whole-map fallback is skipped when the radius fetch already reached 10000 yd.
+#   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid); other values act like 0.
+AiPlayerbot.QuestFirstProgression.GiverFetchAnyQuest = 0
 # twow-repo#601 S5a F4 (OB-00 24.10.2026; owner D1 "rumstehen ist keine Option"): a failed quest search that does not step
 # leaves the bot standing through the route backoff (2, 4, 8, then 10 min). With BandLadder on, from this many failed
 # searches in a row on (the streak F1 counts), such a search sends the bot toward the hub the step would take until the
