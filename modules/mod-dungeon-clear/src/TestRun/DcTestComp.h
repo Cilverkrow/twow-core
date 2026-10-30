@@ -69,8 +69,13 @@ namespace DcTestComp
     // as a FORCED seat only (`tank=druid`, the druid probe, OB-00 29.10.): not drawn, so the seeds of every other
     // campaign keep their comps. It moves into kTankPool once the probe shows the gap closed. Spec: the premade
     // "bear" path (AiPlayerbot.PremadeSpecName.11.3), fallback "feral".
+    // CLI-GRP 30.10.2026 (OB-00, twow-repo#654 rogue tank A/B of CLI-ROT): the rogue tank on its premade path 4.3
+    // ("rogue tank", TankPathStrategy gives it "tank rogue") as a second forced-only seat, `tank=rogue`. Its kit (Spit,
+    // Shadow Dance) comes from GrantSpecKitFor in the claim. No class opener (PickPullSpell): it pulls with the ranged
+    // weapon, else walks in.
     inline constexpr Slot kForcedOnlyTankPool[] = {
         { 11, "bear",       "feral", "tank" },  // druid
+        { 4,  "rogue tank", "tank",  "tank" },  // rogue
     };
 
     inline constexpr Slot kHealPool[] = {
@@ -111,7 +116,7 @@ namespace DcTestComp
     std::array<Slot, kPartySize> BuildComp(std::uint32_t seed, std::uint8_t tankClass = 0);
 
     // The class id of a tank-seat class by name ("warrior", "paladin", ...), 0 when the name is no class of
-    // kTankPool or kForcedOnlyTankPool (the druid: forced only, never drawn). Pure.
+    // kTankPool or kForcedOnlyTankPool (the druid and the rogue: forced only, never drawn). Pure.
     std::uint8_t TankClassByName(std::string_view name);
 
     // The pool backing a role token ("tank" | "heal" | "dps"), for callers that
