@@ -281,6 +281,9 @@ bool QuestUpdateAddKillAction::Execute(Event& event)
     ObjectGuid guid;
     p >> questId >> entry >> available >> required >> guid;
 
+    // twow-repo#601 cand4 (i) StaleObjectiveFilter: a kill credit proves the quest winnable - its objectives leave the stale memory.
+    ai::stale_objective::NoteQuestCredit(bot, questId);
+
     Player* requester = event.getOwner() ? event.getOwner() : GetMaster();
 
     Quest const* qInfo = sObjectMgr.GetQuestTemplate(questId);
@@ -347,6 +350,8 @@ bool QuestUpdateAddItemAction::Execute(Event& event)
 
         for (const auto& pair : ai->GetCurrentQuestsRequiringItemId(itemId))
         {
+            // twow-repo#601 cand4 (i) StaleObjectiveFilter: an item credit of the quest, as the kill credit above.
+            ai::stale_objective::NoteQuestCredit(bot, pair.first->GetQuestId());
             placeholders["%quest_link"] = chat->formatQuest(pair.first);
             uint32 requiredItemsCount = pair.second;
             placeholders["%quest_obj_required"] = std::to_string(requiredItemsCount);

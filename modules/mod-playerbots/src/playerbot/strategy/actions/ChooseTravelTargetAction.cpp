@@ -425,6 +425,7 @@ enum class CandidateSkip
 {
     None,
     SkillLocked,   // twow-repo#601 SkipSkillLockedObjectives (checked last in CandidateSkipOf; the enum order is not the check order)
+    StaleObjective,   // twow-repo#601 cand4 (i) StaleObjectiveFilter (checked after SkillLocked; the enum order is not the check order)
     TurnInSuppressed,
     DeathSuppressed,
     QuestLoopSuppressed,
@@ -509,6 +510,15 @@ CandidateSkip CandidateSkipOf(PlayerbotAI* ai, Player* bot, TravelTarget const* 
     if (ai::cohort::Applies(sPlayerbotAIConfig.questFirstProgressionSkipSkillLockedObjectives, bot->GetGUIDLow()) &&
         sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster() && SkillLockedObjective(bot, destination))
         return CandidateSkip::SkillLocked;
+
+    // twow-repo#601 cand4 (i) (QuestFirstProgression.StaleObjectiveFilter): an objective many roster bots failed at with no credit of its
+    // quest since (realm-wide memory, TravelMgr.cpp). Objectives only - givers and turn-ins never; a roster bot on its own; off or
+    // another cohort: as before.
+    if (ai::cohort::Applies(sPlayerbotAIConfig.questFirstProgressionStaleObjectiveFilter, bot->GetGUIDLow()) &&
+        sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster())
+        if (QuestObjectiveTravelDestination const* objective = dynamic_cast<QuestObjectiveTravelDestination const*>(destination))
+            if (ai::stale_objective::IsObjectiveStale(objective))
+                return CandidateSkip::StaleObjective;
 
     return CandidateSkip::None;
 }
@@ -905,6 +915,10 @@ bool ChooseTravelTargetAction::Execute(Event& event)
             // profession, as an own line (the rejected line stays as it is); never written with the switch off.
             if (lastSkillLocked)
                 sLog.outBasic("[QuestFirstRoute] state=skill_locked bot=%u level=%u skipped=%u", bot->GetGUIDLow(), bot->GetLevel(), lastSkillLocked);
+            // twow-repo#601 cand4 (i) (QuestFirstProgression.StaleObjectiveFilter): the stale objectives this empty search skipped, as an own
+            // line; never written with the switch off.
+            if (lastStaleObjective)
+                sLog.outBasic("[QuestFirstRoute] state=stale_objective bot=%u level=%u skipped=%u", bot->GetGUIDLow(), bot->GetLevel(), lastStaleObjective);
             // twow-repo#601 S5a (BandLadder): the stage this empty search ran at (read before widening; 0 when the switch is off).
             uint32 const bandSearchedStage = sPlayerbotAIConfig.questFirstProgressionBandLadder ?
                 uint32(std::max(0, AI_VALUE2(int, "manual int", "quest search stage"))) : 0u;
@@ -1589,6 +1603,7 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
     lastRejects = ai::quest_search::RejectCounts();
     lastSuppressSources = ai::contested_objective::SourceCounts{};
     lastSkillLocked = 0;
+    lastStaleObjective = 0;
     uint32 deferredCrossMap = 0, deferredZoneLevel = 0;
     uint32 deferredDeathCluster = 0, deathClusterCells = 0, deathClusterWorstKillerLevel = 0;
     // Re-deaths at camps (DestinationDeaths.CampBlock): skipped candidates, quest destinations ranked lower and the kept fallback.
@@ -1708,6 +1723,10 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
                 case CandidateSkip::SkillLocked:
                     ai->TellDebug(requester, "Skipping quest object that needs a profession skill I lack.", "debug travel");
                     ++lastSkillLocked;
+                    continue;
+                case CandidateSkip::StaleObjective:
+                    ai->TellDebug(requester, "Skipping quest objective that many bots failed at without credit.", "debug travel");
+                    ++lastStaleObjective;
                     continue;
                 case CandidateSkip::None:
                     break;

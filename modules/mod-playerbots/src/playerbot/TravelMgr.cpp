@@ -15,6 +15,7 @@
 #include "playerbot/CohortPolicy.h"
 #include "playerbot/RpgAreaLevelPolicy.h"
 #include "playerbot/ContestedObjectivePolicy.h"
+#include "playerbot/StaleObjectivePolicy.h"   // twow-repo#601 cand4 (i) StaleObjectiveFilter
 #include "playerbot/TransportBoardPolicy.h"   // twow-repo#342 ABBA-1 §6: the PosStuck dock pause ends after WaitTimeoutMsOf
 #include <algorithm>
 #include <vector>
@@ -1521,6 +1522,10 @@ void TravelTarget::OnDeathAtDestination()
     if (!sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()))
         return;
 
+    // twow-repo#601 cand4 (i) StaleObjectiveFilter: a death at a quest objective also feeds the realm-wide memory (its own switch).
+    if (QuestObjectiveTravelDestination const* objective = dynamic_cast<QuestObjectiveTravelDestination const*>(tDestination))
+        ai::stale_objective::NoteObjectiveFailure(bot, ai, objective, "death");
+
     // Bounded: a bot dies at only a handful of distinct destinations per hour.
     if (destinationDeaths.size() > 64 && destinationDeaths.find(tDestination) == destinationDeaths.end())
         destinationDeaths.clear();
@@ -1684,9 +1689,78 @@ bool TravelTarget::OnContestedObjectiveTimeout()
     return true;
 }
 
+// twow-repo#601 cand4 (i) (QuestFirstProgression.StaleObjectiveFilter, StaleObjectivePolicy.h): the realm-wide store. One short lock
+// per call around the map operation only; the log line is written after the lock.
+namespace
+{
+    std::mutex staleObjectiveMutex;
+    ai::stale_objective::Store staleObjectiveStore;
+
+    ai::stale_objective::Params StaleObjectiveParams()
+    {
+        ai::stale_objective::Params params;
+        params.failures = sPlayerbotAIConfig.questFirstProgressionStaleObjectiveFailures;
+        params.bots = sPlayerbotAIConfig.questFirstProgressionStaleObjectiveBots;
+        params.windowMs = sPlayerbotAIConfig.questFirstProgressionStaleObjectiveWindowSeconds * IN_MILLISECONDS;
+        params.markMs = sPlayerbotAIConfig.questFirstProgressionStaleObjectiveSeconds * IN_MILLISECONDS;
+        return params;
+    }
+}
+
+void ai::stale_objective::NoteObjectiveFailure(Player* bot, PlayerbotAI* botAI, QuestObjectiveTravelDestination const* objective, char const* reason)
+{
+    if (!sPlayerbotAIConfig.questFirstProgressionStaleObjectiveFilter || !bot || !objective)
+        return;
+    // Roster bots on their own in the open world (as CampBlock): a real master decides for his bot. Both cohorts feed the memory;
+    // only the skip is cohort-gated (CandidateSkipOf).
+    if (!sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) || (botAI && botAI->HasRealPlayerMaster()) ||
+        bot->GetMap()->IsDungeon() || bot->InBattleGround())
+        return;
+
+    ai::stale_objective::Params const params = StaleObjectiveParams();
+    ai::stale_objective::Key const key{ objective->GetQuestId(), objective->GetEntry() };
+    uint32 const nowMs = WorldTimer::getMSTime();
+    uint32 failures = 0;
+    uint32 bots = 0;
+    bool marked = false;
+    {
+        std::lock_guard<std::mutex> lock(staleObjectiveMutex);
+        marked = ai::stale_objective::RecordFailure(staleObjectiveStore, key, bot->GetGUIDLow(), nowMs, params, failures, bots);
+    }
+    if (marked)
+        sLog.outBasic("[StaleObjective] state=mark quest=%u entry=%d failures=%u bots=%u window_s=%u seconds=%u last_bot=%u reason=%s",
+            key.first, key.second, failures, bots, sPlayerbotAIConfig.questFirstProgressionStaleObjectiveWindowSeconds,
+            sPlayerbotAIConfig.questFirstProgressionStaleObjectiveSeconds, bot->GetGUIDLow(), reason);
+}
+
+void ai::stale_objective::NoteQuestCredit(Player* bot, uint32 questId)
+{
+    if (!sPlayerbotAIConfig.questFirstProgressionStaleObjectiveFilter || !questId)
+        return;
+    uint32 ended = 0;
+    {
+        std::lock_guard<std::mutex> lock(staleObjectiveMutex);
+        ended = ai::stale_objective::Credit(staleObjectiveStore, questId, WorldTimer::getMSTime());
+    }
+    if (ended)
+        sLog.outBasic("[StaleObjective] state=clear quest=%u marks=%u reason=credit bot=%u", questId, ended, bot ? bot->GetGUIDLow() : 0);
+}
+
+bool ai::stale_objective::IsObjectiveStale(QuestObjectiveTravelDestination const* objective)
+{
+    if (!sPlayerbotAIConfig.questFirstProgressionStaleObjectiveFilter || !objective)
+        return false;
+    std::lock_guard<std::mutex> lock(staleObjectiveMutex);
+    return ai::stale_objective::IsStale(staleObjectiveStore, ai::stale_objective::Key{ objective->GetQuestId(), objective->GetEntry() },
+        WorldTimer::getMSTime());
+}
+
 void TravelTarget::NoteQuestObjectiveFailure()
 {
     QuestObjectiveTravelDestination const* objective = dynamic_cast<QuestObjectiveTravelDestination const*>(tDestination);
+    // twow-repo#601 cand4 (i) StaleObjectiveFilter: every objective failure (work timeout, pos-stuck park, emptied camp) also feeds the
+    // realm-wide memory - its own switch and roster check, independent of QL-1's.
+    ai::stale_objective::NoteObjectiveFailure(bot, ai, objective, "failure");
     if (!sPlayerbotAIConfig.questLoopMaxFailures || !objective || !bot || !sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()))
         return;
 
