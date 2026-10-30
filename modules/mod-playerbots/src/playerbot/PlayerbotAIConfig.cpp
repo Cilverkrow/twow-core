@@ -1515,6 +1515,13 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[ProfTravel] config key=TurnInGateSkipSuppressed value=%u result=off (0 off, 1 all, 2 cohort B)", professionTrainingTurnInGateSkipSuppressed);
         professionTrainingTurnInGateSkipSuppressed = 0;
     }
+    // twow-repo#601 no-route gate (CLI-Deep 29.10.2026): an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B).
+    professionTrainingTurnInGateSkipNoRoute = config.GetIntDefault("AiPlayerbot.ProfessionTraining.TurnInGateSkipNoRoute", 0);
+    if (professionTrainingTurnInGateSkipNoRoute > 2)
+    {
+        sLog.outError("[ProfTravel] config key=TurnInGateSkipNoRoute value=%u result=off (0 off, 1 all, 2 cohort B)", professionTrainingTurnInGateSkipNoRoute);
+        professionTrainingTurnInGateSkipNoRoute = 0;
+    }
     professionUseToolBuy = config.GetIntDefault("AiPlayerbot.ProfessionUse.ToolBuy", 0);
     if (professionUseToolBuy > 2)
         professionUseToolBuy = 0;
@@ -1818,6 +1825,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Perf.RouteTimeTrace", Value(perfRouteTimeTrace)},
             {"ProfessionTraining.NearRadius", Value(professionTrainingNearRadius)},
             {"ProfessionTraining.Travel", Value(professionTrainingTravel)},
+            {"ProfessionTraining.TurnInGateSkipNoRoute", Value(professionTrainingTurnInGateSkipNoRoute)},
             {"ProfessionTraining.TurnInGateSkipSuppressed", Value(professionTrainingTurnInGateSkipSuppressed)},
             {"ProfessionUse.ToolBuy", Value(professionUseToolBuy)},
             {"QuestFeasibility.Blocklist.count", Value(uint32(questFeasibilityBlocklist.size()))},
