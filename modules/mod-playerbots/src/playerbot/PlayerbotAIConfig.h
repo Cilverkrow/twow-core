@@ -542,6 +542,9 @@ public:
     // turn-in route request found no taker route (every taker judged), until a request finds one; 0 off (default), 1 all, 2 cohort B.
     uint32 professionTrainingTurnInGateSkipNoRoute = 0;
     uint32 professionUseToolBuy = 0;
+    // twow-repo#333 P1-z (OB-00 31.10.2026, bug fix: code default 1, 0 = rollback, 2 cohort B): BuyAction "vendor" also reads the
+    // vendor template items (creature_template.vendor_id), as the player's buy, the by-name buy and the vendor map already do.
+    uint32 buyVendorTemplateItems = 1;
     uint32 travelRpgAreaLevelFromSpawn = 0;  // twow-repo#333 P1-v: RpgTravelDestination::IsPossible reads the area level at the spawn nearest to the bot, not at the map origin (RpgAreaLevelPolicy.h); 0 off, 1 all, 2 cohort B (odd guid)
     uint32 gatherQuestHerbFilter = 0;  // twow-repo#333 P1-f: a quest herb (lock 259) is picked only with its quest active (modes 0/1/2)
     // #333: roster bots use their professions while levelling.

@@ -11,6 +11,8 @@
 #include "playerbot/RandomItemMgr.h"
 #include "playerbot/RandomPlayerbotMgr.h"
 #include "playerbot/AmmoStockPolicy.h"
+#include "playerbot/CohortPolicy.h"
+#include "playerbot/strategy/values/TravelValues.h"   // twow-repo#333 P1-z: MissingGatherTool for the tool visit line
 #include <ctime>
 
 using namespace ai;
@@ -41,6 +43,28 @@ void LogVendorGear(Player* bot, bool buy, char const* reason, uint32 itemId, uin
 
     sLog.outBasic("[VendorGear] %s reason=%s bot=%u level=%u item=%u slot=%u price=%u score_new=%u score_old=%u allowance=%u spent=%u",
         buy ? "buy" : "skip", reason, bot->GetGUIDLow(), bot->GetLevel(), itemId, slot, price, newScore, oldScore, allowance, spent);
+}
+
+bool VendorStocks(VendorItemData const* items, uint32 itemId)
+{
+    if (!items)
+        return false;
+    for (uint32 slot = 0; slot < items->GetItemCount(); ++slot)
+        if (VendorItem const* vItem = items->GetItem(slot))
+            if (vItem->item == itemId)
+                return true;
+    return false;
+}
+
+// twow-repo#333 P1-z: the tool visit line (ProfessionUse.Trace); nothing for a bot with its tools or at a vendor without them.
+void LogToolVisit(Player* bot, Creature const* vendor, uint32 tool, char const* source, bool templateItems, bool bought)
+{
+    if (!tool || !source)
+        return;
+
+    sLog.outBasic("[ProfessionUse] stage=tool_buy state=%s bot=%u level=%u vendor=%u item=%u source=%s template_items=%u money=%u",
+        bought ? "bought" : "not_bought", bot->GetGUIDLow(), bot->GetLevel(), vendor->GetEntry(), tool, source, templateItems ? 1u : 0u,
+        bot->GetMoney());
 }
 }
 
@@ -121,12 +145,26 @@ bool BuyAction::Execute(Event& event)
 
             VendorItemData const* tItems = pCreature->GetVendorItems();
             VendorItemData const* vItems = {};
-#ifndef MANGOSBOT_ZERO                
+#ifndef MANGOSBOT_ZERO
             vItems = pCreature->GetVendorTemplateItems();
+#else
+            // twow-repo#333 P1-z (AiPlayerbot.Buy.VendorTemplateItems, OB-00 31.10.2026: code default 1, 0 = rollback): this core has
+            // vendor templates, the player's buy takes their items and the vendor map sends the bots there, but this branch read only
+            // npc_vendor - so a bot never bought what a template vendor sells (M1r run 7: both tool vendors, silently).
+            if (ai::cohort::Applies(sPlayerbotAIConfig.buyVendorTemplateItems, bot->GetGUIDLow()))
+                vItems = pCreature->GetVendorTemplateItems();
 #endif
+            // P1-z: with ProfessionUse.Trace, one line per vendor visit of a bot missing its pick / knife at a vendor that stocks it
+            // (in npc_vendor or in the template, also with the switch off), so a skipped tool is no longer silent.
+            uint32 const missingTool = sPlayerbotAIConfig.professionUseTrace ? ai::MissingGatherTool(ai) : 0;
+            char const* const toolSource = !missingTool ? nullptr : VendorStocks(tItems, missingTool) ? "npc" :
+                VendorStocks(pCreature->GetVendorTemplateItems(), missingTool) ? "template" : nullptr;
             if (!tItems && !vItems)
+            {
+                LogToolVisit(bot, pCreature, missingTool, toolSource, vItems != nullptr, false);
                 continue;
-            
+            }
+
             VendorItemList m_items_sorted;
             
             if (tItems)
@@ -138,7 +176,10 @@ bool BuyAction::Execute(Event& event)
             m_items_sorted.erase(std::remove_if(m_items_sorted.begin(), m_items_sorted.end(), [](VendorItem* i) {ItemPrototype const* proto = sObjectMgr.GetItemPrototype(i->item); return !proto; }), m_items_sorted.end());
 
             if (m_items_sorted.empty())
+            {
+                LogToolVisit(bot, pCreature, missingTool, toolSource, vItems != nullptr, false);
                 continue;
+            }
 
             std::sort(m_items_sorted.begin(), m_items_sorted.end(), [](VendorItem* i, VendorItem* j) {return sObjectMgr.GetItemPrototype(i->item)->ItemLevel > sObjectMgr.GetItemPrototype(j->item)->ItemLevel; });
 
@@ -335,6 +376,8 @@ bool BuyAction::Execute(Event& event)
                     }
                 }
             }
+
+            LogToolVisit(bot, pCreature, missingTool, toolSource, vItems != nullptr, bot->HasItemCount(missingTool, 1));
 
             // Exception for crafting bots with guild order - Buy profession reagents from vendor first for more efficient crafting.
             if (AI_VALUE(bool, "needs profession reagents"))
