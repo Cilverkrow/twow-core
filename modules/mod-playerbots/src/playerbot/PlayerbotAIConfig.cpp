@@ -8,6 +8,7 @@
 #include "playerbot/BgFillPolicy.h"
 #include "playerbot/ShortcutPolicy.h"
 #include "playerbot/ActionLogSamplePolicy.h"
+#include "playerbot/DamageLogPolicy.h"   // twow-repo#653: AiPlayerbot.ActionLog.DamageSampleEvery
 #include "playerbot/QuestFeasibilityPolicy.h"
 #include "playerbot/SpecPathPolicy.h"
 #include "playerbot/EmergencyLadderPolicy.h"
@@ -1341,6 +1342,7 @@ bool PlayerbotAIConfig::Initialize()
     botsSilent = config.GetBoolDefault("AiPlayerbot.BotsSilent", false);
     enableActionLog = config.GetBoolDefault("AiPlayerbot.EnableActionLog", false);
     actionLogGuids = ai::action_log::ParseSample(config.GetStringDefault("AiPlayerbot.ActionLog.Guids", ""));   // twow-repo#601 / #614
+    actionLogDamageSampleEvery = ai::damage_log::Every(config.GetIntDefault("AiPlayerbot.ActionLog.DamageSampleEvery", 5));   // twow-repo#653
     grindGreyByLevel = config.GetBoolDefault("AiPlayerbot.Grind.GreyByLevel", false);   // twow-repo#601 / #614
     grindQuestFirstOrder = config.GetIntDefault("AiPlayerbot.Grind.QuestFirstOrder", 0);   // twow-repo#601 decision order
     if (grindQuestFirstOrder > 2)
@@ -1813,6 +1815,7 @@ bool PlayerbotAIConfig::Initialize()
     {
         using ai::config_echo::Value;
         for (std::string const& line : ai::config_echo::FormatLines({
+            {"ActionLog.DamageSampleEvery", Value(actionLogDamageSampleEvery)},
             {"ActionLog.Guids.count", Value(uint32(actionLogGuids.size()))},
             {"ActivityTrace", Value(activityTrace)},
             {"ActivityTrace.IdleDetail", Value(activityTraceIdleDetail)},

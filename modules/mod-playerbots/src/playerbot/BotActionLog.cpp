@@ -9,6 +9,7 @@
 #include "PlayerbotAIConfig.h"
 #include "playerbot/ActionLogSamplePolicy.h"   // twow-repo#601 / #614: AiPlayerbot.ActionLog.Guids
 #include "playerbot/CastResultNames.h"        // twow-repo#602: CAST_FAIL reason=
+#include "playerbot/DamageLogPolicy.h"         // twow-repo#653: AiPlayerbot.ActionLog.DamageSampleEvery
 #include "Objects/Player.h"
 #include "Objects/Unit.h"
 #include "ObjectGuid.h"
@@ -458,27 +459,64 @@ void BotActionLog_LogCastResult(WorldObject* caster, uint32 spellId, uint8 resul
 void BotActionLog_LogDamage(Unit* attacker, Unit* victim, uint32 damage, uint32 spellId, const char* damageType)
 {
     // Throttle: only log every Nth damage event per bot to avoid log-spam in
-    // raid-trash scenarios. Per-bot counter via thread_local map keyed by guid.
-    static thread_local std::unordered_map<uint64, uint32> sCounter;
-    constexpr uint32 kSampleEvery = 5;
+    // raid-trash scenarios. Per-bot counters via thread_local maps keyed by guid.
+    // twow-repo#653 (AiPlayerbot.ActionLog.DamageSampleEvery, default 5; DamageLogPolicy.h): dealt and taken have their own
+    // counter (one shared counter made a 2nd attacker's first logged hit ~10 s late), and a bot's pet / totem / guardian damage
+    // goes to the owner's log as DMG_DEALT with via= (it was never logged).
+    // OB-10 review 31.10.2026: with the action log off (production, perf runs) nothing below runs - no minion lookup, no counter;
+    // the same gate as every Write (EnableActionLog, or files still open after a runtime switch-off).
+    if (!BotActionLog::MayWrite())
+        return;
+    static thread_local std::unordered_map<uint64, uint32> sDealt;
+    static thread_local std::unordered_map<uint64, uint32> sTaken;
+    uint32 const every = sPlayerbotAIConfig.actionLogDamageSampleEvery;
 
     PlayerbotAI* attackerAi = AiFor(attacker);
     PlayerbotAI* victimAi   = AiFor(victim);
+    // The minion's owner: a creature whose charmer / owner guid is a player (one field read before anything else, so the
+    // creature-on-creature hits of the world stay two pointer checks and a guid test).
+    Unit* via = nullptr;
+    Unit* dealer = attacker;
+    if (!attackerAi && attacker && !attacker->IsPlayer() && attacker->GetCharmerOrOwnerGuid().IsPlayer())
+    {
+        if (Player* owner = attacker->GetCharmerOrOwnerPlayerOrPlayerItself())
+        {
+            if (PlayerbotAI* ownerAi = GetBotAI(owner))
+            {
+                attackerAi = ownerAi;
+                via = attacker;
+                dealer = owner;
+            }
+        }
+    }
+    // A bot outside AiPlayerbot.ActionLog.Guids gets no file: it is not counted either (the sample check before the counters).
+    if (attackerAi && !ai::action_log::Sampled(sPlayerbotAIConfig.actionLogGuids, dealer->GetGUIDLow()))
+        attackerAi = nullptr;
+    if (victimAi && !ai::action_log::Sampled(sPlayerbotAIConfig.actionLogGuids, victim->GetGUIDLow()))
+        victimAi = nullptr;
     if (!attackerAi && !victimAi) return;
 
-    auto bucket = [&](Unit* who) -> bool {
+    auto bucket = [&](std::unordered_map<uint64, uint32>& counter, Unit* who) -> bool {
         uint64 g = who ? who->GetObjectGuid().GetRawValue() : 0;
-        return ((++sCounter[g]) % kSampleEvery) == 0;
+        return ai::damage_log::Due(++counter[g], every);
     };
 
-    if (attackerAi && bucket(attacker)) {
-        BotActionLog::Write(attackerAi, "DMG_DEALT",
-            "victim=0x%llx victimName=%s spell=%u dmg=%u type=%s",
-            (unsigned long long)(victim ? victim->GetObjectGuid().GetRawValue() : 0),
-            victim ? victim->GetName() : "?",
-            spellId, damage, damageType ? damageType : "?");
+    if (attackerAi && bucket(sDealt, dealer)) {
+        if (via)
+            BotActionLog::Write(attackerAi, "DMG_DEALT",
+                "victim=0x%llx victimName=%s spell=%u dmg=%u type=%s via=0x%llx viaName=%s",
+                (unsigned long long)(victim ? victim->GetObjectGuid().GetRawValue() : 0),
+                victim ? victim->GetName() : "?",
+                spellId, damage, damageType ? damageType : "?",
+                (unsigned long long)via->GetObjectGuid().GetRawValue(), via->GetName());
+        else
+            BotActionLog::Write(attackerAi, "DMG_DEALT",
+                "victim=0x%llx victimName=%s spell=%u dmg=%u type=%s",
+                (unsigned long long)(victim ? victim->GetObjectGuid().GetRawValue() : 0),
+                victim ? victim->GetName() : "?",
+                spellId, damage, damageType ? damageType : "?");
     }
-    if (victimAi && bucket(victim)) {
+    if (victimAi && bucket(sTaken, victim)) {
         BotActionLog::Write(victimAi, "DMG_TAKEN",
             "attacker=0x%llx attackerName=%s spell=%u dmg=%u type=%s",
             (unsigned long long)(attacker ? attacker->GetObjectGuid().GetRawValue() : 0),

@@ -421,6 +421,7 @@ public:
     // off so production servers don't pay disk I/O / branch overhead.
     bool enableActionLog;
     std::vector<uint32> actionLogGuids;  // twow-repo#601 / #614: AiPlayerbot.ActionLog.Guids, sorted; empty = every bot
+    uint32 actionLogDamageSampleEvery = 5;  // twow-repo#653: AiPlayerbot.ActionLog.DamageSampleEvery - DMG lines every Nth damage event, dealt and taken counted separately (DamageLogPolicy.h)
     bool grindGreyByLevel = false;  // twow-repo#601 / #614: AiPlayerbot.Grind.GreyByLevel - the grind "not xp" skip (#421 roster rule and the old 50-in-51 skip of all bots) by mob level, not XP::Gain
     uint32 grindQuestFirstOrder = 0;  // twow-repo#601 decision order (owner 20.10.2026): AiPlayerbot.Grind.QuestFirstOrder - "attack anything" of quest-first roster bots only on quest objectives, attackers and mobs in the way; 0 off, 1 all, 2 cohort B (odd low guid)
     uint32 grindNeighbourAware = 0;  // twow-repo#602 #2 (adds analysis 25.10.2026): the stage-2 grind pick prefers a candidate with fewer neighbours that would join the fight (GrindNeighbourPolicy.h); 0 off, 1 all, 2 cohort B (A in shadow), 3 shadow only
