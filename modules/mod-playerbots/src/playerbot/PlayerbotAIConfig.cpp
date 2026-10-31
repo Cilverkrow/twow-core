@@ -763,9 +763,10 @@ bool PlayerbotAIConfig::Initialize()
     }
     // twow-repo#601 turn_in hold (CLI-Deep 28.10.2026): an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B).
     questLoopRelationWorkNoGrind = config.GetIntDefault("AiPlayerbot.QuestLoop.RelationWorkNoGrind", 0);
-    if (questLoopRelationWorkNoGrind > 2)
+    // twow-repo#601 crossover (OB-00 31.10.2026): RelationWorkNoGrind also takes 3 = only cohort A (CohortPolicy ModeOnlyA).
+    if (questLoopRelationWorkNoGrind > 3)
     {
-        sLog.outError("[QuestLoop] config key=RelationWorkNoGrind value=%u result=off (0 off, 1 all, 2 cohort B)", questLoopRelationWorkNoGrind);
+        sLog.outError("[QuestLoop] config key=RelationWorkNoGrind value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", questLoopRelationWorkNoGrind);
         questLoopRelationWorkNoGrind = 0;
     }
     questLoopRelationArriveRpgTarget = config.GetIntDefault("AiPlayerbot.QuestLoop.RelationArriveRpgTarget", 0);
@@ -957,9 +958,10 @@ bool PlayerbotAIConfig::Initialize()
     // twow-repo#601 cand4 (i) StaleObjectiveFilter: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B); the parameters
     // are clamped (failures and bots fit the 8 failures kept per objective; window and mark 60 s .. 1 day).
     questFirstProgressionStaleObjectiveFilter = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter", 0);
-    if (questFirstProgressionStaleObjectiveFilter > 2)
+    // twow-repo#601 crossover (OB-00 31.10.2026): 3 = only cohort A (CohortPolicy ModeOnlyA).
+    if (questFirstProgressionStaleObjectiveFilter > 3)
     {
-        sLog.outError("[StaleObjective] config key=StaleObjectiveFilter value=%u result=off (0 off, 1 all, 2 cohort B)", questFirstProgressionStaleObjectiveFilter);
+        sLog.outError("[StaleObjective] config key=StaleObjectiveFilter value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", questFirstProgressionStaleObjectiveFilter);
         questFirstProgressionStaleObjectiveFilter = 0;
     }
     questFirstProgressionStaleObjectiveFailures = std::min<uint32>(8, uint32(std::max<int32>(1, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter.Failures", 4))));

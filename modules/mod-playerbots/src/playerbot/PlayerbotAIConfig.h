@@ -794,7 +794,7 @@ public:
     // twow-repo#601 turn_in hold (CLI-Deep 28.10.2026, OB-00 go): at a quest giver / taker whose turn-in / accept is still open,
     // RelationWorkNoGrind skips grind targets without quest need in WORK, RelationArriveRpgTarget sets the NPC as rpg target on
     // arrival, TurnInWorkDeathNotRoute books a death in WORK at the taker as a turn-in failure instead of a route death.
-    // Mode 0 off (default), 1 all, 2 cohort B.
+    // Mode 0 off (default), 1 all, 2 cohort B; RelationWorkNoGrind also 3 = cohort A (crossover arm, OB-00 31.10.2026).
     uint32 questLoopRelationWorkNoGrind = 0;
     uint32 questLoopRelationArriveRpgTarget = 0;
     uint32 questLoopTurnInWorkDeathNotRoute = 0;
@@ -979,7 +979,8 @@ public:
     uint32 questFirstProgressionSkipSkillLockedObjectives = 0;
     // twow-repo#601 cand4 (i) (CLI-Deep 29.10.2026, OB-00 after CLI-PATH as-1-why; StaleObjectivePolicy.h): an objective with Failures
     // failures from at least Bots distinct roster bots within WindowSeconds and no credit of its quest since is skipped for Seconds;
-    // any credit of the quest clears it. Mode 0 off (default), 1 all, 2 cohort B (the skip only; failures of every bot count).
+    // any credit of the quest clears it. Mode 0 off (default), 1 all, 2 cohort B, 3 cohort A (crossover arm, OB-00 31.10.2026) - the skip
+    // only; failures of every bot count.
     uint32 questFirstProgressionStaleObjectiveFilter = 0;
     uint32 questFirstProgressionStaleObjectiveFailures = 4;       // 1..8
     uint32 questFirstProgressionStaleObjectiveBots = 3;           // 1..8
