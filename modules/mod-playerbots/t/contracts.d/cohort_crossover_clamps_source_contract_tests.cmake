@@ -36,3 +36,7 @@ require_text("${conf_dist}" "3 = only cohort A (even low guid) skips" "StaleObje
 
 # The other three #778 switches stay at > 2 (not crossover-tested).
 require_text("${config_cpp}" "if (questLoopRelationArriveRpgTarget > 2)" "RelationArriveRpgTarget unchanged")
+
+# Rotation.TankKitFromLevel (tank3 crossover, CLI-ROT 31.10.: unit 1 = 2, unit 2 = 3).
+require_text("${config_cpp}" "if (rotationTankKitFromLevel > 3)" "TankKitFromLevel accepts 3")
+require_text("${conf_dist}" "3 = only cohort A (even low guid; the second unit of a" "TankKitFromLevel 3 documented")

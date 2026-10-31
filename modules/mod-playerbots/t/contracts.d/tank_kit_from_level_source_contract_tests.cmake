@@ -49,7 +49,7 @@ read_source("Talentspec.h" talentspec_h)
 # 1. The switch: default 0 in the dist, the member and the read; unknown modes are off; parsed mode in [ConfigEcho], sorted.
 require_text("${dist}" "\nAiPlayerbot.Rotation.TankKitFromLevel = 0\n" "dist key, default 0")
 require_text("${config_h}" "uint32 rotationTankKitFromLevel = 0;" "config member, default 0")
-require_text("${config_cpp}" "rotationTankKitFromLevel = config.GetIntDefault(\"AiPlayerbot.Rotation.TankKitFromLevel\", 0);   // twow-repo#602 tank count\n    if (rotationTankKitFromLevel > 2)\n        rotationTankKitFromLevel = 0;" "config read, > 2 = off")
+require_text("${config_cpp}" "rotationTankKitFromLevel = config.GetIntDefault(\"AiPlayerbot.Rotation.TankKitFromLevel\", 0);   // twow-repo#602 tank count\n    // twow-repo#602 tank3 crossover (OB-00 31.10.2026): 3 = only cohort A (CohortPolicy ModeOnlyA; unit 1 = 2, unit 2 = 3).\n    if (rotationTankKitFromLevel > 3)\n        rotationTankKitFromLevel = 0;" "config read, > 3 = off (3 = cohort A, crossover)")
 require_text("${config_cpp}" "            {\"Rotation.SpecFromPath\", Value(rotationSpecFromPath)},\n            {\"Rotation.TankKitFromLevel\", Value(rotationTankKitFromLevel)},\n" "parsed mode in [ConfigEcho], sorted (owner rule #615, #710)")
 
 # 2. Pure policy (std + the cohort rule only) and its levels.

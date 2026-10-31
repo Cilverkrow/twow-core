@@ -3236,7 +3236,8 @@ AiPlayerbot.Rotation.SpecFromPath = 0
 # path and every other class are unchanged.
 # "[TankKit] mode= demoted= rebuilt= pathed=" once a minute with the mode on (demoted = kit builds with a tab other than the spec
 # tab, pathed = those whose warrior kit follows its path; rates).
-# 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
+# 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid; the second unit of a
+# crossover, OB-00 31.10.2026). Any other value acts like 0.
 AiPlayerbot.Rotation.TankKitFromLevel = 0
 # twow-repo#654 rogue tank poison ping-pong (OB-00 / owner 29.10.2026, a bug fix, ON by default, 0 = rollback): a rogue tank
 # (premade path 4.3) coats its main hand with the threat poison (Agitating Poison), while the combat kit under it keeps its own
