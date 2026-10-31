@@ -46,7 +46,7 @@ file(READ "${CORE_SOURCE_DIR}/src/game/FunserverShadowDanceStance.h" core_policy
 require_text("${dist}" "\nAiPlayerbot.Rotation.RogueTankStance = 0\n" "dist key, default 0")
 require_text("${config_h}" "uint32 rotationRogueTankStance = 0;" "config member, default 0")
 require_text("${config_cpp}" "rotationRogueTankStance = config.GetIntDefault(\"AiPlayerbot.Rotation.RogueTankStance\", 0);   // twow-repo#654 Shadow Dance stance\n    if (rotationRogueTankStance > 2)\n        rotationRogueTankStance = 0;" "config read, unknown = off")
-require_text("${config_cpp}" "            {\"Rotation.RestGate\", Value(rotationRestGate)},\n            {\"Rotation.RogueTankStance\", Value(rotationRogueTankStance)},\n            {\"Rotation.SpecFromPath\", Value(rotationSpecFromPath)},\n" "parsed value in [ConfigEcho], sorted (owner rule #615, #710)")
+require_text("${config_cpp}" "            {\"Rotation.RogueTankStance\", Value(rotationRogueTankStance)},\n            {\"Rotation.SpecFromPath\", Value(rotationSpecFromPath)},\n" "parsed value in [ConfigEcho], sorted (owner rule #615, #710)")
 
 # 2. Pure policy (std only + CohortPolicy.h), the stance id equals the core's.
 string(REGEX MATCHALL "#include [<\"][^>\"]+[>\"]" incs "${policy}")
