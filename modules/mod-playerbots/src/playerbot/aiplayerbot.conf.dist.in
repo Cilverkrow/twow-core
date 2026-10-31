@@ -736,6 +736,12 @@ AiPlayerbot.InviteChat = 1
 # the action log lock. The core does not rotate the files (one per bot and login, appended); rotate outside (copy + truncate).
 AiPlayerbot.ActionLog.Guids =
 
+# twow-repo#653 (OB-00 31.10.2026): DMG_DEALT / DMG_TAKEN in the action log every Nth damage event of the bot (1 = every event,
+# below 1 = 5, at most 100). Dealt and taken count separately, and a bot's pet / totem / guardian damage is logged in the owner's
+# file as DMG_DEALT with via=<guid> viaName=<name>. 1 is for the action-log sample bots of behaviour runs only: more lines, each
+# flushed, so a run with 1 makes no perf statement (failcensus v4.1).
+AiPlayerbot.ActionLog.DamageSampleEvery = 5
+
 # twow-repo#601 / #614 (L1 observation 19.10.2026, a bug fix): 1 = grey by the mob's level, as the core colours it (mob level <=
 # the grey level of the bot), for the grind skip "not xp and not needed for quest" (GrindTargetValue): the #421 rule for roster
 # bots on their own and the old 50-in-51 skip for all other bots; a mob without kill reward or with a zero XP template stays
