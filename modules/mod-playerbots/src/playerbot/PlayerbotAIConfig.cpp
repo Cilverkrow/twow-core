@@ -1348,6 +1348,11 @@ bool PlayerbotAIConfig::Initialize()
     grindNeighbourAware = config.GetIntDefault("AiPlayerbot.Grind.NeighbourAware", 0);   // twow-repo#602 #2
     if (grindNeighbourAware > 3)
         grindNeighbourAware = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B, 3 shadow only)
+    grindSafePull = config.GetIntDefault("AiPlayerbot.Grind.SafePull", 0);   // twow-repo#656
+    if (grindSafePull > 4)
+        grindSafePull = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B, 3 cohort A, 4 shadow only)
+    grindSafePullReadyHp = std::min<uint32>(100, uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.Grind.SafePull.ReadyHp", 80))));   // twow-repo#656
+    grindSafePullReadyMana = std::min<uint32>(100, uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.Grind.SafePull.ReadyMana", 50))));   // twow-repo#656
     botLogFile = config.GetStringDefault("AiPlayerbot.BotLogFile", "bots.log");
     {
         std::string logsDir = sConfig.GetStringDefault("LogsDir");
@@ -1839,6 +1844,9 @@ bool PlayerbotAIConfig::Initialize()
             {"Grind.GreyByLevel", Value(grindGreyByLevel)},
             {"Grind.NeighbourAware", Value(grindNeighbourAware)},
             {"Grind.QuestFirstOrder", Value(grindQuestFirstOrder)},
+            {"Grind.SafePull", Value(grindSafePull)},
+            {"Grind.SafePull.ReadyHp", Value(grindSafePullReadyHp)},
+            {"Grind.SafePull.ReadyMana", Value(grindSafePullReadyMana)},
             {"LogInGroupOnly", Value(logInGroupOnly)},
             {"Loot.RoleWeights", Value(lootRoleWeights)},
             {"Path.PartialNoop", Value(pathPartialNoop)},

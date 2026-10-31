@@ -13,6 +13,7 @@
 #include "playerbot/QuestGrindModePolicy.h"
 #include "playerbot/QuestFirstOrderPolicy.h"   // twow-repo#601 decision order (Grind.QuestFirstOrder)
 #include "playerbot/GrindNeighbourPolicy.h"   // twow-repo#602 #2 (Grind.NeighbourAware)
+#include "playerbot/SafePullPolicy.h"   // twow-repo#656 (Grind.SafePull)
 #include "playerbot/CohortPolicy.h"
 #include "playerbot/QuestLoopPolicy.h"   // twow-repo#601 turn_in hold (QuestLoop.RelationWorkNoGrind)
 #include "playerbot/TravelMgr.h"
@@ -191,6 +192,12 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
     bool const neighbourScored = ai::grind_neighbour::Computes(neighbourMode) && !assistCount && !group && !bot->InBattleGround() &&
         !ai->HasRealPlayerMaster() && sRandomPlayerbotMgr.IsFreeBot(bot);
     std::vector<NeighbourCandidate> neighbourCandidates;
+    // twow-repo#656 (AiPlayerbot.Grind.SafePull, #653 lever 1): the same population and candidates, risk-ordered after the loop
+    // (SafePullPolicy.h). Off: nothing is built.
+    uint32 const safeMode = sPlayerbotAIConfig.grindSafePull;
+    bool const safeScored = ai::safe_pull::Computes(safeMode) && !assistCount && !group && !bot->InBattleGround() &&
+        !ai->HasRealPlayerMaster() && sRandomPlayerbotMgr.IsFreeBot(bot);
+    std::vector<NeighbourCandidate> safeCandidates;
 
     for (std::list<ObjectGuid>::iterator tIter = targets.begin(); tIter != targets.end(); tIter++)
     {
@@ -439,6 +446,9 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
         }
         else
         {
+            // twow-repo#656: the same record for the risk-ordered pick (Grind.SafePull).
+            if (safeScored)
+                safeCandidates.push_back({ unit, newdistance, sServerFacade.GetDistance2d(bot, unit) });
             // twow-repo#602 #2: every candidate that reaches the solo replace decision, with its score distance (quest +20 included).
             if (neighbourScored)
                 neighbourCandidates.push_back({ unit, newdistance, sServerFacade.GetDistance2d(bot, unit) });
@@ -449,6 +459,11 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
             }
         }
     }
+
+    // twow-repo#656: the risk-ordered pick (applied: the lowest-risk candidate, or no target while the bot is not ready for a risky
+    // one; shadow: only counted). Before the neighbour rule, on the same candidates (a null pick stays null there).
+    if (safeScored)
+        result = SafePick(result, safeCandidates, targets, ai::safe_pull::Applies(safeMode, bot->GetGUIDLow()));
 
     // twow-repo#602 #2: the distance pick above is final unless the neighbour rule finds a candidate with fewer neighbours and a lower
     // score (applied: replaced; shadow: only counted). Demote only - a pass with a pick keeps a pick.
@@ -710,4 +725,244 @@ Unit* GrindTargetValue::NeighbourPick(Unit* pick, std::vector<NeighbourCandidate
     count.micros.fetch_add(uint64(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - started).count()),
         std::memory_order_relaxed);
     return applies && best ? best : pick;
+}
+
+// twow-repo#656 (AiPlayerbot.Grind.SafePull, #653 lever 1): the risk of every stage-2 candidate = the idle creatures of this pass's
+// "possible targets" list (no new grid search, no raycast) that would join a fight with it - linked to it (AGGRO_TOGETHER group,
+// same-faction assist, call for help along its run to a ranged bot; weight 2) or seeing the bot at the candidate, at the ranged fight
+// spot or on the approach line bot -> spot (weight 1); each creature once (SafePullPolicy.h). The pick is the lowest risk, then the
+// lowest score distance, inside the level guard. A bot that is not ready (HP / mana) for a pick with risk >= WaitRisk gets no target
+// for at most MaxWaitS. applies = false only counts (shadow) and returns the distance pick. The last pick is kept on the bot for the
+// [SafePull] death line.
+Unit* GrindTargetValue::SafePick(Unit* pick, std::vector<NeighbourCandidate> const& candidates, std::list<ObjectGuid> const& targets, bool applies)
+{
+    using namespace ai::safe_pull;
+    if (!pick || candidates.empty())
+        return pick;
+
+    auto const started = std::chrono::steady_clock::now();
+    uint32 const cohort = ai::cohort::InB(bot->GetGUIDLow()) ? 1 : 0;
+    uint32 const cls = bot->getClass() < MaxClass ? bot->getClass() : 0;
+    Counters& count = counters[cohort];
+    count.passes.fetch_add(1, std::memory_order_relaxed);
+    count.candidates.fetch_add(candidates.size(), std::memory_order_relaxed);
+
+    struct Entry
+    {
+        Creature* creature;
+        uint32 faction;
+        CreatureGroup* group;    // only an AGGRO_TOGETHER group
+        float attackDistance;    // 0 = does not attack on sight
+        bool assists;            // may answer CallAssistance / CallForHelp against the bot
+    };
+    std::vector<Entry> entries;
+    entries.reserve(std::min<size_t>(targets.size(), MaxEntries));
+    for (ObjectGuid const& guid : targets)
+    {
+        if (entries.size() >= MaxEntries)
+        {
+            count.capped.fetch_add(1, std::memory_order_relaxed);
+            break;
+        }
+        Creature* creature = ai->GetCreature(guid);
+        // As the neighbour rule: a creature already in combat, owned, critter, totem or evading never joins.
+        if (!creature || !sServerFacade.IsAlive(creature) || creature->IsInCombat() || creature->GetCharmerOrOwnerGuid() ||
+            creature->IsPet() || creature->IsTotem() || creature->IsCritter() || creature->IsInEvadeMode())
+            continue;
+        CreatureGroup* group = creature->GetCreatureGroup();
+        Entry entry;
+        entry.creature = creature;
+        entry.faction = creature->GetFactionTemplateId();
+        entry.group = group && group->HasGroupFlag(OPTION_AGGRO_TOGETHER) ? group : nullptr;
+        entry.attackDistance = creature->CanAttackOnSight(bot) && creature->CanInitiateAttack() ? creature->GetAttackDistance(bot) : 0.0f;
+        entry.assists = creature->IsHostileTo(bot) && !creature->HasExtraFlag(CREATURE_FLAG_EXTRA_NO_ASSIST) &&
+            !creature->HasExtraFlag(CREATURE_FLAG_EXTRA_NO_AGGRO);
+        if (!entry.group && entry.attackDistance <= 0.0f && !entry.assists)
+            continue;
+        entries.push_back(entry);
+    }
+
+    float const assistRadius = sWorld.getConfig(CONFIG_FLOAT_CREATURE_FAMILY_ASSISTANCE_RADIUS);
+    float const pullRange = ai->IsRanged(bot) ? sPlayerbotAIConfig.spellDistance : 0.0f;
+    float const sight = sPlayerbotAIConfig.sightDistance;
+    float const bx = bot->GetPositionX();
+    float const by = bot->GetPositionY();
+
+    // The risk of candidate i; `last` (optional) receives the counted creatures, `kinds` counts the hits per kind (once per pass).
+    auto riskOf = [&](size_t i, LastPick* last, bool kinds) -> uint32
+    {
+        Creature* x = dynamic_cast<Creature*>(candidates[i].unit);
+        if (!x)
+            return 0;   // a player candidate: no camp
+        CreatureGroup* xGroup = x->GetCreatureGroup();
+        if (xGroup && !xGroup->HasGroupFlag(OPTION_AGGRO_TOGETHER))
+            xGroup = nullptr;
+        CreatureInfo const* xInfo = x->GetCreatureInfo();
+        float const callForHelp = xInfo ? xInfo->call_for_help_range : 0.0f;
+        float const botDistance = candidates[i].botDistance;
+        float ux = 0.0f, uy = 0.0f;
+        if (botDistance > 0.1f)
+        {
+            ux = (bx - x->GetPositionX()) / botDistance;
+            uy = (by - x->GetPositionY()) / botDistance;
+        }
+        float const offset = SpotOffset(botDistance, pullRange);
+        float const sx = x->GetPositionX() + ux * offset;
+        float const sy = x->GetPositionY() + uy * offset;
+        uint32 risk = 0;
+        for (Entry const& e : entries)
+        {
+            if (e.creature == x)
+                continue;
+            float const ex = e.creature->GetPositionX();
+            float const ey = e.creature->GetPositionY();
+            float const dx = ex - x->GetPositionX();
+            float const dy = ey - x->GetPositionY();
+            float const dz = e.creature->GetPositionZ() - x->GetPositionZ();
+            float const distSq = dx * dx + dy * dy + dz * dz;
+            uint32 weight = 0;
+            std::atomic<std::uint64_t>* kind = nullptr;
+            if (xGroup && e.group == xGroup)
+            {
+                weight = LinkWeight;
+                kind = &count.rkLink;
+            }
+            else if (e.assists && e.faction == x->GetFactionTemplateId() && Within(distSq, assistRadius + AssistPad))
+            {
+                weight = LinkWeight;
+                kind = &count.rkLink;
+            }
+            else if (e.assists && callForHelp > 0.0f && e.creature->IsFriendlyTo(x))
+            {
+                float const chaseSq = ChaseDistSq(dx, dy, ux, uy, botDistance, pullRange);
+                if (chaseSq >= 0.0f && Within(chaseSq, callForHelp + CallForHelpPad))
+                {
+                    weight = LinkWeight;
+                    kind = &count.rkLink;
+                }
+            }
+            if (!weight && e.attackDistance > 0.0f)
+            {
+                float const r = e.attackDistance + SightPad;
+                float const sdx = ex - sx;
+                float const sdy = ey - sy;
+                if (Within(distSq, r))
+                {
+                    weight = SightWeight;
+                    kind = &count.rkTarget;
+                }
+                else if (offset > 0.0f && Within(sdx * sdx + sdy * sdy, r))
+                {
+                    weight = SightWeight;
+                    kind = &count.rkSpot;
+                }
+                else if (Within(SegmentDistSq(ex, ey, bx, by, sx, sy), r))
+                {
+                    weight = SightWeight;
+                    kind = &count.rkPath;
+                }
+            }
+            if (!weight)
+                continue;
+            risk = Add(risk, weight);
+            if (kinds)
+                kind->fetch_add(1, std::memory_order_relaxed);
+            if (last && last->counted < MaxCounted)
+                last->guids[last->counted++] = e.creature->GetObjectGuid().GetRawValue();
+        }
+        bool const edge = Edge(botDistance, sight);
+        if (edge && kinds)
+            count.edge.fetch_add(1, std::memory_order_relaxed);
+        return EdgeRisk(risk, edge);
+    };
+
+    std::vector<uint32> risks(candidates.size(), 0);
+    for (size_t i = 0; i < candidates.size(); ++i)
+        risks[i] = riskOf(i, nullptr, true);
+
+    auto addMicros = [&]()
+    {
+        count.micros.fetch_add(uint64(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - started).count()),
+            std::memory_order_relaxed);
+    };
+
+    // The distance pick is one of the candidates (the solo replace decision only takes recorded ones).
+    size_t p = candidates.size();
+    for (size_t i = 0; i < candidates.size(); ++i)
+        if (candidates[i].unit == pick)
+            p = i;
+    if (p == candidates.size())
+    {
+        addMicros();
+        return pick;
+    }
+    count.picks.fetch_add(1, std::memory_order_relaxed);
+    classPicks[cohort][cls].fetch_add(1, std::memory_order_relaxed);
+
+    Creature* pickCreature = dynamic_cast<Creature*>(pick);
+    bool const pickElite = pickCreature && pickCreature->GetCreatureInfo() && pickCreature->GetCreatureInfo()->Rank > CREATURE_ELITE_NORMAL;
+    size_t b = p;
+    bool guarded = false;
+    for (size_t i = 0; i < candidates.size(); ++i)
+    {
+        if (i == p || !Better(risks[i], candidates[i].distance, risks[b], candidates[b].distance))
+            continue;
+        Creature* c = dynamic_cast<Creature*>(candidates[i].unit);
+        bool const elite = c && c->GetCreatureInfo() && c->GetCreatureInfo()->Rank > CREATURE_ELITE_NORMAL;
+        if (!GuardOk(int32(candidates[i].unit->GetLevel()), elite, int32(pick->GetLevel()), pickElite))
+        {
+            guarded = true;
+            continue;
+        }
+        b = i;
+    }
+    if (guarded)
+        count.guarded.fetch_add(1, std::memory_order_relaxed);
+    count.pickRisk.fetch_add(risks[p], std::memory_order_relaxed);
+    count.ruleRisk.fetch_add(risks[b], std::memory_order_relaxed);
+    if (!risks[p])
+        count.pickSafe.fetch_add(1, std::memory_order_relaxed);
+    if (!risks[b])
+        count.ruleSafe.fetch_add(1, std::memory_order_relaxed);
+    if (b != p)
+    {
+        count.extraYd.fetch_add(uint64(std::max(0.0f, candidates[b].botDistance - candidates[p].botDistance) + 0.5f), std::memory_order_relaxed);
+        (applies ? count.changed : count.wouldChange).fetch_add(1, std::memory_order_relaxed);
+        (applies ? classChanged : classWould)[cohort][cls].fetch_add(1, std::memory_order_relaxed);
+    }
+
+    // Readiness (fail closed): attackers never reach this point (stage 1), so a wait only delays a new pull.
+    uint32 const now = uint32(time(nullptr));
+    bool const usesMana = bot->GetPowerType() == POWER_MANA && bot->GetMaxPower(POWER_MANA) > 0;
+    uint32 const manaPct = usesMana ? uint32(uint64(bot->GetPower(POWER_MANA)) * 100 / bot->GetMaxPower(POWER_MANA)) : 100;
+    bool const ready = Ready(uint32(bot->GetHealthPercent()), usesMana, manaPct, sPlayerbotAIConfig.grindSafePullReadyHp,
+        sPlayerbotAIConfig.grindSafePullReadyMana);
+    uint32 const waited = safeWaitSince && now >= safeWaitSince ? now - safeWaitSince : 0;
+    bool const wait = Waits(risks[b], ready, waited);
+    if (wait)
+    {
+        if (!safeWaitSince)
+            safeWaitSince = now;
+        (applies ? count.waits : count.wouldWait).fetch_add(1, std::memory_order_relaxed);
+    }
+    else
+    {
+        if (safeWaitSince && risks[b] >= WaitRisk && !ready)
+            count.waitTimeout.fetch_add(1, std::memory_order_relaxed);
+        safeWaitSince = 0;
+    }
+
+    // The pick for the death line: the rule's target with its counted set (recomputed once, without the kind counters).
+    LastPick& last = ai->safePullLast;
+    last = LastPick();
+    last.target = candidates[b].unit->GetObjectGuid().GetRawValue();
+    last.at = now;
+    last.pickRisk = risks[p];
+    last.applied = applies;
+    last.risk = riskOf(b, &last, false);
+
+    addMicros();
+    if (!applies)
+        return pick;
+    return wait ? nullptr : candidates[b].unit;
 }
