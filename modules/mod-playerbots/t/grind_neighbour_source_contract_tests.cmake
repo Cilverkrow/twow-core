@@ -80,7 +80,7 @@ function(check policy grind_cpp grind_h config_h config_cpp dist mgr_cpp out_var
     endif()
   endforeach()
   ban("${policy}" "sLog" "logging in the policy")
-  need("${policy}" "return ai::cohort::Applies(mode, guidLow);" "applied: mode 1 all, 2 cohort B (3 = nobody)")
+  need("${policy}" "return mode != ModeShadow && ai::cohort::Applies(mode, guidLow);" "applied: mode 1 all, 2 cohort B (3 = shadow = nobody, also after CohortPolicy mode 3 = only A, #601)")
   need("${policy}" "return mode >= ai::cohort::ModeAll && mode <= ModeShadow;" "computed in modes 1-3")
   need("${policy}" "constexpr std::uint32_t ModeShadow = 3;" "shadow mode 3")
   need("${policy}" "return w < pw && distance + Penalty(w) < pickDistance + Penalty(pw);" "strictly fewer neighbours and a strictly lower score")
