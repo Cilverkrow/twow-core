@@ -3279,6 +3279,15 @@ AiPlayerbot.Rotation.LosCacheMs = 500
 # again (rollback); this switch off leaves it untouched.
 # 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
 AiPlayerbot.Rotation.RogueTankStance = 0
+
+# twow-repo#653 side finding (OB-00 31.10.2026): a restoration shaman never fought back - AiFactory adds the "offdps" placeholder for it
+# (EnableOffSpecStrategies), but the shaman context had no creator for it, so the engine dropped it and the healer gate of
+# AttackAction / "attack anything" refused every attack (it healed and dropped totems until it died; 6 of 56 no-damage fatal fights
+# in cand4r-B). With the switch the shaman context creates it and AiFactory adds it for the bot's cohort: the attack gate opens
+# (melee swing, the totems and whatever its strategies cast), nothing else - the placeholder has no triggers or actions, so the
+# heal priority is unchanged in a group. Mode (crossover, cohort parity): 0 = as before (default), 1 = every bot, 2 = only cohort B
+# (odd low guid), 3 = only cohort A (even low guid). Any other value acts like 0. Read at the bot's strategy init.
+AiPlayerbot.Rotation.RestoShamanOffdps = 0
 # twow-repo#602 ROT-01 cast-abort loop (OB-00 27.10.2026, BEHAVIOUR CHANGE, ON by default, 0 = rollback): a moving bot
 # without a real player master stopped before a spell with a cast time or a channel and then cancelled the cast without
 # casting; the next action moved it again and the next try cancelled again (hunt2 action logs: 47k cancels of Mind Blast,
