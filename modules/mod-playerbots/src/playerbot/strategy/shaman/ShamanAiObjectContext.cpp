@@ -27,6 +27,9 @@ namespace ai
                 creators["pull"] = [](PlayerbotAI* ai) { return new PullStrategy(ai, "lightning bolt"); };
                 creators["tank shaman"] = [](PlayerbotAI* ai) { return new TankShamanStrategy(ai); };
                 creators["offheal"] = [](PlayerbotAI* ai) { return new OffhealPlaceholderStrategy(ai); };
+                // twow-repo#653 (Rotation.RestoShamanOffdps): the missing creator - AiFactory adds "offdps" to a restoration shaman only for
+                // the switch's cohort; without a creator the engine dropped it and the healer never attacked.
+                creators["offdps"] = [](PlayerbotAI* ai) { return new OffdpsPlaceholderStrategy(ai); };
             }
         };
 

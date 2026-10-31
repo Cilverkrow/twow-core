@@ -614,6 +614,9 @@ bool PlayerbotAIConfig::Initialize()
     rotationRogueTankStance = config.GetIntDefault("AiPlayerbot.Rotation.RogueTankStance", 0);   // twow-repo#654 Shadow Dance stance
     if (rotationRogueTankStance > 2)
         rotationRogueTankStance = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
+    rotationRestoShamanOffdps = config.GetIntDefault("AiPlayerbot.Rotation.RestoShamanOffdps", 0);   // twow-repo#653 resto shaman offdps
+    if (rotationRestoShamanOffdps > 3)
+        rotationRestoShamanOffdps = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B, 3 cohort A)
     rotationCastStopFirst = config.GetIntDefault("AiPlayerbot.Rotation.CastStopFirst", 1);   // twow-repo#602 cast-abort loop
     if (rotationCastStopFirst > 2)
         rotationCastStopFirst = 1;   // an unknown mode is the default (0 off = rollback, 1 all, 2 cohort B)
@@ -1938,6 +1941,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Rotation.ReachLosClose", Value(rotationReachLosClose)},
             {"Rotation.ReachPlayerMaster", Value(rotationReachPlayerMaster)},
             {"Rotation.RestGate", Value(rotationRestGate)},
+            {"Rotation.RestoShamanOffdps", Value(rotationRestoShamanOffdps)},
             {"Rotation.RogueTankStance", Value(rotationRogueTankStance)},
             {"Rotation.SpecFromPath", Value(rotationSpecFromPath)},
             {"Rotation.TankKitFromLevel", Value(rotationTankKitFromLevel)},
