@@ -25,7 +25,7 @@ namespace ai::quest_failure_class
 //                 grind-fallback counter as every #485 park does, so the failure never counts toward grinding.
 //   Transient   - a filter that lifts by itself took a candidate: turn-in route / death / quest-loop suppression, the
 //                 local quest hub filter, a random range skip, a stale or resumed list. Backoff only, no count.
-//   EmptyOffer  - everything else (no giver mark, nothing active, enemy zone, danger map, battleground quest, mixed
+//   EmptyOffer  - everything else (no giver mark, nothing active, enemy zone, danger map, level guard, battleground quest, mixed
 //                 structural and other reasons): today's behaviour - it counts - until S5 (band step).
 //   GroupNeeded - (twow-repo#627 S7 hook, own key) an empty offer while every open quest waits for S7 help: no count, no park.
 // 0 = no class (None): the rejection counts exactly as before.
@@ -65,7 +65,10 @@ inline std::uint32_t TransientRejects(quest_search::RejectCounts const& rejects)
 
 inline std::uint32_t OtherRejects(quest_search::RejectCounts const& rejects)
 {
-    return rejects.otherMapGather + rejects.knownInactive + rejects.notActive + rejects.enemyZone + rejects.dangerMap +
+    // twow-repo#601 cand4 lever (ii): levelGuard is a danger deferral like dangerMap - it counts toward the grind fallback (the
+    // bot grinds and levels, which is what lifts the guard); Transient would keep the bot idle on backoff; never Structural (the
+    // guard exempts givers / takers, so no turn-in is parked and nothing can lead to an abandon).
+    return rejects.otherMapGather + rejects.knownInactive + rejects.notActive + rejects.enemyZone + rejects.dangerMap + rejects.levelGuard +
         rejects.battlegroundQuest;
 }
 
