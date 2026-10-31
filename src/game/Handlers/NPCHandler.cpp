@@ -576,11 +576,13 @@ void WorldSession::SendSpiritResurrect()
     _player->DurabilityLossAll(0.25f, true);
 
     // get corpse nearest graveyard
+    // twow-repo#575 F-b V2: both lookups pass the level, so a level-limited graveyard (custom_graveyards) is the same entry
+    // for corpse and ghost - otherwise the spirit healer there would teleport the player back to the zone's normal graveyard.
     WorldSafeLocsEntry const *corpseGrave = nullptr;
     Corpse *corpse = _player->GetCorpse();
     if (corpse)
         corpseGrave = sObjectMgr.GetClosestGraveYard(
-                          corpse->GetPositionX(), corpse->GetPositionY(), corpse->GetPositionZ(), corpse->GetMapId(), _player->GetTeam());
+                          corpse->GetPositionX(), corpse->GetPositionY(), corpse->GetPositionZ(), corpse->GetMapId(), _player->GetTeam(), _player->GetLevel());
 
     // now can spawn bones
     _player->SpawnCorpseBones();
@@ -588,7 +590,7 @@ void WorldSession::SendSpiritResurrect()
     // teleport to nearest from corpse graveyard, if different from nearest to player ghost
     if (corpseGrave)
     {
-        WorldSafeLocsEntry const *ghostGrave = sObjectMgr.GetClosestGraveYard(_player->GetPositionX(), _player->GetPositionY(), _player->GetPositionZ(), _player->GetMapId(), _player->GetTeam());
+        WorldSafeLocsEntry const *ghostGrave = sObjectMgr.GetClosestGraveYard(_player->GetPositionX(), _player->GetPositionY(), _player->GetPositionZ(), _player->GetMapId(), _player->GetTeam(), _player->GetLevel());
 
         float orientation = _player->GetOrientation();
 

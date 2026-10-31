@@ -42,7 +42,8 @@ GuidPosition GraveyardValue::Calculate()
         refPosition.getY(),
         refPosition.getZ(),
         refPosition.getMapId(),
-        bot->GetTeam()
+        bot->GetTeam(),
+        bot->GetLevel()     // twow-repo#575 F-b V2: the same level-limited graveyard the core releases the bot to
     );
 
     if (!ClosestGrave)
