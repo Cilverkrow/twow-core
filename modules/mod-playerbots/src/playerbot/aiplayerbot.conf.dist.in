@@ -1637,6 +1637,18 @@ AiPlayerbot.RosterFarMove.WatchRoute = 1
 # point in another continent region: no check (safe_unchecked). [FarMove] gets safe_checked safe_kept safe_shifted
 # safe_unsafe safe_unchecked check_us_avg check_us_max. 0 = off (default), 1 = all bots, 2 = cohort B (A/B).
 AiPlayerbot.RosterFarMove.ArriveSafe = 0
+# twow-repo#601 cand4 lever (ii) (CLI-PATH, OB-00 29.10.2026): LevelGuard defers a travel destination at the target choice when a
+# creature spawn hostile to the bot's side stands within Radius yd (2D) of the chosen point and its template level_max is at
+# least bot level + Margin; the bot then takes another destination (the objective is reselected, not just the teleport
+# declined). Any destination purpose, only trips that can become a far move (same map, beyond reactDistance) of roster bots on
+# their own. The spawns are read once at startup (only with the switch on). One [FarMoveGuard] result=skip line per skip (at
+# most 3 per choice), [QuestFirstRoute] state=rejected gets level_guard=, [FarMove] gets guard_checked guard_skip guard_skip_b.
+# cand4r-B 12-16Z (+3 / 50 yd): 22.5 % of cohort B's arrival deaths <= 60 s at such a point; it fires at 4 % of B's XP-kill
+# sites. 0 = off (default), 1 = all bots, 2 = cohort B, 3 = cohort A (crossover A/B: unit 2 swaps the guarded cohort).
+# Margin 1..10 (default 3), Radius 10..100 yd (default 50).
+AiPlayerbot.RosterFarMove.LevelGuard = 0
+AiPlayerbot.RosterFarMove.LevelGuard.Margin = 3
+AiPlayerbot.RosterFarMove.LevelGuard.Radius = 50
 # twow-repo#595 P4 S0 (OB-00 17.10.2026, shortcuts by player proximity; measurement, no behaviour change): the world
 # thread keeps a snapshot of where the online real players are (map, zone, area, x, y and a camera body that differs;
 # GMs only while visible), built after the map update at most once a second, only while Trace = 1 or NearScope > 0.

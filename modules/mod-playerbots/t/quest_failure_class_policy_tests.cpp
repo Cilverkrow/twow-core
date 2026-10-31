@@ -42,19 +42,19 @@ int main()
 
     // 1) Every RejectCounts reason is in exactly one class sum (a new reason must be classified on purpose).
     {
-        // A 17th reason field changes the size: classify it in QuestFailureClassPolicy.h and count it below. The two diagnostic
+        // An 18th reason field changes the size: classify it in QuestFailureClassPolicy.h and count it below. The two diagnostic
         // splits (notActiveReason, noMarkWhy) are no reasons and sit in the size apart.
-        static_assert(sizeof(RejectCounts) == (16 + RejectCounts::InactiveReasons + ai::quest_search::NoMarkReasons) * sizeof(std::uint32_t),
+        static_assert(sizeof(RejectCounts) == (17 + RejectCounts::InactiveReasons + ai::quest_search::NoMarkReasons) * sizeof(std::uint32_t),
             "classify the new reject reason (StructuralRejects / TransientRejects / OtherRejects)");
         RejectCounts all;
         all.turnInSuppressed = 1; all.deathSuppressed = 1; all.otherMapGather = 1; all.knownInactive = 1;
         all.hubFilter = 1; all.notActive = 1; all.enemyZone = 1; all.crossMap = 1; all.zoneLevel = 1;
         all.dangerMap = 1; all.rangeSkip = 1; all.movedAway = 1; all.resumeSkipped = 1;
-        all.questLoopSuppressed = 1; all.battlegroundQuest = 1; all.inactiveReselect = 1;
+        all.questLoopSuppressed = 1; all.battlegroundQuest = 1; all.inactiveReselect = 1; all.levelGuard = 1;
         Require(StructuralRejects(all) == 2, "structural: cross_map, zone_level");
         Require(TransientRejects(all) == 8, "transient: turn-in/death/quest-loop suppression, hub, range skip, moved away, resume skip, emptied camp");
-        Require(OtherRejects(all) == 6, "other: other-map gather, known inactive, not active, enemy zone, danger map, battleground");
-        Require(StructuralRejects(all) + TransientRejects(all) + OtherRejects(all) == 16, "16 reasons, each counted once");
+        Require(OtherRejects(all) == 7, "other: other-map gather, known inactive, not active, enemy zone, danger map, level guard (#601), battleground");
+        Require(StructuralRejects(all) + TransientRejects(all) + OtherRejects(all) == 17, "17 reasons, each counted once");
         // The P3-0 split of not_active is no extra reason: it is part of notActive.
         RejectCounts split;
         split.notActiveReason[RejectCounts::InactiveNoMark] = 5;

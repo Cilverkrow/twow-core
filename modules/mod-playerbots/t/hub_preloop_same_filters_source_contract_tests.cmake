@@ -86,9 +86,9 @@ read_source("aiplayerbot.conf.dist.in" conf)
 read_source("strategy/actions/ChooseTravelTargetAction.cpp" choose)
 
 # ---- 1. The shared predicate: the four deferrals in the main loop's order, side-effect free -----------------------
-require_text("${choose}" "enum class PostActiveDeferral\n{\n    None,\n    BattlegroundQuest,\n    EnemyZone,\n    CrossMap,\n    ZoneLevel,\n    DangerMap,\n};" "deferral reasons")
+require_text("${choose}" "enum class PostActiveDeferral\n{\n    None,\n    BattlegroundQuest,\n    EnemyZone,\n    CrossMap,\n    ZoneLevel,\n    DangerMap,\n    LevelGuard,   // twow-repo#601 cand4 lever (ii), RosterFarMove.LevelGuard (LevelGuardPolicy.h)\n};" "deferral reasons (+ #601 cand4 lever (ii) LevelGuard)")
 region("${choose}" "PostActiveDeferral PostActiveDeferralOf(" "\n}\n" deferral_fn)
-require_text("${deferral_fn}" "PostActiveDeferral PostActiveDeferralOf(PlayerbotAI* ai, Player* bot, TravelTarget const* target, TravelDestination* destination,\n    WorldPosition* position, danger_map::DangerMap::Hit& dangerHit)" "signature (a danger map hit handed back for the death_cluster line)")
+require_text("${deferral_fn}" "PostActiveDeferral PostActiveDeferralOf(PlayerbotAI* ai, Player* bot, TravelTarget const* target, TravelDestination* destination,\n    WorldPosition* position, danger_map::DangerMap::Hit& dangerHit, ai::level_guard::Hit* guardHit = nullptr)" "signature (a danger map hit handed back for the death_cluster line; #601 cand4 lever (ii): the LevelGuard hit for the main loop)")
 require_text("${deferral_fn}" "if (sPlayerbotAIConfig.zoneExitSkipBattlegroundQuests && !target->IsForced())" "Z3 battleground quest gate")
 require_text("${deferral_fn}" "if (ai::zone_exit::IsBattlegroundQuestSort(bgQuestTemplate->GetZoneOrSort()))\n                    return PostActiveDeferral::BattlegroundQuest;" "Z3 by quest sort")
 require_text("${deferral_fn}" "if (!target->IsForced() && position && position->isEnemyHomeZoneFor(bot->GetTeam()))\n        return PostActiveDeferral::EnemyZone;" "enemy home zone")
@@ -121,9 +121,9 @@ foreach(inline "IsBattlegroundQuestSort(" "isEnemyHomeZoneFor(" "route_danger::C
 endforeach()
 
 # ---- 3. Main loop: right after IsActive, before the range skip; same counters and traces per reason --------------
-require_text("${main_loop}" "switch (PostActiveDeferralOf(ai, bot, target, destination, position, hit))" "main loop asks the shared predicate")
-require_order("${main_loop}" "if (target->IsForced() || (travelInfoReuse ? reuseActive(destination)" "switch (PostActiveDeferralOf(" "after the IsActive check")
-require_order("${main_loop}" "switch (PostActiveDeferralOf(" "ai::quest_failure_class::RangeSkipAllowed(failureClasses, hasActiveLocalQuestHub)" "before the range skip")
+require_text("${main_loop}" "PostActiveDeferral const deferral = PostActiveDeferralOf(ai, bot, target, destination, position, hit, &guardHit);" "main loop asks the shared predicate (#601 cand4 lever (ii): with the LevelGuard out parameter)")
+require_order("${main_loop}" "if (target->IsForced() || (travelInfoReuse ? reuseActive(destination)" "PostActiveDeferral const deferral = PostActiveDeferralOf(" "after the IsActive check")
+require_order("${main_loop}" "PostActiveDeferral const deferral = PostActiveDeferralOf(" "ai::quest_failure_class::RangeSkipAllowed(failureClasses, hasActiveLocalQuestHub)" "before the range skip")
 set(case_bg "case PostActiveDeferral::BattlegroundQuest:\n                        ++lastRejects.battlegroundQuest;\n                        continue;")
 set(case_enemy "case PostActiveDeferral::EnemyZone:\n                        ai->TellDebug(requester, \"Skipping \" + destination->GetTitle() + \" - enemy home zone\", \"debug travel\");\n                        ++lastRejects.enemyZone;\n                        continue;")
 set(case_cross "case PostActiveDeferral::CrossMap:\n                        ++deferredCrossMap;\n                        ++lastRejects.crossMap;\n                        continue;")

@@ -86,6 +86,10 @@ inline Counters& SharedCounters() { static Counters counters; return counters; }
 // - a real player within visibility of the straight route (not only at its ends) sees the bot walk.
 constexpr float ArriveAltYards = 120.0f;   // second try when the first arrival point is in danger
 constexpr std::uint32_t ArriveDeathSeconds = 60;  // a death this soon after arriving counts as arrive_deaths
+// twow-repo#601 cand4 lever (ii) (CLI-PATH 31.10.2026), log only (ActivityTrace): [FarMoveArrive] calls a trip origin=travel when the
+// travel target lies this close to the far-move target; [FarMoveDeathLate] covers deaths ArriveDeathSeconds..ArriveDeathLateSeconds.
+constexpr float ArriveTraceTravelYards = 150.0f;
+constexpr std::uint32_t ArriveDeathLateSeconds = 180;
 
 struct Point2
 {
