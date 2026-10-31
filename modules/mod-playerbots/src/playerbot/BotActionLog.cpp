@@ -463,6 +463,10 @@ void BotActionLog_LogDamage(Unit* attacker, Unit* victim, uint32 damage, uint32 
     // twow-repo#653 (AiPlayerbot.ActionLog.DamageSampleEvery, default 5; DamageLogPolicy.h): dealt and taken have their own
     // counter (one shared counter made a 2nd attacker's first logged hit ~10 s late), and a bot's pet / totem / guardian damage
     // goes to the owner's log as DMG_DEALT with via= (it was never logged).
+    // OB-10 review 31.10.2026: with the action log off (production, perf runs) nothing below runs - no minion lookup, no counter;
+    // the same gate as every Write (EnableActionLog, or files still open after a runtime switch-off).
+    if (!BotActionLog::MayWrite())
+        return;
     static thread_local std::unordered_map<uint64, uint32> sDealt;
     static thread_local std::unordered_map<uint64, uint32> sTaken;
     uint32 const every = sPlayerbotAIConfig.actionLogDamageSampleEvery;
@@ -485,6 +489,11 @@ void BotActionLog_LogDamage(Unit* attacker, Unit* victim, uint32 damage, uint32 
             }
         }
     }
+    // A bot outside AiPlayerbot.ActionLog.Guids gets no file: it is not counted either (the sample check before the counters).
+    if (attackerAi && !ai::action_log::Sampled(sPlayerbotAIConfig.actionLogGuids, dealer->GetGUIDLow()))
+        attackerAi = nullptr;
+    if (victimAi && !ai::action_log::Sampled(sPlayerbotAIConfig.actionLogGuids, victim->GetGUIDLow()))
+        victimAi = nullptr;
     if (!attackerAi && !victimAi) return;
 
     auto bucket = [&](std::unordered_map<uint64, uint32>& counter, Unit* who) -> bool {
