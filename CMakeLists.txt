@@ -1313,6 +1313,11 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
     COMMAND "${CMAKE_COMMAND}"
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_shadow_dance_stance_654_contract.cmake")
+  # twow-repo#654 (main train): the spell rows of the Shadow Dance stance (migration 20261029230000).
+  add_test(NAME shadow_dance_stance_data_654_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_shadow_dance_stance_data_654_contract.cmake")
   add_test(NAME rare_respawn_source_contract
     COMMAND "${CMAKE_COMMAND}"
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
