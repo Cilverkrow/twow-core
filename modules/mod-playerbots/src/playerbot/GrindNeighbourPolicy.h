@@ -21,7 +21,7 @@ constexpr std::uint32_t ModeShadow = 3;
 
 inline bool Applies(std::uint32_t mode, std::uint32_t guidLow)
 {
-    return ai::cohort::Applies(mode, guidLow);
+    return mode != ModeShadow && ai::cohort::Applies(mode, guidLow);   // 3 = shadow here, not CohortPolicy's "only A"
 }
 
 // The score is computed (and counted) for this bot: applied or shadow.
