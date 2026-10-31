@@ -302,6 +302,11 @@ ai::quest_search::RejectCounts::InactiveReason InactiveReasonOf(PlayerbotAI* ai,
             if (!closestPoint || closestPoint->getMapId() != bot->GetMapId())
                 return Counts::InactiveMap;
         }
+        // twow-repo#601 lever (iv): the own-quest rule of QuestRelationTravelDestination::IsActive for a bot of the lever - a giver that
+        // does not offer THIS quest counts as no_mark (no_mark_why then says why).
+        if (!info.HasFocusQuest() && info.HasGiverAnyQuest() &&
+            DialogStatusValue::getDialogStatus(bot, relation->GetEntry(), relation->GetQuestId()) != DIALOG_STATUS_AVAILABLE)
+            return Counts::InactiveNoMark;
         if (!AI_VALUE2(bool, "group or", "following party,can accept quest npc::" + entry))
         {
             if (!AI_VALUE2(bool, "group or", "following party,can accept quest low level npc::" + entry))
@@ -393,6 +398,25 @@ bool NoteNoRouteTurnIns(AiObjectContext* context, TravelTarget* travelTarget, bo
     return parked;
 }
 
+// twow-repo#601 no-route gate (ProfessionTraining.TurnInGateSkipNoRoute, CLI-Deep 29.10.2026): the offered finished quests and the
+// request's result for the profession trip gate, handed over before NoteNoRouteTurnIns reads and clears the list (read here, never
+// cleared). The list exists only with turn-in parking on (TurnInParkFailures > 0, key 0 stores none). Switch off: nothing happens.
+void NoteTurnInRouteResults(AiObjectContext* context, TravelTarget* travelTarget, bool noRoute, bool takerFound)
+{
+    if (!sPlayerbotAIConfig.professionTrainingTurnInGateSkipNoRoute)
+        return;
+
+    std::string const quests = AI_VALUE2(std::string, "manual string", HandInQuestsValue);
+    if (quests.empty())
+        return;
+
+    std::vector<uint32> questIds;
+    for (std::string const& questId : split(quests, ','))
+        if (uint32 const id = uint32(atoi(questId.c_str())))
+            questIds.push_back(id);
+    travelTarget->NoteTurnInRouteResult(questIds, noRoute, takerFound);
+}
+
 // twow-repo#601 S1 (OB-10 answer 4): the per-candidate skips of SetBestTarget as one predicate. The main loop counts
 // its answer per reason; with AiPlayerbot.QuestFirstProgression.FailureClasses the local quest hub pre-loop asks the
 // same predicate, so a local candidate the main loop would skip no longer switches the hub filter on (soak 17.10.:
@@ -401,6 +425,7 @@ enum class CandidateSkip
 {
     None,
     SkillLocked,   // twow-repo#601 SkipSkillLockedObjectives (checked last in CandidateSkipOf; the enum order is not the check order)
+    StaleObjective,   // twow-repo#601 cand4 (i) StaleObjectiveFilter (checked after SkillLocked; the enum order is not the check order)
     TurnInSuppressed,
     DeathSuppressed,
     QuestLoopSuppressed,
@@ -485,6 +510,15 @@ CandidateSkip CandidateSkipOf(PlayerbotAI* ai, Player* bot, TravelTarget const* 
     if (ai::cohort::Applies(sPlayerbotAIConfig.questFirstProgressionSkipSkillLockedObjectives, bot->GetGUIDLow()) &&
         sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster() && SkillLockedObjective(bot, destination))
         return CandidateSkip::SkillLocked;
+
+    // twow-repo#601 cand4 (i) (QuestFirstProgression.StaleObjectiveFilter): an objective many roster bots failed at with no credit of its
+    // quest since (realm-wide memory, TravelMgr.cpp). Objectives only - givers and turn-ins never; a roster bot on its own; off or
+    // another cohort: as before.
+    if (ai::cohort::Applies(sPlayerbotAIConfig.questFirstProgressionStaleObjectiveFilter, bot->GetGUIDLow()) &&
+        sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster())
+        if (QuestObjectiveTravelDestination const* objective = dynamic_cast<QuestObjectiveTravelDestination const*>(destination))
+            if (ai::stale_objective::IsObjectiveStale(objective))
+                return CandidateSkip::StaleObjective;
 
     return CandidateSkip::None;
 }
@@ -881,6 +915,10 @@ bool ChooseTravelTargetAction::Execute(Event& event)
             // profession, as an own line (the rejected line stays as it is); never written with the switch off.
             if (lastSkillLocked)
                 sLog.outBasic("[QuestFirstRoute] state=skill_locked bot=%u level=%u skipped=%u", bot->GetGUIDLow(), bot->GetLevel(), lastSkillLocked);
+            // twow-repo#601 cand4 (i) (QuestFirstProgression.StaleObjectiveFilter): the stale objectives this empty search skipped, as an own
+            // line; never written with the switch off.
+            if (lastStaleObjective)
+                sLog.outBasic("[QuestFirstRoute] state=stale_objective bot=%u level=%u skipped=%u", bot->GetGUIDLow(), bot->GetLevel(), lastStaleObjective);
             // twow-repo#601 S5a (BandLadder): the stage this empty search ran at (read before widening; 0 when the switch is off).
             uint32 const bandSearchedStage = sPlayerbotAIConfig.questFirstProgressionBandLadder ?
                 uint32(std::max(0, AI_VALUE2(int, "manual int", "quest search stage"))) : 0u;
@@ -1021,6 +1059,12 @@ bool ChooseTravelTargetAction::Execute(Event& event)
                 SET_AI_VALUE2(int, "manual int", "quest route backoff until", 0);
             }
 
+            // twow-repo#601 no-route gate: the same no-route judgement for the profession trip gate, before #485 below clears the list.
+            NoteTurnInRouteResults(context, travelTarget, ai::turnin_park::CountsAsNoRoute(ai::turnin_park::RouteOutcome::NoTarget,
+                chooseBudgetExceeded, lastRejects.crossMap + lastRejects.zoneLevel + lastRejects.dangerMap, lastRejects.turnInSuppressed,
+                lastRejects.movedAway + lastRejects.rangeSkip + lastRejects.resumeSkipped,
+                sPlayerbotAIConfig.questFirstProgressionTurnInParkCountsRouteDanger), false);
+
             // twow-repo#485: no way to any offered taker - unless not every taker was judged (a stale
             // list, a random range skip, candidates a resumed choice skipped) or a filter that lifts
             // by itself took one: a suppressed turn-in route (counted already) or, unless
@@ -1124,6 +1168,15 @@ bool ChooseTravelTargetAction::Execute(Event& event)
         if (stage > 0 && UsesQuestFirstProgression(bot))
             sLog.outBasic("[QuestSearch] state=found bot=%u level=%u stage=%d distance=%.0f",
                 bot->GetGUIDLow(), bot->GetLevel(), stage, newTarget.Distance(bot));
+
+        // twow-repo#601 no-route gate: a taker found unmarks the offered quests, the giver fallback marks them as below (before #485
+        // clears the list).
+        bool const takerFound = newTarget.GetDestination()->GetPurpose() == TravelDestinationPurpose::QuestTaker;
+        NoteTurnInRouteResults(context, travelTarget, ai::turnin_park::CountsAsNoRoute(
+            takerFound ? ai::turnin_park::RouteOutcome::Taker : ai::turnin_park::RouteOutcome::Fallback,
+            chooseBudgetExceeded, lastRejects.crossMap + lastRejects.zoneLevel + lastRejects.dangerMap, lastRejects.turnInSuppressed,
+            lastRejects.movedAway + lastRejects.rangeSkip + lastRejects.resumeSkipped,
+            sPlayerbotAIConfig.questFirstProgressionTurnInParkCountsRouteDanger), takerFound);
 
         // twow-repo#485: another target than a taker is the quest giver fallback - the job found
         // no taker at all. Same inputs as in the no-target branch.
@@ -1550,6 +1603,7 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
     lastRejects = ai::quest_search::RejectCounts();
     lastSuppressSources = ai::contested_objective::SourceCounts{};
     lastSkillLocked = 0;
+    lastStaleObjective = 0;
     uint32 deferredCrossMap = 0, deferredZoneLevel = 0;
     uint32 deferredDeathCluster = 0, deathClusterCells = 0, deathClusterWorstKillerLevel = 0;
     // Re-deaths at camps (DestinationDeaths.CampBlock): skipped candidates, quest destinations ranked lower and the kept fallback.
@@ -1669,6 +1723,10 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
                 case CandidateSkip::SkillLocked:
                     ai->TellDebug(requester, "Skipping quest object that needs a profession skill I lack.", "debug travel");
                     ++lastSkillLocked;
+                    continue;
+                case CandidateSkip::StaleObjective:
+                    ai->TellDebug(requester, "Skipping quest objective that many bots failed at without credit.", "debug travel");
+                    ++lastStaleObjective;
                     continue;
                 case CandidateSkip::None:
                     break;
@@ -3303,8 +3361,9 @@ bool RequestQuestTravelTargetAction::Execute(Event& event)
     // twow-repo#601 quest acceptance step 1b (TraceTravelDecisions, the same bots as the request line): the giver fetches of this
     // request - the radius one and the whole-map fallback when the list came back empty - count what
     // QuestRelationTravelDestination::IsPossible drops, by rule, on their own PlayerTravelInfo copy; the job writes one
-    // "[QuestFirstRoute] state=giver_fetch" line. fetch=radius: no fallback ran (the radius fetch asks for entry 0, under which no
-    // giver is filed - review 27.10.); fetch=fallback: the counts include the fallback. Without the trace: no copy, no count.
+    // "[QuestFirstRoute] state=giver_fetch" line. fetch=radius: no fallback ran (without GiverFetchAnyQuest the radius fetch asks for
+    // entry 0, under which no giver is filed - review 27.10.); fetch=fallback: the counts include the fallback. any_quest=1: lever
+    // (iv) applied. Without the trace: no copy, no count.
     bool const traceGivers = sPlayerbotAIConfig.questFirstProgressionTraceTravelDecisions && UsesQuestFirstProgression(bot);
     uint32 const traceBot = bot->GetGUIDLow();
     *AI_VALUE(FutureDestinations*, "future travel destinations") = std::async(std::launch::async,
@@ -3319,6 +3378,9 @@ bool RequestQuestTravelTargetAction::Execute(Event& event)
                 giverInfo->SetGiverDrops(&giverDrops);
             }
             bool giverFetched = false;
+            // twow-repo#601 quest acceptance lever (iv) (GiverFetchAnyQuest): the bit from the bot-thread snapshot (PlayerTravelInfo).
+            bool const giverAnyQuest = travelInfo.HasGiverAnyQuest();
+            float anyGiverRange = 0.0f;   // the widest giver fetch that asked for every giver
             float giverRange = 0.0f;
             uint32 giverPoints = 0;
 
@@ -3326,8 +3388,11 @@ bool RequestQuestTravelTargetAction::Execute(Event& event)
             for (auto [purpose, questId, range] : destinationFetches)
             {
                 bool const tracedGiverFetch = traceGivers && (purpose & (uint32)TravelDestinationPurpose::QuestGiver);
+                if (giverAnyQuest && (purpose & (uint32)TravelDestinationPurpose::QuestGiver))
+                    anyGiverRange = std::max(anyGiverRange, range);
                 PartitionedTravelList subList = sTravelMgr.GetPartitions(center, partitions, tracedGiverFetch ? *giverInfo : travelInfo,
-                    purpose, { questId }, true, range);
+                    purpose, ai::quest_search::FetchEntries(giverAnyQuest && (purpose & (uint32)TravelDestinationPurpose::QuestGiver), questId),
+                    true, range);
                 if (tracedGiverFetch)
                 {
                     giverFetched = true;
@@ -3344,7 +3409,9 @@ bool RequestQuestTravelTargetAction::Execute(Event& event)
             if (hubsFirst)
                 SortQuestHubsFirst(list);
 
-            bool const giverFallback = list.empty();
+            // Lever (iv): an any-quest giver fetch at least as wide as the whole-map fallback (GetPartitions' default 10000 yd, same purpose,
+            // every giver, onlyPossible) has walked every giver the fallback could return (review 28.10.). Off: anyGiverRange 0, as before.
+            bool const giverFallback = list.empty() && anyGiverRange < 10000.0f;
             if (giverFallback)
             {
                 list = sTravelMgr.GetPartitions(center, partitions, traceGivers ? *giverInfo : travelInfo, (uint32)TravelDestinationPurpose::QuestGiver);
@@ -3355,10 +3422,10 @@ bool RequestQuestTravelTargetAction::Execute(Event& event)
 
             if (traceGivers && (giverFetched || giverFallback))
                 sLog.outBasic("[QuestFirstRoute] state=giver_fetch bot=%u level=%u stage=%u radius=%.0f fetch=%s free_slots=%u "
-                    "can_fight_equal=%u %s giver_points=%u",
+                    "can_fight_equal=%u %s giver_points=%u any_quest=%u",
                     traceBot, travelInfo.GetLevel(), giverStage, giverRange, giverFallback ? "fallback" : "radius",
                     uint32(travelInfo.GetUint8Value("free quest log slots")), travelInfo.GetBoolValue("can fight equal") ? 1u : 0u,
-                    giverDrops.Format().c_str(), giverPoints);
+                    giverDrops.Format().c_str(), giverPoints, giverAnyQuest ? 1u : 0u);
 
             return list;
         }

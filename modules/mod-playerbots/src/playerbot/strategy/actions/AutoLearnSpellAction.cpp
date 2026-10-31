@@ -10,6 +10,7 @@
 #include <vector>
 #include "playerbot/ClassGrantPolicy.h"
 #include "playerbot/SpecAuraPolicy.h"
+#include "playerbot/RogueTankStancePolicy.h"   // twow-repo#654 (Rotation.RogueTankStance)
 #include "playerbot/QuestTeachPolicy.h"
 #include "playerbot/AiFactory.h"
 #include <algorithm>
@@ -343,6 +344,48 @@ void AutoLearnSpellAction::GrantShamanTotems(std::ostringstream* out)
     }
 }
 
+bool AutoLearnSpellAction::GrantSpecKitForTestSeat()
+{
+    // Only a seat whose path HAS a kit at its level (today the rogue tank 4.3 from 12): every other seat - dps paths of
+    // classes with managed auras included - is left exactly as before, without a line.
+    std::uint8_t const path = ai::spec_aura::PathFor(bot->getClass(), AiFactory::GetPremadePathName(bot));
+    std::vector<uint32> const kit = path ? ai::spec_aura::WantedKit(bot->getClass(), path, bot->GetLevel()) : std::vector<uint32>();
+    if (kit.empty())
+        return false;
+
+    // The kit belongs to SpecAura: switched off, the seat stays without it. Say so - an A/B on such a realm would test a
+    // tank without its taunt.
+    if (!sPlayerbotAIConfig.specAuraEnabled)
+    {
+        sLog.outBasic("[ClassGrant] state=skip source=dc_seat bot=%u level=%u path=%u reason=spec_aura_off",
+            bot->GetGUIDLow(), bot->GetLevel(), uint32(path));
+        return false;
+    }
+
+    auto const knownKit = [&]() {
+        uint32 n = 0;
+        for (uint32 spellId : kit)
+            if (bot->HasSpell(spellId))
+                ++n;
+        return n;
+    };
+    uint32 const before = knownKit();
+    GrantSpecAuras();
+    uint32 const after = knownKit();
+    // kit= counts the path kit only (what GrantSpecAuras manages besides it logs its own [SpecAura] lines).
+    sLog.outBasic("[ClassGrant] state=%s source=dc_seat bot=%u level=%u path=%u kit=%u known_before=%u known_after=%u",
+        after > before ? "granted" : "known", bot->GetGUIDLow(), bot->GetLevel(), uint32(path), uint32(kit.size()), before, after);
+    return true;
+}
+
+bool ai::GrantSpecKitFor(PlayerbotAI* ai)
+{
+    if (!ai || !ai->GetBot())
+        return false;
+    AutoLearnSpellAction action(ai);
+    return action.GrantSpecKitForTestSeat();
+}
+
 void AutoLearnSpellAction::GrantSpecAuras()
 {
     std::uint8_t const path = ai::spec_aura::PathFor(bot->getClass(), AiFactory::GetPremadePathName(bot));
@@ -356,6 +399,18 @@ void AutoLearnSpellAction::GrantSpecAuras()
     std::vector<uint32> known = ai::spec_aura::ManagedAllAuras(bot->getClass(), auraTalentsAreReal);
     for (uint32 spellId : ai::spec_aura::ManagedAllKit(bot->getClass(), auraTalentsAreReal))
         known.push_back(spellId);
+
+    // twow-repo#654 (Rotation.RogueTankStance): with the switch the Shadow Dance stance is managed here too - taught on the rogue tank
+    // path from 20 while the core switch covers bots, otherwise a known stance goes with its aura. Switch off: as before (untouched).
+    if (bot->getClass() == CLASS_ROGUE && ai::rogue_tank_stance::Applies(sPlayerbotAIConfig.rotationRogueTankStance, bot->GetGUIDLow()))
+    {
+        bool const coreCovers = ai::rogue_tank_stance::CoreCoversBots(sWorld.getConfig(CONFIG_UINT32_FUNSERVER_ROGUE_SHADOW_DANCE_STANCE));
+        known.push_back(ai::rogue_tank_stance::StanceSpell);
+        if (ai::rogue_tank_stance::Teach(true, coreCovers, (path & ai::spec_aura::RogueTank) != 0, bot->GetLevel()))
+            wanted.push_back(ai::rogue_tank_stance::StanceSpell);
+        else
+            bot->RemoveAurasDueToSpell(ai::rogue_tank_stance::StanceSpell);
+    }
 
     // Idempotent. A lower rank the level has outgrown, or an aura of another
     // path after a respec, goes; no lower rank is taught back.

@@ -1,6 +1,8 @@
 #pragma once
 #include "playerbot/strategy/actions/GenericActions.h"
 #include "playerbot/strategy/actions/UseItemAction.h"
+#include "playerbot/PlayerbotAIConfig.h"
+#include "playerbot/RogueTankStancePolicy.h"   // twow-repo#654 (Rotation.RogueTankStance)
 
 namespace ai
 {
@@ -39,6 +41,31 @@ namespace ai
     {
     public:
         CastShadowDanceAction(PlayerbotAI* ai) : CastBuffSpellAction(ai, "shadow dance") {}
+
+        // twow-repo#654 (Rotation.RogueTankStance): "shadow dance" casts the stance 61230 (the name lookup skips the passive ranks);
+        // the buff check by name always saw a passive rank aura, so the stance is told by its id.
+        bool isUseful() override
+        {
+            if (!ai::rogue_tank_stance::Applies(sPlayerbotAIConfig.rotationRogueTankStance, bot->GetGUIDLow()))
+                return CastBuffSpellAction::isUseful();
+
+            return !bot->HasAura(ai::rogue_tank_stance::StanceSpell);
+        }
+    };
+
+    // twow-repo#654: drop the Shadow Dance stance (the bot does not tank, or a switch no longer covers it).
+    class CancelShadowDanceStanceAction : public Action
+    {
+    public:
+        CancelShadowDanceStanceAction(PlayerbotAI* ai) : Action(ai, "cancel shadow dance stance") {}
+
+        bool isUseful() override { return bot->HasAura(ai::rogue_tank_stance::StanceSpell); }
+
+        bool Execute(Event& event) override
+        {
+            bot->RemoveAurasDueToSpell(ai::rogue_tank_stance::StanceSpell);
+            return true;
+        }
     };
 
     class CastRogueTauntAction : public CastSpellAction
@@ -68,6 +95,10 @@ namespace ai
             {
                 return false;
             }
+
+            // twow-repo#654: no Stealth in the Shadow Dance stance (the core refuses it there).
+            if (!ai::rogue_tank_stance::StealthUseful(bot->HasAura(ai::rogue_tank_stance::StanceSpell)))
+                return false;
 
             // do not use with WSG flag
             return !ai->HasAura(23333, bot) && !ai->HasAura(23335, bot) && !ai->HasAura(34976, bot);
@@ -170,6 +201,10 @@ namespace ai
 
         virtual bool isUseful()
         {
+            // twow-repo#654: no Vanish in the Shadow Dance stance (the core refuses it there).
+            if (!ai::rogue_tank_stance::StealthUseful(bot->HasAura(ai::rogue_tank_stance::StanceSpell)))
+                return false;
+
             // do not use with WSG flag or EYE flag
             return !ai->HasAura(23333, bot) && !ai->HasAura(23335, bot) && !ai->HasAura(34976, bot);
         }
@@ -365,6 +400,10 @@ namespace ai
         , mainHand(inMainHand)
         , poisonItemIds(inPoisonItemIds) {}
 
+        // twow-repo#654 (Rotation.TankRoguePoison): the hand lives here, not in the action's name ("apply instant poison").
+        bool IsMainHand() const { return mainHand; }
+        virtual bool IsThreatPoison() const { return false; }
+
         bool isUseful() override
         {
             // Always allow poison on offhand
@@ -513,6 +552,7 @@ namespace ai
     public:
         ApplyAgitatingPoisonAction(PlayerbotAI* ai, bool inMainHand) : ApplyPoisonAction(ai, inMainHand, { 90140, 65032 }, "apply agitating poison") {}
         bool isPossible() override;
+        bool IsThreatPoison() const override { return true; }   // twow-repo#654: the rogue tank's main-hand poison
     };
 
     class ApplyMindPoisonAction : public ApplyPoisonAction

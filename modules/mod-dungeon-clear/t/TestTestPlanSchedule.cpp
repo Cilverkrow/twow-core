@@ -303,5 +303,8 @@ TEST(DcTestPlanParseTest, TankClassOption)
     ParseResult const d = ParseStartArgs("wc total=6 tank=druid");   // the druid probe (forced-only seat)
     ASSERT_TRUE(d.ok) << d.err;
     EXPECT_EQ(d.spec.tankClass, 11);
+    ParseResult const r = ParseStartArgs("sfk total=6 level=boss tank=rogue");   // the rogue tank A/B (forced-only seat, 30.10.)
+    ASSERT_TRUE(r.ok) << r.err;
+    EXPECT_EQ(r.spec.tankClass, 4);
     EXPECT_FALSE(ParseStartArgs("wc total=6 tank=mage").ok);
 }

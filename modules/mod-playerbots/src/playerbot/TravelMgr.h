@@ -14,6 +14,8 @@
 #include "strategy/AiObject.h"
 #include <boost/functional/hash.hpp>
 #include <map>
+#include <set>      // twow-repo#601 no-route gate (TravelTarget::noRouteTurnIns)
+#include <vector>
 #include <string>
 #include "GuidPosition.h"
 #include "strategy/values/TravelValues.h"
@@ -88,6 +90,9 @@ namespace ai
 		// twow-repo#333 P1-v (AiPlayerbot.Travel.RpgAreaLevelFromSpawn): the area level of an RPG target from its spawn nearest to the
 		// bot (RpgAreaLevelPolicy.h), set in the constructor on the bot thread; false for every bot with the switch off.
 		bool UsesRpgAreaFromSpawn() const { return rpgAreaFromSpawn; }
+		// twow-repo#601 quest acceptance lever (iv) (QuestFirstProgression.GiverFetchAnyQuest): the lever applies to this bot (a roster
+		// bot without a real player master in the mode's cohort), set in the constructor on the bot thread; false with the mode off.
+		bool HasGiverAnyQuest() const { return giverAnyQuest; }
 		uint32 GetBandGreyLevel() const { return bandGreyLevel; }
 		// twow-repo#601 quest acceptance step 1b (TraceTravelDecisions): the drop counters of one traced giver fetch. Set only on the
 		// copy the async quest fetch job passes to GetPartitions, counted by QuestRelationTravelDestination::IsPossible in that job's
@@ -103,6 +108,7 @@ namespace ai
 		uint32 gapWindowHigh = 0;
 		bool bandGiverFilter = false;    // twow-repo#601 S5a: false for every bot but an in-scope BandLadder bot with a usable row
 		bool rpgAreaFromSpawn = false;   // twow-repo#333 P1-v: Travel.RpgAreaLevelFromSpawn applies to this bot
+		bool giverAnyQuest = false;     // twow-repo#601 lever (iv): QuestFirstProgression.GiverFetchAnyQuest applies to this bot
 		uint32 bandGreyLevel = 0;
 		uint16 currentSkill[MAX_SKILL_TYPE] = {0};
 		uint16 skillMax[MAX_SKILL_TYPE] = { 0 };
@@ -477,6 +483,12 @@ namespace ai
         // twow-repo#601 turn_in hold (ProfessionTraining.TurnInGateSkipSuppressed): the turn-in route of this finished quest is stall- or
         // death-suppressed now (turnin_recovery::IsSuppressedForQuest).
         bool IsTurnInRouteSuppressedForQuest(uint32 questId) const;
+        // twow-repo#601 no-route gate (ProfessionTraining.TurnInGateSkipNoRoute): the result of a turn-in route request for its offered
+        // finished quests - marked when it found no taker route with every taker judged, unmarked when it found a taker; anything
+        // else leaves the mark as it is. Only with the switch on for this bot; one [ProfTravel] state=turnin_no_route line per request
+        // without a taker.
+        void NoteTurnInRouteResult(std::vector<uint32> const& questIds, bool noRoute, bool takerFound);
+        bool IsTurnInNoRoute(uint32 questId) const;
         // twow-repo#485: a finished quest whose turn-in failed TurnInParkFailures times within
         // TurnInParkWindowSeconds is parked for TurnInParkSeconds (roster bots on their own).
         // True when this failure parked the quest.
@@ -587,6 +599,8 @@ namespace ai
         bool OnContestedObjectiveTimeout();
         // twow-repo#485: parked turn-ins of this bot (at most 16 quests, in memory only).
         turnin_park::Book turnInParks;
+        // twow-repo#601 no-route gate: finished quests whose last turn-in route request found no taker route (at most 32, in memory only).
+        std::set<uint32> noRouteTurnIns;
         // twow-repo#601 S1: quests abandoned after two structural parks (at most 8, in memory only).
         turnin_park::AbandonMarks abandonedTurnIns;
         // twow-repo#601 S3c (ZoneExit.TurnInTravelStall): quests of the last turn-in work timeouts (at most 8, in memory only).
@@ -707,6 +721,19 @@ namespace ai
 
 		std::unordered_map<std::pair<uint32, uint32>, std::vector<MapTransfer>, boost::hash<std::pair<uint32, uint32>>> mapTransfersMap;
 	};
+
+	// twow-repo#601 cand4 (i) (AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter, StaleObjectivePolicy.h): the realm-wide stale
+	// objective memory. One store in TravelMgr.cpp behind one short std::mutex (no game call inside the lock). With the switch 0 every
+	// function returns at once.
+	namespace stale_objective
+	{
+		// A failure (work timeout, pos-stuck, emptied camp, death) of a roster bot on its own at this objective; may mark it.
+		void NoteObjectiveFailure(Player* bot, PlayerbotAI* botAI, QuestObjectiveTravelDestination const* objective, char const* reason);
+		// A quest credit (kill or item) of any bot: the quest's objectives are cleared.
+		void NoteQuestCredit(Player* bot, uint32 questId);
+		// Marked now (the skip itself is cohort-gated by the caller).
+		bool IsObjectiveStale(QuestObjectiveTravelDestination const* objective);
+	}
 }
 
 #define sTravelMgr MaNGOS::Singleton<TravelMgr>::Instance()

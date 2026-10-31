@@ -534,6 +534,9 @@ public:
     // twow-repo#601 turn_in hold (CLI-Deep 28.10.2026, OB-00 go): the "an open turn-in waits" rule of the profession trips skips a
     // finished quest whose taker route is stall- or death-suppressed for that quest; 0 off (default), 1 all, 2 cohort B.
     uint32 professionTrainingTurnInGateSkipSuppressed = 0;
+    // twow-repo#601 no-route gate (CLI-Deep 29.10.2026, OB-00 go, CLI-Berufe M1r6b): the same rule skips a finished quest whose last
+    // turn-in route request found no taker route (every taker judged), until a request finds one; 0 off (default), 1 all, 2 cohort B.
+    uint32 professionTrainingTurnInGateSkipNoRoute = 0;
     uint32 professionUseToolBuy = 0;
     uint32 travelRpgAreaLevelFromSpawn = 0;  // twow-repo#333 P1-v: RpgTravelDestination::IsPossible reads the area level at the spawn nearest to the bot, not at the map origin (RpgAreaLevelPolicy.h); 0 off, 1 all, 2 cohort B (odd guid)
     uint32 gatherQuestHerbFilter = 0;  // twow-repo#333 P1-f: a quest herb (lock 259) is picked only with its quest active (modes 0/1/2)
@@ -650,6 +653,7 @@ public:
     bool rotationCastTrace = false;  // twow-repo#602 ROT-01 D0: [RotCast]/[RotCastTotal]/[RotCastUnknown]/[RotRole]/[RotPull] cast diagnostics, measurement only (0 = off)
     uint32 rotationSpecFromPath = 0;  // twow-repo#602 ROT-01 R06a: spec tab from the premade path from level 10, cohort mode 0 off / 1 all / 2 cohort B
     uint32 rotationTankKitFromLevel = 0;  // twow-repo#602 (tank count 28.10., OB-00, BEHAVIOUR CHANGE, A/B with 2): the tank kit only from the level of the tank spells - warrior below L10 arms kit, protection paladin below L16 retribution kit (TankKitPolicy.h); 0 off, 1 all, 2 cohort B
+    uint32 rotationTankRoguePoison = 1;  // twow-repo#654 (poison ping-pong 29.10., OB-00 / owner: code default 1, 0 = rollback): the rogue tank keeps every main-hand poison but its threat poison off, told by the action (hand + threat poison), in and out of combat (TankRoguePoisonPolicy.h); 0 off, 1 all, 2 cohort B
     uint32 rotationEmergencyLadder = 0;  // twow-repo#602 ROT-01 X3: emergency ladder for solo free bots below critical health, cohort mode 0 off / 1 all / 2 cohort B
     uint32 rotationEmergencyLadderFightTargetHp = 20;  // twow-repo#602 X3 (F2): fight on instead of fleeing when the single target is at or below this HP %
     std::vector<std::string> rotationEmergencyLadderSoloCcSpells;  // twow-repo#602 X3 (F3): spells allowed for solo CC on an add (lower case)
@@ -662,6 +666,7 @@ public:
     uint32 rotationCastStopFirst = 1;  // twow-repo#602 (cast-abort loop 27.10., OB-00: code default 1, 0 = rollback): a moving bot without a real player master casts a cast-time or channelled spell after StopMoving instead of cancelling it (CastWhileMovingPolicy.h); 0 off, 1 all, 2 cohort B
     uint32 rotationInvalidTargetQuiet = 1;  // twow-repo#602 (failure census 28.10., OB-00: code default 1, 0 = rollback): "invalid target" stays quiet for an empty current target while nothing attacks the bot (InvalidTargetPolicy.h); 0 off, 1 all, 2 cohort B
     uint32 rotationLosCacheMs = 500;  // twow-repo#602 (REF-next v2 tick 29.10., OB-00: code default 500, 0 = rollback): a bot keeps one line-of-sight verdict per target for this many ms (LosCachePolicy.h): the CastLosGate cast checks and the reach prerequisite reuse it
+    uint32 rotationRogueTankStance = 0;  // twow-repo#654 (owner 29.10., BEHAVIOUR CHANGE, A/B with 2): a rogue on the tank path learns the Shadow Dance stance from 20 when the core switch covers bots, keeps it up while it tanks and drops it otherwise, no Stealth / Vanish in it (RogueTankStancePolicy.h); 0 off, 1 all, 2 cohort B
     uint32 rotationCastLosGate = 0;  // twow-repo#602 (hunter LoS 25.10.): a LINE_OF_SIGHT verdict of CheckCast makes the cast IMPOSSIBLE, 8.2-unreachable targets are dropped and skipped (CastLosGatePolicy.h); with Rotation.ReachLosClose; 0 off, 1 all, 2 cohort B
     bool perfCombatIdleYield = false;  // twow-repo#541 (audit A17): a combat AI pass without an action while the bot auto-attacks its current target waits 3x ReactDelay (0 = off)
     uint32 castWaitPreparing = 0;  // twow-repo#602 (L1-b): hold the internal AI until the real end of the bot's own PREPARING cast; 0 off, 1 all, 2 cohort B
@@ -966,9 +971,20 @@ public:
     // twow-repo#601 S5a F2: when every rung of the bot's band lies in the zone it stands in, the next band is a candidate
     // from this many levels below its min on (instead of 2). 0 = off (default), 1..10; other values act like 0.
     uint32 questFirstProgressionBandLadderSameZoneNext = 0;
+    // twow-repo#601 quest acceptance lever (iv) (OB-00 28.10.2026): the radius quest giver fetch asks for every giver in range ({}),
+    // not for entry 0, under which no giver is filed. Mode 0 off (default), 1 all, 2 cohort B.
+    uint32 questFirstProgressionGiverFetchAnyQuest = 0;
     // twow-repo#601 (CLI-Deep 26.10.2026, cr2-C GO diagnosis): a game object quest objective whose lock opens only with a profession
     // skill the bot lacks (skill, value or tool) is no quest target. Mode 0 off (default), 1 all, 2 cohort B.
     uint32 questFirstProgressionSkipSkillLockedObjectives = 0;
+    // twow-repo#601 cand4 (i) (CLI-Deep 29.10.2026, OB-00 after CLI-PATH as-1-why; StaleObjectivePolicy.h): an objective with Failures
+    // failures from at least Bots distinct roster bots within WindowSeconds and no credit of its quest since is skipped for Seconds;
+    // any credit of the quest clears it. Mode 0 off (default), 1 all, 2 cohort B (the skip only; failures of every bot count).
+    uint32 questFirstProgressionStaleObjectiveFilter = 0;
+    uint32 questFirstProgressionStaleObjectiveFailures = 4;       // 1..8
+    uint32 questFirstProgressionStaleObjectiveBots = 3;           // 1..8
+    uint32 questFirstProgressionStaleObjectiveWindowSeconds = 3600;
+    uint32 questFirstProgressionStaleObjectiveSeconds = 3600;
     // twow-repo#601 S5a F4 (OB-00 24.10.2026, owner D1 "rumstehen ist keine Option"): from this many quest searches in a row
     // without a route on (the F1 streak), a search that does not step walks toward the rung the step would take until the
     // route backoff ends. 0 = off (default), 1..10; other values act like 0.

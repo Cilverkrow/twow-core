@@ -15,6 +15,7 @@
 #include "playerbot/CohortPolicy.h"
 #include "playerbot/RpgAreaLevelPolicy.h"
 #include "playerbot/ContestedObjectivePolicy.h"
+#include "playerbot/StaleObjectivePolicy.h"   // twow-repo#601 cand4 (i) StaleObjectiveFilter
 #include "playerbot/TransportBoardPolicy.h"   // twow-repo#342 ABBA-1 §6: the PosStuck dock pause ends after WaitTimeoutMsOf
 #include <algorithm>
 #include <vector>
@@ -144,6 +145,12 @@ PlayerTravelInfo::PlayerTravelInfo(Player* player, bool gapGrind)
     // twow-repo#333 P1-v (AiPlayerbot.Travel.RpgAreaLevelFromSpawn): the RPG area level bit, here on the bot thread; read by
     // RpgTravelDestination::IsPossible only as a value. Mode 0: false for every bot, as before.
     rpgAreaFromSpawn = ai::cohort::Applies(sPlayerbotAIConfig.travelRpgAreaLevelFromSpawn, player->GetGUIDLow());
+
+    // twow-repo#601 quest acceptance lever (iv) (QuestFirstProgression.GiverFetchAnyQuest, review 28.10.): a roster bot of the quest-first
+    // flow without a real player master, in the mode's cohort, as SkipSkillLockedObjectives / ContestedObjectiveWait. Read by the quest
+    // fetch job (every giver in range) and QuestRelationTravelDestination::IsActive (the destination's own quest) only as a value.
+    giverAnyQuest = sPlayerbotAIConfig.questFirstProgressionEnabled && sRandomPlayerbotMgr.IsPersistentRosterMember(player->GetGUIDLow()) &&
+        !ai->HasRealPlayerMaster() && ai::cohort::Applies(sPlayerbotAIConfig.questFirstProgressionGiverFetchAnyQuest, player->GetGUIDLow());
 }
 
 std::string EntryTravelDestination::GetShortName() const
@@ -304,6 +311,13 @@ bool QuestRelationTravelDestination::IsActive(Player* bot, const PlayerTravelInf
         // row the giver counts only while it offers this quest to the bot (DIALOG_STATUS_AVAILABLE; a quest in the log, done or
         // repeatable is no reason to stay). One static per-quest status, no value per creature. Snapshot bit false: as before.
         if (!forceThisQuest && info.HasBandGiverFilter() &&
+            DialogStatusValue::getDialogStatus(bot, GetEntry(), GetQuestId()) != DIALOG_STATUS_AVAILABLE)
+            return false;
+
+        // twow-repo#601 quest acceptance lever (iv) (GiverFetchAnyQuest, review 28.10.): the radius fetch now offers every giver in range,
+        // and the NPC check below looks at all of the NPC's quests - a bot of the lever counts a giver only while it offers THIS quest
+        // (filter F's rule; each takeable quest of the NPC has its own destination). Off: false, as before.
+        if (!forceThisQuest && info.HasGiverAnyQuest() &&
             DialogStatusValue::getDialogStatus(bot, GetEntry(), GetQuestId()) != DIALOG_STATUS_AVAILABLE)
             return false;
 
@@ -1330,6 +1344,37 @@ bool TravelTarget::IsTurnInRouteSuppressedForQuest(uint32 questId) const
     return turnin_recovery::IsSuppressedForQuest(turnInRecovery, WorldTimer::getMSTime(), questId);
 }
 
+// twow-repo#601 no-route gate (ProfessionTraining.TurnInGateSkipNoRoute, CLI-Deep 29.10.2026): a request that judged every taker and
+// found no route marks its offered quests, one that found a taker unmarks them, anything else (budget overrun, unjudged takers,
+// a suppressed route) leaves them. The line is the switch's effect proof: one per request without a taker, only with the switch on.
+void TravelTarget::NoteTurnInRouteResult(std::vector<uint32> const& questIds, bool noRoute, bool takerFound)
+{
+    if (!bot || questIds.empty() || !ai::cohort::Applies(sPlayerbotAIConfig.professionTrainingTurnInGateSkipNoRoute, bot->GetGUIDLow()))
+        return;
+
+    if (takerFound)
+    {
+        for (uint32 questId : questIds)
+            noRouteTurnIns.erase(questId);
+        return;
+    }
+
+    if (noRoute)
+    {
+        // Bounded like the park book: a bot holds at most 20 finished quests.
+        if (noRouteTurnIns.size() > 32)
+            noRouteTurnIns.clear();
+        noRouteTurnIns.insert(questIds.begin(), questIds.end());
+    }
+    sLog.outBasic("[ProfTravel] state=turnin_no_route bot=%u level=%u quests=%u mark=%u", bot->GetGUIDLow(), bot->GetLevel(),
+        uint32(questIds.size()), noRoute ? 1u : 0u);
+}
+
+bool TravelTarget::IsTurnInNoRoute(uint32 questId) const
+{
+    return !noRouteTurnIns.empty() && noRouteTurnIns.count(questId) != 0;
+}
+
 turnin_recovery::RecoveryAction TravelTarget::ObserveTurnInProgress()
 {
     // Turn-ins and (#329) objectives share the same progress observation.
@@ -1476,6 +1521,10 @@ void TravelTarget::OnDeathAtDestination()
 
     if (!sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()))
         return;
+
+    // twow-repo#601 cand4 (i) StaleObjectiveFilter: a death at a quest objective also feeds the realm-wide memory (its own switch).
+    if (QuestObjectiveTravelDestination const* objective = dynamic_cast<QuestObjectiveTravelDestination const*>(tDestination))
+        ai::stale_objective::NoteObjectiveFailure(bot, ai, objective, "death");
 
     // Bounded: a bot dies at only a handful of distinct destinations per hour.
     if (destinationDeaths.size() > 64 && destinationDeaths.find(tDestination) == destinationDeaths.end())
@@ -1640,9 +1689,78 @@ bool TravelTarget::OnContestedObjectiveTimeout()
     return true;
 }
 
+// twow-repo#601 cand4 (i) (QuestFirstProgression.StaleObjectiveFilter, StaleObjectivePolicy.h): the realm-wide store. One short lock
+// per call around the map operation only; the log line is written after the lock.
+namespace
+{
+    std::mutex staleObjectiveMutex;
+    ai::stale_objective::Store staleObjectiveStore;
+
+    ai::stale_objective::Params StaleObjectiveParams()
+    {
+        ai::stale_objective::Params params;
+        params.failures = sPlayerbotAIConfig.questFirstProgressionStaleObjectiveFailures;
+        params.bots = sPlayerbotAIConfig.questFirstProgressionStaleObjectiveBots;
+        params.windowMs = sPlayerbotAIConfig.questFirstProgressionStaleObjectiveWindowSeconds * IN_MILLISECONDS;
+        params.markMs = sPlayerbotAIConfig.questFirstProgressionStaleObjectiveSeconds * IN_MILLISECONDS;
+        return params;
+    }
+}
+
+void ai::stale_objective::NoteObjectiveFailure(Player* bot, PlayerbotAI* botAI, QuestObjectiveTravelDestination const* objective, char const* reason)
+{
+    if (!sPlayerbotAIConfig.questFirstProgressionStaleObjectiveFilter || !bot || !objective)
+        return;
+    // Roster bots on their own in the open world (as CampBlock): a real master decides for his bot. Both cohorts feed the memory;
+    // only the skip is cohort-gated (CandidateSkipOf).
+    if (!sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) || (botAI && botAI->HasRealPlayerMaster()) ||
+        bot->GetMap()->IsDungeon() || bot->InBattleGround())
+        return;
+
+    ai::stale_objective::Params const params = StaleObjectiveParams();
+    ai::stale_objective::Key const key{ objective->GetQuestId(), objective->GetEntry() };
+    uint32 const nowMs = WorldTimer::getMSTime();
+    uint32 failures = 0;
+    uint32 bots = 0;
+    bool marked = false;
+    {
+        std::lock_guard<std::mutex> lock(staleObjectiveMutex);
+        marked = ai::stale_objective::RecordFailure(staleObjectiveStore, key, bot->GetGUIDLow(), nowMs, params, failures, bots);
+    }
+    if (marked)
+        sLog.outBasic("[StaleObjective] state=mark quest=%u entry=%d failures=%u bots=%u window_s=%u seconds=%u last_bot=%u reason=%s",
+            key.first, key.second, failures, bots, sPlayerbotAIConfig.questFirstProgressionStaleObjectiveWindowSeconds,
+            sPlayerbotAIConfig.questFirstProgressionStaleObjectiveSeconds, bot->GetGUIDLow(), reason);
+}
+
+void ai::stale_objective::NoteQuestCredit(Player* bot, uint32 questId)
+{
+    if (!sPlayerbotAIConfig.questFirstProgressionStaleObjectiveFilter || !questId)
+        return;
+    uint32 ended = 0;
+    {
+        std::lock_guard<std::mutex> lock(staleObjectiveMutex);
+        ended = ai::stale_objective::Credit(staleObjectiveStore, questId, WorldTimer::getMSTime());
+    }
+    if (ended)
+        sLog.outBasic("[StaleObjective] state=clear quest=%u marks=%u reason=credit bot=%u", questId, ended, bot ? bot->GetGUIDLow() : 0);
+}
+
+bool ai::stale_objective::IsObjectiveStale(QuestObjectiveTravelDestination const* objective)
+{
+    if (!sPlayerbotAIConfig.questFirstProgressionStaleObjectiveFilter || !objective)
+        return false;
+    std::lock_guard<std::mutex> lock(staleObjectiveMutex);
+    return ai::stale_objective::IsStale(staleObjectiveStore, ai::stale_objective::Key{ objective->GetQuestId(), objective->GetEntry() },
+        WorldTimer::getMSTime());
+}
+
 void TravelTarget::NoteQuestObjectiveFailure()
 {
     QuestObjectiveTravelDestination const* objective = dynamic_cast<QuestObjectiveTravelDestination const*>(tDestination);
+    // twow-repo#601 cand4 (i) StaleObjectiveFilter: every objective failure (work timeout, pos-stuck park, emptied camp) also feeds the
+    // realm-wide memory - its own switch and roster check, independent of QL-1's.
+    ai::stale_objective::NoteObjectiveFailure(bot, ai, objective, "failure");
     if (!sPlayerbotAIConfig.questLoopMaxFailures || !objective || !bot || !sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()))
         return;
 
@@ -4293,14 +4411,20 @@ DestinationList TravelMgr::GetDestinations(const PlayerTravelInfo& info, uint32 
     // twow-repo#601 quest acceptance step 1b: a traced giver fetch (GiverDropCounts on its PlayerTravelInfo) takes the range first,
     // so its drop counts cover only the givers in reach. The list is the same - a destination needs both checks. Null: as before.
     ai::quest_search::GiverDropCounts* const tracedGivers = onlyPossible ? info.GetGiverDrops() : nullptr;
+    // twow-repo#601 quest acceptance lever (iv) (review 28.10.): a giver fetch for every giver (entries {}: the whole-map fallback, and
+    // the radius fetch with GiverFetchAnyQuest) takes the range first too - it walks every quest giver of every map, and IsPossible is
+    // the costly check. Same list, as above.
+    bool const rangeFirst = tracedGivers ||
+        (onlyPossible && entries.empty() && (purposeFlag & (uint32)TravelDestinationPurpose::QuestGiver));
     auto const outOfTracedRange = [&](TravelDestination* dest)
     {
-        if (!tracedGivers)
+        if (!rangeFirst)
             return false;
         float const reach = dest->DistanceTo(center);
         if ((maxDistance > 0 && reach > maxDistance) || reach == FLT_MAX)
         {
-            ++tracedGivers->outOfRange;
+            if (tracedGivers)
+                ++tracedGivers->outOfRange;
             return true;
         }
         return false;

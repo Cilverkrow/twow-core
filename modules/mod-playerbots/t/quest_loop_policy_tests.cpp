@@ -6,6 +6,7 @@
 
 #include "QuestLoopPolicy.h"
 #include "QuestSkillLockPolicy.h"   // twow-repo#601 SkipSkillLockedObjectives (no own test target: the rule is a few lines)
+#include "StaleObjectivePolicy.h"   // twow-repo#601 cand4 (i) StaleObjectiveFilter (same: no own test target)
 
 namespace
 {
@@ -197,6 +198,57 @@ int main()
         Require(!WorkDeathIsTurnInFailure(true, false, true), "a death on the way (TRAVEL): the route rule as before");
         Require(!WorkDeathIsTurnInFailure(true, true, false), "parking off: nothing would bound the deaths - the route rule stays");
         Require(!WorkDeathIsTurnInFailure(false, true, true), "switch off or another cohort: as before");
+    }
+
+    // twow-repo#601 cand4 (i) StaleObjectiveFilter (CLI-Deep 29.10.): realm-wide failures without credit mark an objective.
+    {
+        namespace so = ai::stale_objective;
+        so::Params const p;   // 4 failures, 3 bots, 1 h window, 1 h mark
+        std::uint32_t const t = 1000000, h = 3600000;
+        std::uint32_t f = 0, b = 0;
+        so::Store s;
+        so::Key const elem{ 41747, 62633 };
+        Require(!so::RecordFailure(s, elem, 11, t, p, f, b) && !so::RecordFailure(s, elem, 13, t + 1000, p, f, b) &&
+            !so::RecordFailure(s, elem, 15, t + 2000, p, f, b), "3 failures of 3 bots: not yet (4 needed)");
+        Require(so::RecordFailure(s, elem, 11, t + 3000, p, f, b) && f == 4 && b == 3, "the 4th failure (bot 11 again, 3 bots): marked");
+        Require(so::IsStale(s, elem, t + 4000) && !so::IsStale(s, so::Key{ 41747, 62634 }, t + 4000), "only that objective is marked");
+        Require(!so::RecordFailure(s, elem, 17, t + 5000, p, f, b), "an existing mark is not renewed by more failures");
+        Require(so::IsStale(s, elem, t + 3000 + h - 1) && !so::IsStale(s, elem, t + 3000 + h), "the mark lasts markMs");
+
+        so::Store two;
+        for (std::uint32_t i = 0; i < 6; ++i)
+            Require(!so::RecordFailure(two, elem, 20 + (i % 2), t + i, p, f, b), "6 failures of only 2 bots: never marked");
+
+        so::Store win;
+        so::RecordFailure(win, elem, 1, t, p, f, b);
+        so::RecordFailure(win, elem, 2, t + 1, p, f, b);
+        so::RecordFailure(win, elem, 3, t + 2, p, f, b);
+        Require(!so::RecordFailure(win, elem, 4, t + h + 10, p, f, b) && f == 1, "failures older than the window do not count");
+
+        so::Store cr;
+        for (std::uint32_t i = 0; i < 4; ++i)
+            so::RecordFailure(cr, elem, 30 + i, t + i, p, f, b);
+        so::RecordFailure(cr, so::Key{ 999, 5 }, 30, t, p, f, b);
+        Require(so::IsStale(cr, elem, t + 10), "marked before the credit");
+        Require(so::Credit(cr, 41747, t + 20) == 1 && !so::IsStale(cr, elem, t + 30), "a credit of the quest ends the mark");
+        Require(cr.entries.count(so::Key{ 999, 5 }) == 1 && cr.entries.count(elem) == 0, "the credit drops only its own quest's keys");
+        Require(!so::RecordFailure(cr, elem, 30, t + 40, p, f, b) && f == 1, "after the credit the count starts again");
+
+        so::Store ring;
+        for (std::uint32_t i = 0; i < 12; ++i)
+            so::RecordFailure(ring, so::Key{ 7, 7 }, 40 + i, t + i, so::Params{ 9, 9, h, h }, f, b);
+        Require(f == so::KeptFailures && b == so::KeptFailures, "at most KeptFailures failures are kept per objective");
+
+        so::Store big;
+        for (std::uint32_t i = 0; i < so::MaxKeys + 50; ++i)
+            so::RecordFailure(big, so::Key{ 100000 + i, 1 }, 1, t + i, p, f, b);
+        Require(big.entries.size() <= so::MaxKeys, "bounded: at most MaxKeys objectives");
+
+        so::Store wrap;
+        std::uint32_t const w = 0xFFFFFF00u;
+        for (std::uint32_t i = 0; i < 4; ++i)
+            so::RecordFailure(wrap, elem, 50 + i, w + i * 100, p, f, b);
+        Require(so::IsStale(wrap, elem, w + 1000) && so::IsStale(wrap, elem, 5000), "the world timer wrap keeps the mark");
     }
 
     std::cout << "quest_loop_policy_tests passed\n";

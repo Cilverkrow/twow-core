@@ -568,6 +568,9 @@ bool PlayerbotAIConfig::Initialize()
     rotationTankKitFromLevel = config.GetIntDefault("AiPlayerbot.Rotation.TankKitFromLevel", 0);   // twow-repo#602 tank count
     if (rotationTankKitFromLevel > 2)
         rotationTankKitFromLevel = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
+    rotationTankRoguePoison = config.GetIntDefault("AiPlayerbot.Rotation.TankRoguePoison", 1);   // twow-repo#654 poison ping-pong
+    if (rotationTankRoguePoison > 2)
+        rotationTankRoguePoison = 1;   // an unknown mode is the default (0 off = rollback, 1 all, 2 cohort B)
     rotationEmergencyLadder = config.GetIntDefault("AiPlayerbot.Rotation.EmergencyLadder", 0);
     if (rotationEmergencyLadder > 2)
         rotationEmergencyLadder = 0;   // twow-repo#602 X3: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B)
@@ -604,6 +607,9 @@ bool PlayerbotAIConfig::Initialize()
     rotationLosCacheMs = config.GetIntDefault("AiPlayerbot.Rotation.LosCacheMs", 500);   // twow-repo#602 REF-next v2 tick
     if (rotationLosCacheMs > ai::los_cache::MaxMs)
         rotationLosCacheMs = ai::los_cache::DefaultMs;   // no cache any more: the default (0 = off = rollback)
+    rotationRogueTankStance = config.GetIntDefault("AiPlayerbot.Rotation.RogueTankStance", 0);   // twow-repo#654 Shadow Dance stance
+    if (rotationRogueTankStance > 2)
+        rotationRogueTankStance = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
     rotationCastStopFirst = config.GetIntDefault("AiPlayerbot.Rotation.CastStopFirst", 1);   // twow-repo#602 cast-abort loop
     if (rotationCastStopFirst > 2)
         rotationCastStopFirst = 1;   // an unknown mode is the default (0 off = rollback, 1 all, 2 cohort B)
@@ -934,6 +940,13 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[QuestBand] config key=BandLadderSameZoneNext value=%u result=off (0 off, 1..10)", questFirstProgressionBandLadderSameZoneNext);
         questFirstProgressionBandLadderSameZoneNext = 0;
     }
+    // twow-repo#601 quest acceptance lever (iv) GiverFetchAnyQuest: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B).
+    questFirstProgressionGiverFetchAnyQuest = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.GiverFetchAnyQuest", 0);
+    if (questFirstProgressionGiverFetchAnyQuest > 2)
+    {
+        sLog.outError("[QuestFirstRoute] config key=GiverFetchAnyQuest value=%u result=off (0 off, 1 all, 2 cohort B)", questFirstProgressionGiverFetchAnyQuest);
+        questFirstProgressionGiverFetchAnyQuest = 0;
+    }
     // twow-repo#601 SkipSkillLockedObjectives: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B).
     questFirstProgressionSkipSkillLockedObjectives = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.SkipSkillLockedObjectives", 0);
     if (questFirstProgressionSkipSkillLockedObjectives > 2)
@@ -941,6 +954,18 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[QuestFirstRoute] config key=SkipSkillLockedObjectives value=%u result=off (0 off, 1 all, 2 cohort B)", questFirstProgressionSkipSkillLockedObjectives);
         questFirstProgressionSkipSkillLockedObjectives = 0;
     }
+    // twow-repo#601 cand4 (i) StaleObjectiveFilter: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B); the parameters
+    // are clamped (failures and bots fit the 8 failures kept per objective; window and mark 60 s .. 1 day).
+    questFirstProgressionStaleObjectiveFilter = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter", 0);
+    if (questFirstProgressionStaleObjectiveFilter > 2)
+    {
+        sLog.outError("[StaleObjective] config key=StaleObjectiveFilter value=%u result=off (0 off, 1 all, 2 cohort B)", questFirstProgressionStaleObjectiveFilter);
+        questFirstProgressionStaleObjectiveFilter = 0;
+    }
+    questFirstProgressionStaleObjectiveFailures = std::min<uint32>(8, uint32(std::max<int32>(1, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter.Failures", 4))));
+    questFirstProgressionStaleObjectiveBots = std::min<uint32>(8, uint32(std::max<int32>(1, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter.Bots", 3))));
+    questFirstProgressionStaleObjectiveWindowSeconds = std::min<uint32>(86400, uint32(std::max<int32>(60, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter.WindowSeconds", 3600))));
+    questFirstProgressionStaleObjectiveSeconds = std::min<uint32>(86400, uint32(std::max<int32>(60, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter.Seconds", 3600))));
     // twow-repo#601 S5a F4 (OB-00 24.10.2026): the backoff walk toward the next rung, 0 = off, 1..10.
     questFirstProgressionBandWalkAfterEmptySearches = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.BandWalkAfterEmptySearches", 0);
     if (questFirstProgressionBandWalkAfterEmptySearches > 10)
@@ -1502,6 +1527,13 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[ProfTravel] config key=TurnInGateSkipSuppressed value=%u result=off (0 off, 1 all, 2 cohort B)", professionTrainingTurnInGateSkipSuppressed);
         professionTrainingTurnInGateSkipSuppressed = 0;
     }
+    // twow-repo#601 no-route gate (CLI-Deep 29.10.2026): an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B).
+    professionTrainingTurnInGateSkipNoRoute = config.GetIntDefault("AiPlayerbot.ProfessionTraining.TurnInGateSkipNoRoute", 0);
+    if (professionTrainingTurnInGateSkipNoRoute > 2)
+    {
+        sLog.outError("[ProfTravel] config key=TurnInGateSkipNoRoute value=%u result=off (0 off, 1 all, 2 cohort B)", professionTrainingTurnInGateSkipNoRoute);
+        professionTrainingTurnInGateSkipNoRoute = 0;
+    }
     professionUseToolBuy = config.GetIntDefault("AiPlayerbot.ProfessionUse.ToolBuy", 0);
     if (professionUseToolBuy > 2)
         professionUseToolBuy = 0;
@@ -1805,6 +1837,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Perf.RouteTimeTrace", Value(perfRouteTimeTrace)},
             {"ProfessionTraining.NearRadius", Value(professionTrainingNearRadius)},
             {"ProfessionTraining.Travel", Value(professionTrainingTravel)},
+            {"ProfessionTraining.TurnInGateSkipNoRoute", Value(professionTrainingTurnInGateSkipNoRoute)},
             {"ProfessionTraining.TurnInGateSkipSuppressed", Value(professionTrainingTurnInGateSkipSuppressed)},
             {"ProfessionUse.ToolBuy", Value(professionUseToolBuy)},
             {"QuestFeasibility.Blocklist.count", Value(uint32(questFeasibilityBlocklist.size()))},
@@ -1822,6 +1855,7 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestFirstProgression.Enabled", Value(questFirstProgressionEnabled)},
             {"QuestFirstProgression.FailureClasses", Value(questFirstProgressionFailureClasses)},
             {"QuestFirstProgression.FailureClasses.GroupNeeded", Value(questFirstProgressionFailureClassesGroupNeeded)},
+            {"QuestFirstProgression.GiverFetchAnyQuest", Value(questFirstProgressionGiverFetchAnyQuest)},
             {"QuestFirstProgression.GrindFallbackFailures", Value(questFirstProgressionGrindFallbackFailures)},
             {"QuestFirstProgression.GrindFallbackMinutes", Value(questFirstProgressionGrindFallbackMinutes)},
             {"QuestFirstProgression.GrindMode", Value(questFirstProgressionGrindMode)},
@@ -1831,6 +1865,11 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestFirstProgression.S1Cohort", Value(questFirstProgressionS1Cohort)},
             {"QuestFirstProgression.S3Cohort", Value(questFirstProgressionS3Cohort)},
             {"QuestFirstProgression.SkipSkillLockedObjectives", Value(questFirstProgressionSkipSkillLockedObjectives)},
+            {"QuestFirstProgression.StaleObjectiveFilter", Value(questFirstProgressionStaleObjectiveFilter)},
+            {"QuestFirstProgression.StaleObjectiveFilter.Bots", Value(questFirstProgressionStaleObjectiveBots)},
+            {"QuestFirstProgression.StaleObjectiveFilter.Failures", Value(questFirstProgressionStaleObjectiveFailures)},
+            {"QuestFirstProgression.StaleObjectiveFilter.Seconds", Value(questFirstProgressionStaleObjectiveSeconds)},
+            {"QuestFirstProgression.StaleObjectiveFilter.WindowSeconds", Value(questFirstProgressionStaleObjectiveWindowSeconds)},
             {"QuestFirstProgression.TransientCountsAfter", Value(questFirstProgressionTransientCountsAfter)},
             {"QuestFirstProgression.TurnInParkFailures", Value(questFirstProgressionTurnInParkFailures)},
             {"QuestGroups.Enable", Value(questGroupsEnable)},
@@ -1868,8 +1907,10 @@ bool PlayerbotAIConfig::Initialize()
             {"Rotation.ReachLosClose", Value(rotationReachLosClose)},
             {"Rotation.ReachPlayerMaster", Value(rotationReachPlayerMaster)},
             {"Rotation.RestGate", Value(rotationRestGate)},
+            {"Rotation.RogueTankStance", Value(rotationRogueTankStance)},
             {"Rotation.SpecFromPath", Value(rotationSpecFromPath)},
             {"Rotation.TankKitFromLevel", Value(rotationTankKitFromLevel)},
+            {"Rotation.TankRoguePoison", Value(rotationTankRoguePoison)},
             {"ThrownUsageFix", Value(thrownUsageFix)},
             {"Travel.RpgAreaLevelFromSpawn", Value(travelRpgAreaLevelFromSpawn)},
             {"ZoneExit.TurnInNearRadius", Value(zoneExitTurnInNearRadius)},
