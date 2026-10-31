@@ -551,7 +551,9 @@ void AiFactory::AddDefaultCombatStrategies(Player* player, PlayerbotAI* const fa
             else if (tab == 2)
             {
                 combatEngine->addStrategies("restoration", "flee", "ranged", NULL);
-                if (sPlayerbotAIConfig.enableOffSpecStrategies)
+                // twow-repo#653 (Rotation.RestoShamanOffdps, default 0): the offdps placeholder only for the switch's cohort (before, it was
+                // added and dropped - no creator - so 0 keeps that behaviour). It lifts the healer's attack gate, nothing else.
+                if (sPlayerbotAIConfig.enableOffSpecStrategies && ai::cohort::Applies(sPlayerbotAIConfig.rotationRestoShamanOffdps, player->GetGUIDLow()))
                     combatEngine->addStrategy("offdps");
             }
             else
