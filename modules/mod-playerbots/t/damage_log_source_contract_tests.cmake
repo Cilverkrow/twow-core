@@ -95,6 +95,14 @@ function(check policy log_cpp config_h config_cpp dist out_var)
   need("${fn}" "via=0x%llx viaName=%s" "via= on the minion line")
   before("${fn}" "attacker->GetCharmerOrOwnerGuid().IsPlayer()" "if (!attackerAi && !victimAi) return;" "the minion lookup before the fast-path return")
   need("${fn}" "if (!attackerAi && !victimAi) return;" "non-bot fast path")
+  # OB-10 review 31.10.: the action log off = nothing runs (gate before the counters and the minion lookup); bots outside the sample
+  # are not counted.
+  need("${fn}" "    if (!BotActionLog::MayWrite())\n        return;" "the action-log gate")
+  before("${fn}" "if (!BotActionLog::MayWrite())" "static thread_local std::unordered_map<uint64, uint32> sDealt;" "the gate first")
+  before("${fn}" "if (!BotActionLog::MayWrite())" "attacker->GetCharmerOrOwnerGuid().IsPlayer()" "the gate before the minion lookup")
+  need("${fn}" "if (attackerAi && !ai::action_log::Sampled(sPlayerbotAIConfig.actionLogGuids, dealer->GetGUIDLow()))" "dealer sample check")
+  need("${fn}" "if (victimAi && !ai::action_log::Sampled(sPlayerbotAIConfig.actionLogGuids, victim->GetGUIDLow()))" "victim sample check")
+  before("${fn}" "ai::action_log::Sampled(sPlayerbotAIConfig.actionLogGuids, victim->GetGUIDLow())" "if (!attackerAi && !victimAi) return;" "the sample check before the counters")
   need("${log_cpp}" "#include \"playerbot/DamageLogPolicy.h\"" "policy include")
 
   set(${out_var} "${errors}" PARENT_SCOPE)
@@ -129,6 +137,8 @@ probe("zero not default" policy "    if (configured < 1)\n        return Default
 probe("minion of anyone" log_cpp "if (!attackerAi && attacker && !attacker->IsPlayer() && attacker->GetCharmerOrOwnerGuid().IsPlayer())" "if (!attackerAi && attacker)")
 probe("via dropped" log_cpp "via=0x%llx viaName=%s" "")
 probe("fast path dropped" log_cpp "    if (!attackerAi && !victimAi) return;\n" "")
+probe("no action-log gate" log_cpp "    if (!BotActionLog::MayWrite())\n        return;\n    static thread_local" "    static thread_local")
+probe("unsampled bots counted" log_cpp "    if (victimAi && !ai::action_log::Sampled(sPlayerbotAIConfig.actionLogGuids, victim->GetGUIDLow()))\n        victimAi = nullptr;\n" "")
 probe("impure policy" policy "#include <cstdint>" "#include <cstdint>\n#include \"Log.h\"")
 
 message(STATUS "damage_log source contract passed (${probes} negative probes)")
