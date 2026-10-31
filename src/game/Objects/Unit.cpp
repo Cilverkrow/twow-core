@@ -744,7 +744,7 @@ uint32 Unit::DealDamage(Unit* pVictim, uint32 damage, CleanDamage const* cleanDa
 
     // bot logging suite — hook damage events.
     // Wrapper checks attacker AND victim for bot AI; non-bot ↔ non-bot
-    // case is two cheap pointer-null-checks. Sampled 1/5 to avoid spam
+    // case is two cheap pointer-null-checks. Sampled every Nth event (AiPlayerbot.ActionLog.DamageSampleEvery, default 5) to avoid spam
     // in heavy-DoT raid scenarios.
     {
         extern void BotActionLog_LogDamage(Unit* attacker, Unit* victim, uint32 damage, uint32 spellId, const char* damageType);

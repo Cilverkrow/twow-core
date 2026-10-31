@@ -3740,6 +3740,26 @@ add_test(NAME action_log_sample
   COMMAND action_log_sample_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#653 (AiPlayerbot.ActionLog.DamageSampleEvery, default 5, log only): DMG lines every Nth event with separate dealt / taken
+# counters, and a bot's pet / totem / guardian damage in the owner's log with via=.
+add_executable(damage_log_policy_tests
+  "${PB_MODULE_DIR}/t/damage_log_policy_tests.cpp")
+
+target_include_directories(damage_log_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(damage_log_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME damage_log_policy
+  COMMAND damage_log_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME damage_log_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/damage_log_source_contract_tests.cmake")
+
 # twow-repo#602 ROT-01 (L1-b finding 19.10.2026): the action log's CAST_FAIL line names the reason (SpellCastResult + spell state)
 # instead of only result=1. Diagnostics only.
 add_test(NAME cast_result_reason_source_contract
