@@ -2007,6 +2007,16 @@ AiPlayerbot.ProfessionUse.TraceCooldownSeconds = 300
 # and TraceCooldownSeconds (start, not_eligible, cooldown, turn_in, band, money, no_vendor, not_near, unreachable, home_zone).
 # Mode: 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
 AiPlayerbot.ProfessionUse.ToolBuy = 0
+# twow-repo#333 P1-z (OB-00 31.10.2026, BUG FIX: code default 1, 0 = rollback): a bot's own vendor purchase ("buy" with
+# "vendor", the RPG buy at a vendor) also reads the vendor template items (creature_template.vendor_id -> npc_vendor_template),
+# as the player's buy, the bot's buy by item name and the vendor map of the travel targets already do. The upstream build for
+# this client left them out, so a bot travelled to a template vendor (M1r run 7: both tool vendors, 1690 and 3367, sell the
+# pick and the knife only through their template) and bought nothing, without a line. This changes every bot purchase at a
+# template vendor (gear, food, ammo, reagents, tools), not only tools.
+# With ProfessionUse.Trace on, one "[ProfessionUse] stage=tool_buy state=bought|not_bought bot= level= vendor= item= source=npc|template
+# template_items=0|1 money=" line per vendor visit of a bot missing its pick / knife at a vendor that stocks it.
+# Mode: 0 = as before (rollback), 1 = every bot (default), 2 = only cohort B (odd low guid). Any other value acts like 1.
+AiPlayerbot.Buy.VendorTemplateItems = 1
 # twow-repo#333 P1-v (OB-00 26.10.2026, BUG FIX behind a switch: it changes the RPG travel of every bot; profile 1 only after a
 # cand A/B with quest metrics and the owner's go): an RPG target (vendor, repairer, trainer, mailbox, auctioneer, named RPG
 # target) is "not possible" for a bot when its area is more than 5 levels above it. That area level was read at the default
