@@ -1559,6 +1559,9 @@ bool PlayerbotAIConfig::Initialize()
     professionUseToolBuy = config.GetIntDefault("AiPlayerbot.ProfessionUse.ToolBuy", 0);
     if (professionUseToolBuy > 2)
         professionUseToolBuy = 0;
+    buyVendorTemplateItems = config.GetIntDefault("AiPlayerbot.Buy.VendorTemplateItems", 1);   // twow-repo#333 P1-z vendor templates
+    if (buyVendorTemplateItems > 2)
+        buyVendorTemplateItems = 1;   // an unknown mode is the default (0 off = rollback, 1 all, 2 cohort B)
     // twow-repo#333 P1-v (OB-00 26.10.2026): the area level of an RPG target from its spawn, not from the map origin; an unknown mode is off.
     travelRpgAreaLevelFromSpawn = config.GetIntDefault("AiPlayerbot.Travel.RpgAreaLevelFromSpawn", 0);
     if (travelRpgAreaLevelFromSpawn > 2)
@@ -1830,6 +1833,7 @@ bool PlayerbotAIConfig::Initialize()
             {"BotGroups.Enabled", Value(botGroupsEnabled)},
             {"BotGroups.WorldThreadDefer", Value(botGroupsWorldThreadDefer)},
             {"BotUpdateTrace", Value(botUpdateTrace)},
+            {"Buy.VendorTemplateItems", Value(buyVendorTemplateItems)},
             {"CastWait.Preparing", Value(castWaitPreparing)},
             {"CustomRaceStartZones", Value(customRaceStartZones)},
             {"DangerMap.CountAddDeaths", Value(dangerMapCountAddDeaths)},
