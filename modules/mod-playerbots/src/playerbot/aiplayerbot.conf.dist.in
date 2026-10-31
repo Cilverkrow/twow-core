@@ -1641,7 +1641,8 @@ AiPlayerbot.RosterFarMove.ArriveSafe = 0
 # their own. The spawns are read once at startup (only with the switch on). One [FarMoveGuard] result=skip line per skip (at
 # most 3 per choice), [QuestFirstRoute] state=rejected gets level_guard=, [FarMove] gets guard_checked guard_skip guard_skip_b.
 # cand4r-B 12-16Z (+3 / 50 yd): 22.5 % of cohort B's arrival deaths <= 60 s at such a point; it fires at 4 % of B's XP-kill
-# sites. 0 = off (default), 1 = all bots, 2 = cohort B (A/B). Margin 1..10 (default 3), Radius 10..100 yd (default 50).
+# sites. 0 = off (default), 1 = all bots, 2 = cohort B, 3 = cohort A (crossover A/B: unit 2 swaps the guarded cohort).
+# Margin 1..10 (default 3), Radius 10..100 yd (default 50).
 AiPlayerbot.RosterFarMove.LevelGuard = 0
 AiPlayerbot.RosterFarMove.LevelGuard.Margin = 3
 AiPlayerbot.RosterFarMove.LevelGuard.Radius = 50

@@ -1020,9 +1020,10 @@ bool PlayerbotAIConfig::Initialize()
     rosterFarMoveArriveSafe = config.GetIntDefault("AiPlayerbot.RosterFarMove.ArriveSafe", 0);
     if (rosterFarMoveArriveSafe > 2)
         rosterFarMoveArriveSafe = 0;   // twow-repo#601 cand4-B: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B)
-    // twow-repo#601 cand4 lever (ii) (LevelGuardPolicy.h): an unknown mode is off; an unusable margin / radius is the default.
+    // twow-repo#601 cand4 lever (ii) (LevelGuardPolicy.h): 0 off, 1 all, 2 cohort B, 3 cohort A (crossover, CohortPolicy mode 3);
+    // an unknown mode is off; an unusable margin / radius is the default.
     rosterFarMoveLevelGuard = config.GetIntDefault("AiPlayerbot.RosterFarMove.LevelGuard", 0);
-    if (rosterFarMoveLevelGuard > 2)
+    if (rosterFarMoveLevelGuard > 3)
         rosterFarMoveLevelGuard = 0;
     rosterFarMoveLevelGuardMargin = ai::level_guard::ClampMargin(config.GetIntDefault("AiPlayerbot.RosterFarMove.LevelGuard.Margin", 3));
     rosterFarMoveLevelGuardRadius = ai::level_guard::ClampRadius(config.GetFloatDefault("AiPlayerbot.RosterFarMove.LevelGuard.Radius", 50.0f));

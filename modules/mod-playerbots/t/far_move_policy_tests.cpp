@@ -117,6 +117,8 @@ int main()
         Require(HostileTo(MaskPlayer, MaskHorde) && HostileTo(MaskAlliance, MaskAlliance) && !HostileTo(MaskAlliance, MaskHorde),
             "the player bit or the bot's side bit");
         Require(!HostileTo(0, MaskHorde), "a neutral spawn (mask 0) never counts");
+        Require(ExemptPurpose(1u, 1u | 32u) && ExemptPurpose(32u, 1u | 32u) && !ExemptPurpose(2u, 1u | 32u) && !ExemptPurpose(4096u, 1u | 32u),
+            "givers (1) and takers (32) exempt; objectives (2) and grind (4096) guarded");
         Require(ClampMargin(3) == 3 && ClampMargin(0) == DefaultMargin && ClampMargin(11) == DefaultMargin, "margin 1..10, else the default");
         Require(ClampRadius(50.0f) == 50.0f && ClampRadius(5.0f) == DefaultRadius && ClampRadius(150.0f) == DefaultRadius,
             "radius 10..100, else the default");
