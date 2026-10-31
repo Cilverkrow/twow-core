@@ -570,8 +570,9 @@ bool PlayerbotAIConfig::Initialize()
     if (rotationSpecFromPath > 2)
         rotationSpecFromPath = 0;   // twow-repo#601 (CohortPolicy mode 3, CLI-Deep audit 31.10.): an unknown mode is off, as before
     rotationTankKitFromLevel = config.GetIntDefault("AiPlayerbot.Rotation.TankKitFromLevel", 0);   // twow-repo#602 tank count
-    if (rotationTankKitFromLevel > 2)
-        rotationTankKitFromLevel = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
+    // twow-repo#602 tank3 crossover (OB-00 31.10.2026): 3 = only cohort A (CohortPolicy ModeOnlyA; unit 1 = 2, unit 2 = 3).
+    if (rotationTankKitFromLevel > 3)
+        rotationTankKitFromLevel = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B, 3 cohort A)
     rotationTankRoguePoison = config.GetIntDefault("AiPlayerbot.Rotation.TankRoguePoison", 1);   // twow-repo#654 poison ping-pong
     if (rotationTankRoguePoison > 2)
         rotationTankRoguePoison = 1;   // an unknown mode is the default (0 off = rollback, 1 all, 2 cohort B)
