@@ -2806,6 +2806,41 @@ void PlayerbotAI::OnDeath()
                     ++deathAttackers;
             }
 
+            // twow-repo#656 (AiPlayerbot.Grind.SafePull): a death with 2+ living attackers (the target + the adds, as above) within
+            // DeathWindowS of a risk-rule pick writes one [SafePull] death line - whether the fatal target is the rule's pick, its risk
+            // and the distance pick's, and how many attackers were in the pick's counted set. Log only; the pick is used once.
+            if (ai::safe_pull::Computes(sPlayerbotAIConfig.grindSafePull) && safePullLast.at)
+            {
+                uint32 const age = uint32(time(nullptr)) - safePullLast.at;
+                if (age <= ai::safe_pull::DeathWindowS)
+                {
+                    Unit* const deathTarget = AI_VALUE(Unit*, "current target");
+                    std::list<ObjectGuid> const deathTargets = AI_VALUE_LAZY(std::list<ObjectGuid>, "all targets");
+                    std::vector<uint64> live;
+                    for (ObjectGuid const& guid : deathTargets)
+                        if (Unit* unit = guid.IsCreature() ? GetUnit(guid) : nullptr; unit && unit->GetVictim() == bot)
+                            live.push_back(guid.GetRawValue());
+                    std::vector<uint64> attackers;
+                    for (uint64 const guid : ai::death_adds::MergeAdds(live, deathAdds, ai::death_adds::Fresh(deathAdds, WorldTimer::getMSTime()),
+                             deathTarget ? deathTarget->GetObjectGuid().GetRawValue() : 0))
+                        if (Unit* unit = GetUnit(ObjectGuid(guid)); unit && unit->IsAlive())
+                            attackers.push_back(guid);
+                    if (deathTarget && deathTarget->IsAlive())
+                        attackers.push_back(deathTarget->GetObjectGuid().GetRawValue());
+                    if (attackers.size() >= 2)
+                    {
+                        sLog.outBasic("[SafePull] death bot=%u cohort=%c class=%u level=%u applied=%u target_is_pick=%u risk=%u pick_risk=%u "
+                            "attackers=%u counted=%u age_s=%u",
+                            bot->GetGUIDLow(), ai::cohort::Letter(bot->GetGUIDLow()), uint32(bot->getClass()), bot->GetLevel(),
+                            uint32(safePullLast.applied), uint32(deathTarget && deathTarget->GetObjectGuid().GetRawValue() == safePullLast.target),
+                            safePullLast.risk, safePullLast.pickRisk, uint32(attackers.size()),
+                            ai::safe_pull::CountedAmong(safePullLast, attackers.data(), uint32(attackers.size())), age);
+                        ai::safe_pull::counters[ai::cohort::InB(bot->GetGUIDLow()) ? 1 : 0].deaths.fetch_add(1, std::memory_order_relaxed);
+                    }
+                }
+                safePullLast = ai::safe_pull::LastPick();
+            }
+
             // #307: shared danger map. Every bot death to a mob in the open
             // world is pooled (roster or not); real players never feed it.
             if (sPlayerbotAIConfig.dangerMapEnabled && !IsRealPlayer() && !bot->GetMap()->IsDungeon())
