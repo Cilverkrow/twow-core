@@ -780,6 +780,26 @@ AiPlayerbot.Grind.QuestFirstOrder = 0
 # computes and is counted, nobody's pick changes - the log-only run). Any other value acts like 0.
 AiPlayerbot.Grind.NeighbourAware = 0
 
+# twow-repo#656 BOT-PULL-01-L1 (#653 lever 1, OB-00 31.10.2026): the stage-2 grind pick of solo free bots orders its candidates
+# by risk - the idle creatures of the pass's own target list that would join the fight: linked to the candidate (AGGRO_TOGETHER
+# group, same-faction assist, call for help along its run to a ranged bot; weight 2) or seeing the bot at the candidate, at the
+# ranged fight spot (SpellDistance - 5 yd from the candidate towards the bot) or on the approach line (weight 1); each creature
+# once, risk capped at 16. The pick is the lowest risk, then the lowest score distance (the quest-need bonus stays in it: no hard
+# quest veto); a candidate beyond SightDistance - 30 yd has risk >= 1; a replacement may be at most 1 level above the distance pick
+# and elite only if that one is. A bot below ReadyHp % HP (or ReadyMana % mana, mana users) whose best candidate has risk >= 2
+# gets no target for at most 90 s (it rests); attackers (stage 1), grouped bots, battlegrounds and bots with a real master are not
+# touched. Runs before Grind.NeighbourAware on the same candidates. No new grid search, no raycast, at most 64 list entries.
+# "[SafePull] mode= cohort= passes= candidates= picks= changed= would_change= waits= would_wait= wait_timeout= pick_safe= rule_safe=
+# pick_risk= rule_risk= edge= guarded= extra_yd= rk_link= rk_target= rk_spot= rk_path= capped= deaths= us= cls=<class>:<picks>/<would>/<changed>,.."
+# once a minute per cohort with passes (increments), and "[SafePull] death ..." at a death with 2+ attackers within 300 s of a pick
+# (the target's risk, the distance pick's risk, and how many attackers were in the counted set). Mode (cohort parity, crossover:
+# unit 1 mode 2, unit 2 mode 3): 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even
+# low guid) - in 2 and 3 the other cohort computes the same in shadow - 4 = shadow only (every bot computes and is counted, nobody's
+# pick changes and nobody waits - the log-only run). Any other value acts like 0. ReadyHp / ReadyMana: 0-100.
+AiPlayerbot.Grind.SafePull = 0
+AiPlayerbot.Grind.SafePull.ReadyHp = 80
+AiPlayerbot.Grind.SafePull.ReadyMana = 50
+
 # Redirect all bot subsystem log output to a dedicated file so the main
 # server.log stays clean. Path is relative to the server's LogsDir setting.
 #

@@ -19,6 +19,7 @@
 #include "playerbot/BotSlots.h"
 #include "playerbot/DeathLoopPolicy.h"
 #include "playerbot/DeathAddsPolicy.h"
+#include "playerbot/SafePullPolicy.h"   // twow-repo#656 (Grind.SafePull): the last pick, read at the death
 #include "playerbot/CastWaitPolicy.h"
 #include "playerbot/TeleportCastPolicy.h"
 #include "playerbot/BotSavePolicy.h"
@@ -959,6 +960,11 @@ private:
     // the attacker set before OnDeath runs). Called from this bot's own AI tick only; the last snapshot is kept while the bot is dead.
     void UpdateDeathAddsSnapshot();
     ai::death_adds::Snapshot deathAdds;
+
+public:
+    // twow-repo#656 (AiPlayerbot.Grind.SafePull): the last stage-2 pick of the risk rule (applied or shadow), written by the grind
+    // value and read at the death for the [SafePull] death line. This bot's own AI tick only.
+    ai::safe_pull::LastPick safePullLast;
 
 protected:
 	Player* bot;

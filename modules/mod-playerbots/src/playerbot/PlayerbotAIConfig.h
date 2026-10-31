@@ -424,6 +424,9 @@ public:
     bool grindGreyByLevel = false;  // twow-repo#601 / #614: AiPlayerbot.Grind.GreyByLevel - the grind "not xp" skip (#421 roster rule and the old 50-in-51 skip of all bots) by mob level, not XP::Gain
     uint32 grindQuestFirstOrder = 0;  // twow-repo#601 decision order (owner 20.10.2026): AiPlayerbot.Grind.QuestFirstOrder - "attack anything" of quest-first roster bots only on quest objectives, attackers and mobs in the way; 0 off, 1 all, 2 cohort B (odd low guid)
     uint32 grindNeighbourAware = 0;  // twow-repo#602 #2 (adds analysis 25.10.2026): the stage-2 grind pick prefers a candidate with fewer neighbours that would join the fight (GrindNeighbourPolicy.h); 0 off, 1 all, 2 cohort B (A in shadow), 3 shadow only
+    uint32 grindSafePull = 0;  // twow-repo#656 (#653 lever 1, OB-00 31.10.2026): the stage-2 grind pick orders the candidates by the creatures that would join the fight at the target, the fight spot or on the approach (SafePullPolicy.h); 0 off, 1 all, 2 cohort B, 3 cohort A (crossover; the other cohort in shadow), 4 shadow only
+    uint32 grindSafePullReadyHp = 80;  // twow-repo#656: HP % a bot needs for a pick with risk >= 2 (below: no target, at most 90 s)
+    uint32 grindSafePullReadyMana = 50;  // twow-repo#656: the same for mana % (mana users only)
     // Filename (relative to LogsDir) for the bot subsystem log. When set,
     // all sLog calls from bot .cpp files are redirected there instead of
     // writing to the main server log. Default: "bots.log". Empty = disabled.
