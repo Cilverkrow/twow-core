@@ -540,55 +540,6 @@ enum class PostActiveDeferral
     LevelGuard,   // twow-repo#601 cand4 lever (ii), RosterFarMove.LevelGuard (LevelGuardPolicy.h)
 };
 
-// twow-repo#601 cand4 lever (ii) (LevelGuardPolicy.h): the shared spawn grid, built once at startup with the switch on.
-namespace ai::level_guard
-{
-    namespace
-    {
-        Grid sharedGrid;
-        std::atomic<bool> gridReady{ false };
-        std::once_flag gridOnce;
-    }
-
-    Counters& SharedCounters()
-    {
-        static Counters counters;
-        return counters;
-    }
-
-    Grid const& SharedGrid() { return sharedGrid; }
-    bool Ready() { return gridReady.load(std::memory_order_acquire); }
-
-    void BuildGrid()
-    {
-        std::call_once(gridOnce, []()
-        {
-            for (auto const& itr : sObjectMgr.GetAllCreatureData())
-            {
-                CreatureData const& data = itr.second;
-                if (data.spawn_flags & SPAWN_FLAG_DISABLED)
-                    continue;
-                CreatureInfo const* info = sObjectMgr.GetCreatureTemplate(data.creature_id[0]);
-                if (!info)
-                    continue;
-                FactionTemplateEntry const* faction = sObjectMgr.GetFactionTemplateEntry(info->faction);
-                if (!faction || !(faction->hostileMask & (MaskPlayer | MaskAlliance | MaskHorde)))
-                    continue;
-                Spawn spawn;
-                spawn.x = data.position.x;
-                spawn.y = data.position.y;
-                spawn.entry = info->entry;
-                spawn.levelMax = uint8_t(std::min<uint32>(info->level_max, 255));
-                spawn.rank = uint8_t(std::min<uint32>(info->rank, 255));
-                spawn.hostileMask = uint8_t(faction->hostileMask & (MaskPlayer | MaskAlliance | MaskHorde));
-                sharedGrid.Add(data.position.mapId, spawn);
-            }
-            gridReady.store(true, std::memory_order_release);
-            sLog.outBasic("[FarMoveGuard] state=grid spawns=%u", sharedGrid.Count());
-        });
-    }
-}
-
 PostActiveDeferral PostActiveDeferralOf(PlayerbotAI* ai, Player* bot, TravelTarget const* target, TravelDestination* destination,
     WorldPosition* position, danger_map::DangerMap::Hit& dangerHit, ai::level_guard::Hit* guardHit = nullptr)
 {
@@ -651,9 +602,14 @@ PostActiveDeferral PostActiveDeferralOf(PlayerbotAI* ai, Player* bot, TravelTarg
 
     // twow-repo#601 cand4 lever (ii) (AiPlayerbot.RosterFarMove.LevelGuard, LevelGuardPolicy.h): a destination with a spawn
     // hostile to the bot's side within Radius yd whose level_max is >= bot level + Margin is deferred, so the main loop takes
-    // another one. Any destination purpose; only trips that can become a far move (same map, beyond reactDistance) of roster
-    // bots on their own, never a bot led by a real player; the cohort switch (0 off, 1 all, 2 cohort B).
+    // another one. Any destination purpose except quest givers / takers (OB-00 31.10.: a turn-in or pick-up is progress, its
+    // danger belongs to the pull and fight logic - and a deferred taker would count as "no route" for the turn-in park #485 /
+    // TurnInGateSkipNoRoute #807; cand4r-B had no arrival death on such a trip); only trips that can become a far move (same
+    // map, beyond reactDistance) of roster bots on their own, never a bot led by a real player; the cohort switch (0 off, 1 all,
+    // 2 cohort B).
     if (!target->IsForced() && position && ai::cohort::Applies(sPlayerbotAIConfig.rosterFarMoveLevelGuard, bot->GetGUIDLow()) &&
+        !ai::level_guard::ExemptPurpose(uint32(destination->GetPurpose()), uint32(TravelDestinationPurpose::QuestGiver) |
+            uint32(TravelDestinationPurpose::QuestTaker)) &&
         ai::level_guard::Ready() && UsesQuestFirstProgression(bot) && !ai->HasRealPlayerMaster() &&
         position->getMapId() == bot->GetMapId() && position->distance(WorldPosition(bot)) > sPlayerbotAIConfig.reactDistance)
     {
@@ -856,6 +812,56 @@ std::vector<uint32> TakerlessTurnIns(PartitionedTravelList const& list, std::vec
     return takerless;
 }
 
+}
+
+// twow-repo#601 cand4 lever (ii): outside the anonymous namespace above - these define the ai::level_guard functions
+// LevelGuardPolicy.h declares (OB-10 review core#809: inside it they were (anonymous)::ai::level_guard).
+namespace ai::level_guard
+{
+    namespace
+    {
+        Grid sharedGrid;
+        std::atomic<bool> gridReady{ false };
+        std::once_flag gridOnce;
+    }
+
+    Counters& SharedCounters()
+    {
+        static Counters counters;
+        return counters;
+    }
+
+    Grid const& SharedGrid() { return sharedGrid; }
+    bool Ready() { return gridReady.load(std::memory_order_acquire); }
+
+    void BuildGrid()
+    {
+        std::call_once(gridOnce, []()
+        {
+            for (auto const& itr : sObjectMgr.GetAllCreatureData())
+            {
+                CreatureData const& data = itr.second;
+                if (data.spawn_flags & SPAWN_FLAG_DISABLED)
+                    continue;
+                CreatureInfo const* info = sObjectMgr.GetCreatureTemplate(data.creature_id[0]);
+                if (!info)
+                    continue;
+                FactionTemplateEntry const* faction = sObjectMgr.GetFactionTemplateEntry(info->faction);
+                if (!faction || !(faction->hostileMask & (MaskPlayer | MaskAlliance | MaskHorde)))
+                    continue;
+                Spawn spawn;
+                spawn.x = data.position.x;
+                spawn.y = data.position.y;
+                spawn.entry = info->entry;
+                spawn.levelMax = uint8_t(std::min<uint32>(info->level_max, 255));
+                spawn.rank = uint8_t(std::min<uint32>(info->rank, 255));
+                spawn.hostileMask = uint8_t(faction->hostileMask & (MaskPlayer | MaskAlliance | MaskHorde));
+                sharedGrid.Add(data.position.mapId, spawn);
+            }
+            gridReady.store(true, std::memory_order_release);
+            sLog.outBasic("[FarMoveGuard] state=grid spawns=%u", sharedGrid.Count());
+        });
+    }
 }
 
 inline std::string GetTravelPurposeName(std::string purpose)

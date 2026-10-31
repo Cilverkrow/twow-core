@@ -39,6 +39,10 @@ namespace ai::level_guard
         return spawnLevelMax >= botLevel + margin;
     }
 
+    // OB-00 31.10.: quest givers / takers are not guarded (a turn-in is progress; a deferred taker would count as "no route"
+    // for #485 / #807). purposeBits = the destination purpose, exemptMask = QuestGiver | QuestTaker (TravelValues.h).
+    inline bool ExemptPurpose(uint32_t purposeBits, uint32_t exemptMask) { return (purposeBits & exemptMask) != 0; }
+
     // Config clamps: an unusable value falls back to the default (the A/B kit then still runs the documented rule).
     inline float ClampRadius(float radius) { return (radius >= 10.0f && radius <= 100.0f) ? radius : DefaultRadius; }
     inline uint32_t ClampMargin(uint32_t margin) { return (margin >= 1 && margin <= 10) ? margin : DefaultMargin; }
