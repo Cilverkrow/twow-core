@@ -1,4 +1,5 @@
 #include "FarMovePolicy.h"
+#include "LevelGuardPolicy.h"
 
 #include <cstdlib>
 #include <iostream>
@@ -107,6 +108,50 @@ int main()
         s.NoteCost(120);
         s.NoteCost(80);
         Require(s.checkUs.load() == 240 && s.checkUsMax.load() == 120, "cost sum and maximum");
+    }
+
+    // twow-repo#601 cand4 lever (ii) (LevelGuardPolicy.h): the rule, the side mask, the clamps and the spawn grid.
+    {
+        using namespace ai::level_guard;
+        Require(Fires(13, 10, 3) && Fires(20, 10, 3) && !Fires(12, 10, 3), "level_max >= bot + margin fires, one below does not");
+        Require(HostileTo(MaskPlayer, MaskHorde) && HostileTo(MaskAlliance, MaskAlliance) && !HostileTo(MaskAlliance, MaskHorde),
+            "the player bit or the bot's side bit");
+        Require(!HostileTo(0, MaskHorde), "a neutral spawn (mask 0) never counts");
+        Require(ClampMargin(3) == 3 && ClampMargin(0) == DefaultMargin && ClampMargin(11) == DefaultMargin, "margin 1..10, else the default");
+        Require(ClampRadius(50.0f) == 50.0f && ClampRadius(5.0f) == DefaultRadius && ClampRadius(150.0f) == DefaultRadius,
+            "radius 10..100, else the default");
+
+        Grid grid;
+        auto spawn = [](float x, float y, uint32_t entry, uint8_t level, uint8_t mask, uint8_t rank = 0)
+        {
+            Spawn s; s.x = x; s.y = y; s.entry = entry; s.levelMax = level; s.hostileMask = mask; s.rank = rank; return s;
+        };
+        grid.Add(1, spawn(100.0f, 100.0f, 501, 14, MaskPlayer));          // 0 yd: level 14
+        grid.Add(1, spawn(140.0f, 100.0f, 502, 18, MaskPlayer, 1));       // 40 yd, elite: level 18
+        grid.Add(1, spawn(170.0f, 100.0f, 503, 30, MaskPlayer));          // 70 yd: outside 50
+        grid.Add(1, spawn(100.0f, 130.0f, 504, 25, MaskAlliance));        // 30 yd, hostile to the alliance only
+        grid.Add(0, spawn(100.0f, 100.0f, 505, 40, MaskPlayer));          // other map
+        Require(grid.Count() == 5, "five spawns");
+
+        Hit h = grid.Query(1, 100.0f, 100.0f, 50.0f, 12, 3, MaskHorde);
+        Require(h.fired && h.entry == 502 && h.level == 18 && h.rank == 1 && h.hostile == 2,
+            "horde L12: the highest firing spawn within 50 yd (the alliance-only one and the 70 yd one left out)");
+        Require(std::fabs(h.dist - 40.0f) < 0.01f, "its distance");
+        h = grid.Query(1, 100.0f, 100.0f, 50.0f, 12, 3, MaskAlliance);
+        Require(h.fired && h.entry == 504 && h.hostile == 3, "alliance L12: the alliance-hostile L25 counts too");
+        h = grid.Query(1, 100.0f, 100.0f, 50.0f, 16, 3, MaskHorde);
+        Require(!h.fired && h.entry == 502 && h.hostile == 2, "horde L16: nothing >= 19 - not fired, the highest hostile for the log");
+        h = grid.Query(1, 100.0f, 100.0f, 80.0f, 16, 3, MaskHorde);
+        Require(h.fired && h.entry == 503, "radius 80 reaches the L30 at 70 yd");
+        h = grid.Query(1, 1000.0f, 1000.0f, 50.0f, 1, 1, MaskHorde);
+        Require(!h.fired && h.hostile == 0 && h.entry == 0, "an empty area: nothing");
+
+        // negative coordinates and a query across cell borders (cells of 50 yd from -MapHalf)
+        Grid g2;
+        g2.Add(0, spawn(-8913.0f, -120.0f, 600, 9, MaskPlayer));
+        Require(g2.Query(0, -8949.0f, -120.0f, 50.0f, 5, 3, MaskAlliance).fired, "a spawn 36 yd away in the neighbouring cell");
+        Require(Grid::Cell(-MapHalf) == 0 && Grid::Cell(MapHalf - 1.0f) == int32_t((2.0f * MapHalf - 1.0f) / CellSize),
+            "cells from 0 at -MapHalf");
     }
 
     std::cout << "far_move_policy_tests passed\n";
