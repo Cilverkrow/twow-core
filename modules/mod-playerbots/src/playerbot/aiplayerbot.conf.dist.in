@@ -1047,6 +1047,8 @@ AiPlayerbot.QuestLoop.GiverTakerDone = 0
 # TurnInWorkDeathNotRoute: a death while working at the taker is no route death (no death_suppressed) but a turn-in failure for
 # the #485 park; only with TurnInParkFailures > 0. "[QuestFirstRoute] state=work_death". Roster bots on their own (not in a group).
 #   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid); other values act like 0.
+#   RelationWorkNoGrind also takes 3 = only cohort A (even low guid) - the second arm of a crossover unit (OB-00 31.10.2026;
+#   needs CohortPolicy ModeOnlyA, otherwise 3 acts like 0).
 AiPlayerbot.QuestLoop.RelationWorkNoGrind = 0
 AiPlayerbot.QuestLoop.RelationArriveRpgTarget = 0
 AiPlayerbot.QuestLoop.TurnInWorkDeathNotRoute = 0
@@ -1498,7 +1500,8 @@ AiPlayerbot.QuestFirstProgression.SkipSkillLockedObjectives = 0
 # quest target for .Seconds. Any quest credit (kill or item) of the quest clears it. Only objectives - givers and turn-ins never.
 # Bounded (2048 objectives). [StaleObjective] state=mark quest= entry= failures= bots= when an objective is marked, state=clear
 # when a credit ends a mark; after an empty quest search [QuestFirstRoute] state=stale_objective bot= skipped=N.
-#   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid) skips; other values act like 0.
+#   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid) skips, 3 = only cohort A (even low guid) skips - the
+#   second arm of a crossover unit (OB-00 31.10.2026; needs CohortPolicy ModeOnlyA, otherwise 3 acts like 0); other values act like 0.
 #   .Failures 1..8 (default 4), .Bots 1..8 (default 3), .WindowSeconds and .Seconds 60..86400 (default 3600).
 AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter = 0
 AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter.Failures = 4
