@@ -1025,6 +1025,9 @@ public:
     float rosterFarMoveArriveBackYards = 60.0f;  // hotfix 8.36 (#544): end the far move this far before the target, 0 = at it
     bool rosterFarMoveWatchRoute = true;  // hotfix 8.36: walk when a real player is near the route
     uint32 rosterFarMoveArriveSafe = 0;  // twow-repo#601 cand4-B: check the far-move arrival for aggro right before the teleport; 0 off, 1 all, 2 cohort B
+    uint32 rosterFarMoveLevelGuard = 0;  // twow-repo#601 cand4 lever (ii): defer a destination with a higher-level hostile spawn near it; 0 off, 1 all, 2 cohort B, 3 cohort A
+    uint32 rosterFarMoveLevelGuardMargin = 3;    // spawn level_max >= bot level + Margin (LevelGuardPolicy.h, 1..10)
+    float rosterFarMoveLevelGuardRadius = 50.0f; // yd around the chosen point, 2D (10..100)
     // twow-repo#595 P4 S0 + B1 (shortcuts by player proximity): all 0 = today's behaviour (ShortcutPolicy.h)
     uint32 shortcutNearScope = 0;  // 0 = off (ShortcutNear answers Unknown), 1 = radius, 2 = same zone or radius
     float shortcutNearRadius = 0.0f;  // yards, 0 = map visibility + ReactDistance

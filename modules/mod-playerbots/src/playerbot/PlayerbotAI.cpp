@@ -2703,6 +2703,23 @@ void PlayerbotAI::OnDeath()
                             bot->GetGUIDLow(), bot->GetLevel(), bot->GetMapId(), bot->GetZoneId(), bot->GetPositionX(), bot->GetPositionY(),
                             uint32(time(nullptr) - farMove.farMoveArrivedAt), ai::cohort::Letter(bot->GetGUIDLow()));
                 }
+                // twow-repo#601 cand4 lever (ii) (CLI-PATH 31.10.2026), log only with ActivityTrace: the trip behind an arrival
+                // death (the far-move target and the travel target's purpose / quest / entry) in its own line next to
+                // [FarMoveDeath] (same bot, same second), so the guard is judged at the destination and not at the death point;
+                // deaths up to ArriveDeathLateSeconds after the arrival as [FarMoveDeathLate] (outside the arrive_deaths count).
+                uint32 const arrivedSeconds = farMove.farMoveArrivedAt ? uint32(time(nullptr) - farMove.farMoveArrivedAt) : 0;
+                if (sPlayerbotAIConfig.activityTrace && farMove.farMoveArrivedAt && arrivedSeconds <= far_move::ArriveDeathLateSeconds)
+                {
+                    TravelTarget* tripTarget = AI_VALUE(TravelTarget*, "travel target");
+                    TravelDestination const* tripDest = tripTarget ? tripTarget->GetDestination() : nullptr;
+                    QuestTravelDestination const* tripQuest = tripDest ? dynamic_cast<QuestTravelDestination const*>(tripDest) : nullptr;
+                    sLog.outBasic("%s bot=%u level=%u cohort=%c arrived_s=%u purpose=%u quest=%u entry=%d map=%u tx=%.0f ty=%.0f x=%.0f y=%.0f",
+                        arrivedSeconds <= far_move::ArriveDeathSeconds ? "[FarMoveDeathTrip]" : "[FarMoveDeathLate]",
+                        bot->GetGUIDLow(), bot->GetLevel(), ai::cohort::Letter(bot->GetGUIDLow()), arrivedSeconds,
+                        tripDest ? uint32(tripDest->GetPurpose()) : 0u, tripQuest ? tripQuest->GetQuestId() : 0u,
+                        tripDest ? tripDest->GetEntry() : 0, farMove.farMoveTarget.getMapId(), farMove.farMoveTarget.getX(),
+                        farMove.farMoveTarget.getY(), bot->GetPositionX(), bot->GetPositionY());
+                }
             }
 
             // twow-repo#601 (CLI-PATH ArriveSafe A/B, 28.10.2026): cohort B's share of arrive_deaths (A = total - b), no switch.

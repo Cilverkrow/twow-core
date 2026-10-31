@@ -142,6 +142,9 @@ struct RejectCounts
     // twow-repo#601 (QuestLoop.InactiveReselect): objectives whose camp this bot just found empty. In the line only when > 0, so the
     // line of every bot without the switch stays as it was.
     uint32_t inactiveReselect = 0;
+    // twow-repo#601 cand4 lever (ii) (RosterFarMove.LevelGuard): destinations deferred for a higher-level hostile spawn near the
+    // point. In the line only when > 0, so the line of every bot without the switch stays as it was.
+    uint32_t levelGuard = 0;
     // twow-repo#594 / P3-0 (AiPlayerbot.DirectTargets.TraceInactive): why IsActive turned a candidate down. A split of
     // notActive only - notActive itself is counted as before (Z1b and the #485 park sum it). All 0 without the switch.
     enum InactiveReason { InactiveImpossible, InactiveMap, InactiveNoMark, InactiveLowLevelNoReward, InactiveNoTurnIn,
@@ -197,6 +200,7 @@ struct RejectCounts
             " resume_skipped=" + std::to_string(resumeSkipped) +
             " quest_loop_suppressed=" + std::to_string(questLoopSuppressed) +
             " battleground_quest=" + std::to_string(battlegroundQuest) +
+            (levelGuard ? " level_guard=" + std::to_string(levelGuard) : std::string()) +
             (inactiveReselect ? " inactive_reselect=" + std::to_string(inactiveReselect) : std::string()) + FormatInactiveReasons();
     }
 };
