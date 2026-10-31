@@ -57,7 +57,7 @@ name: CI
 # until then it was only ever compiled as a pull_request merge ref -- the pushed
 # SHA itself never had a result of its own, and release had no ccache entry of
 # its own either (it fell back to main's). A push to release/** builds under
-# its own key ccache-trixie-<ref_name>-. GitHub reads this file from the pushed
+# its own key ccache-trixie-v2-<ref_name>-. GitHub reads this file from the pushed
 # ref, so the trigger only takes effect on a release branch once this change is
 # cherry-picked there.
 on:
@@ -260,6 +260,15 @@ jobs:
       # -include it, so ccache's "include file too new" guard switched every one
       # of those TUs out of direct mode. The guard protects against headers edited
       # DURING a build; a CI checkout is never edited mid-build.
+      # REMOVED again 2026-10-31 (twow-core #823/#824): with include_file_mtime/ctime
+      # ccache served a .gch of the playerbots PCH that was built from an OLDER
+      # PlayerbotAIConfig.h (main cache restored by a PR that changes that header).
+      # GCC then did not treat the header as already included (#pragma once + PCH
+      # content check) and failed with "redefinition of ..." on every symbol. Those
+      # TUs now fall back from direct mode to preprocessor mode (still cached, only
+      # a little slower) - correctness over the last few percent of hit rate.
+      # The key prefix moved to ccache-trixie-v2- at the same time, so the poisoned
+      # v1 entries are never restored again; they expire on their own (no delete).
       #
       # Deliberately NOT keyed on a hashFiles() of this workflow, which is the
       # obvious thing to reach for and is wrong here twice over. ccache already
@@ -288,10 +297,10 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ github.workspace }}/.ccache
-          key: ccache-trixie-${{ github.ref_name }}-${{ github.run_id }}
+          key: ccache-trixie-v2-${{ github.ref_name }}-${{ github.run_id }}
           restore-keys: |
-            ccache-trixie-${{ github.ref_name }}-
-            ccache-trixie-main-
+            ccache-trixie-v2-${{ github.ref_name }}-
+            ccache-trixie-v2-main-
 
       # A run-unique disposable MariaDB, the same way twow-repo's ci.yml runs
       # persistent_active_roster_database_tests: a plain `docker run -d`
@@ -375,7 +384,7 @@ jobs:
             -v "${{ github.workspace }}/.ccache:/ccache" \
             -e CCACHE_DIR=/ccache \
             -e CCACHE_MAXSIZE=3G \
-            -e CCACHE_SLOPPINESS=pch_defines,time_macros,include_file_mtime,include_file_ctime \
+            -e CCACHE_SLOPPINESS=pch_defines,time_macros \
             -e DEBIAN_FRONTEND=noninteractive \
             -e CI_BUILD_JOBS \
             -e CI_DB_PORT \
@@ -653,7 +662,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ${{ github.workspace }}/.ccache
-          key: ccache-trixie-${{ github.ref_name }}-${{ github.run_id }}
+          key: ccache-trixie-v2-${{ github.ref_name }}-${{ github.run_id }}
 
       # Prune this ref's older ccache entries (twow-repo#486, plan B2). Every
       # saving run writes a run-unique ~2.9 GB entry and nothing ever removed
@@ -666,7 +675,7 @@ jobs:
       # ci-gcc-v2 prune: main and release/** save under different keys, and a
       # global keep-1 would have each of them delete the other's only entry.
       # A key belongs to this ref only if it is exactly
-      # ccache-trixie-<this ref_name>-<digits>, so main never matches the
+      # ccache-trixie-v2-<this ref_name>-<digits>, so main never matches the
       # entries of a branch called main-something.
       #
       # Gated on success(): after a failed build the save above still runs
@@ -687,7 +696,7 @@ jobs:
           REF_NAME: ${{ github.ref_name }}
           RUN_ID: ${{ github.run_id }}
         run: |
-          prefix="ccache-trixie-${REF_NAME}-"
+          prefix="ccache-trixie-v2-${REF_NAME}-"
           own="${prefix}${RUN_ID}"
           keys=$(gh api --paginate -X GET "repos/${REPO}/actions/caches" \
                    -f key="$prefix" -F per_page=100 \
