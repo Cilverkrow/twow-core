@@ -644,7 +644,8 @@ class Map : public GridRefManager<NGridType>
         // GraveyardManager: cmangos has Map::GetGraveyardManager(); Penqle has sObjectMgr.GetClosestGraveYard.
         // Stub manager forwards to sObjectMgr.
         struct GraveyardManagerStub {
-            WorldSafeLocsEntry const* GetClosestGraveYard(float x, float y, float z, uint32 MapId, Team team) const;
+            // level: see ObjectMgr::GetClosestGraveYard (twow-repo#575 F-b V2), 0 = no level-limited graveyard
+            WorldSafeLocsEntry const* GetClosestGraveYard(float x, float y, float z, uint32 MapId, Team team, uint32 level = 0) const;
         };
         GraveyardManagerStub& GetGraveyardManager() { static GraveyardManagerStub s; return s; }
         // HasActiveZone: cmangos has it; Penqle doesn't track active zones. Stub returns true.

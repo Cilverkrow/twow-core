@@ -2804,6 +2804,17 @@ Perf.ReportInterval = 600
 # group, since a group can resurrect. Map::IsDungeon() covers raids too.
 SoloDungeonRepopAlive.Enable = 0
 
+# Graveyard.Custom.*. Level-limited graveyards from the world table custom_graveyards
+# (twow-repo#575 F-b V2): a dead player at or below the row's max_level in that
+# zone releases to the row's graveyard instead of the zone's normal one, and the
+# spirit healer there resurrects without a teleport back. Only the zones listed in
+# Graveyard.Custom.Zones are loaded - the table also holds unreviewed Turtle rows.
+# Blackstone Island (5536): up to level 10 at the Bizzlo plaza, from 11 graveyard 149.
+#    Graveyard.Custom.Enable: 1 = on, 0 = off (every zone keeps its normal graveyards)
+#    Graveyard.Custom.Zones:  zone ids, comma separated (read once at startup)
+Graveyard.Custom.Enable = 1
+Graveyard.Custom.Zones = "5536"
+
 # GuildBank.NpcEntries*. Which creatures count as guild vault keepers - a player
 # has to stand next to one of them for guild bank actions to be accepted.
 # Previously 80917/80918 were hardcoded, so only Stormwind and Orgrimmar worked.

@@ -59,6 +59,8 @@
 #include "FunserverRareRespawn.h"
 #include "LootMgr.h"
 #include "QuestTargetRespawnPolicy.h"
+#include "CustomGraveyardPolicy.h"
+#include "Config/Config.h"
 
 ObjectMgr sObjectMgr;
 
@@ -5577,10 +5579,143 @@ void ObjectMgr::LoadGraveyardZones()
     while (result->NextRow());
 }
 
-WorldSafeLocsEntry const *ObjectMgr::GetClosestGraveYard(float x, float y, float z, uint32 MapId, Team team)
+// twow-repo#575 F9 / F-b V2 (owner 29.10.2026, CustomGraveyardPolicy.h): level-limited graveyards from custom_graveyards,
+// only for the zones in Graveyard.Custom.Zones - the table also holds Turtle rows (other zones, dungeon maps) nobody has
+// reviewed. Each row gives one entry per team with a synthetic WorldSafeLocs id (its facing in m_worldSafeLocsFacingMap).
+// Startup only: m_customGraveyards never changes afterwards, so the pointers GetClosestGraveYard hands out stay valid.
+void ObjectMgr::LoadCustomGraveyards()
+{
+    m_customGraveyards.clear();
+
+    if (!sWorld.getConfig(CONFIG_BOOL_GRAVEYARD_CUSTOM_ENABLE))
+    {
+        sLog.outString(">> Custom graveyards off (Graveyard.Custom.Enable = 0)");
+        return;
+    }
+
+    std::string const zoneText = sConfig.GetStringDefault("Graveyard.Custom.Zones", "5536");
+    std::set<uint32_t> const zones = custom_graveyard::ParseZones(zoneText);
+    if (zones.empty())
+    {
+        sLog.outString(">> Custom graveyards: no zone in Graveyard.Custom.Zones");
+        return;
+    }
+
+    std::unique_ptr<QueryResult> result(WorldDatabase.Query(
+        "SELECT `id`, `map_id`, `zone_id`, `area_id`, `max_level`, "
+        "`map_gy_alliance`, `gy_x_alliance`, `gy_y_alliance`, `gy_z_alliance`, `orientation_alliance`, "
+        "`map_gy_horde`, `gy_x_horde`, `gy_y_horde`, `gy_z_horde`, `orientation_horde` FROM `custom_graveyards`"));
+
+    if (!result)
+    {
+        sLog.outString(">> Custom graveyards: table custom_graveyards is empty");
+        return;
+    }
+
+    do
+    {
+        Field* fields = result->Fetch();
+
+        uint32 const rowId = fields[0].GetUInt32();
+        uint32 const rowMap = fields[1].GetUInt32();
+        uint32 const zoneId = fields[2].GetUInt32();
+        uint32 const areaId = fields[3].GetUInt32();
+        uint32 const maxLevel = fields[4].GetUInt32();
+
+        if (!zones.count(zoneId))
+            continue;
+
+        AreaEntry const* areaEntry = AreaEntry::GetById(zoneId);
+        if (!areaEntry || !areaEntry->IsZone())
+        {
+            sLog.outErrorDb("Table `custom_graveyards` row %u: zone_id %u is not a zone, skipped.", rowId, zoneId);
+            continue;
+        }
+
+        if (!maxLevel)
+        {
+            sLog.outErrorDb("Table `custom_graveyards` row %u has max_level 0, skipped.", rowId);
+            continue;
+        }
+
+        for (uint32 side = 0; side < 2; ++side)
+        {
+            bool const horde = side == 1;
+            uint32 const col = horde ? 10 : 5;
+            uint32 const gyMap = fields[col].GetUInt32();
+            float const gx = fields[col + 1].GetFloat();
+            float const gy = fields[col + 2].GetFloat();
+            float const gz = fields[col + 3].GetFloat();
+            float const facing = fields[col + 4].GetFloat();
+
+            if (gx == 0.0f && gy == 0.0f)
+                continue;                                    // no graveyard for this team
+
+            if (!sMapStorage.LookupEntry<MapEntry>(gyMap))
+            {
+                sLog.outErrorDb("Table `custom_graveyards` row %u: map %u does not exist, skipped.", rowId, gyMap);
+                continue;
+            }
+
+            CustomGraveyardData data;
+            data.rowId = rowId;
+            data.rowMap = rowMap;
+            data.zoneId = zoneId;
+            data.areaId = areaId;
+            data.maxLevel = maxLevel;
+            data.horde = horde;
+            data.loc.ID = custom_graveyard::SyntheticId(rowId, horde);
+            data.loc.map_id = gyMap;
+            data.loc.x = gx;
+            data.loc.y = gy;
+            data.loc.z = gz;
+            m_customGraveyards.push_back(data);
+            m_worldSafeLocsFacingMap[data.loc.ID] = facing;
+        }
+    }
+    while (result->NextRow());
+
+    sLog.outString(">> Loaded %u custom graveyard locations (Graveyard.Custom.Zones = \"%s\")",
+        uint32(m_customGraveyards.size()), zoneText.c_str());
+}
+
+WorldSafeLocsEntry const* ObjectMgr::GetCustomGraveYard(float x, float y, float z, uint32 MapId, uint32 zoneId, Team team, uint32 level) const
+{
+    if (!level || m_customGraveyards.empty())
+        return nullptr;
+
+    uint32 const areaId = sTerrainMgr.GetAreaId(MapId, x, y, z);
+
+    WorldSafeLocsEntry const* best = nullptr;
+    float bestDist = 0.0f;
+    for (CustomGraveyardData const& data : m_customGraveyards)
+    {
+        if (!custom_graveyard::TeamFits(data.horde, uint32(team)))
+            continue;
+
+        if (!custom_graveyard::Applies(data.rowMap, data.zoneId, data.areaId, data.maxLevel, MapId, zoneId, areaId, level))
+            continue;
+
+        float const dist2 = (data.loc.x - x) * (data.loc.x - x) + (data.loc.y - y) * (data.loc.y - y) + (data.loc.z - z) * (data.loc.z - z);
+        if (!best || dist2 < bestDist)
+        {
+            best = &data.loc;
+            bestDist = dist2;
+        }
+    }
+
+    return best;
+}
+
+WorldSafeLocsEntry const *ObjectMgr::GetClosestGraveYard(float x, float y, float z, uint32 MapId, Team team, uint32 level)
 {
     // search for zone associated closest graveyard
     uint32 zoneId = sTerrainMgr.GetZoneId(MapId, x, y, z);
+
+    // twow-repo#575 F-b V2: a level-limited custom graveyard of this zone wins over the zone's normal graveyards
+    // (level 0 = the caller passes no level: battlegrounds, LFG, GM commands keep the normal choice).
+    if (WorldSafeLocsEntry const* custom = GetCustomGraveYard(x, y, z, MapId, zoneId, team, level))
+        return custom;
 
     // Simulate std. algorithm:
     //   found some graveyard associated to (ghost_zone,ghost_map)

@@ -6625,7 +6625,7 @@ void Player::RepopAtGraveyard()
         //TeleOptions |= TELE_TO_REPOP_ON_GRAVEYARD;
     }
     else
-        ClosestGrave = sObjectMgr.GetClosestGraveYard(GetPositionX(), GetPositionY(), GetPositionZ(), GetMapId(), GetTeam());
+        ClosestGrave = sObjectMgr.GetClosestGraveYard(GetPositionX(), GetPositionY(), GetPositionZ(), GetMapId(), GetTeam(), GetLevel()); // level: twow-repo#575 F-b V2
 
     float orientation = GetOrientation();
 

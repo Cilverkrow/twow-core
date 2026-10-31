@@ -799,6 +799,8 @@ enum eConfigBoolValues
     CONFIG_BOOL_PERFLOG_MAP_TICK_REGION,      // twow-repo#597 (TICK-01): [MapTickRegion]
     // Solo dungeon resurrection, see Player::RepopAtGraveyard
     CONFIG_BOOL_SOLO_DUNGEON_REPOP_ALIVE,
+    // twow-repo#575 F-b V2: level-limited graveyards from custom_graveyards (zones in Graveyard.Custom.Zones)
+    CONFIG_BOOL_GRAVEYARD_CUSTOM_ENABLE,
     // Dungeon finder: fill a waiting player's group with random bots.
     // See LFT/LFTBotFill.cpp
     CONFIG_BOOL_LFT_BOTFILL_ENABLE,
