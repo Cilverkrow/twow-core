@@ -64,6 +64,7 @@
 #include "playerbot/OomBackoffPolicy.h"   // twow-repo#602 ROT-01 3c-B (Rotation.OomBackoff)
 #include "playerbot/CastWaitPolicy.h"
 #include "playerbot/GrindNeighbourPolicy.h"   // twow-repo#602 #2 (Grind.NeighbourAware): [GrindNeighbour] minute line
+#include "playerbot/SafePullPolicy.h"   // twow-repo#656 (Grind.SafePull): [SafePull] minute line
 #include "playerbot/HunterMeleeStartPolicy.h"   // twow-repo#602 (Rotation.HunterMeleeStart): [HunterMelee] minute line
 #include "playerbot/MeleeFleeBreakPolicy.h"
 #include "playerbot/FleeAwayPolicy.h"   // twow-repo#602 (c) (Rotation.FleeAway): [FleeAway] minute line
@@ -1398,6 +1399,52 @@ void ReportGrindNeighbour()
     }
 }
 
+// twow-repo#656 (AiPlayerbot.Grind.SafePull): one [SafePull] line per minute and cohort with scored passes - the counters of
+// SafePullPolicy.h as increments, then cls=<class>:<picks>/<would_change>/<changed> for the stratified readout. Nothing is written
+// when off or for a cohort without passes.
+void ReportSafePull()
+{
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (!sPlayerbotAIConfig.grindSafePull || now < lastReport + 60)
+        return;
+    lastReport = now;
+    using namespace ai::safe_pull;
+    auto take = [](std::atomic<std::uint64_t>& counter) { return (unsigned long long)counter.exchange(0, std::memory_order_relaxed); };
+    for (uint32 cohort = 0; cohort < 2; ++cohort)
+    {
+        Counters& c = counters[cohort];
+        unsigned long long const passes = take(c.passes);
+        std::string classes;
+        for (uint32 cls = 0; cls < MaxClass; ++cls)
+        {
+            unsigned long long const picks = take(classPicks[cohort][cls]);
+            unsigned long long const would = take(classWould[cohort][cls]);
+            unsigned long long const changed = take(classChanged[cohort][cls]);
+            if (!picks && !would && !changed)
+                continue;
+            if (!classes.empty())
+                classes += ',';
+            classes += std::to_string(cls) + ':' + std::to_string(picks) + '/' + std::to_string(would) + '/' + std::to_string(changed);
+        }
+        if (!passes)
+        {
+            for (std::atomic<std::uint64_t>* counter : { &c.candidates, &c.picks, &c.changed, &c.wouldChange, &c.waits, &c.wouldWait,
+                    &c.waitTimeout, &c.pickSafe, &c.ruleSafe, &c.pickRisk, &c.ruleRisk, &c.edge, &c.guarded, &c.extraYd, &c.rkLink,
+                    &c.rkTarget, &c.rkSpot, &c.rkPath, &c.capped, &c.micros })   // deaths carry over to the next line
+                counter->store(0, std::memory_order_relaxed);
+            continue;
+        }
+        sLog.outBasic("[SafePull] mode=%u cohort=%c passes=%llu candidates=%llu picks=%llu changed=%llu would_change=%llu waits=%llu "
+            "would_wait=%llu wait_timeout=%llu pick_safe=%llu rule_safe=%llu pick_risk=%llu rule_risk=%llu edge=%llu guarded=%llu "
+            "extra_yd=%llu rk_link=%llu rk_target=%llu rk_spot=%llu rk_path=%llu capped=%llu deaths=%llu us=%llu cls=%s",
+            sPlayerbotAIConfig.grindSafePull, cohort ? 'B' : 'A', passes, take(c.candidates), take(c.picks), take(c.changed),
+            take(c.wouldChange), take(c.waits), take(c.wouldWait), take(c.waitTimeout), take(c.pickSafe), take(c.ruleSafe),
+            take(c.pickRisk), take(c.ruleRisk), take(c.edge), take(c.guarded), take(c.extraYd), take(c.rkLink), take(c.rkTarget),
+            take(c.rkSpot), take(c.rkPath), take(c.capped), take(c.deaths), take(c.micros), classes.empty() ? "-" : classes.c_str());
+    }
+}
+
 // twow-repo#594 (AiPlayerbot.Rotation.ReachLosClose, CLI-ROT review): one [ReachLos] minute line - hostile reach targets out of
 // sight chased closer per cohort (evaluations), floored (walk-in) / stood (already inside the floor), episodes and those back in
 // sight within 5 s (per episode). Nothing with 0.
@@ -2011,6 +2058,7 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     ReportCastWait();     // twow-repo#602: [CastWait] once per minute (AiPlayerbot.CastWait.Preparing)
     ReportNeverPossible();  // twow-repo#602: [NeverPossible] once per minute (AiPlayerbot.Rotation.NeverPossibleSkip)
     ReportGrindNeighbour();   // twow-repo#602 #2: [GrindNeighbour] once per minute (AiPlayerbot.Grind.NeighbourAware)
+    ReportSafePull();   // twow-repo#656: [SafePull] once per minute (AiPlayerbot.Grind.SafePull)
     ReportOomBackoff();   // twow-repo#602 ROT-01 3c-B: [OomBackoff] once per minute (AiPlayerbot.Rotation.OomBackoff)
     ReportMeleeFleeBreak(); // twow-repo#602: [MeleeFleeBreak] once per minute (AiPlayerbot.Rotation.MeleeFleeBreak)
     ReportFleeAway();       // twow-repo#602 (c): [FleeAway] once per minute (AiPlayerbot.Rotation.FleeAway)
