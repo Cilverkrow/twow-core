@@ -33,6 +33,7 @@
 #include "playerbot/ProfessionTravelPolicy.h"   // P1-n ClampNearRadius
 #include "playerbot/TransportBoardPolicy.h"
 #include "playerbot/ConfigEchoPolicy.h"
+#include "playerbot/LevelGuardPolicy.h"   // twow-repo#601 cand4 lever (ii): config clamps + the startup grid
 #include "playerbot/R01CohortPolicy.h"
 #include "playerbot/LosCachePolicy.h"   // twow-repo#602 (Rotation.LosCacheMs): the read's bounds
 
@@ -1019,6 +1020,12 @@ bool PlayerbotAIConfig::Initialize()
     rosterFarMoveArriveSafe = config.GetIntDefault("AiPlayerbot.RosterFarMove.ArriveSafe", 0);
     if (rosterFarMoveArriveSafe > 2)
         rosterFarMoveArriveSafe = 0;   // twow-repo#601 cand4-B: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B)
+    // twow-repo#601 cand4 lever (ii) (LevelGuardPolicy.h): an unknown mode is off; an unusable margin / radius is the default.
+    rosterFarMoveLevelGuard = config.GetIntDefault("AiPlayerbot.RosterFarMove.LevelGuard", 0);
+    if (rosterFarMoveLevelGuard > 2)
+        rosterFarMoveLevelGuard = 0;
+    rosterFarMoveLevelGuardMargin = ai::level_guard::ClampMargin(config.GetIntDefault("AiPlayerbot.RosterFarMove.LevelGuard.Margin", 3));
+    rosterFarMoveLevelGuardRadius = ai::level_guard::ClampRadius(config.GetFloatDefault("AiPlayerbot.RosterFarMove.LevelGuard.Radius", 50.0f));
     shortcutNearScope = ai::shortcut::ClampScope(config.GetIntDefault("AiPlayerbot.Shortcut.NearScope", 0));
     shortcutNearRadius = std::max(0.0f, config.GetFloatDefault("AiPlayerbot.Shortcut.NearRadius", 0.0f));
     shortcutTestWatcherGuids = ai::shortcut::ParseGuidList(config.GetStringDefault("AiPlayerbot.Shortcut.TestWatcherGuids", ""));
@@ -1774,6 +1781,11 @@ bool PlayerbotAIConfig::Initialize()
         sTravelMgr.LoadQuestTravelTable();
     }
 
+    // twow-repo#601 cand4 lever (ii): the hostile spawn grid of RosterFarMove.LevelGuard, once (world data is loaded here), only
+    // with the switch on - off, nothing is built and the guard does nothing.
+    if (sPlayerbotAIConfig.rosterFarMoveLevelGuard)
+        ai::level_guard::BuildGrid();
+
     sLog.outString("Loading named locations...");
     sRandomPlayerbotMgr.LoadNamedLocations();
 
@@ -1888,6 +1900,9 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestRescue.KeepRequestWhenFull", Value(questRescueKeepRequestWhenFull)},
             {"Revive.SpiritHealerFull", Value(reviveSpiritHealerFull)},
             {"RosterFarMove.ArriveSafe", Value(rosterFarMoveArriveSafe)},
+            {"RosterFarMove.LevelGuard", Value(rosterFarMoveLevelGuard)},
+            {"RosterFarMove.LevelGuard.Margin", Value(rosterFarMoveLevelGuardMargin)},
+            {"RosterFarMove.LevelGuard.Radius", Value(rosterFarMoveLevelGuardRadius)},
             {"Rotation.CastLosGate", Value(rotationCastLosGate)},
             {"Rotation.CastStopFirst", Value(rotationCastStopFirst)},
             {"Rotation.DarkRuneGate", Value(rotationDarkRuneGate)},

@@ -19,6 +19,7 @@
 #include "playerbot/strategy/generic/CombatStrategy.h"
 #include "playerbot/FarFollowPolicy.h"
 #include "playerbot/FarMovePolicy.h"
+#include "playerbot/LevelGuardPolicy.h"   // twow-repo#601 cand4 lever (ii): the guard counts in the [FarMove] line
 #include "playerbot/PathFailPolicy.h"
 #include "playerbot/StartZonePolicy.h"
 #include "playerbot/DangerMapPolicy.h"
@@ -2233,6 +2234,16 @@ bool MovementAction::MoveTo2(const WorldPosition& endPos, bool idle, bool react,
                             s.checkUsMax.exchange(0, std::memory_order_relaxed));
                         safe = buf;
                     }
+                    // twow-repo#601 cand4 lever (ii) (RosterFarMove.LevelGuard): the target-choice guard's counts of this minute.
+                    if (sPlayerbotAIConfig.rosterFarMoveLevelGuard)
+                    {
+                        ai::level_guard::Counters& g = ai::level_guard::SharedCounters();
+                        char buf[96];
+                        snprintf(buf, sizeof(buf), " guard_checked=%u guard_skip=%u guard_skip_b=%u",
+                            g.checked.exchange(0, std::memory_order_relaxed), g.skip.exchange(0, std::memory_order_relaxed),
+                            g.skipB.exchange(0, std::memory_order_relaxed));
+                        safe += buf;
+                    }
                     sLog.outBasic("[FarMove] started=%u retargeted=%u arrived=%u watched=%u arrive_alt=%u arrive_walk=%u arrive_deaths=%u arrived_b=%u arrive_deaths_b=%u%s",
                         started, retargeted, arrived, watched, arriveAlt, arriveWalk, arriveDeaths, arrivedB, arriveDeathsB, safe.c_str());
                 }
@@ -2309,6 +2320,23 @@ bool MovementAction::MoveTo2(const WorldPosition& endPos, bool idle, bool react,
                 counters.arrived.fetch_add(1, std::memory_order_relaxed);
                 if (ai::cohort::InB(bot->GetGUIDLow()))
                     counters.arrivedB.fetch_add(1, std::memory_order_relaxed);
+                // twow-repo#601 cand4 lever (ii) (CLI-PATH 31.10.2026): with ActivityTrace one line per far-move arrival - the
+                // per-bot arrival counts for the bot-cluster CI and the trip behind it (origin=travel: the travel target is this
+                // trip's target; other: a MoveTo the target choice and its guard never saw). Log only.
+                if (sPlayerbotAIConfig.activityTrace)
+                {
+                    TravelTarget* travelTarget = AI_VALUE(TravelTarget*, "travel target");
+                    WorldPosition const* travelPos = travelTarget ? travelTarget->GetPosition() : nullptr;
+                    TravelDestination const* travelDest = travelTarget ? travelTarget->GetDestination() : nullptr;
+                    bool const fromTravel = travelPos && travelDest && travelPos->getMapId() == endPos.getMapId() &&
+                        travelPos->distance(endPos) <= far_move::ArriveTraceTravelYards;
+                    QuestTravelDestination const* questDest = fromTravel ? dynamic_cast<QuestTravelDestination const*>(travelDest) : nullptr;
+                    sLog.outBasic("[FarMoveArrive] bot=%u level=%u cohort=%c purpose=%u quest=%u entry=%d map=%u tx=%.0f ty=%.0f ax=%.0f ay=%.0f far_dist=%.0f origin=%s",
+                        bot->GetGUIDLow(), bot->GetLevel(), ai::cohort::Letter(bot->GetGUIDLow()),
+                        fromTravel ? uint32(travelDest->GetPurpose()) : 0u, questDest ? questDest->GetQuestId() : 0u,
+                        fromTravel ? travelDest->GetEntry() : 0, endPos.getMapId(), endPos.getX(), endPos.getY(), arrive.getX(),
+                        arrive.getY(), farStart.distance(arrive), fromTravel ? "travel" : "other");
+                }
                 lastMove.farMoveArrivedAt = now;
                 // twow-repo#595 P4 S0 (AiPlayerbot.Shortcut.Trace): counted only, the teleport below is unchanged.
                 if (sPlayerbotAIConfig.shortcutTrace)
