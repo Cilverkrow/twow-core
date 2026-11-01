@@ -57,7 +57,7 @@ name: CI
 # until then it was only ever compiled as a pull_request merge ref -- the pushed
 # SHA itself never had a result of its own, and release had no ccache entry of
 # its own either (it fell back to main's). A push to release/** builds under
-# its own key ccache-trixie-v2-<ref_name>-. GitHub reads this file from the pushed
+# its own key ccache-trixie-v3-<ref_name>-<header hash>-. GitHub reads this file from the pushed
 # ref, so the trigger only takes effect on a release branch once this change is
 # cherry-picked there.
 on:
@@ -293,14 +293,28 @@ jobs:
       # ~60 minutes each. main (push), workflow_dispatch and the weekly schedule
       # still save; a PR falls back to its own branch prefix (only ever written
       # by a dispatch run on that branch) and then to main's.
+      # v3 (OB-00 01.11., decision D): the PCH header hash is part of the key.
+      # v2 (key prefix + pch_defines,time_macros only) still restored a .gch built
+      # from an older PlayerbotAIConfig.h (release 611ccc9d after #823 went red with
+      # "redefinition of ..." against ccache-trixie-v2-release/9.x-41218055904).
+      # GCC does not re-check the headers inside a .gch, and ccache hands the stale
+      # one back, so a run must never restore a cache written with other headers.
+      # The hash covers every header under src/ and modules/ (the three PCHs -
+      # game, scripts, playerbots botpch.h - pull in most of them transitively);
+      # restore-keys stay inside the same hash. Any header change therefore means
+      # one cold build, and PCH stays on (production-like). 16 hex chars are plenty.
+      - name: PCH header hash for the ccache key
+        id: pch
+        run: echo "h=$(echo '${{ hashFiles('src/**/*.h', 'src/**/*.hpp', 'modules/**/*.h', 'modules/**/*.hpp') }}' | cut -c1-16)" >> "$GITHUB_OUTPUT"
+
       - name: Restore ccache
         uses: actions/cache/restore@v4
         with:
           path: ${{ github.workspace }}/.ccache
-          key: ccache-trixie-v2-${{ github.ref_name }}-${{ github.run_id }}
+          key: ccache-trixie-v3-${{ github.ref_name }}-${{ steps.pch.outputs.h }}-${{ github.run_id }}
           restore-keys: |
-            ccache-trixie-v2-${{ github.ref_name }}-
-            ccache-trixie-v2-main-
+            ccache-trixie-v3-${{ github.ref_name }}-${{ steps.pch.outputs.h }}-
+            ccache-trixie-v3-main-${{ steps.pch.outputs.h }}-
 
       # A run-unique disposable MariaDB, the same way twow-repo's ci.yml runs
       # persistent_active_roster_database_tests: a plain `docker run -d`
@@ -662,7 +676,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ${{ github.workspace }}/.ccache
-          key: ccache-trixie-v2-${{ github.ref_name }}-${{ github.run_id }}
+          key: ccache-trixie-v3-${{ github.ref_name }}-${{ steps.pch.outputs.h }}-${{ github.run_id }}
 
       # Prune this ref's older ccache entries (twow-repo#486, plan B2). Every
       # saving run writes a run-unique ~2.9 GB entry and nothing ever removed
@@ -675,7 +689,7 @@ jobs:
       # ci-gcc-v2 prune: main and release/** save under different keys, and a
       # global keep-1 would have each of them delete the other's only entry.
       # A key belongs to this ref only if it is exactly
-      # ccache-trixie-v2-<this ref_name>-<digits>, so main never matches the
+      # ccache-trixie-v3-<this ref_name>-<16 hex>-<digits>, so main never matches the
       # entries of a branch called main-something.
       #
       # Gated on success(): after a failed build the save above still runs
@@ -695,9 +709,10 @@ jobs:
           REPO: ${{ github.repository }}
           REF_NAME: ${{ github.ref_name }}
           RUN_ID: ${{ github.run_id }}
+          PCH_HASH: ${{ steps.pch.outputs.h }}
         run: |
-          prefix="ccache-trixie-v2-${REF_NAME}-"
-          own="${prefix}${RUN_ID}"
+          prefix="ccache-trixie-v3-${REF_NAME}-"
+          own="${prefix}${PCH_HASH}-${RUN_ID}"
           keys=$(gh api --paginate -X GET "repos/${REPO}/actions/caches" \
                    -f key="$prefix" -F per_page=100 \
                    --jq '.actions_caches[].key') || {
@@ -716,8 +731,9 @@ jobs:
           while IFS= read -r key; do
             [ -n "$key" ] || continue
             case "$key" in "$prefix"*) ;; *) continue ;; esac
-            id="${key#"$prefix"}"
+            rest="${key#"$prefix"}"; id="${rest##*-}"; hh="${rest%-*}"   # <16 hex>-<run id>; all header hashes of this ref are pruned
             case "$id" in ''|*[!0-9]*) continue ;; esac
+            case "$hh" in [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;; *) continue ;; esac
             [ "$id" -lt "$RUN_ID" ] || continue
             echo "deleting $key"
             gh cache delete "$key" --repo "$REPO" < /dev/null || true
