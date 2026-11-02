@@ -547,18 +547,29 @@ bool DungeonClearPullAction::Execute(Event& /*event*/)
     // trigger, which is combat-engine only. So without this the druid tags in
     // caster form, eats the pack's opener at caster armour/health, and shifts a
     // beat later once aggro has already flipped the engine — the live "pulls in
-    // human form, takes a few hits, then shifts to bear". Fire-and-forget: the
-    // shift is instant and doesn't interrupt (or wait on) the approach, and
-    // nothing here branches on whether it landed, so a form that can't go up
-    // can never hold the pull. See DcTankForm.
+    // human form, takes a few hits, then shifts to bear". See DcTankForm.
+    //
+    // The shift is instant, but it only PREPARES this tick and executes on the
+    // next spell update — and the commit / tag movement this same tick issues
+    // (DcMoveTo -> MovementAction::MoveTo, or the DC spline path) interrupts a
+    // preparing cast. So "shift, then walk in the same tick" cancels the shift
+    // (SPELL_FAILED_INTERRUPTED; CLI-GRP 02.11.2026,
+    // g2/CAUSE-DRUIDE-SHIFT-ABBRUCH) — the old note here, "instant and doesn't
+    // interrupt (or wait on) the approach", was wrong on the first half. With
+    // DungeonClear.BearShiftBeforeMove = 1, ShiftHoldsApproach ends this tick
+    // right after the shift (no phase work, no movement; the action consumed the
+    // tick) and the next tick runs the phase with the form up. Its stall guard
+    // allows at most one hold per window, so a form that can't go up still can
+    // never hold the pull. With 0 it is the old fire-and-forget call: nothing
+    // branches on whether it landed.
     //
     // Gated on a pull actually being live rather than called unconditionally:
     // an Idle tick with no pull target is the tank merely walking the route,
     // where it may still need caster form to drink (Smart Rest). Idle WITH a
     // target does shift — see the Idle branch, which arms it once the target is
     // resolved rather than resolving it twice.
-    if (phase != DcPullPhase::Idle)
-        DcTankForm::EnsureBearForm(botAI);
+    if (phase != DcPullPhase::Idle && DcTankForm::ShiftHoldsApproach(botAI))
+        return true;
 
     switch (phase)
     {
@@ -575,10 +586,14 @@ bool DungeonClearPullAction::Execute(Event& /*event*/)
                 return false;
             }
 
-            // A pack is in hand — arm the druid tank's bear form now, so it is
-            // already up by the time this tick's commit lands (see the top of
-            // Execute, which covers every later phase).
-            DcTankForm::EnsureBearForm(botAI);
+            // A pack is in hand — arm the druid tank's bear form now (see the top
+            // of Execute, which covers every later phase). With
+            // DungeonClear.BearShiftBeforeMove = 0 this tick's commit movement
+            // below still interrupts the preparing shift, exactly as before; with
+            // 1 the tick ends here after a shift and the commit runs next tick
+            // with the form up (same guard as the top of Execute).
+            if (DcTankForm::ShiftHoldsApproach(botAI))
+                return true;
 
             // PULL-BACK boss (BossPullbackRegistry). Two things differ from a
             // trash pull and both are structural, not tuning:
@@ -1977,9 +1992,16 @@ bool DungeonClearPullManeuverAction::Execute(Event& /*event*/)
     // retreat is never slowed to a crawl by a hit from behind.
     bot->RemoveAurasDueToSpell(1604);
 
-    // A druid tank must take the run-home hits in bear form, not caster form.
-    // Shapeshift is instant and not interrupted by the drag-back run, so refresh
-    // it every tick of the maneuver (no-op once shifted / for non-druids).
+    // A druid tank must take the run-home hits in bear form, not caster form,
+    // so refresh it every tick of the maneuver (no-op once shifted / for
+    // non-druids). The shift is instant but only PREPARES this tick: a DcMoveTo
+    // later in the same tick that reaches MovementAction::MoveTo's interrupt (or
+    // the DC spline path's CastStop) cancels it, the same mechanism as the
+    // pre-pull shift (see DcTankForm.h; CLI-GRP 02.11.2026,
+    // g2/CAUSE-DRUIDE-SHIFT-ABBRUCH). The old note here said the shift was "not
+    // interrupted by the drag-back run". DungeonClear.BearShiftBeforeMove does
+    // NOT cover this call (open follow-up): a druid that drops out of bear
+    // mid-drag can have its re-shift cancelled on every tick that also moves.
     DcFollowerLifecycle::EnsureTankBearForm(bot);
 
     // SCRIPTED PULL — CAMP LEASH. For the whole camp fight, keep the tank on the

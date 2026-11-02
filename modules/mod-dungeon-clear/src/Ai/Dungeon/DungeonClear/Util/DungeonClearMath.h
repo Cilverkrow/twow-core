@@ -223,6 +223,43 @@ namespace DungeonClearMath
     // the trigger; this carries only the decision so it is unit-testable.
     bool ShouldStandDownForPull(bool packIsPullsOwn, bool pullPhaseIdle);
 
+    // Bear-shift hold guard (pure). DungeonClear.BearShiftBeforeMove = 1 lets the
+    // druid tank's caller give up ONE tick of approach after DcTankForm issued a
+    // Bear/Dire Bear shift, because the approach's MoveTo / SplinePath would
+    // otherwise cancel the still-PREPARING instant in the same tick (CLI-GRP
+    // 02.11.2026, g2/CAUSE-DRUIDE-SHIFT-ABBRUCH). Asked only on a tick that DID
+    // issue a shift with the switch on; the caller owns both gates so the
+    // switch-0 path never touches the stamp.
+    //
+    // `lastHold` is getMSTime() of this bot's last hold (0 = never). Returns true
+    // to hold when there is no hold inside the last `windowMs`, and then writes
+    // the new stamp to `lastHoldOut` (never 0 — 0 means "never", the same
+    // now==0 corner as ShouldAbortPullForCc). Inside the window it returns false
+    // and leaves the stamp alone, so a form that is STILL down after its held
+    // tick goes back to the old fire-and-forget approach: at most one hold per
+    // window, never a stall. Modular subtraction, so a getMSTime() wrap reads as
+    // a long gap (a hold is allowed) rather than freezing the guard shut.
+    bool ShouldHoldForBearShift(std::uint32_t lastHold, std::uint32_t now,
+                                std::uint32_t windowMs, std::uint32_t& lastHoldOut);
+
+    // The guard's window. Two bounds, both met with room:
+    //  * far LONGER than the gap between the held tick and the next AI tick
+    //    (one ReactDelay: the held action returns true and SetActionDuration
+    //    sets the next update to its duration, overriding WaitForSpellCast's GCD
+    //    delay; ~50-100 ms in the probe), so a shift that failed for any other
+    //    reason is re-issued INSIDE the window and is never held twice in a row;
+    //  * SHORTER than the earliest LEGITIMATE next shift. A landed shift starts
+    //    the 1.5 s global cooldown, and EnsureBearForm's CanCastSpell lets no
+    //    re-shift out before it ends. Leaving bear can itself be free: the stock
+    //    "caster form" prerequisite and item use (UseItemAction, e.g. the Smart
+    //    Rest drink) drop the form with RemoveShapeshift, no GCD (CAUSE §4:
+    //    20-105 shift-outs per run). So a re-shift can come as early as ~1.5 s
+    //    after the hold, and it must get its own hold. (Review 02.11.: the first
+    //    cut used 3 s on the premise that every shift-out costs a second GCD; it
+    //    does not, and a 3 s window let exactly those re-shifts be interrupted.)
+    // Worst case with a form that never comes up: one lost AI tick per 1 s.
+    inline constexpr std::uint32_t BearShiftHoldWindowMs = 1000;
+
     // Orphaned-pull release gate (pure). The effective pull mode can be forced
     // OFF while a pull is still standing — a PERSISTENT anchored event takes the
     // tank (DungeonClearPullModeCurrentValue), or a Dynamic verdict drops. The

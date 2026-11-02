@@ -166,6 +166,22 @@ DungeonClear.StayDeadInRun = 0
 DungeonClear.StayDeadMaxSecs = 600
 
 #
+#    DungeonClear.BearShiftBeforeMove
+#        BUG FIX (CLI-GRP, 02.11.2026, g2/CAUSE-DRUIDE-SHIFT-ABBRUCH). Before a pull and on the walk-in engage the druid
+#        tank casts Bear/Dire Bear Form and then moves in the same tick. The instant form sits in "preparing" until the
+#        next spell update, and the approach's MoveTo (and the DC spline path) interrupts a preparing cast: the shift
+#        fails (SPELL_FAILED_INTERRUPTED, 54 times in 12 probe runs), and the druid tags the pack in caster form. 1 = after
+#        a shift the tank issues no movement in that tick (one AI tick, ~50-100 ms); the next tick the form is up and the
+#        approach goes on. At most one such hold per bot per 1 s: if the form is still down after its held tick, the
+#        approach goes on without holding, so a pull can never stall on the form. 0 = as before (shift and move in the
+#        same tick).
+#
+#        Default: 0
+#
+
+DungeonClear.BearShiftBeforeMove = 0
+
+#
 #    DungeonClear.RecordDecisions
 #        Diagnostics. 0 (default): off. 1: append every boss-approach decision
 #        (the pure DecideApproach observation + the verdict the tank acted on) as
