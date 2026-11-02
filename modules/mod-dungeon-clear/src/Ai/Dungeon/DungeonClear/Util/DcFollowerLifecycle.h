@@ -36,8 +36,13 @@ public:
     // the bot is already shifted. Used during the advanced-pull drag-back so the
     // druid tank takes the run-home hits in bear form (extra armor/HP) instead of
     // caster form. Prefers dire bear form, falling back to bear form when dire
-    // bear isn't trained. Shapeshift is instant and not movement-interrupted, so
-    // it's safe to call every tick while the tank runs back to camp.
+    // bear isn't trained. Safe to call every tick while the tank runs back to
+    // camp (no-op once shifted). But the instant shift only PREPARES in its tick,
+    // and movement issued in the same tick (MovementAction::MoveTo, the DC spline
+    // path) interrupts it: see DcTankForm.h (CLI-GRP 02.11.2026,
+    // g2/CAUSE-DRUIDE-SHIFT-ABBRUCH; the old note here said "not
+    // movement-interrupted"). DungeonClear.BearShiftBeforeMove does not cover
+    // this helper (open follow-up).
     static void EnsureTankBearForm(Player* bot);
 
     // --- Advanced-pull passive management -----------------------------------
