@@ -61,6 +61,7 @@ public:
         creators[DcKey::LootSkip] = &DungeonClearValueContext::dungeon_clear_loot_skip;
         creators[DcKey::LootCampGuid] = &DungeonClearValueContext::dungeon_clear_loot_camp_guid;
         creators[DcKey::LootCampStart] = &DungeonClearValueContext::dungeon_clear_loot_camp_start;
+        creators[DcKey::BearShiftHold] = &DungeonClearValueContext::dungeon_clear_bear_shift_hold;
         creators[DcKey::FollowedTank] = &DungeonClearValueContext::dungeon_clear_followed_tank;
         creators[DcKey::PullMode] = &DungeonClearValueContext::dungeon_clear_pull_mode;
         creators[DcKey::PullModeCurrent] = &DungeonClearValueContext::dungeon_clear_pull_mode_current;
@@ -109,6 +110,7 @@ private:
     static UntypedValue* dungeon_clear_loot_skip(PlayerbotAI* ai) { return new DungeonClearLootSkipValue(ai); }
     static UntypedValue* dungeon_clear_loot_camp_guid(PlayerbotAI* ai) { return new DungeonClearLootCampGuidValue(ai); }
     static UntypedValue* dungeon_clear_loot_camp_start(PlayerbotAI* ai) { return new DungeonClearLootCampStartValue(ai); }
+    static UntypedValue* dungeon_clear_bear_shift_hold(PlayerbotAI* ai) { return new DungeonClearBearShiftHoldValue(ai); }
     static UntypedValue* dungeon_clear_followed_tank(PlayerbotAI* ai) { return new DungeonClearFollowedTankValue(ai); }
     static UntypedValue* dungeon_clear_pull_mode(PlayerbotAI* ai) { return new DungeonClearPullModeValue(ai); }
     static UntypedValue* dungeon_clear_pull_mode_current(PlayerbotAI* ai) { return new DungeonClearPullModeCurrentValue(ai); }

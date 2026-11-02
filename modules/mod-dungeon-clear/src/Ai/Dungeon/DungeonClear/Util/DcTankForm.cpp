@@ -5,12 +5,19 @@
 
 #include "DcTankForm.h"
 
+#include <cstdint>
+
+#include "AiObjectContext.h"
 #include "Log.h"
 #include "Player.h"
 #include "PlayerbotAI.h"
 #include "Playerbots.h"
 #include "SharedDefines.h"
+#include "Timer.h"
 #include "UnitDefines.h"
+#include "Ai/Dungeon/DungeonClear/DcValueKeys.h"
+#include "Ai/Dungeon/DungeonClear/Settings/DcSettings.h"
+#include "Ai/Dungeon/DungeonClear/Util/DungeonClearMath.h"
 
 namespace
 {
@@ -88,6 +95,39 @@ namespace DcTankForm
         LOG_INFO("playerbots.dungeonclear",
                  "[dungeon-clear] {} shifting to {} before the pull", bot->GetName(),
                  spell);
+        return true;
+    }
+
+    bool ShiftHoldsApproach(PlayerbotAI* botAI)
+    {
+        // The old call, unchanged and first. With the switch at 0 the only thing
+        // that follows is the switch read below: no hold, no state, no log.
+        if (!EnsureBearForm(botAI))
+            return false;   // no shift this tick (already bear, not a bear tank, blocked)
+
+        // A shift went out THIS tick and is still PREPARING. Any MoveTo /
+        // SplinePath the caller issues in the same tick interrupts it (see the
+        // header). Switch 0 = fire and forget as before: the caller walks on.
+        Player* const bot = botAI->GetBot();
+        if (!DcSettings::GetBool(bot, "BearShiftBeforeMove"))
+            return false;
+
+        // Stall guard: at most one hold per window, stamped in this bot's own
+        // value. Own-thread state — a bot's AiObjectContext is only touched by
+        // that bot's AI update on its map thread, and no other bot reads this
+        // value — so no lock and no static map. Inside the window (the held
+        // tick's shift did not land and was re-issued) the caller walks on: the
+        // old behaviour is the worst case, never a held pull.
+        uint32& lastHold =
+            DcRefGet(botAI->GetAiObjectContext()->GetValue<uint32>(DcKey::BearShiftHold));
+        if (!DungeonClearMath::ShouldHoldForBearShift(lastHold, getMSTime(),
+                                                      DungeonClearMath::BearShiftHoldWindowMs,
+                                                      lastHold))
+            return false;
+
+        LOG_INFO("playerbots.dungeonclear",
+                 "[dungeon-clear] {} holds the approach one tick for {}", bot->GetName(),
+                 botAI->HasSpell(kDireBear) ? kDireBear : kBear);
         return true;
     }
 }

@@ -334,10 +334,14 @@ AC_ADD_CONFIG_FILE("${CMAKE_CURRENT_LIST_DIR}/conf/mod_dungeon_clear.conf.dist")
 #    ever shifted by BearDruidStrategy's "bear form" trigger, which is
 #    combat-engine only, while every DC pull is opened on the NON-combat engine;
 #    so the druid tank tagged in caster form, ate the pack's opener at caster
-#    armour, and shifted a beat late. EnsureBearForm is called fire-and-forget
-#    from DungeonClearPullAction (whenever a pull is live) and from EngageDirect
-#    (inside DC_PULL_START_RANGE), so nothing can wait on a form that won't go
-#    up.)
+#    armour, and shifted a beat late. EnsureBearForm is called through
+#    ShiftHoldsApproach from DungeonClearPullAction (whenever a pull is live) and
+#    from EngageDirect (inside DC_PULL_START_RANGE). The instant shift only
+#    PREPARES in its tick and the same tick's approach move interrupts it
+#    (CLI-GRP 02.11.2026, g2/CAUSE-DRUIDE-SHIFT-ABBRUCH). With
+#    DungeonClear.BearShiftBeforeMove = 1 the caller holds the approach one
+#    tick, at most once per window, so a form that won't go up still can't hold
+#    a pull; with 0 the call stays fire-and-forget.)
 # Data/ScriptedPullRegistry.{h,cpp}
 #   (hand-authored "peel this pack out of that room, in this order, from this
 #    exact spot" plans — the third member of the positional-override family, and

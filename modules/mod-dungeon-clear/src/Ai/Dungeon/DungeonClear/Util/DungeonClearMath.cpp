@@ -201,6 +201,21 @@ bool DungeonClearMath::ShouldTripCampSafety(bool inCombat, float healthPct,
     return elapsed >= graceMs;
 }
 
+bool DungeonClearMath::ShouldHoldForBearShift(std::uint32_t lastHold, std::uint32_t now,
+                                              std::uint32_t windowMs,
+                                              std::uint32_t& lastHoldOut)
+{
+    lastHoldOut = lastHold;
+    // Inside the window of the last hold: no second hold. Modular on purpose —
+    // across a getMSTime() wrap `now - lastHold` is still the true elapsed time.
+    if (lastHold != 0 && now - lastHold < windowMs)
+        return false;
+    // Never store 0 (it means "never held"), so a hold at the very first
+    // millisecond still blocks the next tick's.
+    lastHoldOut = now != 0 ? now : 1u;
+    return true;
+}
+
 bool DungeonClearMath::ShouldStandDownForPull(bool packIsPullsOwn, bool pullPhaseIdle)
 {
     if (packIsPullsOwn)
