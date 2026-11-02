@@ -442,6 +442,9 @@ public:
     void HandleMasterIncomingPacket(const WorldPacket& packet);
     void HandleMasterOutgoingPacket(const WorldPacket& packet);
 	void HandleTeleportAck();
+    // twow-repo#563 X5 (AiPlayerbot.ThreadSafeTeleportAck): a master's holder (other thread) hands the near teleport over; the
+    // bot's own UpdateAI acks it.
+    void RequestTeleportAck() { teleportAckRequested.store(true, std::memory_order_release); }
     void ChangeEngine(BotState type);
     void DoNextAction(bool minimal = false);
     bool CanDoSpecificAction(const std::string& name, bool isUseful = true, bool isPossible = true);
@@ -1057,6 +1060,8 @@ protected:
     std::atomic<bool> hasDeferredLogs{ false };   // the drain is free without lines (the key at 0)
     std::atomic<uint32> joinTailInviter{ 0 };      // JoinTail: the inviter (guid low) of the deferred accept
     uint32 lastParkedUpdateMs = 0;
+    // twow-repo#563 X5 (AiPlayerbot.ThreadSafeTeleportAck): set by a master's holder on another thread, taken by UpdateAI.
+    std::atomic<bool> teleportAckRequested{ false };
     // twow-repo#551 (AiPlayerbot.Park.Quiet): when a quiet parked bot may do its next idle emote (seconds, 0 = never).
     std::atomic<uint32> nextParkIdleEmote{ 0 };
     // twow-repo#601 S5a (AiPlayerbot.QuestFirstProgression.BandLadder): the episode reset a park asks for (world thread, SetParked)

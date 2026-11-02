@@ -10,6 +10,7 @@
 #include "playerbot/PlayerbotAIConfig.h"
 #include "PlayerbotDbStore.h"
 #include "playerbot/PlayerbotFactory.h"
+#include "playerbot/TeleportAckThreadPolicy.h"
 #include "playerbot/RandomPlayerbotFactory.h"
 #include "playerbot/RandomPlayerbotMgr.h"
 #include "playerbot/ServerFacade.h"
@@ -501,7 +502,22 @@ void PlayerbotHolder::UpdateSessions(uint32 elapsed)
                    (int)bot->IsBeingTeleportedNear());
         }
 
-        if (GetBotAI(bot) && bot->IsBeingTeleported())
+        // twow-repo#563 X5 (AiPlayerbot.ThreadSafeTeleportAck, default 0): a master's holder runs on the master's map thread;
+        // a bot in world on another map is updated by another thread. Its near teleport is acked by its own UpdateAI
+        // (TeleportAckThreadPolicy.h). Off: every pending teleport is acked below, as before.
+        ai::teleport_ack::Acker const acker = GetBotAI(bot) && bot->IsBeingTeleported() ?
+            ai::teleport_ack::Choose(sPlayerbotAIConfig.threadSafeTeleportAck, IsMasterHolder(), bot->IsInWorld(),
+                bot->IsBeingTeleportedNear(), bot->IsBeingTeleportedFar()) : ai::teleport_ack::Acker::Holder;
+        if (acker == ai::teleport_ack::Acker::BotThread)
+        {
+            GetBotAI(bot)->RequestTeleportAck();
+            ai::teleport_ack::Global().requested.fetch_add(1, std::memory_order_relaxed);
+        }
+        else if (acker == ai::teleport_ack::Acker::Wait)
+        {
+            ai::teleport_ack::Global().waits.fetch_add(1, std::memory_order_relaxed);
+        }
+        else if (GetBotAI(bot) && bot->IsBeingTeleported())
         {
             GetBotAI(bot)->HandleTeleportAck();
             ++teleportAcks;
