@@ -69,6 +69,9 @@ namespace DcKey
     inline constexpr char const* LootSkip                = "dungeon clear loot skip";
     inline constexpr char const* LootCampGuid            = "dungeon clear loot camp guid";
     inline constexpr char const* LootCampStart           = "dungeon clear loot camp start";
+    // getMSTime() of the druid tank's last Bear Form approach hold
+    // (DungeonClear.BearShiftBeforeMove; see DcTankForm::ShiftHoldsApproach).
+    inline constexpr char const* BearShiftHold           = "dungeon clear bear shift hold";
     inline constexpr char const* FollowedTank            = "dungeon clear followed tank";
     inline constexpr char const* PullMode                = "dungeon clear pull mode";
     inline constexpr char const* PullModeCurrent         = "dungeon clear pull mode current";

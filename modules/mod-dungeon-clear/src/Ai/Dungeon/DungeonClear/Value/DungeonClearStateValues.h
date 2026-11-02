@@ -351,6 +351,27 @@ public:
     }
 };
 
+// getMSTime() of the druid tank's last one-tick approach hold for a Bear Form
+// shift (0 = never). Written ONLY by DcTankForm::ShiftHoldsApproach, and only
+// with DungeonClear.BearShiftBeforeMove = 1 — the switch-0 path never creates
+// or touches this value. The stall guard reads it: at most one hold per
+// DungeonClearMath::BearShiftHoldWindowMs (see ShouldHoldForBearShift).
+// Deliberately its OWN value, not a DcPullContext field: the pull context is
+// Reset() at pull boundaries, and a reset between the held tick and the next
+// one would re-open the guard; this one only ever moves forward.
+// Per bot and own-thread only: a bot's AiObjectContext is touched by that
+// bot's AI update, which runs on its map's update thread, and nothing reads
+// this value cross-bot — so no lock and no static map are needed.
+// (CLI-GRP 02.11.2026, g2/CAUSE-DRUIDE-SHIFT-ABBRUCH.)
+class DungeonClearBearShiftHoldValue : public ManualSetValue<uint32>
+{
+public:
+    DungeonClearBearShiftHoldValue(PlayerbotAI* botAI)
+        : ManualSetValue<uint32>(botAI, 0u, DcKey::BearShiftHold)
+    {
+    }
+};
+
 // --- Advanced pulls -------------------------------------------------------
 // Per-run toggle for "advanced pull" (LOS pull-to-camp) mode. When on, instead
 // of the tank walking up to a trash pack and fighting in place, it marks a camp

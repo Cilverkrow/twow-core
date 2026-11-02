@@ -349,16 +349,27 @@ bool DungeonClearEngageActionBase::EngageDirect(Unit* target)
     // fight (the Leeroy path, boss engages, room clears) and, like the advanced
     // pull, it runs entirely on the non-combat engine — so the combat-only
     // "bear form" trigger doesn't fire until the pack has already landed its
-    // opener on a caster-form tank. Shift on the way in; the form is instant and
-    // costs the approach nothing. See DcTankForm.
+    // opener on a caster-form tank. Shift on the way in. See DcTankForm.
+    //
+    // The form is instant but NOT free for the approach: the shift only
+    // PREPARES this tick, and the DcMoveTo below (MovementAction::MoveTo, or
+    // the DC spline path) interrupts a preparing cast in the same tick — the
+    // shift fails with SPELL_FAILED_INTERRUPTED and the tank walks in as a
+    // caster (CLI-GRP 02.11.2026, g2/CAUSE-DRUIDE-SHIFT-ABBRUCH; the old note
+    // here said the form "costs the approach nothing"). With
+    // DungeonClear.BearShiftBeforeMove = 1, ShiftHoldsApproach gives the shift
+    // this tick — no movement, the action consumes the tick — and the next tick
+    // the form is up and the approach below runs unchanged; its stall guard
+    // allows at most one such hold per window. With 0 it is the old
+    // fire-and-forget call and never holds.
     //
     // Ranged-gated at the pull commit distance rather than fired the moment a
     // target exists: past that the tank is still crossing open ground where the
     // between-pulls machinery (Smart Rest drinking) needs caster form, and
     // nothing can aggro it yet anyway. Inside it, the opener — the class pull
     // spell below, or the committed run-in — is the very next thing to happen.
-    if (distance <= DC_PULL_START_RANGE)
-        DcTankForm::EnsureBearForm(botAI);
+    if (distance <= DC_PULL_START_RANGE && DcTankForm::ShiftHoldsApproach(botAI))
+        return true;
 
     if (distance > attackRange)
     {

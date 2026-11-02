@@ -56,18 +56,46 @@ namespace DcTankForm
     bool IsBearTank(PlayerbotAI* botAI);
 
     // IMPURE: if the bot is a bear tank and is not already in Bear/Dire Bear
-    // form, shift it. Returns true when a shift was cast this tick.
+    // form, shift it. Returns true when a shift was ISSUED this tick — not that
+    // the form is up.
     //
-    // FIRE-AND-FORGET by design — callers ignore the result and carry on with
-    // the same tick's pull work. The shift is instant, off the movement path
-    // (it neither stops a glide nor is interrupted by one), so the form comes
-    // up underneath the approach rather than in place of it. Nothing in the
-    // pull is allowed to WAIT on it: a form that cannot go up (silenced, out of
-    // mana, mid-GCD, polymorphed) must never be able to hold a pull open, which
-    // is why this returns a bool nobody branches on and why the caller has no
-    // retry state to livelock on. The next tick simply tries again, and the
-    // pull proceeds in caster form if it never lands.
+    // The shift is instant, but "instant" is not "done": CastSpell only puts it
+    // into CURRENT_GENERIC_SPELL in state PREPARING, and it executes on the
+    // bot's next spell update. Movement issued in the SAME tick cancels it —
+    // MovementAction::MoveTo / MoveTo2 interrupt any non-melee cast including a
+    // prepared instant (IsNonMeleeSpellCasted(true, false, true) ->
+    // InterruptSpell), and DcMovement's SplinePath does CastStop. So a caller
+    // that shifts and then walks in the same tick gets SPELL_FAILED_INTERRUPTED
+    // (0x23), not a bear: 54 times in 12 probe runs, and the druid tagged in
+    // caster form for as long as the approach lasted (CLI-GRP 02.11.2026,
+    // g2/CAUSE-DRUIDE-SHIFT-ABBRUCH). The old note here said the shift was "off
+    // the movement path ... neither stops a glide nor is interrupted by one" —
+    // the first half is true, the second is not.
+    //
+    // Nothing in the pull is allowed to WAIT on the form: one that cannot go up
+    // (silenced, out of mana, mid-GCD, polymorphed) must never be able to hold a
+    // pull open. Callers therefore go through ShiftHoldsApproach below, which
+    // with the switch at 0 is exactly the old fire-and-forget call.
     bool EnsureBearForm(PlayerbotAI* botAI);
+
+    // IMPURE: the call sites' entry point — calls EnsureBearForm and returns
+    // true when the caller must issue NO movement this tick and end its action
+    // with true (it consumed the tick), so the shift lands before the approach.
+    //
+    // DungeonClear.BearShiftBeforeMove = 0 (default): EnsureBearForm exactly as
+    // before, its result ignored, always false — no state read or written, no
+    // log beyond EnsureBearForm's own "shifting to" line.
+    //
+    // = 1: true only on a tick that issued a shift AND passed the stall guard
+    // (DungeonClearMath::ShouldHoldForBearShift: at most one hold per bot per
+    // BearShiftHoldWindowMs, stamped in this bot's own "dungeon clear bear
+    // shift hold" value). The next tick the form is up, EnsureBearForm returns
+    // false at once and the approach runs as before. A form still down after
+    // its held tick is re-issued inside the window and NOT held again — the
+    // worst case is the old behaviour, never a stalled pull. The cost is one AI
+    // tick per shift, the same order the stock pull's ActionNode prerequisite
+    // gives (the prerequisite is its own action tick).
+    bool ShiftHoldsApproach(PlayerbotAI* botAI);
 }
 
 #endif
