@@ -178,6 +178,10 @@ inline constexpr DcSettingDef kDcSettings[] =
     { "StayDeadInRun",            DcType::Bool,   0,   0,     1,  false },
     // Its bound: seconds after the death the corpse waits at most (then the stock release; pre-review 26.10.).
     { "StayDeadMaxSecs",          DcType::UInt, 600,  60,  3600,  false },
+    // CLI-GRP 02.11.2026 (g2/CAUSE-DRUIDE-SHIFT-ABBRUCH): the druid tank's pre-pull Bear Form shift is cancelled by the
+    // same tick's approach (MoveTo / SplinePath interrupt the preparing instant). 1 = hold that approach one tick, at most
+    // once per window (DcTankForm::ShiftHoldsApproach); server-only, default 0 = fire and forget as before.
+    { "BearShiftBeforeMove",      DcType::Bool,   0,   0,     1,  false },
 
     // Diagnostics: record every boss-approach decision (the pure DecideApproach
     // observation + verdict) to a JSONL capture file for the offline replay

@@ -223,6 +223,37 @@ namespace DungeonClearMath
     // the trigger; this carries only the decision so it is unit-testable.
     bool ShouldStandDownForPull(bool packIsPullsOwn, bool pullPhaseIdle);
 
+    // Bear-shift hold guard (pure). DungeonClear.BearShiftBeforeMove = 1 lets the
+    // druid tank's caller give up ONE tick of approach after DcTankForm issued a
+    // Bear/Dire Bear shift, because the approach's MoveTo / SplinePath would
+    // otherwise cancel the still-PREPARING instant in the same tick (CLI-GRP
+    // 02.11.2026, g2/CAUSE-DRUIDE-SHIFT-ABBRUCH). Asked only on a tick that DID
+    // issue a shift with the switch on; the caller owns both gates so the
+    // switch-0 path never touches the stamp.
+    //
+    // `lastHold` is getMSTime() of this bot's last hold (0 = never). Returns true
+    // to hold when there is no hold inside the last `windowMs`, and then writes
+    // the new stamp to `lastHoldOut` (never 0 — 0 means "never", the same
+    // now==0 corner as ShouldAbortPullForCc). Inside the window it returns false
+    // and leaves the stamp alone, so a form that is STILL down after its held
+    // tick goes back to the old fire-and-forget approach: at most one hold per
+    // window, never a stall. Modular subtraction, so a getMSTime() wrap reads as
+    // a long gap (a hold is allowed) rather than freezing the guard shut.
+    bool ShouldHoldForBearShift(std::uint32_t lastHold, std::uint32_t now,
+                                std::uint32_t windowMs, std::uint32_t& lastHoldOut);
+
+    // The guard's window. Two bounds, both met with room:
+    //  * far LONGER than the gap between the held tick and the next AI tick (a
+    //    few hundred ms at most), so a shift that failed for any other reason is
+    //    re-issued INSIDE the window and is never held twice in a row;
+    //  * no longer than the earliest LEGITIMATE next shift. A landed shift
+    //    starts the 1.5 s global cooldown, and leaving bear again for a buff
+    //    (caster form, then Mark of the Wild / Thorns) costs a second GCD-bound
+    //    cast before EnsureBearForm's CanCastSpell lets a re-shift out — so a
+    //    real re-shift comes >= 3 s after the hold and gets its own hold.
+    // Worst case with a form that never comes up: one lost AI tick per 3 s.
+    inline constexpr std::uint32_t BearShiftHoldWindowMs = 3000;
+
     // Orphaned-pull release gate (pure). The effective pull mode can be forced
     // OFF while a pull is still standing — a PERSISTENT anchored event takes the
     // tank (DungeonClearPullModeCurrentValue), or a Dynamic verdict drops. The

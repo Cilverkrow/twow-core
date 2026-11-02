@@ -352,6 +352,77 @@ TEST(DungeonClearCcAssistTest, ZeroNowLatchesToOne)
 }
 
 // ---------------------------------------------------------------------------
+// ShouldHoldForBearShift — the stall guard of DungeonClear.BearShiftBeforeMove
+// (CLI-GRP 02.11.2026, g2/CAUSE-DRUIDE-SHIFT-ABBRUCH). The druid tank gives up
+// one approach tick after a Bear Form shift so the same tick's MoveTo cannot
+// cancel the preparing instant; these pin "at most one hold per window", so a
+// form that never comes up can only ever cost one tick per window, not a pull.
+// ---------------------------------------------------------------------------
+using DungeonClearMath::BearShiftHoldWindowMs;
+using DungeonClearMath::ShouldHoldForBearShift;
+
+// Never held before: the first shift holds and stamps the hold time.
+TEST(DungeonClearBearShiftHoldTest, FirstShiftHolds)
+{
+    std::uint32_t out = 0u;
+    EXPECT_TRUE(ShouldHoldForBearShift(0u, 5000u, BearShiftHoldWindowMs, out));
+    EXPECT_EQ(out, 5000u);
+}
+
+// The held tick's shift did not land and is re-issued next tick: no second
+// hold, the stamp stays, the approach goes on as before the switch.
+TEST(DungeonClearBearShiftHoldTest, NoSecondHoldInsideTheWindow)
+{
+    std::uint32_t out = 0u;
+    EXPECT_FALSE(ShouldHoldForBearShift(5000u, 5050u, BearShiftHoldWindowMs, out));
+    EXPECT_EQ(out, 5000u);
+    EXPECT_FALSE(ShouldHoldForBearShift(5000u, 5000u + BearShiftHoldWindowMs - 1u,
+                                        BearShiftHoldWindowMs, out));
+    EXPECT_EQ(out, 5000u);
+}
+
+// A shift at or past the window (a real re-shift after a buff's GCD) holds
+// again and re-stamps.
+TEST(DungeonClearBearShiftHoldTest, HoldsAgainOnceTheWindowHasPassed)
+{
+    std::uint32_t out = 0u;
+    EXPECT_TRUE(ShouldHoldForBearShift(5000u, 5000u + BearShiftHoldWindowMs,
+                                       BearShiftHoldWindowMs, out));
+    EXPECT_EQ(out, 5000u + BearShiftHoldWindowMs);
+}
+
+// A tick every 50 ms with a form that never comes up: exactly one hold per
+// window — never a stall.
+TEST(DungeonClearBearShiftHoldTest, FailingFormHoldsOncePerWindow)
+{
+    std::uint32_t stamp = 0u;
+    std::uint32_t holds = 0u;
+    for (std::uint32_t now = 1000u; now < 1000u + 3u * BearShiftHoldWindowMs; now += 50u)
+        if (ShouldHoldForBearShift(stamp, now, BearShiftHoldWindowMs, stamp))
+            ++holds;
+    EXPECT_EQ(holds, 3u);
+}
+
+// A hold at now == 0 stores 1, not 0 (0 means "never"), so it still blocks the
+// next tick's hold.
+TEST(DungeonClearBearShiftHoldTest, ZeroNowStampsOne)
+{
+    std::uint32_t out = 0u;
+    EXPECT_TRUE(ShouldHoldForBearShift(0u, 0u, BearShiftHoldWindowMs, out));
+    EXPECT_EQ(out, 1u);
+    EXPECT_FALSE(ShouldHoldForBearShift(out, 50u, BearShiftHoldWindowMs, out));
+}
+
+// getMSTime() wraps: a stamp just before the wrap and a tick just after it is a
+// short gap (no hold), a long gap across it allows a hold.
+TEST(DungeonClearBearShiftHoldTest, WrapIsModular)
+{
+    std::uint32_t out = 0u;
+    EXPECT_FALSE(ShouldHoldForBearShift(0xFFFFFF00u, 0x00000010u, BearShiftHoldWindowMs, out));
+    EXPECT_TRUE(ShouldHoldForBearShift(0xFFFFFF00u, 0x00001000u, BearShiftHoldWindowMs, out));
+}
+
+// ---------------------------------------------------------------------------
 // ShouldAbandonPlantedDrag — the pack-cannot-follow gate. A mob holding
 // UNIT_STATE_NO_COMBAT_MOVEMENT has no chase generator, so a drag-back cannot
 // work at any distance and the tank must turn around and fight it where it
