@@ -1992,9 +1992,16 @@ bool DungeonClearPullManeuverAction::Execute(Event& /*event*/)
     // retreat is never slowed to a crawl by a hit from behind.
     bot->RemoveAurasDueToSpell(1604);
 
-    // A druid tank must take the run-home hits in bear form, not caster form.
-    // Shapeshift is instant and not interrupted by the drag-back run, so refresh
-    // it every tick of the maneuver (no-op once shifted / for non-druids).
+    // A druid tank must take the run-home hits in bear form, not caster form,
+    // so refresh it every tick of the maneuver (no-op once shifted / for
+    // non-druids). The shift is instant but only PREPARES this tick: a DcMoveTo
+    // later in the same tick that reaches MovementAction::MoveTo's interrupt (or
+    // the DC spline path's CastStop) cancels it, the same mechanism as the
+    // pre-pull shift (see DcTankForm.h; CLI-GRP 02.11.2026,
+    // g2/CAUSE-DRUIDE-SHIFT-ABBRUCH). The old note here said the shift was "not
+    // interrupted by the drag-back run". DungeonClear.BearShiftBeforeMove does
+    // NOT cover this call (open follow-up): a druid that drops out of bear
+    // mid-drag can have its re-shift cancelled on every tick that also moves.
     DcFollowerLifecycle::EnsureTankBearForm(bot);
 
     // SCRIPTED PULL — CAMP LEASH. For the whole camp fight, keep the tank on the

@@ -82,6 +82,7 @@ read_dc("src/Ai/Dungeon/DungeonClear/Util/DungeonClearMath.cpp" math)
 read_dc("src/Ai/Dungeon/DungeonClear/DcValueKeys.h" keys)
 read_dc("src/Ai/Dungeon/DungeonClear/DungeonClearValueContext.h" values)
 read_dc("src/Ai/Dungeon/DungeonClear/Value/DungeonClearStateValues.h" state_values)
+read_dc("src/Ai/Dungeon/DungeonClear/Util/DcFollowerLifecycle.h" lifecycle_h)
 
 # Key: registry row (server-only, default 0), documented with 0.
 require_text("${registry}" "{ \"BearShiftBeforeMove\",      DcType::Bool,   0,   0,     1,  false }," "registry BearShiftBeforeMove")
@@ -108,6 +109,9 @@ forbid_text("${pull}" "DcTankForm::EnsureBearForm(" "pull calls EnsureBearForm p
 forbid_text("${engage}" "the form is instant and\n    // costs the approach nothing" "old engage premise")
 forbid_text("${pull}" "the\n    // shift is instant and doesn't interrupt (or wait on) the approach" "old pull premise")
 forbid_text("${form_h}" "(it neither stops a glide nor is interrupted by one)" "old header premise")
+# The same false premise at the drag-back sibling (not switched by this fix; open follow-up), fixed as comments.
+forbid_text("${pull}" "Shapeshift is instant and not interrupted by the drag-back run" "old drag-back premise")
+forbid_text("${lifecycle_h}" "Shapeshift is instant and not movement-interrupted" "old EnsureTankBearForm premise")
 
 # The helper: EnsureBearForm first (the old call), then the switch, and only then the stamp, the guard and the log.
 # So the switch-0 path is EnsureBearForm with its result ignored: no hold, no value created or written, no log.
@@ -128,7 +132,8 @@ count_text("${form}" "DcKey::BearShiftHold" 1 "the stamp access")
 count_text("${form}" "holds the approach one tick" 1 "the hold line")
 
 # The guard rule and its window (gtest DungeonClearBearShiftHoldTest pins the timing).
-require_text("${math_h}" "    inline constexpr std::uint32_t BearShiftHoldWindowMs = 3000;" "3 s window")
+# 1 s: longer than one AI tick (the held shift's re-issue), shorter than one 1.5 s GCD (a legitimate re-shift).
+require_text("${math_h}" "    inline constexpr std::uint32_t BearShiftHoldWindowMs = 1000;" "1 s window")
 require_text("${math}" "    if (lastHold != 0 && now - lastHold < windowMs)
         return false;" "at most one hold per window")
 require_text("${math}" "    lastHoldOut = now != 0 ? now : 1u;

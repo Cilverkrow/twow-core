@@ -243,16 +243,22 @@ namespace DungeonClearMath
                                 std::uint32_t windowMs, std::uint32_t& lastHoldOut);
 
     // The guard's window. Two bounds, both met with room:
-    //  * far LONGER than the gap between the held tick and the next AI tick (a
-    //    few hundred ms at most), so a shift that failed for any other reason is
-    //    re-issued INSIDE the window and is never held twice in a row;
-    //  * no longer than the earliest LEGITIMATE next shift. A landed shift
-    //    starts the 1.5 s global cooldown, and leaving bear again for a buff
-    //    (caster form, then Mark of the Wild / Thorns) costs a second GCD-bound
-    //    cast before EnsureBearForm's CanCastSpell lets a re-shift out — so a
-    //    real re-shift comes >= 3 s after the hold and gets its own hold.
-    // Worst case with a form that never comes up: one lost AI tick per 3 s.
-    inline constexpr std::uint32_t BearShiftHoldWindowMs = 3000;
+    //  * far LONGER than the gap between the held tick and the next AI tick
+    //    (one ReactDelay: the held action returns true and SetActionDuration
+    //    sets the next update to its duration, overriding WaitForSpellCast's GCD
+    //    delay; ~50-100 ms in the probe), so a shift that failed for any other
+    //    reason is re-issued INSIDE the window and is never held twice in a row;
+    //  * SHORTER than the earliest LEGITIMATE next shift. A landed shift starts
+    //    the 1.5 s global cooldown, and EnsureBearForm's CanCastSpell lets no
+    //    re-shift out before it ends. Leaving bear can itself be free: the stock
+    //    "caster form" prerequisite and item use (UseItemAction, e.g. the Smart
+    //    Rest drink) drop the form with RemoveShapeshift, no GCD (CAUSE §4:
+    //    20-105 shift-outs per run). So a re-shift can come as early as ~1.5 s
+    //    after the hold, and it must get its own hold. (Review 02.11.: the first
+    //    cut used 3 s on the premise that every shift-out costs a second GCD; it
+    //    does not, and a 3 s window let exactly those re-shifts be interrupted.)
+    // Worst case with a form that never comes up: one lost AI tick per 1 s.
+    inline constexpr std::uint32_t BearShiftHoldWindowMs = 1000;
 
     // Orphaned-pull release gate (pure). The effective pull mode can be forced
     // OFF while a pull is still standing — a PERSISTENT anchored event takes the

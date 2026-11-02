@@ -381,14 +381,28 @@ TEST(DungeonClearBearShiftHoldTest, NoSecondHoldInsideTheWindow)
     EXPECT_EQ(out, 5000u);
 }
 
-// A shift at or past the window (a real re-shift after a buff's GCD) holds
-// again and re-stamps.
+// A shift at or past the window (a real re-shift after the form was dropped
+// again) holds again and re-stamps.
 TEST(DungeonClearBearShiftHoldTest, HoldsAgainOnceTheWindowHasPassed)
 {
     std::uint32_t out = 0u;
     EXPECT_TRUE(ShouldHoldForBearShift(5000u, 5000u + BearShiftHoldWindowMs,
                                        BearShiftHoldWindowMs, out));
     EXPECT_EQ(out, 5000u + BearShiftHoldWindowMs);
+}
+
+// The earliest legitimate re-shift: the held shift lands and starts the 1.5 s
+// GCD, the form is dropped for free (RemoveShapeshift: the "caster form"
+// prerequisite, a drink), and the pull re-shifts the moment the GCD ends. That
+// shift must get its own hold, so the window has to be shorter than one GCD;
+// the held tick's own re-issue one AI tick later must not.
+TEST(DungeonClearBearShiftHoldTest, ReshiftOneGcdLaterHoldsAgain)
+{
+    std::uint32_t stamp = 0u;
+    EXPECT_TRUE(ShouldHoldForBearShift(stamp, 5000u, BearShiftHoldWindowMs, stamp));
+    EXPECT_FALSE(ShouldHoldForBearShift(stamp, 5100u, BearShiftHoldWindowMs, stamp));
+    EXPECT_TRUE(ShouldHoldForBearShift(stamp, 5000u + 1500u, BearShiftHoldWindowMs, stamp));
+    EXPECT_EQ(stamp, 6500u);
 }
 
 // A tick every 50 ms with a form that never comes up: exactly one hold per

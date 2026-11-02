@@ -172,7 +172,7 @@ DungeonClear.StayDeadMaxSecs = 600
 #        next spell update, and the approach's MoveTo (and the DC spline path) interrupts a preparing cast: the shift
 #        fails (SPELL_FAILED_INTERRUPTED, 54 times in 12 probe runs), and the druid tags the pack in caster form. 1 = after
 #        a shift the tank issues no movement in that tick (one AI tick, ~50-100 ms); the next tick the form is up and the
-#        approach goes on. At most one such hold per bot per 3 s: if the form is still down after its held tick, the
+#        approach goes on. At most one such hold per bot per 1 s: if the form is still down after its held tick, the
 #        approach goes on without holding, so a pull can never stall on the form. 0 = as before (shift and move in the
 #        same tick).
 #
