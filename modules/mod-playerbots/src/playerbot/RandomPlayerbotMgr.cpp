@@ -99,6 +99,7 @@
 #include "ObjectAccessor.h"
 #include "playerbot/BotSlots.h"
 #include "playerbot/ShortcutPolicy.h"
+#include "playerbot/TeleportAckThreadPolicy.h"   // twow-repo#563 X5: [WorldBots] teleport_ack_* counts
 #include <fstream>
 #include <sstream>
 #include <functional>
@@ -2424,10 +2425,19 @@ void RandomPlayerbotMgr::TraceWorldBots(uint64 desiredBots, uint64 sessionsUs, u
         ai::world_bots::Window const& w = worldBotsWindow;
         // twow-repo#597 (TICK-01, AiPlayerbot.WorldBotsHookTrace): hook times at the end; empty when off.
         std::string const hook = w.HookSuffix(sPlayerbotAIConfig.worldBotsHookTrace);
+        // twow-repo#563 X5 (AiPlayerbot.ThreadSafeTeleportAck): the teleport acks handed to the bots' own threads, at the very
+        // end (increments since the last line); empty when off.
+        std::string tpAck;
+        if (sPlayerbotAIConfig.threadSafeTeleportAck)
+        {
+            ai::teleport_ack::Counters& c = ai::teleport_ack::Global();
+            tpAck = " teleport_ack_requested=" + std::to_string(c.requested.exchange(0)) +
+                " teleport_ack_bot=" + std::to_string(c.botAcks.exchange(0)) + " teleport_ack_wait=" + std::to_string(c.waits.exchange(0));
+        }
         sLog.outBasic("[WorldBots] passes=%u bots_avg=%u sessions_ms=%u process_ms=%u other_ms=%u max_pass_ms=%u share_pm=%u logins=%u teleport_ack_calls=%u online=%u%s",
             w.passes, w.passes ? uint32(w.bots / w.passes) : 0u, uint32(w.sessionsUs / 1000), uint32(w.processUs / 1000),
             uint32(w.otherUs / 1000), uint32(w.maxPassUs / 1000), w.PerMille(), w.logins, w.teleportAcks, uint32(GetPlayerbotsAmount()),
-            hook.c_str());
+            (hook + tpAck).c_str());
         worldBotsWindow.Reset(now);
     }
     worldBotsWindow.Add(desiredBots, sessionsUs, processUs, otherUs, logins, acks);

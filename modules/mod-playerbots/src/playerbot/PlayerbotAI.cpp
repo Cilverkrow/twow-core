@@ -20,6 +20,7 @@
 #include "playerbot/RotCastPolicy.h"
 #include "playerbot/RotCastTrace.h"     // twow-repo#602 ROT-01 D0 (AiPlayerbot.Rotation.CastTrace)
 #include "playerbot/CastWhileMovingPolicy.h"   // twow-repo#333 P1-w: a loot cast after StopMoving; #602 Rotation.CastStopFirst
+#include "playerbot/TeleportAckThreadPolicy.h"   // twow-repo#563 X5 (ThreadSafeTeleportAck)
 #include "Maps/PathFinder.h"
 #include <stdarg.h>
 #include <array>
@@ -1287,6 +1288,15 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
 {
     // twow-repo#563 (X1): before the park check, so a parked bot's inbox does not fill up.
     HandleQueuedBotPackets();
+
+    // twow-repo#563 X5 (AiPlayerbot.ThreadSafeTeleportAck): the near teleport a master's holder handed over (it runs on the
+    // master's map thread) is acked here, on the bot's own map thread. Before the park check: a parked bot arrives too.
+    if (teleportAckRequested.exchange(false, std::memory_order_acq_rel) &&
+        ai::teleport_ack::BotThreadAcks(true, bot->IsInWorld(), bot->IsBeingTeleportedNear()))
+    {
+        HandleTeleportAck();
+        ai::teleport_ack::Global().botAcks.fetch_add(1, std::memory_order_relaxed);
+    }
 
     // twow-repo#602 ROT-01 D0 (AiPlayerbot.Rotation.CastTrace): this thread's cast counters reach the minute book once
     // the World thread closed a window.

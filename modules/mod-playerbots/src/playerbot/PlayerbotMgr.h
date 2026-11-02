@@ -45,6 +45,9 @@ public:
     void UpdateSessions(uint32 elapsed);
     // twow-repo#541: far-teleport ACKs driven by UpdateSessions since start ([WorldBots]).
     uint32 TeleportAcks() const { return teleportAcks; }
+    // twow-repo#563 X5 (AiPlayerbot.ThreadSafeTeleportAck): true for a master's holder (PlayerbotMgr) - it runs inside the
+    // master's Map::Update, in parallel with the maps of its bots (TeleportAckThreadPolicy.h).
+    virtual bool IsMasterHolder() const { return false; }
 
     void ForEachPlayerbot(std::function<void(Player*)> fct) const;
 
@@ -173,6 +176,7 @@ public:
     virtual std::vector<std::string> GetBotErrors(std::string botName) override;
 
     Player* GetMaster() const { return master; };
+    bool IsMasterHolder() const override { return true; }
 
     void SaveToDB();
 
