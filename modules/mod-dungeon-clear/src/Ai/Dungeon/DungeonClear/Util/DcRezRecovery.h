@@ -77,8 +77,11 @@ namespace DcRezRecovery
 
     // DungeonClear.RezCapableOnly (CLI-GRP 04.11.2026, g1/CAUSE-DC-REVIVE-PFAD-20261104): can this LIVING member
     // resurrect out of combat now - the rank of RezActionNameFor its own spell resolution picks ("spell id", as the
-    // rung's CastSpell resolves it), known by the member itself (not the pet), off cooldown, affordable. capableOnly =
-    // false is the class rule. Pure verdict: DcRezDecision::CanRezNow. Only called while someone is dead.
+    // rung's CastSpell resolves it), known by the member itself (not the pet), off cooldown, within its mana POOL (it
+    // may drink first). capableOnly = false, or a member off a dungeon map, is the class rule. Pure verdict:
+    // DcRezDecision::CanRezNow. Cost: only while someone is dead, but then on every EvaluateImpl (each follower rung
+    // tick of a living rez class) and every veto ask, per living rez-class member - a value lookup ("spell id" itself
+    // is cached, recomputed every 5 s), HasSpell, the spell entry and its cost.
     bool CanRezNow(Player* member, bool capableOnly);
 
     // DungeonClear.StayDeadInRun (g1n 26.10.2026): true while a LIVING rez-class member of `bot`'s group stands on

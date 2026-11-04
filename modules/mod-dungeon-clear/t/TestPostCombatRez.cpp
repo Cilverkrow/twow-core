@@ -461,12 +461,16 @@ namespace
     using DcRezDecision::CanRezNow;
     using DcRezDecision::RezCaster;
 
-    // A druid bot: rez class, but "revive" resolves to no spell it knows in 1.12.
+    // A druid bot: rez class, but "revive" resolves to no spell it knows in 1.12. Everything else passes, so only
+    // the missing spell can reject it.
     RezCaster DruidNoRezSpell()
     {
         RezCaster c;
         c.isRezClass = true;
         c.isBot = true;
+        c.spellReady = true;
+        c.powerCost = 0;
+        c.maxPower = 1000;
         return c;
     }
 
@@ -479,7 +483,7 @@ namespace
         c.spellId = 7328;
         c.spellReady = true;
         c.powerCost = 125;
-        c.power = 400;
+        c.maxPower = 400;
         return c;
     }
 }
@@ -494,14 +498,14 @@ TEST(DcRezCapableTest, PaladinWithRedemptionManaAndNoCooldownCanRez)
     EXPECT_TRUE(CanRezNow(PaladinWithRedemption(), true));
 }
 
-TEST(DcRezCapableTest, TooLittleManaOrCooldownCannotRez)
+TEST(DcRezCapableTest, ManaPoolTooSmallOrCooldownCannotRez)
 {
-    RezCaster lowMana = PaladinWithRedemption();
-    lowMana.power = 124;  // one short of the rank's cost
-    EXPECT_FALSE(CanRezNow(lowMana, true));
+    RezCaster smallPool = PaladinWithRedemption();
+    smallPool.maxPower = 124;  // one short of the rank's cost: can never afford it
+    EXPECT_FALSE(CanRezNow(smallPool, true));
 
     RezCaster exact = PaladinWithRedemption();
-    exact.power = exact.powerCost;
+    exact.maxPower = exact.powerCost;
     EXPECT_TRUE(CanRezNow(exact, true));
 
     RezCaster cooldown = PaladinWithRedemption();
@@ -509,11 +513,20 @@ TEST(DcRezCapableTest, TooLittleManaOrCooldownCannotRez)
     EXPECT_FALSE(CanRezNow(cooldown, true));
 }
 
+TEST(DcRezCapableTest, ADrainedRezzerWithTheManaPoolStaysCapable)
+{
+    // Right after a fight the paladin may be at 0 mana: it stays electable and drinks first (the rung yields to
+    // drink/eat), so the episode is not cut to NoRezzer and the veto is not dropped. Only the pool counts.
+    RezCaster drained = PaladinWithRedemption();
+    drained.maxPower = drained.powerCost + 1;
+    EXPECT_TRUE(CanRezNow(drained, true));
+}
+
 TEST(DcRezCapableTest, SwitchOffIsTheOldClassRule)
 {
     EXPECT_TRUE(CanRezNow(DruidNoRezSpell(), false));  // the class counts, as before
     RezCaster lowMana = PaladinWithRedemption();
-    lowMana.power = 0;
+    lowMana.maxPower = 0;
     EXPECT_TRUE(CanRezNow(lowMana, false));
     RezCaster mage;  // no rez class: never, either way
     mage.isBot = true;
@@ -570,7 +583,7 @@ TEST(DcRezCapableTest, OnlyAnIncapableDruidLeftIsNoRezzer)
 
 TEST(DcRezCapableTest, StayDeadVetoNeedsACapableRezzer)
 {
-    // StayDeadInRunVeto passes LivingRezzerOnMap, which with the switch asks CanRezNow of each living rez class.
+    // StayDeadInRunVeto passes LivingRezzerOnMap, which counts a living member iff CanRezNow(member, switch).
     using DcRunRobust::StayDead;
     // Only an incapable druid alive: switch 1 -> no veto (the corpse releases, the ghost walk runs) ...
     EXPECT_FALSE(StayDead(true, true, true, false, CanRezNow(DruidNoRezSpell(), true), 30, 600));
@@ -578,4 +591,8 @@ TEST(DcRezCapableTest, StayDeadVetoNeedsACapableRezzer)
     EXPECT_TRUE(StayDead(true, true, true, false, CanRezNow(DruidNoRezSpell(), false), 30, 600));
     // A capable paladin alive: the veto holds either way.
     EXPECT_TRUE(StayDead(true, true, true, false, CanRezNow(PaladinWithRedemption(), true), 30, 600));
+    // A living HUMAN druid keeps the class rule, so it still holds the corpse with the switch (declared exemption).
+    RezCaster humanDruid = DruidNoRezSpell();
+    humanDruid.isBot = false;
+    EXPECT_TRUE(StayDead(true, true, true, false, CanRezNow(humanDruid, true), 30, 600));
 }
