@@ -1,5 +1,6 @@
 
 #include "playerbot/playerbot.h"
+#include <algorithm>
 #include <chrono>
 #include <stdarg.h>
 #include <iomanip>
@@ -940,10 +941,10 @@ bool Engine::KnownSpellNodeSkip(TriggerNode* node)
         h.spellAction = cast != nullptr;
         if (cast)
         {
-            h.keepsUnknown = cast->KeepsUnknownSpell() || cast->GetSpellName() == "mount";
+            h.keepsUnknown = cast->NodeCheckKeepsUnknownSpell() || cast->NodeCheckSpellName() == "mount";
             if (!h.keepsUnknown)
             {
-                Value<uint32>* const idValue = aiObjectContext->GetValue<uint32>("spell id", cast->GetSpellName());
+                Value<uint32>* const idValue = aiObjectContext->GetValue<uint32>("spell id", cast->NodeCheckSpellName());
                 if (idValue && stampChanged)
                     idValue->Reset();
                 h.spellKnown = !idValue || idValue->Get() != 0;

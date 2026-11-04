@@ -18,7 +18,12 @@ namespace ai
         bool ShouldReactionInterruptCast() const override { return true; }
 
         bool HasReachAction() { return !GetReachActionName().empty(); }
-        
+
+        // twow-repo#602 (AiPlayerbot.Rotation.KnownSpellNodes): the two facts Engine::KnownSpellNodeSkip reads - the spell name
+        // its "spell id" value is keyed by, and whether the action keeps its full checks for a runtime / vehicle spell name.
+        const std::string& NodeCheckSpellName() const { return GetSpellName(); }
+        bool NodeCheckKeepsUnknownSpell() const { return KeepsUnknownSpell(); }
+
     protected:
         const uint32& GetSpellID() const { return spellId; }
         const std::string& GetSpellName() const { return spellName; }
