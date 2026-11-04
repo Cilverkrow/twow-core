@@ -1,6 +1,6 @@
 cmake_policy(VERSION 3.16)
-# twow-repo#568 strategy diet, group g4 (hunter + generic). Every fix sits behind its own switch
-# AiPlayerbot.Diet.<Key>, default 0; with 0 the old trigger/strategy/action path runs unchanged.
+# twow-repo#568 strategy diet, group g4 (hunter + generic). The six AiPlayerbot.Diet.* switches were accepted (profile 1)
+# and retired (switch audit A2 #1, owner 04.11.2026 "alter code löschen"): the fixed path is the only path.
 if(NOT DEFINED PB_SOURCE_DIR)
   message(FATAL_ERROR "PB_SOURCE_DIR is required")
 endif()
@@ -55,7 +55,7 @@ file(READ "${PB_SOURCE_DIR}/strategy/hunter/HunterAiObjectContext.cpp" hunter_co
 region("${hunter_strategy}" "#ifdef MANGOSBOT_ZERO" "#endif" hunter_zero)
 require_text("${hunter_strategy}" "#include \"playerbot/PlayerbotAIConfig.h\"" "HunterStrategy.cpp includes the config")
 
-# Every switch defaults to 0.
+# Every switch is retired: no member, no reader, no dist key.
 foreach(pair
     "dietHunterBestSting|HunterBestSting"
     "dietHunterTalentShotsKnown|HunterTalentShotsKnown"
@@ -64,9 +64,9 @@ foreach(pair
   string(REPLACE "|" ";" parts "${pair}")
   list(GET parts 0 member)
   list(GET parts 1 key)
-  require_text("${config_h}" "bool ${member} = false;" "${member} member default false")
-  require_text("${config_cpp}" "${member} = config.GetBoolDefault(\"AiPlayerbot.Diet.${key}\", false);" "${key} read with default 0")
-  require_text("${config_dist}" "\nAiPlayerbot.Diet.${key} = 0\n" "${key} = 0 in the dist config")
+  forbid_text("${config_h}" "${member}" "${member} member (retired)")
+  forbid_text("${config_cpp}" "${member}" "${key} reader (retired)")
+  forbid_text("${config_dist}" "AiPlayerbot.Diet.${key}" "${key} in the dist config (retired)")
 endforeach()
 
 # ---------------------------------------------------------------------------------------------------------
@@ -74,19 +74,20 @@ endforeach()
 # fires only when a sting of the node can be used, serpent sting on mana targets while viper sting is unknown.
 # The manual 'sting serpent/scorpid/viper' strategies keep 'no stings' with its old result.
 region("${hunter_zero}" "void HunterStingStrategy::InitCombatTriggers" "\n}\n" sting_base)
-require_text("${sting_base}" "    if (!sPlayerbotAIConfig.dietHunterBestSting)\n    {\n        triggers.push_back(new TriggerNode(\n            \"no stings\",\n            NextAction::array(0, new NextAction(\"viper sting\", ACTION_NORMAL + 5), NULL)));\n    }" "D10 base viper node only with the switch off")
+forbid_text("${sting_base}" "\"no stings\"," "D10 base 'no stings' node")
 forbid_text("${sting_base}" "\n    triggers.push_back(new TriggerNode(\n        \"no stings\"" "D10 ungated base 'no stings' node")
 forbid_text("${sting_base}" "no stings usable\"," "D10 base strategy registers no 'no stings usable' node")
 require_text("${sting_base}" "\"serpent sting on attacker\", ACTION_HIGH + 2" "D10 on-attacker serpent node kept")
 require_text("${sting_base}" "\"viper sting on attacker\", ACTION_HIGH + 1" "D10 on-attacker viper node kept")
 
-set(both_stings "    if (sPlayerbotAIConfig.dietHunterBestSting)\n    {\n        triggers.push_back(new TriggerNode(\n            \"no stings usable\",\n            NextAction::array(0, new NextAction(\"viper sting\", ACTION_NORMAL + 5), new NextAction(\"serpent sting\", ACTION_NORMAL + 4), NULL)));\n        return;\n    }\n\n    triggers.push_back(new TriggerNode(\n        \"no stings\",\n        NextAction::array(0, new NextAction(\"serpent sting\", ACTION_NORMAL + 4), NULL)));")
+set(both_stings "    triggers.push_back(new TriggerNode(\n        \"no stings usable\",\n        NextAction::array(0, new NextAction(\"viper sting\", ACTION_NORMAL + 5), new NextAction(\"serpent sting\", ACTION_NORMAL + 4), NULL)));")
 foreach(part "Pvp" "Pve")
   region("${hunter_zero}" "void HunterSting${part}Strategy::InitCombatTriggers" "\n}\n" sting_part)
-  require_text("${sting_part}" "${both_stings}" "D10 ${part}: one 'no stings usable' node with both stings (switch on), the old serpent 'no stings' node (switch off)")
+  require_text("${sting_part}" "${both_stings}" "D10 ${part}: one 'no stings usable' node with both stings")
+  forbid_text("${sting_part}" "\"no stings\"," "D10 ${part}: the old serpent 'no stings' node")
 endforeach()
 region("${hunter_zero}" "void HunterStingRaidStrategy::InitCombatTriggers" "\n}\n" sting_raid)
-require_text("${sting_raid}" "    if (sPlayerbotAIConfig.dietHunterBestSting)\n    {\n        triggers.push_back(new TriggerNode(\n            \"no stings usable\",\n            NextAction::array(0, new NextAction(\"viper sting\", ACTION_NORMAL + 5), NULL)));\n    }" "D10 raid: viper 'no stings usable' node only with the switch on")
+require_text("${sting_raid}" "    triggers.push_back(new TriggerNode(\n        \"no stings usable\",\n        NextAction::array(0, new NextAction(\"viper sting\", ACTION_NORMAL + 5), NULL)));" "D10 raid: viper 'no stings usable' node")
 forbid_text("${sting_raid}" "serpent sting" "D10 raid gets no serpent sting")
 
 # Manual 'sting <x>' strategies (also 'sting scorpid', whose action has no health/mana rule) keep 'no stings'.
@@ -107,20 +108,21 @@ region("${hunter_triggers_cpp}" "bool HunterNoStingsUsableTrigger::IsActive()" "
 require_order("${no_stings_usable}" "    if (!HunterNoStingsActiveTrigger::IsActive())\n        return false;\n" "AI_VALUE2(uint32, \"spell id\", \"viper sting\")" "D10 old check first, then the spell lookups")
 require_text("${no_stings_usable}" "    const bool viperKnown = AI_VALUE2(uint32, \"spell id\", \"viper sting\") != 0;\n    const bool targetHasMana = AI_VALUE2(uint8, \"mana\", \"current target\") >= 10;\n    if (viperKnown && targetHasMana)\n        return true;\n\n    return AI_VALUE2(uint8, \"health\", \"current target\") > 50 && (!targetHasMana || !viperKnown) &&\n        AI_VALUE2(uint32, \"spell id\", \"serpent sting\") != 0;" "D10 viper case, then the serpent case mirroring serpent isUseful")
 
-# Full switch-on return statements, followed by the unchanged old line.
+# The action rules (the old serpent / viper return lines are gone).
 region("${hunter_actions_cpp}" "bool CastSerpentStingAction::isUseful()" "\n}\n" serpent_useful)
-require_text("${serpent_useful}" "    if (sPlayerbotAIConfig.dietHunterBestSting)\n    {\n        return CastRangedDebuffSpellAction::isUseful() && AI_VALUE2(uint8, \"health\", GetTargetName()) > 50 &&\n            (!(AI_VALUE2(uint8, \"mana\", GetTargetName()) >= 10) || !AI_VALUE2(uint32, \"spell id\", \"viper sting\"));\n    }\n\n    return CastRangedDebuffSpellAction::isUseful() && AI_VALUE2(uint8, \"health\", GetTargetName()) > 50 && !(AI_VALUE2(uint8, \"mana\", GetTargetName()) >= 10);" "D10 serpent: full switch-on return, then the old line")
+require_text("${serpent_useful}" "    return CastRangedDebuffSpellAction::isUseful() && AI_VALUE2(uint8, \"health\", GetTargetName()) > 50 &&\n        (!(AI_VALUE2(uint8, \"mana\", GetTargetName()) >= 10) || !AI_VALUE2(uint32, \"spell id\", \"viper sting\"));" "D10 serpent: mana targets left to a known viper sting")
+forbid_text("${serpent_useful}" "!(AI_VALUE2(uint8, \"mana\", GetTargetName()) >= 10);" "D10 serpent: the old rule without the viper check")
 region("${hunter_actions_cpp}" "bool CastViperStingAction::isUseful()" "\n}\n" viper_useful)
-require_text("${viper_useful}" "    if (sPlayerbotAIConfig.dietHunterBestSting && !AI_VALUE2(uint32, \"spell id\", \"viper sting\"))\n        return false;\n\n    return CastRangedDebuffSpellAction::isUseful() && AI_VALUE2(uint8, \"mana\", GetTargetName()) >= 10;" "D10 viper: known gate, then the old line")
+require_text("${viper_useful}" "    if (!AI_VALUE2(uint32, \"spell id\", \"viper sting\"))\n        return false;\n\n    return CastRangedDebuffSpellAction::isUseful() && AI_VALUE2(uint8, \"mana\", GetTargetName()) >= 10;" "D10 viper: known gate, then the old line")
 
 # ---------------------------------------------------------------------------------------------------------
 # D19 (AiPlayerbot.Diet.HunterTalentShotsKnown): deterrence / scatter shot on own known+ready triggers,
 # scatter shot on the closest attacker targeting the bot.
 region("${hunter_zero}" "void HunterBuffStrategy::InitCombatTriggers" "\n}\n" buff_combat)
-require_text("${buff_combat}" "        sPlayerbotAIConfig.dietHunterTalentShotsKnown ? \"deterrence\" : \"target of attacker close\",  // twow-repo#568 (D19)\n        NextAction::array(0, new NextAction(\"deterrence\", ACTION_EMERGENCY + 1), NULL)));" "D19 deterrence node on the switched trigger, same action and relevance")
+require_text("${buff_combat}" "        \"deterrence\",  // twow-repo#568 (D19)\n        NextAction::array(0, new NextAction(\"deterrence\", ACTION_EMERGENCY + 1), NULL)));" "D19 deterrence node on its own trigger, same action and relevance")
 foreach(part "Pvp" "Pve")
   region("${hunter_zero}" "void HunterCc${part}Strategy::InitCombatTriggers" "\n}\n" cc_part)
-  require_text("${cc_part}" "        sPlayerbotAIConfig.dietHunterTalentShotsKnown ? \"scatter shot on closest attacker\" : \"target of attacker close\",  // twow-repo#568 (D19)\n        NextAction::array(0, new NextAction(\"scatter shot on closest attacker targeting me\", ACTION_INTERRUPT + 2), NULL)));" "D19 ${part} scatter node on the switched trigger")
+  require_text("${cc_part}" "        \"scatter shot on closest attacker\",  // twow-repo#568 (D19)\n        NextAction::array(0, new NextAction(\"scatter shot on closest attacker targeting me\", ACTION_INTERRUPT + 2), NULL)));" "D19 ${part} scatter node on the switched trigger")
 endforeach()
 region("${hunter_zero}" "void HunterCcPvpStrategy::InitCombatTriggers" "\n}\n" cc_pvp)
 require_text("${cc_pvp}" "        \"target of attacker close\",\n        NextAction::array(0, new NextAction(\"freezing trap in place\", ACTION_INTERRUPT + 3), NULL)));" "D19 pvp freezing trap keeps the shared trigger")
@@ -131,7 +133,7 @@ require_order("${talent_trigger}" "if (!spellId || !bot->IsSpellReady(spellId))\
 require_text("${talent_trigger}" "const uint32 spellId = AI_VALUE2(uint32, \"spell id\", spellName);" "D19 spell id lookup")
 require_text("${hunter_context}" "creators[\"deterrence\"] = [](PlayerbotAI* ai) { return new TalentSpellTargetOfAttackerCloseTrigger(ai, \"deterrence\", \"deterrence\"); };" "D19 deterrence trigger creator")
 require_text("${hunter_context}" "creators[\"scatter shot on closest attacker\"] = [](PlayerbotAI* ai) { return new TalentSpellTargetOfAttackerCloseTrigger(ai, \"scatter shot on closest attacker\", \"scatter shot\"); };" "D19 scatter trigger creator")
-require_text("${hunter_context}" "creators[\"scatter shot on closest attacker targeting me\"] = [](PlayerbotAI* ai) -> Action*\n                {\n                    if (sPlayerbotAIConfig.dietHunterTalentShotsKnown)\n                        return new CastScatterShotOnClosestAttackerTargetingMeAction(ai);\n                    return new CastScatterShotAction(ai);\n                };" "D19 scatter action creator: closest attacker with the switch, current target without")
+require_text("${hunter_context}" "creators[\"scatter shot on closest attacker targeting me\"] = [](PlayerbotAI* ai) -> Action*\n                {\n                    return new CastScatterShotOnClosestAttackerTargetingMeAction(ai);\n                };" "D19 scatter action creator: the closest attacker targeting the bot")
 # The target name must be a registered Unit* value (ValueContext.h), else GetTarget reads a null value.
 region("${hunter_actions_h}" "class CastScatterShotOnClosestAttackerTargetingMeAction" "};" scatter_action)
 require_text("${scatter_action}" "std::string GetTargetName() override { return \"closest attacker targeting me\"; }" "D19 scatter action target value name")
@@ -141,13 +143,13 @@ require_text("${value_context}" "creators[\"closest attacker targeting me\"] =" 
 # ---------------------------------------------------------------------------------------------------------
 # D47 (AiPlayerbot.Diet.HunterTranqKnown): the hunter reaction node waits for a known, ready Tranquilizing Shot.
 region("${hunter_zero}" "void HunterStrategy::InitReactionTriggers" "\n}\n" hunter_reaction)
-require_text("${hunter_reaction}" "        sPlayerbotAIConfig.dietHunterTranqKnown ? \"tranquilizing shot\" : \"dispel enrage\",  // twow-repo#568 (D47)\n        NextAction::array(0, new NextAction(\"tranquilizing shot\", ACTION_INTERRUPT), NULL)));" "D47 reaction node on the switched trigger, same action and relevance")
+require_text("${hunter_reaction}" "        \"tranquilizing shot\",  // twow-repo#568 (D47)\n        NextAction::array(0, new NextAction(\"tranquilizing shot\", ACTION_INTERRUPT), NULL)));" "D47 reaction node on its own trigger, same action and relevance")
 region("${hunter_triggers_h}" "class TranquilizingShotTrigger : public DispelEnrageOnTargetTrigger" "};" tranq_trigger)
 require_text("${tranq_trigger}" "TranquilizingShotTrigger(PlayerbotAI* ai) : DispelEnrageOnTargetTrigger(ai, \"tranquilizing shot\") {}" "D47 trigger name and enrage dispel type")
 require_order("${tranq_trigger}" "if (!spellId || !bot->IsSpellReady(spellId))\n                return false;" "return DispelEnrageOnTargetTrigger::IsActive();" "D47 known+ready gate before the aura scan")
 require_text("${tranq_trigger}" "const uint32 spellId = AI_VALUE2(uint32, \"spell id\", \"tranquilizing shot\");" "D47 spell id lookup")
 require_text("${hunter_context}" "creators[\"tranquilizing shot\"] = [](PlayerbotAI* ai) { return new TranquilizingShotTrigger(ai); };" "D47 trigger creator")
-# The generic trigger stays as it is for the switch-off path.
+# The generic trigger stays as it is.
 file(READ "${PB_SOURCE_DIR}/strategy/triggers/TriggerContext.h" trigger_context)
 require_text("${trigger_context}" "creators[\"dispel enrage\"] = [](PlayerbotAI* ai) { return new DispelEnrageOnTargetTrigger(ai); };" "D47 generic dispel enrage trigger kept")
 
@@ -158,7 +160,7 @@ file(READ "${PB_SOURCE_DIR}/strategy/triggers/LootTriggers.h" loot_triggers_h)
 file(READ "${PB_SOURCE_DIR}/strategy/triggers/LootTriggers.cpp" loot_triggers_cpp)
 file(READ "${PB_SOURCE_DIR}/strategy/actions/LootRollAction.cpp" loot_roll_action)
 region("${loot_strategy}" "void RollStrategy::InitNonCombatTriggers" "\n}\n" roll_nc)
-require_text("${roll_nc}" "    triggers.push_back(new TriggerNode(\n        sPlayerbotAIConfig.dietLootRollPending ? \"loot roll pending\" : \"very often\",\n        NextAction::array(0, new NextAction(\"auto loot roll\", 100.0f), NULL)));" "D48 roll node on the switched trigger, same action and relevance")
+require_text("${roll_nc}" "    triggers.push_back(new TriggerNode(\n        \"loot roll pending\",\n        NextAction::array(0, new NextAction(\"auto loot roll\", 100.0f), NULL)));" "D48 roll node on its own trigger, same action and relevance")
 region("${loot_strategy}" "void RollStrategy::InitCombatTriggers" "\n}\n" roll_c)
 require_text("${roll_c}" "RollStrategy::InitNonCombatTriggers(triggers);" "D48 combat engine reuses the non-combat node")
 require_text("${loot_strategy}" "#include \"playerbot/PlayerbotAIConfig.h\"" "D48 strategy includes the config")

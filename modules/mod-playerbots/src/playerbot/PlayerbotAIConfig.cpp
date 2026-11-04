@@ -672,13 +672,7 @@ bool PlayerbotAIConfig::Initialize()
     possibleTargetsSharedSearch = config.GetBoolDefault("AiPlayerbot.PossibleTargetsSharedSearch", false);
     x3bPublishedTargets = config.GetBoolDefault("AiPlayerbot.X3b.PublishedTargets", false);
     x3bPublishedConditions = config.GetBoolDefault("AiPlayerbot.X3b.PublishedConditions", false);
-    dietHunterBestSting = config.GetBoolDefault("AiPlayerbot.Diet.HunterBestSting", false);
-    dietHunterTalentShotsKnown = config.GetBoolDefault("AiPlayerbot.Diet.HunterTalentShotsKnown", false);
-    dietHunterTranqKnown = config.GetBoolDefault("AiPlayerbot.Diet.HunterTranqKnown", false);
-    dietLootRollPending = config.GetBoolDefault("AiPlayerbot.Diet.LootRollPending", false);
     perfEventTriggerSkip = config.GetBoolDefault("AiPlayerbot.Perf.EventTriggerSkip", false);
-    dietHunterAspectGate = config.GetBoolDefault("AiPlayerbot.Diet.HunterAspectGate", false);
-    dietHunterRapidFireGate = config.GetBoolDefault("AiPlayerbot.Diet.HunterRapidFireGate", false);
     perfPartialPathReuse = config.GetBoolDefault("AiPlayerbot.Perf.PartialPathReuse", false);
     perfPartialPathReuseMs = ai::path_reuse::ClampMs(config.GetIntDefault("AiPlayerbot.Perf.PartialPathReuseMs", int32(ai::path_reuse::DefaultMs)));
     perfRouteFailCooldownSeconds = ai::stall_guard::ClampRouteFailCooldownSeconds(config.GetIntDefault("AiPlayerbot.Perf.RouteFailCooldownSeconds", 0));
