@@ -26,3 +26,7 @@
 /configure.log
 /.ccache/
 /out/
+
+# Python bytecode from the contract tests
+__pycache__/
+*.pyc
