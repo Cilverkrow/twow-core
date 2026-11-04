@@ -119,8 +119,8 @@ bool PetitionSignAction::Execute(Event& event)
 
     // Owner 05.10.2026: a roster bot below AiPlayerbot.RosterGuild.MinLevel signs no bot charter;
     // a real player's charter is signed at any level.
-    if (accept && !isArena && !roster_guild::JoinAllowed(bot->GetLevel(), sPlayerbotAIConfig.rosterGuildMinLevel,
-            sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster(), IsRealPlayer(_inviter)))
+    if (accept && !isArena && !roster_guild::JoinAllowed(bot->GetLevel(), sPlayerbotAIConfig.rosterGuildJoinMinLevel,
+            !ai->HasRealPlayerMaster(), IsRealPlayer(_inviter)))   // owner 04.11.2026: every bot on its own
     {
         accept = false;
         if (RosterGuildPlan::IsDue(ai, "roster guild min level trace", HOUR))

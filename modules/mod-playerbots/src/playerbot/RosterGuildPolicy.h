@@ -25,7 +25,8 @@ inline bool UsesRosterPath(std::uint32_t botsPerGuild, bool rosterMember, bool r
 // Owner 05.10.2026 (OB-00, #338 comment 6003267432): bot guilds only from a minimum level
 // (AiPlayerbot.RosterGuild.MinLevel, 0 = off), so players can reserve their bots before. A roster bot
 // below it founds no charter, signs no bot charter and accepts no bot guild's invitation; bot officers
-// do not invite it. A real player's invitation or charter stays allowed at any level.
+// do not invite it. A real player's invitation or charter stays allowed at any level. Owner 04.11.2026: the callers pass every bot
+// on its own as rosterMember (the rule applies to all bots, not only roster members); joining uses RosterGuild.JoinMinLevel.
 inline bool JoinAllowed(std::uint32_t level, std::uint32_t minLevel, bool rosterMember, bool inviterRealPlayer)
 {
     return !rosterMember || inviterRealPlayer || !minLevel || level >= minLevel;

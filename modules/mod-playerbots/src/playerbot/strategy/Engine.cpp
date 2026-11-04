@@ -13,6 +13,7 @@
 #include "playerbot/TravelMgr.h"
 #include "playerbot/ActionTrail.h"
 #include "playerbot/BotUpdateTrace.h"
+#include "playerbot/GroupOps.h"
 
 #ifdef BUILD_ELUNA
 #include "LuaEngine/LuaEngine.h"
@@ -1057,6 +1058,9 @@ bool Engine::ListenAndExecute(Action* action, Event& event)
     if (actionExecutionListeners.Before(action, event))
     {
         ai->SetLastEvent(event);
+        // BOT-12 (twow-repo#677): the outermost action of this thread, for the [GroupOps] off-thread group counts (one pointer
+        // pair per execution, read only when a group is created or disbanded off the world thread).
+        ai::group_ops::ActionScope const groupOpScope(ai, action);
         // #416: time each action for the [BotSlowUpdate] top-3.
         auto const executeStart = std::chrono::steady_clock::now();
         actionExecuted = actionExecutionListeners.AllowExecution(action, event) ? action->Execute(event) : true;

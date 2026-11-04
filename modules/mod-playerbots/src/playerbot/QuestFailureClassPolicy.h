@@ -68,8 +68,10 @@ inline std::uint32_t OtherRejects(quest_search::RejectCounts const& rejects)
     // twow-repo#601 cand4 lever (ii): levelGuard is a danger deferral like dangerMap - it counts toward the grind fallback (the
     // bot grinds and levels, which is what lifts the guard); Transient would keep the bot idle on backoff; never Structural (the
     // guard exempts givers / takers, so no turn-in is parked and nothing can lead to an abandon).
+    // twow-repo#601 owner rule R1: startZone / staleKeepZone are zone deferrals of the bot's own rule, like levelGuard - never Structural
+    // (a turn-in-only search with cross_map + start_zone rejects must not park every offered turn-in and lead to an abandon).
     return rejects.otherMapGather + rejects.knownInactive + rejects.notActive + rejects.enemyZone + rejects.dangerMap + rejects.levelGuard +
-        rejects.battlegroundQuest;
+        rejects.battlegroundQuest + rejects.startZone + rejects.staleKeepZone;
 }
 
 struct Decision

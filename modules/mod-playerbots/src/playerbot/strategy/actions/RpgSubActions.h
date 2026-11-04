@@ -9,6 +9,11 @@
 
 namespace ai
 {
+    // twow-repo#601 A3 step 1 (AiPlayerbot.Rpg.TurnInFirst, default 0): the hand-in at a quest giver goes first - a bot on its own in the
+    // cohort selection (never one led by a real player). Shared by RpgActionMultiplier, RpgAction::SetNextRpgAction and AfterExecute.
+    bool RpgTurnInFirst(PlayerbotAI* ai);
+    constexpr char const* RpgEndQuestActionName = "rpg end quest";
+
     class RpgHelper : public AiObject
     {
     public:

@@ -91,6 +91,78 @@ int main()
     helperTurnedIn.questInProgress = false;
     Require(DecideLeave(helperTurnedIn) == Leave::QuestTurnedIn, "turned in: leave (no helper without the quest)");
 
+    // BOT-12 (AiPlayerbot.BotGroups.LeaderOtherMap, twow-repo#677): the leader on another map for LeaderOtherMapSeconds.
+    {
+        std::uint32_t const n = 120;
+        LeaveFacts other = f;
+        other.leaderOtherMapSeconds = n;
+        other.leaderOtherMapSince = 1000 - (n - 1);
+        Require(DecideLeave(other) == Leave::None, "leader on another map for N-1 s: stay");
+        other.leaderOtherMapSince = 1000 - n;
+        Require(DecideLeave(other) == Leave::LeaderOtherMap, "leader on another map for N s: leave, leader_other_map");
+        Require(std::string(LeaveName(Leave::LeaderOtherMap)) == "leader_other_map", "leader_other_map in the log");
+
+        // Checked before OutOfRange (and after Instance).
+        LeaveFacts both = other;
+        both.outOfRangeSince = 1000 - OutOfRangeSeconds;
+        Require(DecideLeave(both) == Leave::LeaderOtherMap, "leader_other_map wins over out_of_range when both are due");
+        both.inInstance = true;
+        Require(DecideLeave(both) == Leave::Instance, "instance still comes first");
+
+        // Switch 0 (leaderOtherMapSeconds 0): the reason never fires, the old order and reasons stay.
+        LeaveFacts off0 = other;
+        off0.leaderOtherMapSeconds = 0;
+        off0.leaderOtherMapSince = 1;
+        Require(DecideLeave(off0) == Leave::None, "switch 0: no leader_other_map, however long");
+        off0.outOfRangeSince = 1000 - OutOfRangeSeconds;
+        Require(DecideLeave(off0) == Leave::OutOfRange, "switch 0: another map is out_of_range after 60 s, as before");
+        LeaveFacts fresh;
+        Require(fresh.leaderOtherMapSeconds == 0 && fresh.leaderOtherMapSince == 0, "default facts: the rule is off");
+
+        // The out-of-range fact: switch 0 counts another map (old rule); switch on leaves that to the leader_other_map clock.
+        Require(OutOfRangeFact(true, false, false), "switch 0: another map is out of range");
+        Require(OutOfRangeFact(false, true, false), "switch 0: beyond 2 x radius is out of range");
+        Require(!OutOfRangeFact(false, false, false), "switch 0: near is in range");
+        Require(!OutOfRangeFact(true, false, true), "switch on: another map is not out_of_range (own clock)");
+        Require(OutOfRangeFact(false, true, true), "switch on: beyond 2 x radius on the same map is still out of range");
+        Require(!OutOfRangeFact(false, false, true), "switch on: near is in range");
+
+        // Another map: another map id, or another instance of an instanceable map - not a continent region.
+        Require(OnOtherMap(true, false, false), "another map id");
+        Require(OnOtherMap(false, true, true), "another dungeon instance");
+        Require(!OnOtherMap(false, true, false), "another continent region (instance) is the same map");
+        Require(!OnOtherMap(false, false, true), "same dungeon instance");
+
+        // Follow: useless only with the rule on, the target on another map and no real player (master or target).
+        Require(FollowUselessAcrossMaps(true, true, false, false), "switch on, bot leader on another map: follow not useful");
+        Require(!FollowUselessAcrossMaps(true, true, false, true), "switch on, real player on another map: follow as before");
+        Require(!FollowUselessAcrossMaps(true, true, true, false), "switch on, real-player master, bot target: follow as before");
+        Require(!FollowUselessAcrossMaps(true, false, false, false), "switch on, same map: follow as before");
+        Require(!FollowUselessAcrossMaps(false, true, false, false), "switch off: follow as before");
+
+        // The clock: switch off always 0; starts on the first other-map observation and keeps its start; a leader not in the
+        // world keeps it (running or not); a same-map observation (or the bot leading itself: otherMap false) resets it.
+        Require(LeaderOtherMapClock(false, true, true, 500, 1000) == 0, "clock: switch off is 0");
+        Require(LeaderOtherMapClock(false, false, false, 500, 1000) == 0, "clock: switch off, leader gone is 0");
+        Require(LeaderOtherMapClock(true, true, true, 0, 1000) == 1000, "clock: starts on another map");
+        Require(LeaderOtherMapClock(true, true, true, 500, 1000) == 500, "clock: keeps its start on another map");
+        Require(LeaderOtherMapClock(true, false, false, 500, 1000) == 500, "clock: leader not in the world keeps it");
+        Require(LeaderOtherMapClock(true, false, false, 0, 1000) == 0, "clock: leader not in the world does not start it");
+        Require(LeaderOtherMapClock(true, true, false, 500, 1000) == 0, "clock: same map resets it");
+        // Far-teleport gap: another map at 1000, gone at 1060, back on another map at 1120 -> due at N = 120 from 1000.
+        {
+            std::uint32_t since = 0;
+            since = LeaderOtherMapClock(true, true, true, since, 1000);
+            since = LeaderOtherMapClock(true, false, false, since, 1060);
+            since = LeaderOtherMapClock(true, true, true, since, 1120);
+            LeaveFacts gap = f;
+            gap.now = 1120;
+            gap.leaderOtherMapSeconds = n;
+            gap.leaderOtherMapSince = since;
+            Require(DecideLeave(gap) == Leave::LeaderOtherMap, "a far teleport in between does not postpone the leave");
+        }
+    }
+
     // OB-10 review #660 B1: every way out of the help drops the follower role, except where it is no longer ours.
     HelperFacts helping;
     helping.helping = true;

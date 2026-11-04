@@ -4,6 +4,7 @@
 
 #include "playerbot/BotSlots.h"
 #include "playerbot/QuestGroupPolicy.h"   // OB-10 card R2: S7 group roles
+#include "playerbot/CombatStuckClockPolicy.h"   // twow-repo#575 / #601 (Unstuck.CombatFightClock)
 namespace ai
 {
     // OB-10 anti-stillstand card R2 (twow-repo#627 S7): a quest group member is left to the S7 manager (QuestGroupPolicy.h).
@@ -11,6 +12,11 @@ namespace ai
     {
         return quest_groups::StuckTriggersExempt(ai->GetQuestGroupRole(), bot->GetGroup() != nullptr);
     }
+
+    // twow-repo#575 / #601 (AiPlayerbot.Unstuck.CombatFightClock, default 0; OB-00 04.11.2026): the seconds the combat stuck
+    // triggers compare. Off (or the bot outside the cohort): "time since last change" of "combat::self target" as before.
+    // On: the fight with the current target (CombatStuckClockPolicy.h) - from the combat start, restarted on a target change.
+    uint32 CombatStuckSeconds(PlayerbotAI* ai, combat_stuck_clock::Clock& clock);
 
     template< typename... Args >
     std::string string_sprintf(const char* format, Args... args) {
@@ -192,7 +198,7 @@ namespace ai
 
             WorldPosition botPos(bot);
 
-            uint32 timeSinceCombatChange = AI_VALUE2(uint32, "time since last change", "combat::self target");
+            uint32 timeSinceCombatChange = CombatStuckSeconds(ai, fightClock);   // twow-repo#575 / #601
 
             if (timeSinceCombatChange > 5 * MINUTE)
             {
@@ -210,6 +216,9 @@ namespace ai
 
             return false;
         }
+
+    private:
+        combat_stuck_clock::Clock fightClock;   // twow-repo#575 / #601 (Unstuck.CombatFightClock)
     };
 
     class CombatLongStuckTrigger : public Trigger
@@ -236,7 +245,7 @@ namespace ai
 
             WorldPosition botPos(bot);
 
-            uint32 timeSinceCombatChange = AI_VALUE2(uint32, "time since last change", "combat::self target");
+            uint32 timeSinceCombatChange = CombatStuckSeconds(ai, fightClock);   // twow-repo#575 / #601
 
             if (timeSinceCombatChange > 15 * MINUTE)
             {
@@ -254,6 +263,9 @@ namespace ai
 
             return false;
         }
+
+    private:
+        combat_stuck_clock::Clock fightClock;   // twow-repo#575 / #601 (Unstuck.CombatFightClock)
     };
 
     class LeaderIsAfkTrigger : public Trigger
