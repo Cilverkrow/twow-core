@@ -238,7 +238,7 @@ require_order("${report_fn}" "if (!sPlayerbotAIConfig.questFeasibilityEnable)\n 
 require_text("${report_fn}" "if (now < lastReport + 60)\n        return;" "once a minute")
 require_text("${report_fn}" "sLog.outBasic(\"%s\", PlayerbotAI::TakeQuestFeasibilityMinuteLine().c_str());" "the minute line")
 region("${mgr}" "void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)" "\n}\n" upd)
-require_order("${upd}" "\n    ReportQuestIdle();" "\n    ReportQuestFeasibility();" "minute line on the world thread, next to the other minute lines")
+require_order("${upd}" "\n    ReportQuestBand();" "\n    ReportQuestFeasibility();" "minute line on the world thread, next to the other minute lines")
 count_text("${mgr}" "ReportQuestFeasibility();" 1 "one call")
 
 message(STATUS "quest_feasibility_source_contract: all pins hold")
