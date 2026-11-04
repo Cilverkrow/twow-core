@@ -31,11 +31,11 @@ bool RpgTrigger::IsActive()
     return false;
 };
 
-// twow-repo#568 (D68, AiPlayerbot.Diet.RpgDeadTriggers): IsActive starts with HasRealPlayerMaster(), so without a real
+// twow-repo#568 (D68): IsActive starts with HasRealPlayerMaster(), so without a real
 // master Check() can only answer through the event flag; skip the RpgTrigger pre-check values then.
 Event RpgWanderTrigger::Check()
 {
-    if (sPlayerbotAIConfig.dietRpgDeadTriggers && !triggered && !ai->HasRealPlayerMaster())
+    if (!triggered && !ai->HasRealPlayerMaster())
         return Event();
 
     return RpgTrigger::Check();
@@ -666,9 +666,9 @@ bool RpgUseTrigger::IsActive()
 
 bool RpgQuestUseTrigger::IsActive()
 {
-    // twow-repo#568 (D68, AiPlayerbot.Diet.RpgDeadTriggers): only entry 190767 can answer true below, so test the
+    // twow-repo#568 (D68): only entry 190767 can answer true below, so test the
     // entry before the game object lookups (also for the ChooseRpgTargetAction candidate loop).
-    if (sPlayerbotAIConfig.dietRpgDeadTriggers && getGuidP().GetEntry() != 190767)
+    if (getGuidP().GetEntry() != 190767)
         return false;
 
     if (!RpgUseTrigger::IsActive())
@@ -687,7 +687,7 @@ bool RpgQuestUseTrigger::IsActive()
 // twow-repo#568 (D68): same entry test before the RpgTrigger pre-check values; a set event flag runs the old path.
 Event RpgQuestUseTrigger::Check()
 {
-    if (sPlayerbotAIConfig.dietRpgDeadTriggers && !triggered && getGuidP().GetEntry() != 190767)
+    if (!triggered && getGuidP().GetEntry() != 190767)
         return Event();
 
     return RpgUseTrigger::Check();
@@ -723,11 +723,11 @@ bool RpgAIChatTrigger::IsActive()
     return true;
 };
 
-// twow-repo#568 (D68, AiPlayerbot.Diet.RpgDeadTriggers): IsActive answers false first while LLMEnabled is 0 (read on
+// twow-repo#568 (D68): IsActive answers false first while LLMEnabled is 0 (read on
 // every check, so a reload that enables LLM acts at once); skip the RpgTrigger pre-check values then.
 Event RpgAIChatTrigger::Check()
 {
-    if (sPlayerbotAIConfig.dietRpgDeadTriggers && !triggered && sPlayerbotAIConfig.llmEnabled == 0)
+    if (!triggered && sPlayerbotAIConfig.llmEnabled == 0)
         return Event();
 
     return RpgTrigger::Check();
