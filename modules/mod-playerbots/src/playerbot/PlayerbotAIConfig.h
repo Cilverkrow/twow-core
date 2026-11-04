@@ -645,10 +645,6 @@ public:
     bool perfBgMasterCacheRef = false;  // twow-repo#541 (audit A09): "rpg bg type" / "bg masters" read the battlemaster cache by const reference with find(), no deep copy (0 = off)
     bool perfTravelInfoReuse = false;  // twow-repo#541 (audit A10): a travel choice builds one PlayerTravelInfo, reuses a known IsActive answer and checks the cheap hub conditions first; GetDestinations looks one asked entry up by key (0 = off)
     bool perfLogActionFastPath = false;  // twow-repo#541 (audit A11): no action-log lookup while no file can be written, PerfMon action/trigger keys only with PerfMon on (0 = off)
-    uint32 perfActionBudget = 0;  // twow-repo#541 (owner 11.10.): expensive actions per map thread and tick, 0 off / 1 max 3 / 2 max 1 / 3 spread (ActionBudgetPolicy.h)
-    std::vector<std::string> perfActionBudgetActions;  // the expensive actions (empty config = ai::action_budget::DefaultExpensiveActions)
-    bool perfActionBudgetStartExempt = false;  // twow-repo#591: bots without a travel target choose one without budget
-    uint32 perfActionBudgetLimit = 0;          // twow-repo#591: per-window limit, 0 = the mode's (3 / 1)
     bool botUpdateTraceTailFix = false;  // twow-repo#541 (audit A11): engine last-action trail keeps the newest 512 characters, cut at an entry (0 = off)
     bool perfTrainableSpellsPrecheck = false;  // twow-repo#541 (audit A12): "trainable spells" skips a spell that fails the core's own skill RED check before the trainer state walk, roster state read once per call (0 = off)
     bool perfRacialsSkipUnbuildable = false;  // twow-repo#541 (audit A13): racials strategy does not register gift of the naaru / mana tap / arcane torrent (no action in this vanilla build); NOT strictly neutral, engine queue path in rare ticks (0 = off)
@@ -744,8 +740,6 @@ public:
     bool dietWanderSoloGuard = false;  // twow-repo#568 (D67): "wander near" without a follow target fires only on a FOLLOW motion, the only state in which its "stop follow" is useful (0 = off)
     bool dietRpgDeadTriggers = false;  // twow-repo#568 (D68): "rpg ai chat" (LLMEnabled 0), "rpg wander" (no real master) and "rpg quest use" (entry not 190767) answer from their first IsActive condition before the rpg pre-check values (0 = off)
     bool dietDuelTriggerGate = false;  // twow-repo#568 (D69): the duel strategy pushes "attack duel opponent" from "duel no attackers" (only with a duel) instead of "no attackers"; read at engine build (0 = off)
-    bool perfPartialPathReuse = false;  // twow-repo#541 (L1): MoveTo uses the path last built for an unchanged destination again, without a rebuild, for up to perfPartialPathReuseMs while its end is not reached (0 = off)
-    uint32 perfPartialPathReuseMs = 10000;  // twow-repo#541 (L1): age limit of such a path in ms, clamped to 1000..60000
     uint32 perfRouteFailCooldownSeconds = 0;  // twow-repo#541 (L1b): a node route search without a route blocks the same bot and target cell for that many seconds, clamped to 0..300 (0 = off)
     bool perfRouteTimeTrace = false;  // twow-repo#592 (PATH-02): phase times of every node route build, [RouteTime] once a minute, appended to M:route / [RouteFailDetail]; dispatch_* times the MovePoint path search in DispatchMovement (0 = off, no clock read)
     bool perfDispatchPrecomputedPath = false;  // twow-repo#592 (PATH-02 A20): DispatchMovement hands the built path to MovePoint instead of MovePoint(MOVE_PATHFINDING) + MovePath (0 = as before)

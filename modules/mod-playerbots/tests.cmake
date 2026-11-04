@@ -2838,25 +2838,6 @@ add_test(NAME trace_action_us_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/trace_action_us_source_contract_tests.cmake")
 
-# twow-repo#541 (owner 11.10.2026): budget for expensive bot actions (AiPlayerbot.Perf.ActionBudget).
-add_test(NAME action_budget_source_contract
-  COMMAND "${CMAKE_COMMAND}"
-    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
-    -P "${PB_MODULE_DIR}/t/action_budget_source_contract_tests.cmake")
-
-add_executable(action_budget_policy_tests
-  "${PB_MODULE_DIR}/t/action_budget_policy_tests.cpp")
-
-target_include_directories(action_budget_policy_tests PRIVATE
-  "${PB_MODULE_DIR}/src/playerbot")
-
-set_target_properties(action_budget_policy_tests PROPERTIES
-  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
-
-add_test(NAME action_budget_policy
-  COMMAND action_budget_policy_tests
-  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
-
 # twow-repo#541 (owner 11.10.2026): [BotPackets] packet counter (AiPlayerbot.PacketTrace).
 add_test(NAME packet_trace_source_contract
   COMMAND "${CMAKE_COMMAND}"
@@ -2952,25 +2933,6 @@ add_test(NAME path_trace_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/path_trace_source_contract_tests.cmake")
-
-# twow-repo#541 (L1): MoveTo reuses the path last built for an unchanged destination behind AiPlayerbot.Perf.PartialPathReuse (default 0, timing change).
-add_executable(path_reuse_policy_tests
-  "${PB_MODULE_DIR}/t/path_reuse_policy_tests.cpp")
-
-target_include_directories(path_reuse_policy_tests PRIVATE
-  "${PB_MODULE_DIR}/src/playerbot")
-
-set_target_properties(path_reuse_policy_tests PROPERTIES
-  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
-
-add_test(NAME path_reuse_policy
-  COMMAND path_reuse_policy_tests
-  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
-
-add_test(NAME partial_path_reuse_source_contract
-  COMMAND "${CMAKE_COMMAND}"
-    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
-    -P "${PB_MODULE_DIR}/t/partial_path_reuse_source_contract_tests.cmake")
 
 add_test(NAME route_fail_cooldown_source_contract
   COMMAND "${CMAKE_COMMAND}"
@@ -3143,25 +3105,6 @@ add_test(NAME pos_stuck_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/pos_stuck_source_contract_tests.cmake")
-
-# twow-repo#591 (PERF-AB-01): budget exemption for bots without a travel target, configurable limit.
-add_test(NAME budget_start_source_contract
-  COMMAND "${CMAKE_COMMAND}"
-    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
-    -P "${PB_MODULE_DIR}/t/budget_start_source_contract_tests.cmake")
-
-add_executable(budget_start_policy_tests
-  "${PB_MODULE_DIR}/t/budget_start_policy_tests.cpp")
-
-target_include_directories(budget_start_policy_tests PRIVATE
-  "${PB_MODULE_DIR}/src/playerbot")
-
-set_target_properties(budget_start_policy_tests PROPERTIES
-  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
-
-add_test(NAME budget_start_policy
-  COMMAND budget_start_policy_tests
-  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
 # twow-repo#587 Z4 (owner 14.10.2026): stuck turn-ins drop out of the recovery loop (AiPlayerbot.ZoneExit.TurnInStallCounts).
 add_test(NAME turnin_stall_source_contract

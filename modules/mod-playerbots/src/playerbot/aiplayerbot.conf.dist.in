@@ -3111,22 +3111,6 @@ AiPlayerbot.Perf.TravelInfoReuse = 0
 # and damage hooks of all bots. PerfMon action and trigger names are built only with
 # AiPlayerbot.PerfMonEnabled = 1. Same decisions, same log lines. 0 = as before (default).
 AiPlayerbot.Perf.LogActionFastPath = 0
-# twow-repo#541 (owner 11.10.2026): budget for expensive bot actions per map thread and world tick, one switch with
-# variants: 0 = off (default), 1 = at most 3 per thread and tick, 2 = at most 1, 3 = spread (a bot starts one only
-# in its own slot of 4 world ticks). A deferred action stays queued and is tried on the bot's next update; after
-# 4 deferrals in a row it runs regardless (no starvation). [ActionBudget] counts executed / deferred / forced.
-AiPlayerbot.Perf.ActionBudget = 0
-# The expensive actions (comma list); empty = choose travel target, choose group travel target, request travel
-# target, request quest travel target, choose rpg target, move to travel target, find corpse, add gathering loot,
-# attack anything.
-AiPlayerbot.Perf.ActionBudgetActions =
-
-# twow-repo#591 (PERF-AB-01, live 14.10.: under 540 bots mode 1 deferred 63 % of the expensive actions and new bots stood
-# for 10 min without a travel target): StartExempt = 1: a bot without an active travel target chooses one (choose / group /
-# request / request quest travel target) without budget. Limit = N > 0: N expensive actions per map thread and 50 ms window
-# instead of the mode's 3 (mode 1) / 1 (mode 2). Both 0 = as before.
-AiPlayerbot.Perf.ActionBudgetStartExempt = 0
-AiPlayerbot.Perf.ActionBudgetLimit = 0
 # twow-repo#541 (audit A11): 1 = the engine's last-action trail ([BotUpdateSlow] action=, [BotSlowUpdate]
 # and [Idle] last_action=, fishing break, "action" command) keeps the newest 512 characters, cut at an
 # entry '|'. The old trim kept only what lay beyond character 512 and often emptied the trail. Log and
@@ -3772,21 +3756,6 @@ AiPlayerbot.X3b.PublishedTargets = 0
 # 3 s old; a member without an answer yet is skipped, like a member without bot AI). 0 = old (default).
 AiPlayerbot.X3b.PublishedConditions = 0
 
-# twow-repo#541 (L1, BEHAVIOUR CHANGE in timing, enable only after OB-30 measurement + owner go - nach Abnahme an): 1 = a
-# bot's MoveTo uses the path it last built for the same destination again instead of rebuilding it (node route over up
-# to 5 x 5 node pairs + navmesh), as long as that path is younger than PartialPathReuseMs, the destination moved less
-# than 10 % of the remaining distance, the stored path still ends at the same point, the bot is on the map where the
-# path was built, not on a transport, and not yet within TargetPosRecalcDistance of the path's end. Today such a
-# rebuild runs on every MoveTo of a bot whose path ends short of the destination, and a rebuilt path that does not end
-# closer to the destination is thrown away for the old one (MovementAction::ResolveMovePath, keep-old rule). With 1
-# a truly better path is found at most PartialPathReuseMs later, and a rebuild that would have found no route at all
-# no longer replaces the old path by a straight line to the destination until the next rebuild. Any reset of the
-# movement or of the path, a destination change or reaching the end rebuild at once as before. [PathReuse] logs
-# hits (rebuilds skipped) and misses (rebuilds run) once a minute. 0 = rebuild as before (default).
-AiPlayerbot.Perf.PartialPathReuse = 0
-# twow-repo#541 (L1): age limit of a reused path in milliseconds (1000..60000, default 10000). Only read with
-# AiPlayerbot.Perf.PartialPathReuse = 1.
-AiPlayerbot.Perf.PartialPathReuseMs = 10000
 # twow-repo#541 (L1b, BEHAVIOUR CHANGE in timing, enable only after OB-30 measurement + owner go - nach Abnahme an):
 # seconds (0..300, default 0 = off). A node route search (TravelNodeMap::getRoute from a position: MoveTo, go, fishing)
 # that tried every start/end node pair and found no route blocks the same bot and target cell (100 yd) for that many
@@ -3795,7 +3764,7 @@ AiPlayerbot.Perf.PartialPathReuseMs = 10000
 # (chain42: 67 % of the slow route builds). A route that the bot could reach from a new position, or that a node
 # change creates, is found at most that many seconds later. [RouteFail] logs blocks and skips once a minute.
 # With AiPlayerbot.Path.HonestRouteFail = 1 (twow-repo#575) such a MoveTo fails instead of the straight-line fallback,
-# and during the cooldown that answer costs no search; PartialPathReuse never stamps such a no-route result.
+# and during the cooldown that answer costs no search;
 AiPlayerbot.Perf.RouteFailCooldownSeconds = 0
 # twow-repo#592 (PATH-02 phase 2, measurement only, no behaviour change): 1 = every node route build
 # (TravelNodeMap::getFullPath) is timed by phase: direct navmesh attempt (with its step count), node map lock,

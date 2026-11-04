@@ -15,7 +15,6 @@
 #include "playerbot/PersistentRosterStarterOutfitPolicy.h"
 #include "playerbot/ProfessionPair.h"
 #include "PlayerbotDatabaseContract.h"
-#include "playerbot/ActionBudgetPolicy.h"
 #include "playerbot/PacketTracePolicy.h"
 #include "playerbot/UnreachableTargetPolicy.h"
 #include "playerbot/BuffTargetPolicy.h"
@@ -76,7 +75,6 @@
 #include "playerbot/MeleeSkipPolicy.h"   // twow-repo#602 (Rotation.MeleeSkipAttacking): [MeleeSkip] minute line
 #include "playerbot/InvalidTargetPolicy.h"   // twow-repo#602 (Rotation.InvalidTargetQuiet): [InvalidTarget] minute line
 #include "playerbot/TankKitPolicy.h"   // twow-repo#602 (Rotation.TankKitFromLevel): [TankKit] minute line
-#include "playerbot/PathReusePolicy.h"
 #include "playerbot/NeverPossiblePolicy.h"   // twow-repo#602 (Rotation.NeverPossibleSkip): [NeverPossible] minute line
 #include "playerbot/RotCastTrace.h"   // twow-repo#602 ROT-01 D0
 #include "playerbot/EmergencyLadderTrace.h"   // twow-repo#602 ROT-01 X3
@@ -1023,22 +1021,6 @@ void ReportBotInbox()
             group, guild, strangerBot, strangerPlayer, cooldown, sPlayerbotAIConfig.buffStrangerCooldownSeconds);
     }
 
-    // twow-repo#541 (AiPlayerbot.Perf.ActionBudget): expensive actions of the last minute.
-    if (sPlayerbotAIConfig.perfActionBudget)
-    {
-        auto take = [](ai::action_budget::Count count) { return (unsigned long long)ai::action_budget::Counter(count).exchange(0, std::memory_order_relaxed); };
-        unsigned long long const executed = take(ai::action_budget::Executed);
-        unsigned long long const deferred = take(ai::action_budget::Deferred);
-        unsigned long long const forced = take(ai::action_budget::Forced);
-        sLog.outBasic("[ActionBudget] mode=%u executed=%llu deferred=%llu forced=%llu max_deferrals=%u",
-            sPlayerbotAIConfig.perfActionBudget, executed, deferred, forced, ai::action_budget::MaxDeferrals);
-        // twow-repo#591: travel target choices of bots without a target that skipped the budget, and the limit in use.
-        unsigned long long const startExempted = take(ai::action_budget::StartExempted);
-        if (sPlayerbotAIConfig.perfActionBudgetStartExempt || sPlayerbotAIConfig.perfActionBudgetLimit)
-            sLog.outBasic("[ActionBudget] start_exempt=%llu limit=%u", startExempted,
-                ai::action_budget::LimitFor(sPlayerbotAIConfig.perfActionBudget, sPlayerbotAIConfig.perfActionBudgetLimit));
-    }
-
     // twow-repo#541 A39 (AiPlayerbot.DeathLoop.Escape): evacuations of the last minute.
     if (sPlayerbotAIConfig.deathLoopEscape)
     {
@@ -1560,27 +1542,9 @@ void ReportLazyEngineInit()
         (unsigned long long)(deferred > caught ? deferred - caught : 0));
 }
 
-// twow-repo#541 (L1, AiPlayerbot.Perf.PartialPathReuse): one [PathReuse] line per minute. hits = path rebuilds skipped
-// because the path last built for the same destination was used again, misses = rebuilds that ran with the switch on
-// (both only counted after the existing end-near-destination reuse had missed). World thread only, same pattern as
-// ReportBotUpdate. Nothing is counted or written when off.
-void ReportPathReuse()
-{
-    static uint32 lastReport = 0;
-    uint32 const now = uint32(time(nullptr));
-    if (!sPlayerbotAIConfig.perfPartialPathReuse || now < lastReport + 60)
-        return;
-    lastReport = now;
-
-    uint64 const hits = ai::path_reuse::hits.exchange(0, std::memory_order_relaxed);
-    uint64 const misses = ai::path_reuse::misses.exchange(0, std::memory_order_relaxed);
-    sLog.outBasic("[PathReuse] hits=%llu misses=%llu max_age_ms=%u",
-        (unsigned long long)hits, (unsigned long long)misses, sPlayerbotAIConfig.perfPartialPathReuseMs);
-}
-
 // twow-repo#541 (L1b, AiPlayerbot.Perf.RouteFailCooldownSeconds): one [RouteFail] line per minute. blocks = node route
 // searches without a route that set a cooldown, skips = searches skipped by a route cooldown (failure or budget).
-// World thread only, same pattern as ReportPathReuse. Nothing is counted or written when off.
+// World thread only, same pattern as ReportBotUpdate. Nothing is counted or written when off.
 void ReportRouteFail()
 {
     static uint32 lastReport = 0;
@@ -2066,7 +2030,6 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     ReportReachLos();       // twow-repo#594: [ReachLos] once per minute (AiPlayerbot.Rotation.ReachLosClose)
     ReportDarkRuneGate();   // twow-repo#602 ROT-01 3c: [DarkRuneGate] once per minute (AiPlayerbot.Rotation.DarkRuneGate)
     ReportLazyEngineInit(); // twow-repo#541 (audit A21): [LazyEngineInit] once per minute (AiPlayerbot.Perf.LazyEngineInit)
-    ReportPathReuse();    // twow-repo#541 (L1): [PathReuse] once per minute (AiPlayerbot.Perf.PartialPathReuse)
     ReportRouteFail();    // twow-repo#541 (L1b): [RouteFail] once per minute (AiPlayerbot.Perf.RouteFailCooldownSeconds)
     ReportRouteTime();    // twow-repo#592 (PATH-02): [RouteTime] once per minute (AiPlayerbot.Perf.RouteTimeTrace)
     ReportRoutePrecheck(); // twow-repo#592 (PATH-02): [RoutePrecheck] once per minute (AiPlayerbot.Perf.RoutePrecheck)
