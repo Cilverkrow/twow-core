@@ -326,9 +326,9 @@ void RestorationDruidCcStrategy::InitCombatTriggers(std::list<TriggerNode*>& tri
         "entangling roots kite",
         NextAction::array(0, new NextAction("entangling roots", ACTION_INTERRUPT), NULL)));
 
-    // twow-repo#568 D45 (AiPlayerbot.Diet.DruidCooldownGates): Nature's Grasp only while known and off cooldown.
+    // twow-repo#568 D45: Nature's Grasp only while known and off cooldown.
     triggers.push_back(new TriggerNode(
-        sPlayerbotAIConfig.dietDruidCooldownGates ? "nature's grasp ready" : "enemy five yards",
+        "nature's grasp ready",
         NextAction::array(0, new NextAction("nature's grasp", ACTION_HIGH), NULL)));
 }
 
