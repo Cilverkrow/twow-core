@@ -222,11 +222,12 @@ namespace
         // DungeonClear.RezCapableOnly (CLI-GRP 04.11.2026, g1/CAUSE-DC-REVIVE-PFAD-20261104 F1): elect only among the
         // members who can rez NOW, by the spell the rung would cast - a druid has no out-of-combat rez in 1.12. Here,
         // past the no-deaths return, so the spell reads only run while someone is dead; the order rules are the
-        // kernel's, unchanged. 0 = the class rule BuildSnapshot set.
+        // kernel's, unchanged. 0 = the class rule BuildSnapshot set. The snapshot filters by map ID; CanRezNow gets
+        // this bot's map OBJECT and keeps the class rule for a member in another instance copy (OB-10 #861).
         if (DcSettings::GetBool(bot, "RezCapableOnly"))
             for (std::size_t i = 0; i < members.size(); ++i)
                 if (!members[i].isDead && members[i].canRezClass)
-                    members[i].canRezClass = DcRezRecovery::CanRezNow(players[i], true);
+                    members[i].canRezClass = DcRezRecovery::CanRezNow(players[i], true, bot->FindMap());
 
         // The recovery clock: runs only while nobody is FIGHTING (a fight clears
         // it, so a mid-recovery add pull resets the budget instead of burning it).
@@ -377,15 +378,16 @@ namespace DcRezRecovery
         if (!bot || !Enabled(bot))
             return false;
         bool const capableOnly = DcSettings::GetBool(bot, "RezCapableOnly");
+        Map const* const callerMap = bot->FindMap();
         Group* group = bot->GetGroup();
         if (!group)
-            return bot->IsAlive() && CanRezNow(bot, capableOnly);
+            return bot->IsAlive() && CanRezNow(bot, capableOnly, callerMap);
         for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
         {
             Player* member = ref->GetSource();
             if (!member || member->GetMapId() != bot->GetMapId())
                 continue;
-            if (member->IsAlive() && CanRezNow(member, capableOnly))
+            if (member->IsAlive() && CanRezNow(member, capableOnly, callerMap))
                 return true;
         }
         return false;
@@ -406,17 +408,19 @@ namespace DcRezRecovery
         }
     }
 
-    bool CanRezNow(Player* member, bool capableOnly)
+    bool CanRezNow(Player* member, bool capableOnly, Map const* callerMap)
     {
         DcRezDecision::RezCaster c;
         c.isRezClass = member && IsRezClass(member);
         if (!c.isRezClass || !capableOnly)
             return DcRezDecision::CanRezNow(c, capableOnly);
-        // The "spell id" read below fills the MEMBER's value cache from the caller's thread: sequential only on a map
-        // that updates its objects in one thread (Map.cpp starts m_objectThreads for continents only). Off a dungeon -
-        // the `dc on` chat path on a continent - the class rule; the election and the veto are dungeon-gated anyway.
+        // The "spell id" read below fills the MEMBER's value cache from the caller's thread: sequential only when the
+        // member is on the CALLER's map object and that map updates its objects in one thread (Map.cpp starts
+        // m_objectThreads for continents only). The callers filter by map ID, so a member in another instance copy of
+        // the same dungeon (another pool thread, OB-10 #861 / the twow-repo#563 X5 class) gets here too: the class
+        // rule, no read. Off a dungeon - the `dc on` chat path on a continent - the class rule as well.
         Map* map = member->FindMap();
-        if (!map || !map->IsDungeon())
+        if (!map || map != callerMap || !map->IsDungeon())
             return DcRezDecision::CanRezNow(c, false);
 
         PlayerbotAI* ai = GET_PLAYERBOT_AI(member);
@@ -453,7 +457,7 @@ namespace DcRezRecovery
         {
             Player* member = ref->GetSource();
             if (member && member != bot && member->IsInWorld() && member->FindMap() == map && member->IsAlive() &&
-                CanRezNow(member, capableOnly))
+                CanRezNow(member, capableOnly, map))
                 return true;
         }
         return false;

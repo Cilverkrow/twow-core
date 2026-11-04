@@ -12,6 +12,7 @@
 
 #include "Ai/Dungeon/DungeonClear/Util/DcRezDecision.h"
 
+class Map;
 class Player;
 
 // Engine glue for post-combat party resurrection (see DcRezDecision.h for the
@@ -78,11 +79,12 @@ namespace DcRezRecovery
     // DungeonClear.RezCapableOnly (CLI-GRP 04.11.2026, g1/CAUSE-DC-REVIVE-PFAD-20261104): can this LIVING member
     // resurrect out of combat now - the rank of RezActionNameFor its own spell resolution picks ("spell id", as the
     // rung's CastSpell resolves it), known by the member itself (not the pet), off cooldown, within its mana POOL (it
-    // may drink first). capableOnly = false, or a member off a dungeon map, is the class rule. Pure verdict:
-    // DcRezDecision::CanRezNow. Cost: only while someone is dead, but then on every EvaluateImpl (each follower rung
-    // tick of a living rez class) and every veto ask, per living rez-class member - a value lookup ("spell id" itself
-    // is cached, recomputed every 5 s), HasSpell, the spell entry and its cost.
-    bool CanRezNow(Player* member, bool capableOnly);
+    // may drink first). capableOnly = false, a member off a dungeon map, or a member on another map OBJECT than
+    // callerMap (the caller's own FindMap(); another instance copy = another thread, OB-10 #861) is the class rule.
+    // Pure verdict: DcRezDecision::CanRezNow. Cost: only while someone is dead, but then on every EvaluateImpl (each
+    // follower rung tick of a living rez class) and every veto ask, per living rez-class member - a value lookup
+    // ("spell id" itself is cached, recomputed every 5 s), HasSpell, the spell entry and its cost.
+    bool CanRezNow(Player* member, bool capableOnly, Map const* callerMap);
 
     // DungeonClear.StayDeadInRun (g1n 26.10.2026): true while a LIVING rez-class member of `bot`'s group stands on
     // the same map object (this instance copy) - someone is left who can raise the corpse. Read-only, called on the

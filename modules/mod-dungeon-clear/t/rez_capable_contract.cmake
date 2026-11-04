@@ -5,7 +5,7 @@ cmake_policy(VERSION 3.16)
 # only a member who can rez now (DcRezRecovery::CanRezNow; the pure rule DcRezDecision::CanRezNow, gtest
 # TestPostCombatRez DcRezCapableTest). This pins the wiring as source text: both sites behind the switch through the one
 # helper, the switch-0 path as the class rule, the mana POOL (not current mana: a drained rezzer drinks first), the
-# dungeon gate on the cross-bot spell read, CanRezNow in CanRecover, the registry row and the conf key at 0. Every check
+# map-object + dungeon gate on the cross-bot spell read (OB-10 #861), CanRezNow in CanRecover, the registry row and the conf key at 0. Every check
 # is run again on mutated copies (negative probes): each mutation must fail the contract, so the pins cannot rot into
 # vacuous matches.
 
@@ -84,11 +84,11 @@ set(SWITCH_READ "DcSettings::GetBool(bot, \"RezCapableOnly\")")
 set(SELECT_GATE "        if (${SWITCH_READ})
             for (std::size_t i = 0; i < members.size(); ++i)
                 if (!members[i].isDead && members[i].canRezClass)
-                    members[i].canRezClass = DcRezRecovery::CanRezNow(players[i], true);")
+                    members[i].canRezClass = DcRezRecovery::CanRezNow(players[i], true, bot->FindMap());")
 set(VETO_TEST "member->IsAlive() &&
-                CanRezNow(member, capableOnly))")
+                CanRezNow(member, capableOnly, map))")
 set(DUNGEON_GATE "        Map* map = member->FindMap();
-        if (!map || !map->IsDungeon())
+        if (!map || map != callerMap || !map->IsDungeon())
             return DcRezDecision::CanRezNow(c, false);")
 
 # Every pin, on the texts in the variables registry conf recovery recovery_h decision follower module.
@@ -116,11 +116,11 @@ function(rco_check_all)
   rco_require(veto "        bool const capableOnly = ${SWITCH_READ};" "veto reads the switch")
   rco_require(veto "${VETO_TEST}" "veto behind the switch through CanRezNow")
   rco_require(module "                                     DcRezRecovery::LivingRezzerOnMap(bot), deadSeconds," "StayDeadInRunVeto through LivingRezzerOnMap")
-  rco_require(recovery_h "    bool CanRezNow(Player* member, bool capableOnly);" "helper declaration")
+  rco_require(recovery_h "    bool CanRezNow(Player* member, bool capableOnly, Map const* callerMap);" "helper declaration")
 
   # The one helper: switch 0 / non rez class returns before any spell read; the rung's own spell resolution, the
   # member's own spellbook, cooldown and cost; the verdict is the pure rule.
-  rco_between(recovery "    bool CanRezNow(Player* member, bool capableOnly)\n    {" "    bool LivingRezzerOnMap(Player* bot)" helper)
+  rco_between(recovery "    bool CanRezNow(Player* member, bool capableOnly, Map const* callerMap)\n    {" "    bool LivingRezzerOnMap(Player* bot)" helper)
   rco_order(helper "        if (!c.isRezClass || !capableOnly)
             return DcRezDecision::CanRezNow(c, capableOnly);" "GetValue<uint32>(DcKey::Stock::SpellId, name)->Get()" "switch 0 before any spell read")
   rco_require(helper "char const* name = RezActionNameFor(member->getClass());" "the rung's rez name")
@@ -130,16 +130,25 @@ function(rco_check_all)
   rco_require(helper "member->GetMaxPower(Powers(info->powerType))" "the mana pool")
   rco_forbid(helper "member->GetPower(" "current mana in the capability (a drained rezzer must stay electable)")
   rco_require(helper "        return DcRezDecision::CanRezNow(c, capableOnly);\n    }" "the pure verdict")
-  # The cross-bot "spell id" read only on a dungeon map (sequential object updates), after the switch-0 return.
+  # The cross-bot "spell id" read only on the CALLER's map object (OB-10 #861: the callers filter by map ID, another
+  # instance copy runs on another pool thread - the twow-repo#563 X5 class) and only on a dungeon map (sequential
+  # object updates), after the switch-0 return.
   rco_order(helper "            return DcRezDecision::CanRezNow(c, capableOnly);" "${DUNGEON_GATE}" "switch 0 before the dungeon gate")
-  rco_order(helper "${DUNGEON_GATE}" "GetValue<uint32>(DcKey::Stock::SpellId, name)->Get()" "dungeon gate before the spell read")
+  rco_order(helper "${DUNGEON_GATE}" "GetValue<uint32>(DcKey::Stock::SpellId, name)->Get()" "map-object + dungeon gate before the spell read")
+  rco_count(helper "GetValue<" 1 "value reads in the helper (only the gated spell id)")
   rco_count(recovery "${SWITCH_READ}" 3 "switch reads (election, CanRecover, veto)")
+  # Every caller hands its own map object (the election and CanRecover the evaluating bot's, the veto its `map`);
+  # no two-argument call is left.
+  foreach(old IN ITEMS "CanRezNow(players[i], true)" "CanRezNow(member, capableOnly)" "CanRezNow(bot, capableOnly)")
+    rco_forbid(recovery "${old}" "a CanRezNow call without the caller's map: ${old}")
+  endforeach()
 
   # CanRecover (`dc on` / resume with corpses): the same helper, group and solo path.
   rco_between(recovery "    bool CanRecover(Player* bot)\n    {" "    char const* RezActionNameFor(uint8 playerClass)" recover)
   rco_require(recover "        bool const capableOnly = ${SWITCH_READ};" "CanRecover reads the switch")
-  rco_require(recover "            return bot->IsAlive() && CanRezNow(bot, capableOnly);" "CanRecover solo through CanRezNow")
-  rco_require(recover "            if (member->IsAlive() && CanRezNow(member, capableOnly))" "CanRecover group through CanRezNow")
+  rco_require(recover "        Map const* const callerMap = bot->FindMap();" "CanRecover passes its own map object")
+  rco_require(recover "            return bot->IsAlive() && CanRezNow(bot, capableOnly, callerMap);" "CanRecover solo through CanRezNow")
+  rco_require(recover "            if (member->IsAlive() && CanRezNow(member, capableOnly, callerMap))" "CanRecover group through CanRezNow")
   rco_forbid(recover "IsRezClass(" "CanRecover by class")
 
   # The pure rule (gtest DcRezCapableTest).
@@ -206,7 +215,8 @@ rco_probe("registry default 1" registry "{ \"RezCapableOnly\",           DcType:
 rco_probe("conf key 1" conf "\nDungeonClear.RezCapableOnly = 0\n" "\nDungeonClear.RezCapableOnly = 1\n")
 rco_probe("conf without the CAUSE" conf "DungeonClear.RezCapableOnly\n#        BUG FIX (CLI-GRP 04.11.2026, g1/CAUSE-DC-REVIVE-PFAD-20261104" "DungeonClear.RezCapableOnly\n#        BUG FIX (CLI-GRP 04.11.2026")
 rco_probe("selection without the switch" recovery "        if (${SWITCH_READ})\n            for" "        if (true)\n            for")
-rco_probe("selection by class" recovery "members[i].canRezClass = DcRezRecovery::CanRezNow(players[i], true);" "members[i].canRezClass = IsRezClass(players[i]);")
+rco_probe("selection by class" recovery "members[i].canRezClass = DcRezRecovery::CanRezNow(players[i], true, bot->FindMap());" "members[i].canRezClass = IsRezClass(players[i]);")
+rco_probe("selection with the member's own map" recovery "CanRezNow(players[i], true, bot->FindMap())" "CanRezNow(players[i], true, players[i]->FindMap())")
 rco_probe("snapshot reads the spells" recovery "            m.canRezClass = IsRezClass(member);" "            m.canRezClass = DcRezRecovery::CanRezNow(member, true);")
 rco_probe("veto by class" recovery "${VETO_TEST}" "member->IsAlive() &&\n                IsRezClass(member))")
 rco_probe("veto without the switch" recovery "        bool const capableOnly = ${SWITCH_READ};\n        for" "        bool const capableOnly = true;\n        for")
@@ -217,9 +227,13 @@ rco_probe("pure rule ignores mana" decision " && c.maxPower >= c.powerCost;" ";"
 rco_probe("pure rule ignores the cooldown" decision "c.spellId != 0 && c.spellReady &&" "c.spellId != 0 &&")
 rco_probe("pure rule ignores the spell" decision "return c.spellId != 0 && c.spellReady" "return c.spellReady")
 rco_probe("current mana" recovery "member->GetMaxPower(Powers(info->powerType))" "member->GetPower(Powers(info->powerType))")
-rco_probe("no dungeon gate" recovery "        if (!map || !map->IsDungeon())\n            return DcRezDecision::CanRezNow(c, false);" "        if (!map)\n            return DcRezDecision::CanRezNow(c, false);")
-rco_probe("CanRecover group by class" recovery "            if (member->IsAlive() && CanRezNow(member, capableOnly))" "            if (member->IsAlive() && IsRezClass(member))")
-rco_probe("CanRecover solo by class" recovery "            return bot->IsAlive() && CanRezNow(bot, capableOnly);" "            return bot->IsAlive() && IsRezClass(bot);")
+rco_probe("no dungeon gate" recovery "        if (!map || map != callerMap || !map->IsDungeon())\n            return DcRezDecision::CanRezNow(c, false);" "        if (!map || map != callerMap)\n            return DcRezDecision::CanRezNow(c, false);")
+rco_probe("no map-object gate" recovery "        if (!map || map != callerMap || !map->IsDungeon())" "        if (!map || !map->IsDungeon())")
+rco_probe("map-object gate after the read" recovery "        if (!map || map != callerMap || !map->IsDungeon())\n            return DcRezDecision::CanRezNow(c, false);\n" "        if (!map || !map->IsDungeon())\n            return DcRezDecision::CanRezNow(c, false);\n        (void)(map != callerMap);\n")
+rco_probe("CanRecover with the member's map" recovery "        Map const* const callerMap = bot->FindMap();" "        Map const* const callerMap = nullptr;")
+rco_probe("veto two-argument call" recovery "CanRezNow(member, capableOnly, map))" "CanRezNow(member, capableOnly))")
+rco_probe("CanRecover group by class" recovery "            if (member->IsAlive() && CanRezNow(member, capableOnly, callerMap))" "            if (member->IsAlive() && IsRezClass(member))")
+rco_probe("CanRecover solo by class" recovery "            return bot->IsAlive() && CanRezNow(bot, capableOnly, callerMap);" "            return bot->IsAlive() && IsRezClass(bot);")
 rco_probe("second rez table" follower "bool DungeonClearRezPartyAction::Execute(Event& /*event*/)" "char const* RezActionNameFor(uint8 playerClass);\nbool DungeonClearRezPartyAction::Execute(Event& /*event*/)")
 
 get_property(probes GLOBAL PROPERTY RCO_PROBES)
