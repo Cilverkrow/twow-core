@@ -10,6 +10,7 @@
 #include "playerbot/QuestGroupWorld.h"
 #include "playerbot/TravelMgr.h"
 #include "playerbot/ServerFacade.h"
+#include "playerbot/CohortPolicy.h"
 #include "Group/Group.h"
 
 #include <algorithm>
@@ -152,9 +153,14 @@ bool WorldThreadManager::CheckLeave(Player* bot, Group* group, std::uint32_t now
 
     Player* leader = sObjectMgr.GetPlayer(group->GetLeaderGuid());
     float const radius = sPlayerbotAIConfig.botGroupsAdhocRadius;
-    bool const outOfRange = leader && leader != bot &&
-        (leader->GetMapId() != bot->GetMapId() || sServerFacade.GetDistance2d(bot, leader) > 2.0f * radius);
+    // BOT-09 (AiPlayerbot.BotGroups.LeaderOtherMap): the same rule as AdhocGroupAction::CheckLeave, in this existing pass.
+    bool const otherMapRule = ai::cohort::Applies(sPlayerbotAIConfig.botGroupsLeaderOtherMap, bot->GetGUIDLow());
+    bool const otherMap = leader && leader != bot && OnOtherMap(leader->GetMapId() != bot->GetMapId(),
+        otherMapRule && leader->GetInstanceId() != bot->GetInstanceId(), bot->GetMap()->Instanceable());
+    bool const outOfRange = leader && leader != bot && OutOfRangeFact(otherMap,
+        !otherMap && sServerFacade.GetDistance2d(bot, leader) > 2.0f * radius, otherMapRule);
     track.outOfRangeSince = outOfRange ? (track.outOfRangeSince ? track.outOfRangeSince : now) : 0;
+    track.leaderOtherMapSince = otherMapRule && otherMap ? (track.leaderOtherMapSince ? track.leaderOtherMapSince : now) : 0;
 
     std::uint32_t minLevel = bot->GetLevel();
     std::uint32_t maxLevel = bot->GetLevel();
@@ -171,6 +177,8 @@ bool WorldThreadManager::CheckLeave(Player* bot, Group* group, std::uint32_t now
     facts.outOfRangeSince = track.outOfRangeSince;
     facts.levelWindowSince = track.levelWindowSince;
     facts.lastProgress = track.lastProgress;
+    facts.leaderOtherMapSince = track.leaderOtherMapSince;
+    facts.leaderOtherMapSeconds = otherMapRule ? sPlayerbotAIConfig.botGroupsLeaderOtherMapSeconds : 0;
 
     // twow-repo#365 HelpUntilDone (owner 25.10.2026): whoever is done stays and follows a member that still works on the
     // objective, until no member does (Leave::GroupDone). The helper's idle clock is the group's freshest progress.

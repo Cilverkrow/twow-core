@@ -547,6 +547,7 @@ public:
     // vendor template items (creature_template.vendor_id), as the player's buy, the by-name buy and the vendor map already do.
     uint32 buyVendorTemplateItems = 1;
     uint32 travelRpgAreaLevelFromSpawn = 0;  // twow-repo#333 P1-v: RpgTravelDestination::IsPossible reads the area level at the spawn nearest to the bot, not at the map origin (RpgAreaLevelPolicy.h); 0 off, 1 all, 2 cohort B (odd guid)
+    bool travelElevatorScanCache = false;  // BOT-09 (twow-repo#672): WorldPosition::getTransports' elevator branch walks a per-map list of the transport-type gameobject spawns, built once, instead of all gameobject spawn data on every call
     uint32 gatherQuestHerbFilter = 0;  // twow-repo#333 P1-f: a quest herb (lock 259) is picked only with its quest active (modes 0/1/2)
     // #333: roster bots use their professions while levelling.
     float professionUseGatherDistance = 0.0f;     // 0 = GatheringDistance
@@ -900,6 +901,11 @@ public:
     uint32 botGroupsAdhocScanSlices = 0;
     uint32 botGroupsAdhocScanBudgetUs = 0;   // s7r: a slice ends once it took this many us (at least one bot; 0 = by count only)
     bool botGroupsAdhocHelpUntilDone = false;  // twow-repo#365 (owner 25.10.): whoever is done follows a member with the objective open until the group is done
+    // BOT-09 (twow-repo#672, #628 third finding; OB-00 04.11.2026): the ad-hoc leave of the action path really leaves for a free
+    // bot, a leader on another map is the leave reason leader_other_map after LeaderOtherMapSeconds, and follow is not useful
+    // for a target on another map that is no real player. 0 off, 1 all, 2 cohort B, 3 cohort A.
+    uint32 botGroupsLeaderOtherMap = 0;
+    uint32 botGroupsLeaderOtherMapSeconds = 120;   // 30..900
     // twow-repo#627 S7 help groups (QuestGroupPolicy.h, QuestGroupWorld.cpp); Enable: 0 off, 1 all, 2 cohort B, 3 cohort A.
     uint32 questGroupsEnable = 0;
     uint32 questGroupsScanSeconds = 60;
