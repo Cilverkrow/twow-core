@@ -3175,6 +3175,21 @@ add_test(NAME pos_stuck_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/pos_stuck_source_contract_tests.cmake")
 
+# twow-repo#575 / #601 (AiPlayerbot.Unstuck.CombatFightClock, OB-00 04.11.2026): the fight clock of "combat stuck" /
+# "combat long stuck" (CombatStuckClockPolicy.h); source contract in t/contracts.d.
+add_executable(combat_stuck_clock_policy_tests
+  "${PB_MODULE_DIR}/t/combat_stuck_clock_policy_tests.cpp")
+
+target_include_directories(combat_stuck_clock_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(combat_stuck_clock_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME combat_stuck_clock_policy
+  COMMAND combat_stuck_clock_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # twow-repo#591 (PERF-AB-01): budget exemption for bots without a travel target, configurable limit.
 add_test(NAME budget_start_source_contract
   COMMAND "${CMAKE_COMMAND}"

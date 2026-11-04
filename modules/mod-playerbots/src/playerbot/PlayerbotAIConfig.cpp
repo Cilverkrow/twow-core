@@ -1071,6 +1071,10 @@ bool PlayerbotAIConfig::Initialize()
     pathPosStuckProgress = std::min(50.0f, std::max(1.0f, config.GetFloatDefault("AiPlayerbot.Path.PosStuck.Progress", ai::pos_stuck::DefaultProgress)));
     pathPosStuckEpisodeMinutes = uint32(std::min(240, std::max(5, config.GetIntDefault("AiPlayerbot.Path.PosStuck.EpisodeMinutes", int(ai::pos_stuck::DefaultEpisodeMinutes)))));
     pathPosStuckRateMinutes = uint32(std::min(240, std::max(5, config.GetIntDefault("AiPlayerbot.Path.PosStuck.RateMinutes", int(ai::pos_stuck::DefaultRateMinutes)))));
+    // twow-repo#575 / #601: Unstuck.CombatFightClock, an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B, 3 cohort A).
+    unstuckCombatFightClock = config.GetIntDefault("AiPlayerbot.Unstuck.CombatFightClock", 0);
+    if (unstuckCombatFightClock > 3)
+        unstuckCombatFightClock = 0;
     pathTaxiTrace = config.GetBoolDefault("AiPlayerbot.Path.TaxiTrace", false);
     pathTransportEdgeTrace = config.GetBoolDefault("AiPlayerbot.Path.TransportEdgeTrace", false);
     pathTransportDeckProbe = config.GetBoolDefault("AiPlayerbot.Path.TransportDeckProbe", false);
@@ -1990,6 +1994,7 @@ bool PlayerbotAIConfig::Initialize()
             {"ThrownUsageFix", Value(thrownUsageFix)},
             {"Travel.ElevatorScanCache", Value(travelElevatorScanCache)},
             {"Travel.RpgAreaLevelFromSpawn", Value(travelRpgAreaLevelFromSpawn)},
+            {"Unstuck.CombatFightClock", Value(unstuckCombatFightClock)},
             {"ZoneExit.TurnInNearRadius", Value(zoneExitTurnInNearRadius)},
             {"ZoneExit.TurnInStallCounts", Value(zoneExitTurnInStallCounts)},
             {"ZoneExit.TurnInTravelStall", Value(zoneExitTurnInTravelStall)},
