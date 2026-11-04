@@ -86,7 +86,7 @@ read_source("aiplayerbot.conf.dist.in" conf)
 read_source("strategy/actions/ChooseTravelTargetAction.cpp" choose)
 
 # ---- 1. The shared predicate: the four deferrals in the main loop's order, side-effect free -----------------------
-require_text("${choose}" "enum class PostActiveDeferral\n{\n    None,\n    BattlegroundQuest,\n    EnemyZone,\n    CrossMap,\n    ZoneLevel,\n    DangerMap,\n    LevelGuard,   // twow-repo#601 cand4 lever (ii), RosterFarMove.LevelGuard (LevelGuardPolicy.h)\n};" "deferral reasons (+ #601 cand4 lever (ii) LevelGuard)")
+require_text("${choose}" "enum class PostActiveDeferral\n{\n    None,\n    BattlegroundQuest,\n    EnemyZone,\n    CrossMap,\n    ZoneLevel,\n    DangerMap,\n    LevelGuard,   // twow-repo#601 cand4 lever (ii), RosterFarMove.LevelGuard (LevelGuardPolicy.h)\n    StartZone,       // twow-repo#601 owner rule R1, QuestFirstProgression.StartZoneMinLevel (ZoneKeepPolicy.h)\n    StaleKeepZone,   // twow-repo#601 owner rule R1, QuestFirstProgression.StaleKeepZone (ZoneKeepPolicy.h)\n};" "deferral reasons (+ #601 cand4 lever (ii) LevelGuard, + owner rule R1 StartZone / StaleKeepZone)")
 region("${choose}" "PostActiveDeferral PostActiveDeferralOf(" "\n}\n" deferral_fn)
 require_text("${deferral_fn}" "PostActiveDeferral PostActiveDeferralOf(PlayerbotAI* ai, Player* bot, TravelTarget const* target, TravelDestination* destination,\n    WorldPosition* position, danger_map::DangerMap::Hit& dangerHit, ai::level_guard::Hit* guardHit = nullptr)" "signature (a danger map hit handed back for the death_cluster line; #601 cand4 lever (ii): the LevelGuard hit for the main loop)")
 require_text("${deferral_fn}" "if (sPlayerbotAIConfig.zoneExitSkipBattlegroundQuests && !target->IsForced())" "Z3 battleground quest gate")

@@ -1,7 +1,7 @@
 cmake_policy(VERSION 3.16)
-# twow-repo#568 strategy diet D67 (AiPlayerbot.Diet.WanderSoloGuard, default 0): "wander near" of a bot without a
-# follow target fires only on a FOLLOW motion, the only state in which its "stop follow" is useful. With 0, or with a
-# follow target, the old check runs. "wander far" / "wander medium" stay untouched (stale free-move center snapshot).
+# twow-repo#568 strategy diet D67 (AiPlayerbot.Diet.WanderSoloGuard, retired 04.11.2026, switch audit A2 #1): "wander
+# near" of a bot without a follow target fires only on a FOLLOW motion, the only state in which its "stop follow" is
+# useful; with a follow target the old check runs. "wander far" / "wander medium" stay untouched.
 if(NOT DEFINED PB_SOURCE_DIR)
   message(FATAL_ERROR "PB_SOURCE_DIR is required")
 endif()
@@ -49,15 +49,15 @@ file(READ "${PB_SOURCE_DIR}/strategy/triggers/RangeTriggers.h" range_triggers_h)
 file(READ "${PB_SOURCE_DIR}/strategy/generic/WanderStrategy.cpp" wander_strategy)
 file(READ "${PB_SOURCE_DIR}/strategy/actions/FollowActions.cpp" follow_actions)
 
-# Switch: default 0 in member, loader and dist config.
-require_text("${config_h}" "bool dietWanderSoloGuard = false;" "dietWanderSoloGuard member default false")
-require_text("${config_cpp}" "dietWanderSoloGuard = config.GetBoolDefault(\"AiPlayerbot.Diet.WanderSoloGuard\", false);" "WanderSoloGuard read with default 0")
-require_text("${config_dist}" "\nAiPlayerbot.Diet.WanderSoloGuard = 0\n" "WanderSoloGuard = 0 in the dist config")
+# Retired switch: no member, no reader, no dist key.
+forbid_text("${config_h}" "dietWanderSoloGuard" "dietWanderSoloGuard member (retired)")
+forbid_text("${config_cpp}" "dietWanderSoloGuard" "Diet.WanderSoloGuard reader (retired)")
+forbid_text("${config_dist}" "AiPlayerbot.Diet.WanderSoloGuard" "Diet.WanderSoloGuard in the dist config (retired)")
 
 # wander near: guard first, only for a missing follow target, answers with the FOLLOW motion check; old path after it.
 region("${range_triggers_h}" "class WanderNearTrigger : public StopFollowTrigger" "\n    };" wander_near)
-set(guard "if (sPlayerbotAIConfig.dietWanderSoloGuard && !AI_VALUE(Unit*, \"follow target\"))\n                return bot->GetMotionMaster()->GetCurrentMovementGeneratorType() == FOLLOW_MOTION_TYPE;")
-require_text("${wander_near}" "${guard}" "D67 wander near guard behind the switch")
+set(guard "if (!AI_VALUE(Unit*, \"follow target\"))\n                return bot->GetMotionMaster()->GetCurrentMovementGeneratorType() == FOLLOW_MOTION_TYPE;")
+require_text("${wander_near}" "${guard}" "D67 wander near guard")
 require_order("${wander_near}" "${guard}" "if (StopFollowTrigger::IsActive())\n                return true;" "D67 guard before the old check")
 require_text("${wander_near}" "return AI_VALUE2(bool, \"can free move\", \"wandermin\");" "D67 old wandermin check kept")
 

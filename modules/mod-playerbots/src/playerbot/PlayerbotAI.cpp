@@ -58,8 +58,9 @@
 #include "strategy/values/PositionValue.h"
 #include "playerbot/ServerFacade.h"
 #include "playerbot/TravelMgr.h"
+#include "playerbot/strategy/values/TravelValues.h"   // twow-repo#333 P1-aa: ProfessionTripTick
 #include "playerbot/TravelNode.h"   // twow-repo#575 (PATH-01 F4): WalkToMachineByGraph
-#include "playerbot/DangerMapPolicy.h"
+#include "playerbot/DangerMapConfig.h"
 #include "playerbot/GrindCapPolicy.h"
 #include "playerbot/SpellPowerGatePolicy.h"
 #include "playerbot/TankKitPolicy.h"
@@ -108,17 +109,6 @@ std::set<std::string> PlayerbotAI::unsecuredCommands;
 
 namespace
 {
-danger_map::Params DangerMapParams()
-{
-    danger_map::Params params;
-    params.cellSize = sPlayerbotAIConfig.dangerMapCellSize;
-    params.windowSeconds = sPlayerbotAIConfig.dangerMapWindowSeconds;
-    params.minDeaths = sPlayerbotAIConfig.dangerMapMinDeaths;
-    params.levelMargin = sPlayerbotAIConfig.dangerMapLevelMargin;
-    params.lineSamples = sPlayerbotAIConfig.dangerMapLineSamples;
-    return params;
-}
-
 // #307: pools a bot death to a mob into the shared danger map. Deaths without
 // a creature target (falling, drowning, players) stay with the per-bot rules.
 // #307: a creature entry that killed this roster bot GrindAvoid.MaxDeaths times within
@@ -148,7 +138,7 @@ void RecordDangerMapDeath(Player* bot, Unit* killer, uint32 attackers)
     if (!environment && (!killer || killer->GetTypeId() != TYPEID_UNIT))
         return;
 
-    danger_map::Params const params = DangerMapParams();
+    danger_map::Params const params = danger_map::ConfigParams();
     uint32 const now = uint32(time(nullptr));
 
     danger_map::Death death;
@@ -1475,6 +1465,10 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
                         travelTarget->SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);
                 }
             }
+            // twow-repo#333 P1-aa (AiPlayerbot.ProfessionTraining.TripNoGrind, M1r run 8: a 600 s near trip ended 19 min late): an open
+            // profession trip ends at its hold end within a minute, in and out of combat, also when no travel action runs.
+            if (sPlayerbotAIConfig.professionTrainingTripNoGrind)
+                ai::ProfessionTripTick(this);
             for (auto const& [questId, status] : bot->getQuestStatusMap())
             {
                 uint64 entry = uint64(questId) * 1000003ULL + uint64(status.m_status) * 131ULL + (status.m_rewarded ? 7ULL : 0ULL);
@@ -2816,8 +2810,10 @@ void PlayerbotAI::OnDeath()
             // Re-deaths at camps (CLI-ROT adds analysis 25.10.2026; DestinationDeaths.CampBlock, DangerMap.CountAddDeaths): the living
             // attackers at the death = the living adds of the fight snapshot (as in deaths.csv) + the target if it lives. Read only when
             // one of the two switches is on; one "all targets" read per death.
+            // twow-repo#679 (switch audit #10c): CampBlock keeps the count per bot, so only a bot it applies to reads it (mode 2 = cohort B).
+            // DangerMap.CountAddDeaths pools the deaths of ALL bots into the shared map that the cohort B bots read, so every bot still counts.
             uint32 deathAttackers = 0;
-            if (sPlayerbotAIConfig.destinationDeathsCampBlock || sPlayerbotAIConfig.dangerMapCountAddDeaths)
+            if (ai::cohort::Applies(sPlayerbotAIConfig.destinationDeathsCampBlock, bot->GetGUIDLow()) || sPlayerbotAIConfig.dangerMapCountAddDeaths)
             {
                 Unit* const deathTarget = AI_VALUE(Unit*, "current target");
                 std::list<ObjectGuid> const deathTargets = AI_VALUE_LAZY(std::list<ObjectGuid>, "all targets");

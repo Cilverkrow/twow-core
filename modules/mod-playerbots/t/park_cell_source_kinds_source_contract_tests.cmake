@@ -104,7 +104,7 @@ foreach(kind PET_BOT PET_PLAYER SUMMON SPAWN_ACTIVE FORMATION AOI GO_SPAWN_ACTIV
 endforeach()
 
 # Module: the switch handed to the core with CellSourceStats, the two lines with their fields.
-region("${mgr}" "void RandomPlayerbotMgr::ReportParkSleep()" "static uint32 lastReport = 0;" report)
+region("${mgr}" "void RandomPlayerbotMgr::ReportParkSleep()" "void RandomPlayerbotMgr::ProcessParkedBots()" report)
 require_text("${report}" "Map::SetCellSourceKinds(sPlayerbotAIConfig.parkCellSourceStats && sPlayerbotAIConfig.parkCellSourceKinds);" "switch only with CellSourceStats")
 require_text("${report}" "[CellSourceKinds] samples=" "[CellSourceKinds] line")
 foreach(field map= instances= objects= cells= inst= rank= kind= entry= guid= x= y= nearest=)

@@ -13,11 +13,13 @@
 #include "playerbot/QuestGroupWorld.h"   // twow-repo#627 S7 hooks (CLI-Deep): help-group members out of PosStuck, S3c, turn-in recovery
 #include "playerbot/AdhocGroupWorld.h"   // twow-repo#601 F5b: a bot-only group shares the kill credit (CLI-GRP 25.10.)
 #include "playerbot/CohortPolicy.h"
+#include "playerbot/ZoneKeepPolicy.h"      // twow-repo#601 owner rule R1 (StartZoneMinLevel, forced trip hold)
 #include "playerbot/RpgAreaLevelPolicy.h"
 #include "playerbot/ContestedObjectivePolicy.h"
 #include "playerbot/StaleObjectivePolicy.h"   // twow-repo#601 cand4 (i) StaleObjectiveFilter
 #include "playerbot/TransportBoardPolicy.h"   // twow-repo#342 ABBA-1 §6: the PosStuck dock pause ends after WaitTimeoutMsOf
 #include <algorithm>
+#include <atomic>
 #include <vector>
 #include <iomanip>
 
@@ -36,6 +38,7 @@
 #include "playerbot/strategy/values/RestGateValue.h"
 #include "playerbot/strategy/values/QuestValues.h"   // twow-repo#601 S5a: DialogStatusValue::getDialogStatus (band giver filter F)
 #include "playerbot/QuestBand.h"   // twow-repo#601 S5a (BandLadder): the band trip hooks, the ladder loader
+#include "playerbot/ProfessionTravelPolicy.h"   // twow-repo#333 P1-aa: the open profession trip on arrival (TripNoGrind)
 #include "playerbot/CohortPolicy.h"   // mode 2 = cohort B: twow-repo#601 QuestLoop.InactiveAfterProgress, re-deaths at camps (DestinationDeaths.CampBlock)
 
 using namespace ai;
@@ -1129,8 +1132,10 @@ void TravelTarget::SetTarget(TravelDestination* tDestination1, WorldPosition* wP
         NoteBandTripReplaced();
 
     // twow-repo#601 (QuestLoop.InactiveAfterProgress): a new destination takes the objective's count; a refresh of the same one
-    // keeps it (progress since the target was first set). Off: never read.
-    if (sPlayerbotAIConfig.questLoopInactiveAfterProgress && tDestination1 != tDestination)
+    // keeps it (progress since the target was first set). Only read for the bots the switch applies to (mode 2 = cohort B), so only
+    // those pay for it (twow-repo#679, switch audit #10c).
+    // Off: never read.
+    if (ai::cohort::Applies(sPlayerbotAIConfig.questLoopInactiveAfterProgress, bot->GetGUIDLow()) && tDestination1 != tDestination)
         objectiveCountAtStart = ObjectiveCountOf(bot, tDestination1);
 
     // twow-repo#601 (QuestLoop.InactiveReselect): the fallback belongs to the target that ended through an emptied camp only.
@@ -1201,6 +1206,25 @@ void TravelTarget::SetRelationRpgTarget()
     context->GetValue<GuidPosition>("rpg target")->Set(GuidPosition(npc));
     context->GetValue<std::string>("next rpg action")->Set(quest_loop::RelationArriveRpgAction(relation->GetRelation()));
     TraceQuestCommit(tDestination, "progress", "rpg_target");
+}
+
+// twow-repo#333 P1-aa (AiPlayerbot.ProfessionTraining.TripNoGrind, OB-00 04.11.2026 after M1r run 8): at the trip's vendor / trainer the
+// NPC becomes the rpg target with "rpg buy" / "rpg train" as the next rpg action, so the purchase / training runs at once instead of a
+// weighted random rpg pick. One bounded grid search per arrival; no status, retry or expiry change. With ProfessionTraining.Trace one
+// "[ProfTravel] state=status ... event=arrive" line.
+void TravelTarget::SetProfessionTripRpgTarget(uint8 kind, bool stockArrival)
+{
+    char const* const next = ai::profession_travel::TripArriveRpgAction(kind);
+    Creature* npc = tDestination->GetEntry() > 0 ?
+        bot->FindNearestCreature(uint32(tDestination->GetEntry()), ai::profession_travel::kTripRpgSearchYards) : nullptr;
+    if (npc)
+    {
+        context->GetValue<GuidPosition>("rpg target")->Set(GuidPosition(npc));
+        context->GetValue<std::string>("next rpg action")->Set(next);
+    }
+    if (sPlayerbotAIConfig.professionTrainingTrace)
+        ai::ProfessionTripStatusLine(ai, kind, "arrive", "-", "WORK", npc ? npc->GetGUIDLow() : 0u, npc ? bot->GetDistance(npc) : -1.0f,
+            stockArrival ? "stock" : "trip", npc ? (kind == ai::profession_travel::kTripKindTrainer ? "train" : "buy") : "none");
 }
 
 bool TravelTarget::CopyTarget(TravelTarget* const target) {
@@ -1695,6 +1719,13 @@ namespace
 {
     std::mutex staleObjectiveMutex;
     ai::stale_objective::Store staleObjectiveStore;
+    // twow-repo#601 owner rule R1 / cand4G T (CLI-Deep 04.11.2026, evidence cand4/T-CAUSE.md): the query ran one lock per candidate
+    // objective of every quest search on every map thread. Now lock-free in the common case: while no mark is active anywhere the
+    // query returns at once; otherwise each thread checks a sorted snapshot of the marked keys, rebuilt under the lock only after the
+    // store changed (the version grows on every recorded failure and credit). Same answers as before.
+    std::atomic<bool> staleObjectiveAnyMark{ false };
+    std::atomic<uint32> staleObjectiveLatestMarkUntilMs{ 0 };
+    std::atomic<uint32> staleObjectiveStoreVersion{ 0 };
 
     ai::stale_objective::Params StaleObjectiveParams()
     {
@@ -1726,6 +1757,16 @@ void ai::stale_objective::NoteObjectiveFailure(Player* bot, PlayerbotAI* botAI, 
     {
         std::lock_guard<std::mutex> lock(staleObjectiveMutex);
         marked = ai::stale_objective::RecordFailure(staleObjectiveStore, key, bot->GetGUIDLow(), nowMs, params, failures, bots);
+        if (marked)
+        {
+            auto const markedEntry = staleObjectiveStore.entries.find(key);
+            uint32 const until = markedEntry != staleObjectiveStore.entries.end() ? markedEntry->second.markUntilMs : nowMs + params.markMs;
+            uint32 const latest = staleObjectiveLatestMarkUntilMs.load(std::memory_order_relaxed);
+            if (!staleObjectiveAnyMark.load(std::memory_order_relaxed) || int32(until - latest) > 0)
+                staleObjectiveLatestMarkUntilMs.store(until, std::memory_order_release);
+            staleObjectiveAnyMark.store(true, std::memory_order_release);
+        }
+        staleObjectiveStoreVersion.fetch_add(1, std::memory_order_acq_rel);
     }
     if (marked)
         sLog.outBasic("[StaleObjective] state=mark quest=%u entry=%d failures=%u bots=%u window_s=%u seconds=%u last_bot=%u reason=%s",
@@ -1741,6 +1782,8 @@ void ai::stale_objective::NoteQuestCredit(Player* bot, uint32 questId)
     {
         std::lock_guard<std::mutex> lock(staleObjectiveMutex);
         ended = ai::stale_objective::Credit(staleObjectiveStore, questId, WorldTimer::getMSTime());
+        if (ended)
+            staleObjectiveStoreVersion.fetch_add(1, std::memory_order_acq_rel);
     }
     if (ended)
         sLog.outBasic("[StaleObjective] state=clear quest=%u marks=%u reason=credit bot=%u", questId, ended, bot ? bot->GetGUIDLow() : 0);
@@ -1750,9 +1793,80 @@ bool ai::stale_objective::IsObjectiveStale(QuestObjectiveTravelDestination const
 {
     if (!sPlayerbotAIConfig.questFirstProgressionStaleObjectiveFilter || !objective)
         return false;
-    std::lock_guard<std::mutex> lock(staleObjectiveMutex);
-    return ai::stale_objective::IsStale(staleObjectiveStore, ai::stale_objective::Key{ objective->GetQuestId(), objective->GetEntry() },
-        WorldTimer::getMSTime());
+    uint32 const nowMs = WorldTimer::getMSTime();
+    // No mark active anywhere (none yet, or the latest one has run out): no lock, not stale.
+    if (!staleObjectiveAnyMark.load(std::memory_order_acquire) ||
+        int32(staleObjectiveLatestMarkUntilMs.load(std::memory_order_acquire) - nowMs) <= 0)
+        return false;
+
+    // The thread's snapshot of the marked keys (store order = key order, so sorted), rebuilt under the lock after a store change.
+    struct Snapshot
+    {
+        uint32 version = 0;
+        bool built = false;
+        std::vector<std::pair<ai::stale_objective::Key, uint32>> marked;   // key, mark end (ms)
+    };
+    thread_local Snapshot snapshot;
+    uint32 const version = staleObjectiveStoreVersion.load(std::memory_order_acquire);
+    if (!snapshot.built || snapshot.version != version)
+    {
+        snapshot.marked.clear();
+        {
+            std::lock_guard<std::mutex> lock(staleObjectiveMutex);
+            for (auto const& [key, entry] : staleObjectiveStore.entries)
+                if (ai::stale_objective::IsMarked(entry, nowMs))
+                    snapshot.marked.emplace_back(key, entry.markUntilMs);
+        }
+        snapshot.version = version;
+        snapshot.built = true;
+    }
+    ai::stale_objective::Key const key{ objective->GetQuestId(), objective->GetEntry() };
+    auto const it = std::lower_bound(snapshot.marked.begin(), snapshot.marked.end(), key,
+        [](std::pair<ai::stale_objective::Key, uint32> const& item, ai::stale_objective::Key const& k) { return item.first < k; });
+    return it != snapshot.marked.end() && it->first == key && int32(it->second - nowMs) > 0;
+}
+
+// twow-repo#601 owner rule R1 (StartZoneMinLevel, ZoneKeepPolicy.h): the game side of the start-zone gate (see TravelMgr.h).
+namespace
+{
+    constexpr char const* StartZoneForcedHoldValue = "start zone forced hold until";   // manual int, unix seconds
+    constexpr uint32 StartZoneForcedHoldSeconds = 600;
+}
+
+bool ai::zone_keep::StartZoneHolds(Player* bot, PlayerbotAI* botAI)
+{
+    return bot && sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevel &&
+        ai::zone_keep::StartZoneGated(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevel, bot->GetLevel()) &&
+        ai::cohort::Applies(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevelCohort, bot->GetGUIDLow()) &&
+        sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !(botAI && botAI->HasRealPlayerMaster());
+}
+
+uint32 ai::zone_keep::OutsideStartZone(Player* bot, WorldPosition const* point)
+{
+    if (!bot || !point)
+        return 0;
+    AreaTableEntry const* area = point->GetArea();
+    uint32 const zone = area ? (area->zone ? area->zone : area->ID) : 0;
+    PlayerInfo const* info = sObjectMgr.GetPlayerInfo(bot->getRace(), bot->getClass());
+    uint32 const createZone = info ? info->areaId : 0;
+    bool const customStarts = sPlayerbotAIConfig.customRaceStartZones;
+    return ai::zone_keep::StartZoneDefers(true, ai::zone_keep::StartZoneKnown(bot->getRace(), customStarts, createZone),
+        ai::zone_keep::InStartZone(bot->getRace(), customStarts, createZone, zone), zone) ? zone : 0;
+}
+
+bool ai::zone_keep::ForcedHoldActive(PlayerbotAI* botAI)
+{
+    return botAI && ai::zone_keep::KeepActive(uint32(std::max(0, botAI->GetAiObjectContext()->GetValue<int>("manual int", StartZoneForcedHoldValue)->Get())),
+        uint32(time(nullptr)));
+}
+
+void ai::zone_keep::NoteForcedHold(Player* bot, PlayerbotAI* botAI, char const* purpose, uint32 targetZone)
+{
+    if (!bot || !botAI || ai::zone_keep::ForcedHoldActive(botAI))
+        return;   // one line per held trip and hold period
+    botAI->GetAiObjectContext()->GetValue<int>("manual int", StartZoneForcedHoldValue)->Set(int(uint32(time(nullptr)) + StartZoneForcedHoldSeconds));
+    sLog.outBasic("[ZoneKeep] state=forced_hold bot=%u level=%u zone=%u purpose=%s target_zone=%u seconds=%u", bot->GetGUIDLow(), bot->GetLevel(),
+        bot->GetZoneId(), purpose, targetZone, StartZoneForcedHoldSeconds);
 }
 
 void TravelTarget::NoteQuestObjectiveFailure()
@@ -2314,6 +2428,14 @@ void TravelTarget::CheckStatus()
     if (GetStatus() == TravelStatus::TRAVEL_STATUS_TRAVEL)
     {
         bool HasArrived = tDestination->IsIn(bot);
+        // twow-repo#333 P1-aa (AiPlayerbot.ProfessionTraining.TripNoGrind): an open profession trip also arrives within kTripArriveYards
+        // of its NPC's spawn ("move to rpg target" walks the rest in WORK). Switch 0 or another cohort: professionTrip is 0 - as before.
+        // The free entry test first: a destination without an NPC is no trip (SetProfessionTripRpgTarget needs the entry, too).
+        uint8 const professionTrip = tDestination->GetEntry() > 0 &&
+            ai::cohort::Applies(sPlayerbotAIConfig.professionTrainingTripNoGrind, bot->GetGUIDLow()) ? ai::ProfessionTripOpenKind(ai) : 0;
+        bool const stockArrival = HasArrived;
+        if (!HasArrived && professionTrip && tDestination->GetEntry() > 0 && tDestination->IsIn(bot, ai::profession_travel::kTripArriveYards))
+            HasArrived = true;
 
         if (HasArrived)
         {
@@ -2346,6 +2468,10 @@ void TravelTarget::CheckStatus()
             if (ai::cohort::Applies(sPlayerbotAIConfig.questLoopRelationArriveRpgTarget, bot->GetGUIDLow()) &&
                 sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster() && !bot->GetGroup())
                 SetRelationRpgTarget();
+            // twow-repo#333 P1-aa (ProfessionTraining.TripNoGrind): at the trip's vendor / trainer "rpg buy" / "rpg train" is set up at
+            // once (rpg target + next rpg action). No open profession trip, switch 0 or another cohort: professionTrip is 0, as before.
+            if (professionTrip)
+                SetProfessionTripRpgTarget(professionTrip, stockArrival);
             // twow-repo#594 / P3-b: arrivals of the direct-target destinations (failure memory, hole_present for fishing).
             if (ai::direct_targets::AnyBuilt())
                 ai::direct_targets::OnArrive(tDestination, ai, wPosition);

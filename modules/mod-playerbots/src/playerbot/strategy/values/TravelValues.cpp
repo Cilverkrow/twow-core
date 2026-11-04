@@ -234,6 +234,10 @@ bool ProfessionTripHolds(PlayerbotAI* ai, char const* tripValue, char const* kin
             now > startedAt ? now - startedAt : 0, ai::profession_travel::HoldOverSeconds(now,
                 uint32(std::max(0, AI_VALUE2(int, "manual int", key + ai::profession_travel::kBackoffEndSuffix)))),
             AI_VALUE2(int, "manual int", key + ai::profession_travel::kNearSuffix) ? "near" : "gap");
+        // twow-repo#333 P1-aa (ProfessionTraining.TripNoGrind + Trace): the trip's status at its end.
+        if (ai::cohort::Applies(sPlayerbotAIConfig.professionTrainingTripNoGrind, bot->GetGUIDLow()) && sPlayerbotAIConfig.professionTrainingTrace)
+            ai::ProfessionTripStatusLine(ai, key == ai::profession_travel::kTrainerTripValue ? ai::profession_travel::kTripKindTrainer :
+                ai::profession_travel::kTripKindTool, "end", end, nullptr, 0, -1.0f, "-", "-");
     }
     return false;
 }
@@ -747,6 +751,146 @@ void ai::ProfessionTripNoTarget(PlayerbotAI* ai, std::string const& travelPurpos
     SET_AI_VALUE2(int, "manual int", key + ai::profession_travel::kOpenSuffix, 0);
     sLog.outBasic("[ProfTravel] state=end kind=%s bot=%u level=%u cohort=%c reason=no_target trip_s=0 hold_over_s=0 path=%s",
         kind, bot->GetGUIDLow(), bot->GetLevel(), ai::cohort::Letter(bot->GetGUIDLow()), path);
+    // twow-repo#333 P1-aa (ProfessionTraining.TripNoGrind + Trace): the trip's status at its end.
+    if (ai::cohort::Applies(sPlayerbotAIConfig.professionTrainingTripNoGrind, bot->GetGUIDLow()) && sPlayerbotAIConfig.professionTrainingTrace)
+        ai::ProfessionTripStatusLine(ai, trainerTrip ? ai::profession_travel::kTripKindTrainer : ai::profession_travel::kTripKindTool,
+            "end", "no_target", "NONE", 0, -1.0f, "-", "-");   // the request set NONE before its search (ChooseTravelTargetAction::Execute)
+}
+
+namespace
+{
+// twow-repo#333 P1-aa: the "manual int" trip value of a kind.
+char const* ProfessionTripValue(uint8 kind)
+{
+    return kind == ai::profession_travel::kTripKindTrainer ? ai::profession_travel::kTrainerTripValue : ai::profession_travel::kToolTripValue;
+}
+
+// P1-aa: the reason rule of the kind's "... hold" condition (ShouldTravelNamedValue): the tool still missing; a trainer of an unlearned
+// skill (near trip) or of any GREEN phase-one rank (gap trip).
+bool ProfessionTripReasonLasts(PlayerbotAI* ai, uint8 kind)
+{
+    if (kind != ai::profession_travel::kTripKindTrainer)
+        return ai::MissingGatherTool(ai) != 0;
+    AiObjectContext* context = ai->GetAiObjectContext();
+    std::string const key(ai::profession_travel::kTrainerTripValue);
+    return !ai::PhaseOneProfessionTrainers(ai, AI_VALUE2(int, "manual int", key + ai::profession_travel::kNearSuffix) != 0).empty();
+}
+
+// P1-aa: an open trip whose travel target is gone ends at its hold end with the request's "reason=lost" line (P1-b3: trip_s and
+// hold_over_s to the last hold check that held), not an hour later at the next request. The caller checked " open".
+void ProfessionTripLostNow(PlayerbotAI* ai, uint8 kind, uint32 now)
+{
+    AiObjectContext* context = ai->GetAiObjectContext();
+    Player* bot = ai->GetBot();
+    std::string const key(ProfessionTripValue(kind));
+    SET_AI_VALUE2(int, "manual int", key + ai::profession_travel::kOpenSuffix, 0);
+    uint32 const startedAt = std::min(now, uint32(std::max(0, AI_VALUE2(int, "manual int", key))));
+    uint32 const endedAt = std::min(now, ai::profession_travel::LostEndAt(startedAt,
+        uint32(std::max(0, AI_VALUE2(int, "manual int", key + ai::profession_travel::kHeldAtSuffix)))));
+    sLog.outBasic("[ProfTravel] state=end kind=%s bot=%u level=%u cohort=%c reason=lost trip_s=%u hold_over_s=%u seen_after_s=%u path=%s",
+        ai::profession_travel::TripKindName(kind), bot->GetGUIDLow(), bot->GetLevel(), ai::cohort::Letter(bot->GetGUIDLow()),
+        endedAt - startedAt,
+        ai::profession_travel::HoldOverSeconds(endedAt, uint32(std::max(0, AI_VALUE2(int, "manual int", key + ai::profession_travel::kBackoffEndSuffix)))),
+        now - endedAt, AI_VALUE2(int, "manual int", key + ai::profession_travel::kNearSuffix) ? "near" : "gap");
+    if (sPlayerbotAIConfig.professionTrainingTrace)
+        ai::ProfessionTripStatusLine(ai, kind, "end", "lost", nullptr, 0, -1.0f, "-", "-");
+}
+}
+
+uint8 ai::ProfessionTripKindOf(TravelTarget* travelTarget)
+{
+    if (!travelTarget || travelTarget->IsGroupCopy())
+        return ai::profession_travel::kTripKindNone;
+    for (std::string const& condition : travelTarget->GetConditions())
+        if (uint8 const kind = ai::profession_travel::TripKindOfCondition(condition))
+            return kind;
+    return ai::profession_travel::kTripKindNone;
+}
+
+uint8 ai::ProfessionTripOpenKind(PlayerbotAI* ai)
+{
+    Player* bot = ai->GetBot();
+    if (ai->HasRealPlayerMaster() || bot->GetGroup() || !sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()))
+        return ai::profession_travel::kTripKindNone;
+    AiObjectContext* context = ai->GetAiObjectContext();
+    TravelTarget* travelTarget = AI_VALUE(TravelTarget*, "travel target");
+    if (!travelTarget)
+        return ai::profession_travel::kTripKindNone;
+    TravelStatus const status = travelTarget->GetStatus();
+    uint8 kind = ai::profession_travel::kTripKindNone;
+    if (status == TravelStatus::TRAVEL_STATUS_PREPARE)
+        kind = ai::profession_travel::TripKindOfCondition(AI_VALUE2(std::string, "manual string", "future travel condition"));
+    else if (status == TravelStatus::TRAVEL_STATUS_READY || status == TravelStatus::TRAVEL_STATUS_TRAVEL ||
+            status == TravelStatus::TRAVEL_STATUS_WORK)
+        kind = ProfessionTripKindOf(travelTarget);
+    if (kind == ai::profession_travel::kTripKindNone)
+        return ai::profession_travel::kTripKindNone;
+    std::string const key(ProfessionTripValue(kind));
+    if (!AI_VALUE2(int, "manual int", key + ai::profession_travel::kOpenSuffix))
+        return ai::profession_travel::kTripKindNone;
+    uint32 const now = uint32(time(nullptr));
+    return ai::profession_travel::TripHolds(now, uint32(std::max(0, AI_VALUE2(int, "manual int", key + ai::profession_travel::kHoldUntilSuffix)))) ?
+        kind : ai::profession_travel::kTripKindNone;
+}
+
+// twow-repo#333 P1-aa (AiPlayerbot.ProfessionTraining.TripNoGrind, M1r run 8: a 600 s near trip ended 19 min late - the hold was read
+// only when a travel action ran CheckStatus). On the trip's own travel target its hold rule runs now (done / turn_in / cap: the one end
+// line in ProfessionTripHolds) and an ended trip's target expires (COOLDOWN ends by itself). A trip whose target is gone ends at its hold
+// end as lost. PREPARE: nothing (the target still carries the old conditions).
+void ai::ProfessionTripTick(PlayerbotAI* ai)
+{
+    Player* bot = ai->GetBot();
+    if (!ai::cohort::Applies(sPlayerbotAIConfig.professionTrainingTripNoGrind, bot->GetGUIDLow()) || ai->HasRealPlayerMaster() ||
+        !sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()))
+        return;
+
+    AiObjectContext* context = ai->GetAiObjectContext();
+    TravelTarget* travelTarget = AI_VALUE(TravelTarget*, "travel target");
+    if (!travelTarget || travelTarget->GetStatus() == TravelStatus::TRAVEL_STATUS_PREPARE)
+        return;
+
+    TravelStatus const status = travelTarget->GetStatus();
+    bool const onTarget = status == TravelStatus::TRAVEL_STATUS_READY || status == TravelStatus::TRAVEL_STATUS_TRAVEL ||
+        status == TravelStatus::TRAVEL_STATUS_WORK || status == TravelStatus::TRAVEL_STATUS_COOLDOWN;
+    uint8 const ownKind = onTarget ? ProfessionTripKindOf(travelTarget) : ai::profession_travel::kTripKindNone;
+    uint32 const now = uint32(time(nullptr));
+    for (uint8 const kind : { ai::profession_travel::kTripKindTrainer, ai::profession_travel::kTripKindTool })
+    {
+        std::string const key(ProfessionTripValue(kind));
+        if (!AI_VALUE2(int, "manual int", key + ai::profession_travel::kOpenSuffix))
+            continue;
+        if (kind == ownKind)
+        {
+            if (!ProfessionTripHolds(ai, key.c_str(), ai::profession_travel::TripKindName(kind), ProfessionTripReasonLasts(ai, kind)) &&
+                status != TravelStatus::TRAVEL_STATUS_COOLDOWN)
+            {
+                travelTarget->SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);
+                context->ClearValues("no active travel destinations");
+            }
+            continue;
+        }
+        if (!ai::profession_travel::TripHolds(now, uint32(std::max(0, AI_VALUE2(int, "manual int", key + ai::profession_travel::kHoldUntilSuffix)))))
+            ProfessionTripLostNow(ai, kind, now);
+    }
+}
+
+void ai::ProfessionTripStatusLine(PlayerbotAI* ai, uint8 kind, char const* event, char const* reason, char const* status,
+    uint32 npc, float npcDistance, char const* radius, char const* rpg)
+{
+    AiObjectContext* context = ai->GetAiObjectContext();
+    Player* bot = ai->GetBot();
+    std::string const key(ProfessionTripValue(kind));
+    TravelTarget* travelTarget = AI_VALUE(TravelTarget*, "travel target");
+    // A prepared (PREPARE) or cleared (NONE) target still carries the old conditions: not the trip's (status=OTHER, entry=0).
+    bool const own = travelTarget && travelTarget->GetStatus() != TravelStatus::TRAVEL_STATUS_PREPARE &&
+        travelTarget->GetStatus() != TravelStatus::TRAVEL_STATUS_NONE && ProfessionTripKindOf(travelTarget) == kind;
+    uint32 const now = uint32(time(nullptr));
+    uint32 const startedAt = std::min(now, uint32(std::max(0, AI_VALUE2(int, "manual int", key))));
+    sLog.outBasic("[ProfTravel] state=status kind=%s bot=%u level=%u cohort=%c event=%s status=%s reason=%s entry=%d npc=%u npc_dist=%.1f radius=%s rpg=%s trip_s=%u path=%s",
+        ai::profession_travel::TripKindName(kind), bot->GetGUIDLow(), bot->GetLevel(), ai::cohort::Letter(bot->GetGUIDLow()), event,
+        status ? status : ai::profession_travel::TripStatusName(own, travelTarget ? uint8(travelTarget->GetStatus()) : 0), reason,
+        own ? travelTarget->GetEntry() : 0, npc, npcDistance, radius, rpg, now - startedAt,
+        AI_VALUE2(int, "manual int", key + ai::profession_travel::kNearSuffix) ? "near" : "gap");
 }
 
 EntryGuidps EntryGuidpsValue::Calculate()

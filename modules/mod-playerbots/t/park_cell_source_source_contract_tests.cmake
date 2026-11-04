@@ -76,7 +76,7 @@ forbid_text("${callback}" "CellSource" "cell-source counting in the cell visit")
 forbid_text("${callback}" "sourceStats" "cell-source switch in the cell visit")
 
 # Module: the switch is handed to the core each pass; the minute line with its fields.
-region("${mgr}" "void RandomPlayerbotMgr::ReportParkSleep()" "static uint32 lastReport = 0;" report)
+region("${mgr}" "void RandomPlayerbotMgr::ReportParkSleep()" "void RandomPlayerbotMgr::ProcessParkedBots()" report)
 require_text("${report}" "Map::SetCellSourceStats(sPlayerbotAIConfig.parkCellSourceStats);" "switch handed to the core")
 require_order("${report}" "Map::SetCellSourceStats(sPlayerbotAIConfig.parkCellSourceStats);" "if (sPlayerbotAIConfig.parkCellSourceStats && now >= lastSourceReport + 60)" "switch before the minute gate")
 foreach(field region_updates cells_total cells_real cells_bot_only cells_npc_only real_players bots active_npcs activation)

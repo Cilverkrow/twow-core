@@ -448,8 +448,8 @@ namespace ai
         virtual bool IsActive() override;
     };
 
-    // twow-repo#568 (D69, AiPlayerbot.Diet.DuelTriggerGate): "no attackers" only while the bot has a duel. Registered as
-    // "duel no attackers" and used by the duel strategy only with the switch on; "no attackers" stays unchanged for
+    // twow-repo#568 (D69): "no attackers" only while the bot has a duel. Registered as
+    // "duel no attackers" and used by the duel strategy; "no attackers" stays unchanged for
     // custom strategies that bind it by name.
     class DuelNoAttackersTrigger : public NoAttackersTrigger
     {

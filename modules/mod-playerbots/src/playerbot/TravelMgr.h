@@ -550,6 +550,9 @@ namespace ai
         // twow-repo#601 turn_in hold (QuestLoop.RelationArriveRpgTarget): on arrival at an open giver / taker its nearest spawn
         // becomes the rpg target with the hand-in / accept as the next rpg action.
         void SetRelationRpgTarget();
+        // twow-repo#333 P1-aa (AiPlayerbot.ProfessionTraining.TripNoGrind): on arrival of an open profession trip (kind: ProfessionTravelPolicy.h
+        // kTripKind*) its NPC becomes the rpg target with "rpg buy" / "rpg train" as the next rpg action; stockArrival = within IsIn's 5 yd.
+        void SetProfessionTripRpgTarget(uint8 kind, bool stockArrival);
 
 		// twow-repo#295: with riding stages taken at the unmounted run speed (RidingStagesBotPolicy.h).
 		uint32 GetMaxTravelTime() const;
@@ -733,6 +736,19 @@ namespace ai
 		void NoteQuestCredit(Player* bot, uint32 questId);
 		// Marked now (the skip itself is cohort-gated by the caller).
 		bool IsObjectiveStale(QuestObjectiveTravelDestination const* objective);
+	}
+
+	// twow-repo#601 owner rule R1 (AiPlayerbot.QuestFirstProgression.StartZoneMinLevel, ZoneKeepPolicy.h): the game side of the start-zone
+	// gate, shared by the travel choice, the forced trips (guild meeting / order, petition, group quest help) and their hold.
+	namespace zone_keep
+	{
+		// A roster bot on its own below StartZoneMinLevel in the .Cohort selection (0 off: always false).
+		bool StartZoneHolds(Player* bot, PlayerbotAI* botAI);
+		// The zone of a point outside the bot's start zone, 0 when inside or unknown (fail open).
+		uint32 OutsideStartZone(Player* bot, WorldPosition const* point);
+		// A held forced trip: one [ZoneKeep] state=forced_hold line, then no forced trip request for ForcedHoldSeconds (no retry loop).
+		bool ForcedHoldActive(PlayerbotAI* botAI);
+		void NoteForcedHold(Player* bot, PlayerbotAI* botAI, char const* purpose, uint32 targetZone);
 	}
 }
 

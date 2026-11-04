@@ -53,6 +53,7 @@ private:
         std::uint32_t lastCounter = 0;
         std::uint32_t outOfRangeSince = 0;
         std::uint32_t levelWindowSince = 0;
+        std::uint32_t leaderOtherMapSince = 0;   // BOT-12 (BotGroups.LeaderOtherMap)
     };
 
     struct Minute
