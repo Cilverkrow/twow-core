@@ -210,6 +210,13 @@ add_test(NAME dungeon_clear_stay_dead_contract
                  "-DDC_SOURCE_DIR=${DC_MOD_PATH}"
                  -P "${DC_MOD_PATH}/t/stay_dead_contract.cmake")
 
+# CLI-GRP 04.11.2026: RezCapableOnly - rez election and StayDeadInRun veto by the castable rez spell, not the class
+# (g1/CAUSE-DC-REVIVE-PFAD-20261104 F1+F3; rule: TestPostCombatRez DcRezCapableTest).
+add_test(NAME dungeon_clear_rez_capable_contract
+         COMMAND "${CMAKE_COMMAND}"
+                 "-DDC_SOURCE_DIR=${DC_MOD_PATH}"
+                 -P "${DC_MOD_PATH}/t/rez_capable_contract.cmake")
+
 # CLI-GRP 29.10.2026: the druid tank's bear gate by strategy type, the druid as a forced-only seat (g2/CAUSE-DRUIDE-FERAL-SITZ).
 add_test(NAME dungeon_clear_druid_bear_contract
          COMMAND "${CMAKE_COMMAND}"

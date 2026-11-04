@@ -1753,22 +1753,6 @@ bool DungeonClearLeaderAssistAction::Execute(Event& /*event*/)
 
 namespace
 {
-    // The stock playerbots out-of-combat rez action per class (each subclasses
-    // ResurrectPartyMemberAction and targets "party member to resurrect").
-    // Druid battle-rez ("rebirth") is deliberately out of scope for v1 — this
-    // rung only runs out of combat.
-    char const* RezActionNameFor(uint8 playerClass)
-    {
-        switch (playerClass)
-        {
-            case CLASS_PRIEST:  return "resurrection";
-            case CLASS_PALADIN: return "redemption";
-            case CLASS_SHAMAN:  return "ancestral spirit";
-            case CLASS_DRUID:   return "revive";
-            default:            return nullptr;
-        }
-    }
-
     // Comfortably inside the 30yd rez spell range, so a corpse a step beyond
     // the exact edge (or a snap on approach) never leaves the cast flapping
     // in and out of range.
@@ -1792,7 +1776,7 @@ bool DungeonClearRezPartyAction::Execute(Event& /*event*/)
         plan.rezzer != bot->GetObjectGuid())
         return false;
 
-    char const* rezAction = RezActionNameFor(bot->getClass());
+    char const* rezAction = DcRezRecovery::RezActionNameFor(bot->getClass());
     if (!rezAction)
         return false;  // election guarantees a rez class; belt-and-braces
 
