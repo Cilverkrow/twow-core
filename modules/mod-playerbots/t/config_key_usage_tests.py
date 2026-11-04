@@ -55,17 +55,38 @@ ASSIGN = re.compile(
     r'^\s*(\w+)\s*=\s*(?:config|sConfig)\.Get(\w+)Default\(\s*"([^"]+)"', re.M)
 
 
-def declaration_pattern(name):
-    """Matches `uint32 foo;` but never `bar[i] = foo;`.
+# First words that make `<word> name;` a statement, not a declaration (`return foo;` is a read of foo).
+STATEMENT_WORDS = {"return", "throw", "delete", "goto", "else", "case", "co_return", "co_yield", "break", "continue"}
 
-    The character class excludes '[', ']' and '=' deliberately. A previous
-    version used `.*` for the type, which happily matched
-    `classRaceProbability[cls][race] = rProb;` as a declaration and so reported a
-    variable used on the very next line as dead. A guard that cries wolf is worse
-    than no guard, because it gets switched off.
+
+def is_declaration(line, name):
+    """True when `line` declares the member `name`: `T name;`, `T name = init;` or a list `T a, name = 1, c;`.
+
+    A line with '(' ')' '[' ']' or '->' is never a declaration. A previous version used `.*` for the type, which happily matched
+    `classRaceProbability[cls][race] = rProb;` as a declaration and so reported a variable used on the very next line as dead. A
+    guard that cries wolf is worse than no guard, because it gets switched off.
+
+    Added for twow-repo#679 (switch audit #10a), three holes in the old single-name pattern that made dead keys pass:
+    - a comma list (`float aoeRadius, rpgDistance, maxFreeMoveDistance, freeMoveDelay;` in PlayerbotAIConfig.h counted as a USE of
+      every name in it: MaxFreeMoveDistance and FreeMoveDelay were dead and green);
+    - an initialised declaration (`bool x = false;`) counted as a use of x;
+    - `return x;` looked like a declaration of x and was NOT counted as a use.
     """
-    return re.compile(
-        r'^\s*[A-Za-z_][A-Za-z0-9_:<>,\s\*&]*\s+' + re.escape(name) + r'\s*;\s*(//.*)?$')
+    code = line.split("//", 1)[0].rstrip()
+    if not code.endswith(";") or any(c in code for c in "()[]") or "->" in code or "==" in code:
+        return False
+    parts = [p.strip() for p in code[:-1].split(",")]
+    head = re.match(r"^([A-Za-z_][A-Za-z0-9_:<>\s\*&]*?)[\s\*&]+(\w+)\s*(?:=\s*[^=]+)?$", parts[0])
+    if not head or head.group(1).split()[0] in STATEMENT_WORDS:
+        return False
+    names = [head.group(2)]
+    for part in parts[1:]:
+        extra = re.match(r"^[\*&]*\s*(\w+)\s*(?:=\s*[^=]+)?$", part)
+        if not extra:
+            return False
+        names.append(extra.group(1))
+    return name in names
+
 
 
 def main():
@@ -86,13 +107,13 @@ def main():
         print("FAIL: no config assignments matched; the pattern has gone stale")
         return 2
 
-    sources = [p for p in src.rglob("*") if p.suffix in (".cpp", ".h")]
+    # The whole module source tree: a switch can be read outside src/playerbot (AiPlayerbot.AhBot.RequireConfig is read in src/ahbot).
+    sources = [p for p in (pathlib.Path(args.module_dir) / "src").rglob("*") if p.suffix in (".cpp", ".h")]
     lines_by_file = {p: p.read_text(encoding="utf-8", errors="replace").split("\n")
                      for p in sources}
 
     dead = {}
     for member, _kind, key in assignments:
-        decl = declaration_pattern(member)
         word = re.compile(r'\b' + re.escape(member) + r'\b')
         uses = 0
         for lines in lines_by_file.values():
@@ -101,7 +122,7 @@ def main():
                     continue
                 if "Default(" in line and "=" in line:
                     continue   # the assignment being examined
-                if decl.match(line):
+                if is_declaration(line, member):
                     continue   # the member declaration
                 uses += 1
         if uses == 0:
