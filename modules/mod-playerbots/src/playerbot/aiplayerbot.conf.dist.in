@@ -3673,39 +3673,6 @@ AiPlayerbot.Perf.PartyTargetMemo = 0
 # within range) and the old filter, so the lists only lose units that came into range after that search (< 1 s
 # later than today). Grouped bots and "nearest adds" (flee range) search as before. 0 = separate searches (default).
 AiPlayerbot.PossibleTargetsSharedSearch = 0
-# twow-repo#568 (D10, strategy diet, BEHAVIOUR CHANGE): 1 = the vanilla hunter sting pve/pvp/raid strategies register
-# one node on the new trigger "no stings usable" (pve/pvp: viper sting ACTION_NORMAL+5 and serpent sting +4, raid:
-# viper sting only) instead of two "no stings" nodes. "no stings usable" runs the old "no stings" check (target health
-# > 40 %, no serpent/scorpid/viper sting aura) and then fires only when viper sting is known and target mana >= 10 %,
-# or serpent sting is known, target health > 50 % and (target mana < 10 % or viper sting unknown). Serpent sting is
-# no longer refused on a mana target while the bot does not know viper sting (learned at 36), and viper sting is
-# USELESS instead of IMPOSSIBLE while unknown. Changes: hunters below 36 put serpent sting on casters and healers (also
-# as a serpent sting pull and with the manual "sting serpent" strategy). The manual "sting serpent/scorpid/viper"
-# strategies keep the unchanged "no stings" trigger, so "sting scorpid" casts exactly as before. All other casts as
-# before. Node layout read at engine (re)build. 0 = two "no stings" nodes and the old checks (default).
-AiPlayerbot.Diet.HunterBestSting = 0
-# twow-repo#568 (D19, strategy diet, BEHAVIOUR CHANGE): 1 = the vanilla hunter buff strategy pushes "deterrence" from
-# the trigger "deterrence" and the cc pve/pvp strategies push "scatter shot on closest attacker targeting me" from the
-# trigger "scatter shot on closest attacker" instead of the shared "target of attacker close". Both triggers fire only
-# while the talent spell (Deterrence 19263, Scatter Shot 19503, no trainer rows) is known and off cooldown, then check
-# the closest attacker within AiPlayerbot.TooCloseDistance as before. Scatter Shot now hits that closest attacker
-# targeting the bot instead of the current target. Same Deterrence casts; hunters without the talents stop pushing
-# the IMPOSSIBLE nodes. Pvp freezing trap keeps "target of attacker close". Read at engine (re)build and bot login.
-# 0 = shared trigger, scatter shot on the current target (default).
-AiPlayerbot.Diet.HunterTalentShotsKnown = 0
-# twow-repo#568 (D47, strategy diet): 1 = the vanilla hunter reaction node "tranquilizing shot" (ACTION_INTERRUPT) uses
-# the trigger "tranquilizing shot" instead of "dispel enrage": it fires only while the bot knows Tranquilizing Shot
-# (19801, level 60, raid tome or AutoLearnDroppedSpells) and the spell is off cooldown, then scans the current target's
-# auras for an enrage effect as before. Same casts: the action was IMPOSSIBLE in exactly those states; hunters without
-# the spell stop copying the target's aura list on every reaction pass. Read at engine (re)build.
-# 0 = "dispel enrage" for every hunter (default).
-AiPlayerbot.Diet.HunterTranqKnown = 0
-# twow-repo#568 (D48, strategy diet): 1 = the "roll" strategy (combat and non-combat) pushes "auto loot roll" (100) from
-# the trigger "loot roll pending" instead of "very often". It is checked on the same 5 s cadence (own timer, so the
-# phase can differ by up to 5 s from the shared "very often") and fires only while the bot is in a group and its
-# "active rolls" list is not empty; bag space is still checked by the action. Same rolls: without a group or an open
-# roll the action always ended IMPOSSIBLE. Read at engine (re)build. 0 = "very often" (default).
-AiPlayerbot.Diet.LootRollPending = 0
 # twow-repo#568 (diet D63, neutral, "nach Abnahme an"): 1 = Engine::ProcessTriggers skips the Check() call of the
 # event-only triggers (every chat-command trigger, e.g. "stats", "items", "wander", and every world-packet trigger,
 # e.g. "duel requested", "loot roll") while their event flag is unset. Their Check() returns no event in that state,
@@ -3715,25 +3682,6 @@ AiPlayerbot.Diet.LootRollPending = 0
 # call (PLAYERBOT_ELUNA is not defined in this build). Measure: PerfMon T TOTAL count and UpdateAIReaction time
 # A/B. 0 = every trigger polled on every pass (default).
 AiPlayerbot.Perf.EventTriggerSkip = 0
-# twow-repo#568 (diet D65, neutral, "nach Abnahme an"): 1 = the vanilla trigger "aspect of the hawk" (hunter "aspect"
-# strategy: combat ACTION_HIGH+5, non-combat ACTION_NORMAL; manual "aspect hawk" strategy) is active only while the
-# bot knows Aspect of the Hawk ("spell id" > 0), then checks the missing self aura as before. Same casts: the node has
-# no alternative and its cast asks CanCastSpell for the same "spell id" value, so without the spell it always ended
-# IMPOSSIBLE; hunters below level 10 or without the trained spell just stop pushing it. No monkey fallback (that is a
-# separate OB-10 decision). Side effects without play change: the action queue is shorter by these pushes (a little
-# less iterationsPerTick), the debug tell "try: aspect of the hawk ... impossible" is gone, and the refresh time of the
-# cached "spell cast useful" value shifts slightly. Read on every check. 0 = trigger without the spell check (default).
-AiPlayerbot.Diet.HunterAspectGate = 0
-# twow-repo#568 (diet D66, neutral, "nach Abnahme an"): 1 = the vanilla trigger "rapid fire" (hunter "boost" strategy,
-# ACTION_HIGH+5) is active only while the bot knows Rapid Fire and the spell is off cooldown, then checks the missing
-# self aura as before; the "rapid fire" node is built without its "readiness" alternative. Both only while the bot
-# does not know Readiness (a TBC talent); a bot that knows it keeps the old trigger and node. Same casts: the cast
-# asks CanCastSpell for the same "spell id" value and the same IsSpellReady, so in the gated states it always ended
-# IMPOSSIBLE and the unknown Readiness was IMPOSSIBLE too. Side effects without play change: the action queue is
-# shorter by these pushes (a little less iterationsPerTick), the debug tells "try: rapid fire / readiness ...
-# impossible" are gone, and the refresh time of the cached "spell cast useful" value shifts slightly. Read on every
-# check / node build. 0 = trigger without the spell checks, node with the "readiness" alternative (default).
-AiPlayerbot.Diet.HunterRapidFireGate = 0
 
 
 

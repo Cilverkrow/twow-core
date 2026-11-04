@@ -709,13 +709,7 @@ public:
     bool possibleTargetsSharedSearch = false;  // twow-repo#541 (audit A32): unqualified "possible targets" variants of a bot without a group filter its own sight-range snapshot again instead of a second grid search (0 = off)
     bool x3bPublishedTargets = false;  // twow-repo#563 (X3b): other bots read published targets, not our values
     bool x3bPublishedConditions = false;  // twow-repo#563 (X3b site 2): group conditions answered by each member itself
-    bool dietHunterBestSting = false;  // twow-repo#568 (D10): one 'no stings usable' node per vanilla spec sting strategy (manual stings keep 'no stings'), it fires only when viper or serpent sting can be used, serpent sting also on mana targets while viper sting is unknown (0 = off)
-    bool dietHunterTalentShotsKnown = false;  // twow-repo#568 (D19): deterrence / scatter shot nodes on own triggers that wait for the known, ready talent spell; scatter shot aims at the closest attacker targeting the bot (0 = off)
-    bool dietHunterTranqKnown = false;  // twow-repo#568 (D47): the hunter reaction "dispel enrage" -> tranquilizing shot node uses a trigger that waits for the known, ready spell before the aura scan (0 = off)
-    bool dietLootRollPending = false;  // twow-repo#568 (D48): the roll strategy pushes "auto loot roll" from "loot roll pending" (every 5 s, only with a group and an open roll) instead of "very often" (0 = off)
     bool perfEventTriggerSkip = false;  // twow-repo#568 (D63): ProcessTriggers skips the Check() of chat-command / world-packet triggers whose event flag is unset; a set flag is handled on the same pass as before (0 = off)
-    bool dietHunterAspectGate = false;  // twow-repo#568 (D65): vanilla "aspect of the hawk" trigger fires only while the bot knows Aspect of the Hawk (same "spell id" value its cast checks) (0 = off)
-    bool dietHunterRapidFireGate = false;  // twow-repo#568 (D66): vanilla "rapid fire" trigger fires only while Rapid Fire is known and off cooldown, the node drops the "readiness" alternative; both unless the bot knows Readiness (0 = off)
     bool perfPartialPathReuse = false;  // twow-repo#541 (L1): MoveTo uses the path last built for an unchanged destination again, without a rebuild, for up to perfPartialPathReuseMs while its end is not reached (0 = off)
     uint32 perfPartialPathReuseMs = 10000;  // twow-repo#541 (L1): age limit of such a path in ms, clamped to 1000..60000
     uint32 perfRouteFailCooldownSeconds = 0;  // twow-repo#541 (L1b): a node route search without a route blocks the same bot and target cell for that many seconds, clamped to 0..300 (0 = off)

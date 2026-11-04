@@ -25,15 +25,14 @@ public:
 private:
     ACTION_NODE_A(aimed_shot, "aimed shot", "arcane shot");
 
-    // twow-repo#568 (D66, AiPlayerbot.Diet.HunterRapidFireGate): with the switch on the node keeps its "readiness"
+    // twow-repo#568 (D66): the node keeps its "readiness"
     // alternative only for a bot that knows Readiness (a TBC talent; same "spell id" value its cast checks), read at
-    // every node build, so a reload acts at once. Switch off: the same node the former A-macro built ("rapid fire",
-    // alternative "readiness"). Still one unconditional new ActionNode (#541 A08 owner cache).
+    // every node build. Still one unconditional new ActionNode (#541 A08 owner cache).
     static ActionNode* rapid_fire(PlayerbotAI* ai)
     {
         return new ActionNode("rapid fire",
             /*P*/ NULL,
-            /*A*/ (!sPlayerbotAIConfig.dietHunterRapidFireGate || !ai ||
+            /*A*/ (!ai ||
                    ai->GetAiObjectContext()->GetValue<uint32>("spell id", "readiness")->Get())
                 ? NextAction::array(0, new NextAction("readiness"), NULL) : NULL,
             /*C*/ NULL);
@@ -128,7 +127,7 @@ void HunterStrategy::InitReactionTriggers(std::list<TriggerNode*>& triggers)
     ClassStrategy::InitReactionTriggers(triggers);
 
     triggers.push_back(new TriggerNode(
-        sPlayerbotAIConfig.dietHunterTranqKnown ? "tranquilizing shot" : "dispel enrage",  // twow-repo#568 (D47)
+        "tranquilizing shot",  // twow-repo#568 (D47)
         NextAction::array(0, new NextAction("tranquilizing shot", ACTION_INTERRUPT), NULL)));
 }
 
@@ -264,7 +263,7 @@ void HunterBuffStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
     BuffStrategy::InitCombatTriggers(triggers);
 
     triggers.push_back(new TriggerNode(
-        sPlayerbotAIConfig.dietHunterTalentShotsKnown ? "deterrence" : "target of attacker close",  // twow-repo#568 (D19)
+        "deterrence",  // twow-repo#568 (D19)
         NextAction::array(0, new NextAction("deterrence", ACTION_EMERGENCY + 1), NULL)));
 
     triggers.push_back(new TriggerNode(
@@ -393,7 +392,7 @@ void HunterCcPvpStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
         NextAction::array(0, new NextAction("freezing trap in place", ACTION_INTERRUPT + 3), NULL)));
 
     triggers.push_back(new TriggerNode(
-        sPlayerbotAIConfig.dietHunterTalentShotsKnown ? "scatter shot on closest attacker" : "target of attacker close",  // twow-repo#568 (D19)
+        "scatter shot on closest attacker",  // twow-repo#568 (D19)
         NextAction::array(0, new NextAction("scatter shot on closest attacker targeting me", ACTION_INTERRUPT + 2), NULL)));
 
     triggers.push_back(new TriggerNode(
@@ -411,7 +410,7 @@ void HunterCcPveStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
     CcPveStrategy::InitCombatTriggers(triggers);
 
     triggers.push_back(new TriggerNode(
-        sPlayerbotAIConfig.dietHunterTalentShotsKnown ? "scatter shot on closest attacker" : "target of attacker close",  // twow-repo#568 (D19)
+        "scatter shot on closest attacker",  // twow-repo#568 (D19)
         NextAction::array(0, new NextAction("scatter shot on closest attacker targeting me", ACTION_INTERRUPT + 2), NULL)));
 
     triggers.push_back(new TriggerNode(
@@ -447,57 +446,32 @@ void HunterStingStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
             NextAction::array(0, new NextAction("viper sting on attacker", ACTION_HIGH + 1), NULL)));
     }
 
-    // twow-repo#568 (D10, AiPlayerbot.Diet.HunterBestSting): on, the pve/pvp/raid part registers the one
-    // 'no stings usable' node (every spec sting strategy calls this base and exactly one of them). Off: as before.
-    if (!sPlayerbotAIConfig.dietHunterBestSting)
-    {
-        triggers.push_back(new TriggerNode(
-            "no stings",
-            NextAction::array(0, new NextAction("viper sting", ACTION_NORMAL + 5), NULL)));
-    }
+    // twow-repo#568 (D10): the pve/pvp/raid part registers the one
+    // 'no stings usable' node (every spec sting strategy calls this base and exactly one of them).
 }
 
 void HunterStingPvpStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
 {
     // twow-repo#568 (D10): one 'no stings usable' node with both stings instead of two 'no stings' nodes (same relevances).
-    if (sPlayerbotAIConfig.dietHunterBestSting)
-    {
-        triggers.push_back(new TriggerNode(
-            "no stings usable",
-            NextAction::array(0, new NextAction("viper sting", ACTION_NORMAL + 5), new NextAction("serpent sting", ACTION_NORMAL + 4), NULL)));
-        return;
-    }
-
     triggers.push_back(new TriggerNode(
-        "no stings",
-        NextAction::array(0, new NextAction("serpent sting", ACTION_NORMAL + 4), NULL)));
+        "no stings usable",
+        NextAction::array(0, new NextAction("viper sting", ACTION_NORMAL + 5), new NextAction("serpent sting", ACTION_NORMAL + 4), NULL)));
 }
 
 void HunterStingPveStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
 {
     // twow-repo#568 (D10): one 'no stings usable' node with both stings instead of two 'no stings' nodes (same relevances).
-    if (sPlayerbotAIConfig.dietHunterBestSting)
-    {
-        triggers.push_back(new TriggerNode(
-            "no stings usable",
-            NextAction::array(0, new NextAction("viper sting", ACTION_NORMAL + 5), new NextAction("serpent sting", ACTION_NORMAL + 4), NULL)));
-        return;
-    }
-
     triggers.push_back(new TriggerNode(
-        "no stings",
-        NextAction::array(0, new NextAction("serpent sting", ACTION_NORMAL + 4), NULL)));
+        "no stings usable",
+        NextAction::array(0, new NextAction("viper sting", ACTION_NORMAL + 5), new NextAction("serpent sting", ACTION_NORMAL + 4), NULL)));
 }
 
 void HunterStingRaidStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
 {
     // twow-repo#568 (D10): raid keeps viper sting only; the node moved here from the base strategy, on 'no stings usable'.
-    if (sPlayerbotAIConfig.dietHunterBestSting)
-    {
-        triggers.push_back(new TriggerNode(
-            "no stings usable",
-            NextAction::array(0, new NextAction("viper sting", ACTION_NORMAL + 5), NULL)));
-    }
+    triggers.push_back(new TriggerNode(
+        "no stings usable",
+        NextAction::array(0, new NextAction("viper sting", ACTION_NORMAL + 5), NULL)));
 }
 
 void HunterAspectStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
