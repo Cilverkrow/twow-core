@@ -1,7 +1,7 @@
 cmake_policy(VERSION 3.16)
-# twow-repo#568 strategy diet D68 (AiPlayerbot.Diet.RpgDeadTriggers, default 0): "rpg ai chat", "rpg wander" and
-# "rpg quest use" answer from the first condition of their IsActive before the RpgTrigger pre-check values. With 0
-# every Check() is RpgTrigger::Check as before; a set event flag always runs the old path.
+# twow-repo#568 strategy diet D68 (AiPlayerbot.Diet.RpgDeadTriggers, retired 04.11.2026, switch audit A2 #1): "rpg ai
+# chat", "rpg wander" and "rpg quest use" answer from the first condition of their IsActive before the RpgTrigger
+# pre-check values; a set event flag always runs the RpgTrigger path.
 if(NOT DEFINED PB_SOURCE_DIR)
   message(FATAL_ERROR "PB_SOURCE_DIR is required")
 endif()
@@ -48,10 +48,10 @@ file(READ "${PB_SOURCE_DIR}/aiplayerbot.conf.dist.in" config_dist)
 file(READ "${PB_SOURCE_DIR}/strategy/triggers/RpgTriggers.h" rpg_triggers_h)
 file(READ "${PB_SOURCE_DIR}/strategy/triggers/RpgTriggers.cpp" rpg_triggers_cpp)
 
-# Switch: default 0 in member, loader and dist config.
-require_text("${config_h}" "bool dietRpgDeadTriggers = false;" "dietRpgDeadTriggers member default false")
-require_text("${config_cpp}" "dietRpgDeadTriggers = config.GetBoolDefault(\"AiPlayerbot.Diet.RpgDeadTriggers\", false);" "RpgDeadTriggers read with default 0")
-require_text("${config_dist}" "\nAiPlayerbot.Diet.RpgDeadTriggers = 0\n" "RpgDeadTriggers = 0 in the dist config")
+# Retired switch: no member, no reader, no dist key.
+forbid_text("${config_h}" "dietRpgDeadTriggers" "dietRpgDeadTriggers member (retired)")
+forbid_text("${config_cpp}" "dietRpgDeadTriggers" "Diet.RpgDeadTriggers reader (retired)")
+forbid_text("${config_dist}" "AiPlayerbot.Diet.RpgDeadTriggers" "Diet.RpgDeadTriggers in the dist config (retired)")
 
 # Declarations on exactly the three triggers.
 region("${rpg_triggers_h}" "class RpgWanderTrigger : public RpgTrigger" "\n    };" wander_h)
@@ -67,24 +67,24 @@ forbid_text("${rpg_trigger_h}" "dietRpgDeadTriggers" "D68 must not change the Rp
 
 # rpg wander: short cut only without the event flag and without a real master, then the old Check.
 region("${rpg_triggers_cpp}" "Event RpgWanderTrigger::Check()" "\n}\n" wander_check)
-require_text("${wander_check}" "if (sPlayerbotAIConfig.dietRpgDeadTriggers && !triggered && !ai->HasRealPlayerMaster())\n        return Event();" "D68 rpg wander short cut")
+require_text("${wander_check}" "if (!triggered && !ai->HasRealPlayerMaster())\n        return Event();" "D68 rpg wander short cut")
 require_text("${wander_check}" "return RpgTrigger::Check();" "D68 rpg wander falls back to the old Check")
 
 # rpg ai chat: short cut while LLMEnabled is 0 (read every check), then the old Check; IsActive still starts there.
 region("${rpg_triggers_cpp}" "Event RpgAIChatTrigger::Check()" "\n}\n" ai_chat_check)
-require_text("${ai_chat_check}" "if (sPlayerbotAIConfig.dietRpgDeadTriggers && !triggered && sPlayerbotAIConfig.llmEnabled == 0)\n        return Event();" "D68 rpg ai chat short cut")
+require_text("${ai_chat_check}" "if (!triggered && sPlayerbotAIConfig.llmEnabled == 0)\n        return Event();" "D68 rpg ai chat short cut")
 require_text("${ai_chat_check}" "return RpgTrigger::Check();" "D68 rpg ai chat falls back to the old Check")
 region("${rpg_triggers_cpp}" "bool RpgAIChatTrigger::IsActive()" "\n};\n" ai_chat_active)
 require_order("${ai_chat_active}" "if (sPlayerbotAIConfig.llmEnabled == 0)\n        return false;" "urand(0, 99)" "LLMEnabled = 0 answers before the chance roll")
 
 # rpg quest use: entry test first in IsActive and Check, old body after it.
 region("${rpg_triggers_cpp}" "bool RpgQuestUseTrigger::IsActive()" "\n}\n" quest_use_active)
-set(entry_gate "if (sPlayerbotAIConfig.dietRpgDeadTriggers && getGuidP().GetEntry() != 190767)\n        return false;")
-require_text("${quest_use_active}" "${entry_gate}" "D68 quest use entry test behind the switch")
+set(entry_gate "if (getGuidP().GetEntry() != 190767)\n        return false;")
+require_text("${quest_use_active}" "${entry_gate}" "D68 quest use entry test")
 require_order("${quest_use_active}" "${entry_gate}" "if (!RpgUseTrigger::IsActive())" "D68 entry test before the game object lookups")
 require_text("${quest_use_active}" "case 190767: return AI_VALUE2(bool, \"need quest objective\", \"12701\");" "quest use only true case unchanged")
 region("${rpg_triggers_cpp}" "Event RpgQuestUseTrigger::Check()" "\n}\n" quest_use_check)
-require_text("${quest_use_check}" "if (sPlayerbotAIConfig.dietRpgDeadTriggers && !triggered && getGuidP().GetEntry() != 190767)\n        return Event();" "D68 quest use Check short cut")
+require_text("${quest_use_check}" "if (!triggered && getGuidP().GetEntry() != 190767)\n        return Event();" "D68 quest use Check short cut")
 require_text("${quest_use_check}" "return RpgUseTrigger::Check();" "D68 quest use falls back to the old Check")
 
 message(STATUS "diet D68 rpg dead triggers source contract passed")

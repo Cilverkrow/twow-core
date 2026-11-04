@@ -35,6 +35,8 @@
 #include "Objects/Player.h"
 #include "playerbot/AiFactory.h"
 #include "playerbot/StartZonePolicy.h"
+#include "playerbot/ZoneKeepPolicy.h"   // twow-repo#601 owner rule R1 (StartZoneMinLevel rescue gate)
+#include "playerbot/CohortPolicy.h"     // twow-repo#601 owner rule R1 (StartZoneMinLevel.Cohort)
 #include "PlayerbotCommandServer.h"
 #include "MemoryMonitor.h"
 
@@ -7497,6 +7499,27 @@ std::vector<WorldLocation> RandomPlayerbotMgr::QuestRescueTargets(Player* bot)
         return nullptr;
     };
     PlayerInfo const* own = firstInfo(bot->getRace());
+
+    // twow-repo#601 owner rule R1 (QuestFirstProgression.StartZoneMinLevel, ZoneKeepPolicy.h): below it a bot is never rescued out of its
+    // start zone - inside it there is no rescue (it keeps questing / grinding there), outside it the rescue takes it to its race's
+    // start point. Custom start races outside their zone: no rescue (their start-zone rules decide the way back). Unknown start: as before.
+    if (ai::zone_keep::StartZoneGated(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevel, level) &&
+        ai::cohort::Applies(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevelCohort, bot->GetGUIDLow()))
+    {
+        PlayerInfo const* const info = sObjectMgr.GetPlayerInfo(bot->getRace(), bot->getClass());
+        uint32 const createZone = info ? info->areaId : 0;
+        bool const customStarts = sPlayerbotAIConfig.customRaceStartZones;
+        if (ai::zone_keep::StartZoneKnown(bot->getRace(), customStarts, createZone))
+        {
+            bool const inStart = ai::zone_keep::InStartZone(bot->getRace(), customStarts, createZone, bot->GetZoneId());
+            bool const home = !inStart && info && !(customStarts && ai::start_zone::IsCustomStartRace(bot->getRace()));
+            if (home)
+                targets.push_back(WorldLocation(info->mapId, info->positionX, info->positionY, info->positionZ, info->orientation));
+            sLog.outBasic("[ZoneKeep] state=rescue_gate bot=%u level=%u zone=%u start_zone=%u in_start=%u result=%s", bot->GetGUIDLow(), level,
+                bot->GetZoneId(), createZone, inStart ? 1u : 0u, home ? "home" : "none");
+            return targets;
+        }
+    }
 
     // Hotfix 8.29 (twow-repo#532): a goblin below 11 goes to Durotar, where its route continues.
     if (ai::quest_search::goblin_island::UsesGoblinStartRescue(bot->getRace(), level))

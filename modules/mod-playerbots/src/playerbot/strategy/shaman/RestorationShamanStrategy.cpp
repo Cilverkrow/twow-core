@@ -22,13 +22,8 @@ public:
         creators["riptide"] = &riptide;
         creators["riptide on party"] = &riptide_on_party;
         creators["chain heal"] = &chain_heal;
-        // twow-repo#568 D29 (AiPlayerbot.Diet.ShamanVanillaNames): two dead keys. No action is ever pushed as
+        // twow-repo#568 D29: two dead keys. No action is ever pushed as
         // "windfury" (the pushed name is "windfury totem") or "chain heal on party" (no action creator exists).
-        if (!sPlayerbotAIConfig.dietShamanVanillaNames)
-        {
-            creators["windfury"] = &windfury_totem;
-            creators["chain heal on party"] = &chain_heal_on_party;
-        }
     }
 
 private:
@@ -36,12 +31,12 @@ private:
 
     ACTION_NODE_A(searing_totem, "searing totem", "flametongue totem");
 
-    // twow-repo#568 D27 (AiPlayerbot.Diet.FireNovaTotem): in vanilla the continuer would be Fire Nova Totem, which
-    // replaces the Magma Totem just placed (same fire slot), so the switch drops the continuer instead.
+    // twow-repo#568 D27: in vanilla the continuer would be Fire Nova Totem, which
+    // replaces the Magma Totem just placed (same fire slot), so the continuer is dropped instead.
     static bool DietDropMagmaContinuer()
     {
 #ifdef MANGOSBOT_ZERO
-        return sPlayerbotAIConfig.dietFireNovaTotem;
+        return true;
 #else
         return false;
 #endif
@@ -93,14 +88,14 @@ void RestorationShamanStrategy::InitCombatTriggers(std::list<TriggerNode*> &trig
         "party member critical health",
         NextAction::array(0, new NextAction("healing wave on party", ACTION_CRITICAL_HEAL + 1), NULL)));
 
-    // twow-repo#568 D29 (AiPlayerbot.Diet.ShamanVanillaNames): no player Riptide in vanilla, push its alternative.
+    // twow-repo#568 D29: no player Riptide in vanilla, push its alternative.
     triggers.push_back(new TriggerNode(
         "low health",
-        NextAction::array(0, new NextAction(sPlayerbotAIConfig.dietShamanVanillaNames ? "healing wave" : "riptide", ACTION_CRITICAL_HEAL), NULL)));
+        NextAction::array(0, new NextAction("healing wave", ACTION_CRITICAL_HEAL), NULL)));
 
     triggers.push_back(new TriggerNode(
         "party member low health",
-        NextAction::array(0, new NextAction(sPlayerbotAIConfig.dietShamanVanillaNames ? "healing wave on party" : "riptide on party", ACTION_CRITICAL_HEAL), NULL)));
+        NextAction::array(0, new NextAction("healing wave on party", ACTION_CRITICAL_HEAL), NULL)));
 
     triggers.push_back(new TriggerNode(
         "medium aoe heal",
@@ -380,14 +375,8 @@ void RestorationShamanTotemsStrategy::InitCombatTriggers(std::list<TriggerNode*>
         "air totem",
         NextAction::array(0, new NextAction("windfury totem", ACTION_HIGH + 1), NULL)));
 
-    // twow-repo#568 D28 (AiPlayerbot.Diet.NoWrathOfAirTotem): Wrath of Air Totem (TBC) does not exist in vanilla;
+    // twow-repo#568 D28: Wrath of Air Totem (TBC) does not exist in vanilla;
     // this node could only end IMPOSSIBLE (solo) or USELESS (grouped). Read at engine init.
-    if (!sPlayerbotAIConfig.dietNoWrathOfAirTotem)
-    {
-        triggers.push_back(new TriggerNode(
-            "air totem",
-            NextAction::array(0, new NextAction("wrath of air totem", ACTION_HIGH), NULL)));
-    }
 
     triggers.push_back(new TriggerNode(
         "water totem",

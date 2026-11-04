@@ -74,12 +74,12 @@ private:
 
     // twow-repo#568 D38 (owner rule 11.10.2026: arms stays in Battle Stance, tanks in Defensive Stance, only
     // fury uses Berserker Stance): the 'berserker stance' prerequisite pulled every spec into Berserker Stance
-    // when an enemy cast fear. On: no stance prerequisite, Berserker Rage fires only where it can be cast
-    // (fury in Berserker Stance). Off: the prerequisite as before.
+    // when an enemy cast fear. No stance prerequisite: Berserker Rage fires only where it can be cast
+    // (fury in Berserker Stance).
     static ActionNode* berserker_rage(PlayerbotAI* ai)
     {
         return new ActionNode("berserker rage",
-            /*P*/ sPlayerbotAIConfig.dietWarriorBerserkerStanceGate ? NULL : NextAction::array(0, new NextAction("berserker stance"), NULL),
+            /*P*/ NULL,
             /*A*/ NULL,
             /*C*/ NULL);
     }

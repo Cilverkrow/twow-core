@@ -153,7 +153,7 @@ count_text("${mgr}" "ReportQuestBand();" 1 "one minute line call")
 require_order("${mgr}" "    ReportGrindWindow();  //" "    ReportQuestBand();    //" "next to the gap window line")
 require_text("${ai_cpp}" "    if (value && sPlayerbotAIConfig.questFirstProgressionBandLadder)\n    {\n        bandEpisodeResetPending.store(true, std::memory_order_relaxed);\n        bandRescue.store(0, std::memory_order_relaxed);\n    }" "SetParked tail behind the switch")
 require_text("${choose}" "            uint32 const bandSearchedStage = sPlayerbotAIConfig.questFirstProgressionBandLadder ?\n                uint32(std::max(0, AI_VALUE2(int, \"manual int\", \"quest search stage\"))) : 0u;" "E1: the switch first")
-require_text("${choose}" "            if (sPlayerbotAIConfig.questFirstProgressionBandLadder &&\n                TryBandStep(requester, travelTarget, bandSearchedStage, freshBot, rescueRequested,\n                    sPlayerbotAIConfig.questFirstProgressionBandWalkAfterEmptySearches ? &bandWalk : nullptr))\n            {" "E2: the switch first (F4: a walk plan only with its key)")
+require_text("${choose}" "            if (sPlayerbotAIConfig.questFirstProgressionBandLadder && !staleKeepZone && !startZoneHold &&\n                TryBandStep(requester, travelTarget, bandSearchedStage, freshBot, rescueRequested,\n                    sPlayerbotAIConfig.questFirstProgressionBandWalkAfterEmptySearches ? &bandWalk : nullptr))\n            {" "E2: the switch first (F4: a walk plan only with its key)")
 
 # ---- 3. The clock: decided once, never extended -------------------------------------------------------------------
 count_text("${band}" "SetBandTripEnd(" 2 "two trip end sites: the step and the F4 walk (the backoff end)")
@@ -410,7 +410,7 @@ require_text("${step}" "    facts.emptyStreak = uint32(std::max(0, AI_VALUE2(int
 require_text("${step}" "    rungFacts.sameZoneLead = sPlayerbotAIConfig.questFirstProgressionBandLadderSameZoneNext;" "F2 fact")
 require_text("${step}" "sLog.outBasic(\"%s trigger=%s streak=%u lead=%s queued_free=%u free_slots=%u\", qb::FormatStep(" "the step line names its trigger, its lead and the queued slots (S7 hook)")
 count_text("${choose}" "SET_AI_VALUE2(int, \"manual int\", ai::quest_band::BandEmptyStreakValue," 3 "F1: three writes - the count, the found route, the step")
-set(streak_count "            if (sPlayerbotAIConfig.questFirstProgressionBandLadder && sPlayerbotAIConfig.BandStreakOn())\n                SET_AI_VALUE2(int, \"manual int\", ai::quest_band::BandEmptyStreakValue,\n                    std::min(int(ai::quest_band::MaxStreakSteps), std::max(0, AI_VALUE2(int, \"manual int\", ai::quest_band::BandEmptyStreakValue)) + 1));")
+set(streak_count "            if (sPlayerbotAIConfig.questFirstProgressionBandLadder && sPlayerbotAIConfig.BandStreakOn() && !staleKeepZone)\n                SET_AI_VALUE2(int, \"manual int\", ai::quest_band::BandEmptyStreakValue,\n                    std::min(int(ai::quest_band::MaxStreakSteps), std::max(0, AI_VALUE2(int, \"manual int\", ai::quest_band::BandEmptyStreakValue)) + 1));")
 require_text("${branch}" "${streak_count}" "F1 / F4: the count behind the ladder and either key, capped")
 require_order("${branch}" "failureDecision = ai::quest_failure_class::Classify(" "${streak_count}" "F1: counted after the S1 classification")
 require_order("${branch}" "${streak_count}" "TryBandStep(requester, travelTarget, bandSearchedStage, freshBot, rescueRequested," "F1: this search counts before the step check")

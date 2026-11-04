@@ -33,6 +33,7 @@
 #include "ahbot/AhBot.h"
 #include "BotDiagnostics.h"
 #include "playerbot/BotSlots.h"
+#include "playerbot/GroupOps.h"
 #include "playerbot/PacketTracePolicy.h"
 #include <array>
 #include <mutex>
@@ -110,11 +111,16 @@ class PlayerbotWorldScript : public WorldScript
             // answer a waiter only once per bot update interval - long enough to
             // trip the waiter timeout on an otherwise healthy server. AhBot
             // documents the same trap above its own nextAICheckTime early-out.
+            //
+            // BOT-12 (twow-repo#677, AiPlayerbot.BotGroups.OpQueue): the world-thread group queue drains here for the same
+            // reason - every world tick, not in UpdateAIInternal - right after sRandomPlayerbotMgr.UpdateAI (the managers of
+            // this tick first) and after sMapMgr.Update returned: all maps idle.
             if (!sPlayerbotAIConfig.worldBotsHookTrace || !sPlayerbotAIConfig.worldBotsTrace)
             {
                 sRandomPlayerbotMgr.RunQueuedRemoteCommands();
 
                 sRandomPlayerbotMgr.UpdateAI(diff);
+                ai::group_ops::Drain();   // BOT-12: the world-thread group queue
                 auctionbot.Update();
                 return;
             }
@@ -125,6 +131,7 @@ class PlayerbotWorldScript : public WorldScript
             sRandomPlayerbotMgr.RunQueuedRemoteCommands();
             uint64 const remoteEndUs = ai::bot_update::NowUs();
             sRandomPlayerbotMgr.UpdateAI(diff);
+            ai::group_ops::Drain();   // BOT-12: inside hook_ms, outside remote_ms and ahbot_ms
             uint64 const ahbotStartUs = ai::bot_update::NowUs();
             auctionbot.Update();
             uint64 const hookEndUs = ai::bot_update::NowUs();
@@ -428,4 +435,6 @@ void AddSC_playerbot_hooks()
     new PlayerbotWorldScript();
     new PlayerbotServerScript();
     new PlayerbotPlayerScript();
+    // BOT-12 (twow-repo#677): counts group creates/disbands off the world thread for the [GroupOps] minute line.
+    ai::group_ops::AddGroupOpsObserver();
 }

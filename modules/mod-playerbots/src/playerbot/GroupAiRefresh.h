@@ -24,10 +24,22 @@ enum Request : std::uint32_t
     JoinTail = 1u << 5,
 };
 
-// The event source of the managers' "accept invitation" (AdhocGroupWorld Join, QuestGroupWorld InviteAccept).
+// BOT-12 (twow-repo#677, AiPlayerbot.BotGroups.OpQueue): the event source of the world-thread group queue's "accept invitation"
+// (GroupOps.cpp). A world-thread source like the managers', and its tail always goes to the bot's own thread
+// (AcceptInvitationAction: whatever WorldThreadDefer says).
+inline constexpr char const* GroupOpSource = "group op";
+
+// The event source of the managers' "accept invitation" (AdhocGroupWorld Join, QuestGroupWorld InviteAccept) and of the
+// group queue (GroupOpSource).
 inline bool IsWorldManagerSource(std::string const& source)
 {
-    return source == "adhoc group" || source == "quest group";
+    return source == "adhoc group" || source == "quest group" || source == GroupOpSource;
+}
+
+// BOT-12: the accept keeps only the core join on the world thread and posts the whole tail, without a config switch.
+inline bool AlwaysDeferTail(std::string const& source)
+{
+    return source == GroupOpSource;
 }
 
 // s7r: the event source of the posted accept tail (AcceptInvitationAction runs only its tail for it).
