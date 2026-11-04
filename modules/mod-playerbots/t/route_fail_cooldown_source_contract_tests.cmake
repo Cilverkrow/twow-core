@@ -55,7 +55,7 @@ read_source("aiplayerbot.conf.dist.in" conf_dist)
 
 # 1. Switch: default 0 in code and conf, clamped 0..300, documented with the acceptance note.
 require_text("${config_h}" "    uint32 perfRouteFailCooldownSeconds = 0;  // twow-repo#541 (L1b)" "member default off")
-require_order("${config_h}" "uint32 perfPartialPathReuseMs = 10000;" "uint32 perfRouteFailCooldownSeconds = 0;" "appended after the L1 members")
+require_order("${config_h}" "bool dietHunterRapidFireGate = false;" "uint32 perfRouteFailCooldownSeconds = 0;" "appended after the L1 members")
 require_text("${config_cpp}" "perfRouteFailCooldownSeconds = ai::stall_guard::ClampRouteFailCooldownSeconds(config.GetIntDefault(\"AiPlayerbot.Perf.RouteFailCooldownSeconds\", 0));" "load default 0, clamped")
 require_text("${config_cpp}" "#include \"playerbot/StallGuardPolicy.h\"" "policy header in the config")
 require_text("${policy}" "constexpr std::uint32_t RouteFailCooldownMaxSeconds = 300;" "upper clamp")
@@ -89,7 +89,7 @@ require_text("${report_body}" "ai::stall_guard::routeFailBlocks.exchange(0, std:
 require_text("${report_body}" "ai::stall_guard::routeCooldownSkips.exchange(0, std::memory_order_relaxed);" "skips taken")
 require_text("${report_body}" "sLog.outBasic(\"[RouteFail] blocks=%llu skips=%llu cooldown_seconds=%u\"" "minute line")
 function_body("${rnd_mgr}" "void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)" upd_body)
-require_order("${upd_body}" "\n    ReportPathReuse();" "\n    ReportRouteFail();" "after [PathReuse]")
+require_order("${upd_body}" "\n    ReportLazyEngineInit();" "\n    ReportRouteFail();" "after [LazyEngineInit]")
 require_order("${upd_body}" "\n    ReportRouteFail();" "sPerformanceMonitor.Init(0, 0);" "report before the PerfMon Init")
 forbid_text("${upd_body}" "routeFailBlocks" "counter handling inside UpdateAIInternal")
 
