@@ -846,7 +846,7 @@ public:
     // #307: a roster bot on its own leaves a zone clearly above its level.
     bool zoneEscapeEnabled = false;
     uint32 zoneEscapeCooldownSeconds = 600;
-    uint32 zoneEscapeRetrySeconds = 60;
+    uint32 zoneEscapeRetrySeconds = 600;
     // #307: area id -> level for areas missing in ai_playerbot_zone_level.
     std::map<uint32, int32> areaLevelOverrides;
     std::map<uint32, uint32> areaTeamOverrides;  // twow-repo#575 (PATH-01 wave 2): area id -> AreaTable team (2 alliance, 4 horde), empty = off
@@ -1057,7 +1057,7 @@ public:
     bool shortcutTrace = false;  // [Shortcut] counter lines once a minute, measurement only
     bool shortcutGroupLoopFix = false;  // B1: the legacy random-teleport group loop skips real members, uses the member AI
     bool pathRouteFailDetail = false;  // twow-repo#575 (PATH-01 #1): [RouteFailDetail] line per failed node route (rate-limited), 0 = off
-    uint32 pathRouteFailDetailLinesPerMinute = 30;  // PATH-01 #1: detail lines per minute (all failures are counted), clamped 0..600
+    uint32 pathRouteFailDetailLinesPerMinute = 10;  // PATH-01 #1: detail lines per minute (all failures are counted), clamped 0..600
     bool pathHonestRouteFail = false;  // twow-repo#575 (PATH-01 #3): an empty node route makes MoveTo2 fail instead of reporting a collapsed path, 0 = off
     bool pathPartialNoop = false;  // twow-repo#575 (QFO 41747): a partial path whose end the bot already stands at makes MoveTo2 fail, 0 = off
     float pathPartialNoopReach = 2.0f;  // yards bot -> path end that count as "already there", clamped 0.5..10
