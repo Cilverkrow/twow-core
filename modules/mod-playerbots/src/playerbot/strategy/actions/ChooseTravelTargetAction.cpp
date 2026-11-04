@@ -3088,6 +3088,10 @@ bool RequestNamedTravelTargetAction::Execute(Event& event)
                 endedAt - startedAt,
                 ai::profession_travel::HoldOverSeconds(endedAt, uint32(std::max(0, AI_VALUE2(int, "manual int", key + ai::profession_travel::kBackoffEndSuffix)))),
                 now - endedAt, AI_VALUE2(int, "manual int", key + ai::profession_travel::kNearSuffix) ? "near" : "gap");
+            // twow-repo#333 P1-aa (ProfessionTraining.TripNoGrind + Trace): the trip's status at its end (the minute check did not run in time).
+            if (ai::cohort::Applies(sPlayerbotAIConfig.professionTrainingTripNoGrind, bot->GetGUIDLow()) && sPlayerbotAIConfig.professionTrainingTrace)
+                ai::ProfessionTripStatusLine(ai, trainerTrip ? ai::profession_travel::kTripKindTrainer : ai::profession_travel::kTripKindTool,
+                    "end", "lost", nullptr, 0, -1.0f, "-", "-");
         }
         SET_AI_VALUE2(int, "manual int", key + ai::profession_travel::kNearSuffix, nearTrip ? 1 : 0);
         SET_AI_VALUE2(int, "manual int", key, int(now));

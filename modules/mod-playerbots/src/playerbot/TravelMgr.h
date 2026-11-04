@@ -550,6 +550,9 @@ namespace ai
         // twow-repo#601 turn_in hold (QuestLoop.RelationArriveRpgTarget): on arrival at an open giver / taker its nearest spawn
         // becomes the rpg target with the hand-in / accept as the next rpg action.
         void SetRelationRpgTarget();
+        // twow-repo#333 P1-aa (AiPlayerbot.ProfessionTraining.TripNoGrind): on arrival of an open profession trip (kind: ProfessionTravelPolicy.h
+        // kTripKind*) its NPC becomes the rpg target with "rpg buy" / "rpg train" as the next rpg action; stockArrival = within IsIn's 5 yd.
+        void SetProfessionTripRpgTarget(uint8 kind, bool stockArrival);
 
 		// twow-repo#295: with riding stages taken at the unmounted run speed (RidingStagesBotPolicy.h).
 		uint32 GetMaxTravelTime() const;

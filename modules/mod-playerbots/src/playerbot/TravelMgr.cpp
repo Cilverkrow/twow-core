@@ -38,6 +38,7 @@
 #include "playerbot/strategy/values/RestGateValue.h"
 #include "playerbot/strategy/values/QuestValues.h"   // twow-repo#601 S5a: DialogStatusValue::getDialogStatus (band giver filter F)
 #include "playerbot/QuestBand.h"   // twow-repo#601 S5a (BandLadder): the band trip hooks, the ladder loader
+#include "playerbot/ProfessionTravelPolicy.h"   // twow-repo#333 P1-aa: the open profession trip on arrival (TripNoGrind)
 #include "playerbot/CohortPolicy.h"   // mode 2 = cohort B: twow-repo#601 QuestLoop.InactiveAfterProgress, re-deaths at camps (DestinationDeaths.CampBlock)
 
 using namespace ai;
@@ -1205,6 +1206,25 @@ void TravelTarget::SetRelationRpgTarget()
     context->GetValue<GuidPosition>("rpg target")->Set(GuidPosition(npc));
     context->GetValue<std::string>("next rpg action")->Set(quest_loop::RelationArriveRpgAction(relation->GetRelation()));
     TraceQuestCommit(tDestination, "progress", "rpg_target");
+}
+
+// twow-repo#333 P1-aa (AiPlayerbot.ProfessionTraining.TripNoGrind, OB-00 04.11.2026 after M1r run 8): at the trip's vendor / trainer the
+// NPC becomes the rpg target with "rpg buy" / "rpg train" as the next rpg action, so the purchase / training runs at once instead of a
+// weighted random rpg pick. One bounded grid search per arrival; no status, retry or expiry change. With ProfessionTraining.Trace one
+// "[ProfTravel] state=status ... event=arrive" line.
+void TravelTarget::SetProfessionTripRpgTarget(uint8 kind, bool stockArrival)
+{
+    char const* const next = ai::profession_travel::TripArriveRpgAction(kind);
+    Creature* npc = tDestination->GetEntry() > 0 ?
+        bot->FindNearestCreature(uint32(tDestination->GetEntry()), ai::profession_travel::kTripRpgSearchYards) : nullptr;
+    if (npc)
+    {
+        context->GetValue<GuidPosition>("rpg target")->Set(GuidPosition(npc));
+        context->GetValue<std::string>("next rpg action")->Set(next);
+    }
+    if (sPlayerbotAIConfig.professionTrainingTrace)
+        ai::ProfessionTripStatusLine(ai, kind, "arrive", "-", "WORK", npc ? npc->GetGUIDLow() : 0u, npc ? bot->GetDistance(npc) : -1.0f,
+            stockArrival ? "stock" : "trip", npc ? (kind == ai::profession_travel::kTripKindTrainer ? "train" : "buy") : "none");
 }
 
 bool TravelTarget::CopyTarget(TravelTarget* const target) {
@@ -2408,6 +2428,14 @@ void TravelTarget::CheckStatus()
     if (GetStatus() == TravelStatus::TRAVEL_STATUS_TRAVEL)
     {
         bool HasArrived = tDestination->IsIn(bot);
+        // twow-repo#333 P1-aa (AiPlayerbot.ProfessionTraining.TripNoGrind): an open profession trip also arrives within kTripArriveYards
+        // of its NPC's spawn ("move to rpg target" walks the rest in WORK). Switch 0 or another cohort: professionTrip is 0 - as before.
+        // The free entry test first: a destination without an NPC is no trip (SetProfessionTripRpgTarget needs the entry, too).
+        uint8 const professionTrip = tDestination->GetEntry() > 0 &&
+            ai::cohort::Applies(sPlayerbotAIConfig.professionTrainingTripNoGrind, bot->GetGUIDLow()) ? ai::ProfessionTripOpenKind(ai) : 0;
+        bool const stockArrival = HasArrived;
+        if (!HasArrived && professionTrip && tDestination->GetEntry() > 0 && tDestination->IsIn(bot, ai::profession_travel::kTripArriveYards))
+            HasArrived = true;
 
         if (HasArrived)
         {
@@ -2440,6 +2468,10 @@ void TravelTarget::CheckStatus()
             if (ai::cohort::Applies(sPlayerbotAIConfig.questLoopRelationArriveRpgTarget, bot->GetGUIDLow()) &&
                 sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster() && !bot->GetGroup())
                 SetRelationRpgTarget();
+            // twow-repo#333 P1-aa (ProfessionTraining.TripNoGrind): at the trip's vendor / trainer "rpg buy" / "rpg train" is set up at
+            // once (rpg target + next rpg action). No open profession trip, switch 0 or another cohort: professionTrip is 0, as before.
+            if (professionTrip)
+                SetProfessionTripRpgTarget(professionTrip, stockArrival);
             // twow-repo#594 / P3-b: arrivals of the direct-target destinations (failure memory, hole_present for fishing).
             if (ai::direct_targets::AnyBuilt())
                 ai::direct_targets::OnArrive(tDestination, ai, wPosition);
