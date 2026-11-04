@@ -604,8 +604,6 @@ public:
     bool lootFeralFixedSpec = true;   // twow-repo#308 (owner 26.09.): bear/cat scale by the premade path, not a coin per check
     bool equipKeepWeaponsUnlessUpgrade = false;   // twow-repo#308 EQUIP-FLIP-01: hands come off only for a hand-item candidate in the bags
     bool equipAfterRollWon = false;   // twow-repo#341 (owner repro 25.10.): a won Need/Greed roll on a weapon, armour piece or bag runs "equip upgrades" (the core stores it without SMSG_ITEM_PUSH_RESULT)
-    bool parkAnyLevelInn = false;  // twow-repo#551 (owner 09.10): park in the nearest inn of the faction with room, any level band
-    bool parkSleepGrid = false;  // twow-repo#541: parked bots do not activate the cells around them (core Player flag)
     bool parkCellSourceStats = false;  // twow-repo#541 P2 D0: [CellSource] minute line - continent cells by source (real players / bots / active non-players)
     bool parkCellSourceKinds = false;  // twow-repo#541 P2 D5: [CellSourceKinds] minute line + [CellSourceTop] every 10 min - active non-players by kind (needs CellSourceStats)
     uint32 parkMaxPerInn = 0;   // twow-repo#551 (owner 10.10): parked bots per inn, 0 = ai::park::SpotCapacity (25) as before

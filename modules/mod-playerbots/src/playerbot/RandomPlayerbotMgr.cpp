@@ -2053,7 +2053,7 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     ReportMeleeSkip();      // twow-repo#602: [MeleeSkip] once per minute (AiPlayerbot.Rotation.MeleeSkipAttacking)
     ReportInvalidTarget();  // twow-repo#602: [InvalidTarget] once per minute (AiPlayerbot.Rotation.InvalidTargetQuiet)
     ReportTankKit();        // twow-repo#602: [TankKit] once per minute (AiPlayerbot.Rotation.TankKitFromLevel)
-    ReportParkSleep();    // twow-repo#541: core switches + [ParkSleep] once per minute (AiPlayerbot.Park.SleepGrid)
+    ReportParkSleep();    // twow-repo#541: core switches + cell source lines once per minute (AiPlayerbot.Park.CellSourceStats)
     ReportCombatIdle();   // twow-repo#541 (audit A17): [CombatIdle] once per minute (AiPlayerbot.Perf.CombatIdleYield)
     ReportHunterMelee();  // twow-repo#602: [HunterMelee] once per minute (AiPlayerbot.Rotation.HunterMeleeStart)
     ReportCastWait();     // twow-repo#602: [CastWait] once per minute (AiPlayerbot.CastWait.Preparing)
@@ -10266,12 +10266,8 @@ bool RandomPlayerbotMgr::ParkBot(Player* bot, std::string const& teleName, std::
         uint32 const level = bot->GetLevel();
         std::vector<WorldLocation> inns;
         std::vector<uint32> innZones;
-        // Owner 09.10.2026 ("damit die Städte nicht zu voll werden ... alle Gasthäuser mit 25 Bots füllen"):
-        // with AiPlayerbot.Park.AnyLevelInn every inn of the faction counts, whatever level band it serves;
-        // ChooseSpot then takes the nearest one with room, and only when all are full a capital spot.
         for (ParkInn const& inn : parkInns[team])
-            if (sPlayerbotAIConfig.parkAnyLevelInn ||
-                (level + ParkLevelSlack >= inn.minLevel && level <= inn.maxLevel + ParkLevelSlack))
+            if (level + ParkLevelSlack >= inn.minLevel && level <= inn.maxLevel + ParkLevelSlack)
             {
                 inns.push_back(inn.loc);
                 innZones.push_back(inn.cityZone);
@@ -10434,25 +10430,15 @@ void RandomPlayerbotMgr::UnparkBot(Player* bot)
         ai->ResetStrategies();
     }
     bot->SetHiddenFromBots(false);  // twow-repo#541/#551: visible again to every bot
-    if (bot->HasGridSleepFlag())    // twow-repo#541: its cells wake in the next map update
-    {
-        ++parkSleepUnparkWakes;
-        bot->SetGridSleep(false);
-    }
     bot->SetStandState(UNIT_STAND_STATE_STAND);
     sLog.outBasic("[Park] state=unparked bot=%u level=%u", bot->GetGUIDLow(), bot->GetLevel());
 }
 
-// twow-repo#541 (grid sleep): hands the switches to the core every pass (cheap, follows a config reload)
-// and writes one [ParkSleep] line per minute. Per-update values are averages over continent cell updates
-// (one region update = one sample): sleeping/woken bots per region update and marked cells per region update.
-// wake_attack / wake_other count the transitions asleep -> awake in the map threads, wake_unpark the
-// unparked bots that carried the flag.
+// twow-repo#541 P2 D0/D5 (AiPlayerbot.Park.CellSourceStats / CellSourceKinds): hands the switches to the core every pass (cheap, follows a
+// config reload) and writes the [CellSource] / [CellSourceKinds] / [CellSourceTop] lines once a minute. (The name is from the removed
+// grid sleep switch, twow-repo#679.)
 void RandomPlayerbotMgr::ReportParkSleep()
 {
-    bool const stats = sPlayerbotAIConfig.parkSleepGrid || sPlayerbotAIConfig.botUpdateTrace;
-    Map::SetGridSleepSwitches(sPlayerbotAIConfig.parkSleepGrid, stats);
-
     uint32 const now = uint32(time(nullptr));
 
     // twow-repo#541 P2 D0 (AiPlayerbot.Park.CellSourceStats): the continent cells by source, per continent cell update.
@@ -10540,38 +10526,6 @@ void RandomPlayerbotMgr::ReportParkSleep()
             }
         }
     }
-
-    static uint32 lastReport = 0;
-    if (!stats || now < lastReport + 60)
-        return;
-    bool const first = lastReport == 0;
-    lastReport = now;
-
-    Map::GridSleepStats& s = Map::GetGridSleepStats();
-    uint64 const updates = s.updates.exchange(0, std::memory_order_relaxed);
-    uint64 const sleeping = s.sleeping.exchange(0, std::memory_order_relaxed);
-    uint64 const woken = s.woken.exchange(0, std::memory_order_relaxed);
-    uint64 const wakeAttack = s.wakeAttack.exchange(0, std::memory_order_relaxed);
-    uint64 const wakeOther = s.wakeOther.exchange(0, std::memory_order_relaxed);
-    uint64 const cells = s.cellsMarked.exchange(0, std::memory_order_relaxed);
-    uint32 const wakeUnpark = parkSleepUnparkWakes;
-    parkSleepUnparkWakes = 0;
-    // The first window starts whenever the switch was read; it is reset, not reported.
-    if (first)
-        return;
-
-    uint32 flagged = 0;
-    for (auto const& [guid, entry] : parkedBots)
-        if (Player* bot = GetPlayerBot(guid))
-            if (bot->HasGridSleepFlag())
-                ++flagged;
-
-    auto const perUpdate = [updates](uint64 sum) { return updates ? double(sum) / double(updates) : 0.0; };
-    sLog.outBasic("[ParkSleep] enabled=%u parked=%u flagged=%u region_updates=%llu sleeping_per_update=%.1f "
-        "woken_per_update=%.1f cells_marked_per_update=%.0f wake_attack=%llu wake_other=%llu wake_unpark=%u",
-        sPlayerbotAIConfig.parkSleepGrid ? 1u : 0u, uint32(parkedBots.size()), flagged, (unsigned long long)updates,
-        perUpdate(sleeping), perUpdate(woken), perUpdate(cells), (unsigned long long)wakeAttack,
-        (unsigned long long)wakeOther, wakeUnpark);
 }
 
 void RandomPlayerbotMgr::ProcessParkedBots()
@@ -10579,13 +10533,12 @@ void RandomPlayerbotMgr::ProcessParkedBots()
     uint32 const now = uint32(time(nullptr));
 
     // twow-repo#551: once a minute while bots were parked - how many went to an inn, a capital spot or
-    // stayed where they stood, and whether inns of any level were allowed (AiPlayerbot.Park.AnyLevelInn).
+    // stayed where they stood.
     bool const capsOn = sPlayerbotAIConfig.parkMaxPerInn || sPlayerbotAIConfig.parkMaxPerCity;
     if (now >= parkShare.lastLog + 60 &&
         (parkShare.inn || parkShare.city || parkShare.here || parkShare.noSpot || (capsOn && !parkedBots.empty())))
     {
-        sLog.outBasic("[Park] state=share inn=%u city=%u here=%u any_level_inn=%u", parkShare.inn, parkShare.city,
-            parkShare.here, sPlayerbotAIConfig.parkAnyLevelInn ? 1u : 0u);
+        sLog.outBasic("[Park] state=share inn=%u city=%u here=%u", parkShare.inn, parkShare.city, parkShare.here);
         // twow-repo#551 (owner 10.10., Park.MaxPerInn / Park.MaxPerCity): occupancy with the caps - inns in use and
         // full, the fullest inn, bots per capital zone, how many overflowed to another spot and how many found none.
         if (capsOn)
@@ -10708,10 +10661,6 @@ void RandomPlayerbotMgr::ProcessParkedBots()
                         uint32(bot->getStandState()), bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ(),
                         now - entry.since);
                 }
-                // twow-repo#541 (AiPlayerbot.Park.SleepGrid): only once it has arrived; the core keeps the
-                // cells awake while the bot fights, is dead, teleports or flies.
-                if (bot->HasGridSleepFlag() != sPlayerbotAIConfig.parkSleepGrid)
-                    bot->SetGridSleep(sPlayerbotAIConfig.parkSleepGrid);
                 break;
         }
     }

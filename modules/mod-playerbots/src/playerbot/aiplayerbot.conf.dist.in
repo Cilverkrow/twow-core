@@ -237,17 +237,6 @@ AiPlayerbot.Equip.KeepWeaponsUnlessUpgrade = 0
 # hands then come off only for a weapon candidate. Equipping binds a BoE item, as for looted gear. Read when the bot logs in
 # (the packet handler is registered only with 1). 0 = as before.
 AiPlayerbot.Equip.AfterRollWon = 0
-# twow-repo#551 (owner 09.10.2026): 1 = a parked bot takes the nearest inn of its faction with a free
-# place (at most 25 bots per inn), whatever level band the inn serves; only when every inn of the
-# faction is full does it go to a capital spot. 0 = inns within 5 levels of the bot first (default).
-# [Park] state=share logs where bots were parked (inn / city / here) once a minute.
-AiPlayerbot.Park.AnyLevelInn = 0
-# twow-repo#541 (grid sleep): 1 = a parked bot (and its pet) does not activate the map cells around it, so
-# the creatures there are not updated unless a real player or an active bot is near. The bot wakes the cells
-# again as soon as it fights, dies, teleports or is unparked. Its grid stays loaded; saving, logout and the
-# roster are unchanged. [ParkSleep] logs sleeping/woken bots and marked cells once a minute (also with
-# AiPlayerbot.BotUpdateTrace = 1 and this switch off, for the A/B). 0 = off (default).
-AiPlayerbot.Park.SleepGrid = 0
 
 # twow-repo#541 P2 D0 (diagnostics, no gameplay change): 1 = count which source keeps the continent cells awake and log
 # [CellSource] once a minute: per continent cell update the cells of real players, the cells only bots add, the cells
@@ -265,7 +254,7 @@ AiPlayerbot.Park.CellSourceKinds = 0
 
 # twow-repo#551 (owner 10.10.2026, test profile 20 / 150): MaxPerInn = parked bots per inn (0 = 25 as before);
 # MaxPerCity = parked bots per capital zone, its inns and city spots together (0 = no limit). A full inn sends
-# the bot to the next inn with room (any level with AnyLevelInn=1, else the level band), a full city to the next
+# the bot to the next inn with room (within the level band), a full city to the next
 # inn outside it. With a cap on, a bot with no spot left is not parked (state=no_spot) and stays active - it never
 # parks in the open world because of a cap. [Park] state=caps logs inn/city occupancy once a minute.
 AiPlayerbot.Park.MaxPerInn = 0
