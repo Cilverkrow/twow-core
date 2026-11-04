@@ -21,7 +21,6 @@
 #include "playerbot/BuffTargetPolicy.h"
 #include "playerbot/ZoneExitPolicy.h"
 #include "playerbot/QuestFailureClassPolicy.h"
-#include "playerbot/QuestGrindModePolicy.h"
 #include "playerbot/QuestFirstOrderPolicy.h"   // twow-repo#601 decision order (Grind.QuestFirstOrder)
 #include "playerbot/QuestBand.h"   // twow-repo#601 S5a (BandLadder): band rescue targets, [QuestBand] minute line
 #include "playerbot/AdhocGroupWorld.h"   // twow-repo#628 ad-hoc groups on the world thread
@@ -1660,54 +1659,11 @@ void ReportDirectTargets()
         ai::direct_targets::TakeSummaryFields().c_str());
 }
 
-// twow-repo#601 GrindMode (AiPlayerbot.QuestFirstProgression.GrindMode = 2): one "[QuestIdle] minute fallback= money=
-// opportunistic= no_target=" line per minute - the grind decisions turned down on the map threads since the last line
-// (atomics in PlayerbotAI.cpp). World thread only, same pattern as ReportDirectTargets. Nothing with GrindMode 0 / 1.
-void ReportQuestIdle()
-{
-    if (!ai::quest_grind_mode::NoGrind(sPlayerbotAIConfig.questFirstProgressionGrindMode))
-        return;   // GrindMode 0 / 1: not even the clock is read
-
-    static uint32 lastReport = 0;
-    uint32 const now = uint32(time(nullptr));
-    if (now < lastReport + 60)
-        return;
-    lastReport = now;
-
-    sLog.outBasic("%s", PlayerbotAI::TakeQuestIdleMinuteLine().c_str());
-}
-
-// twow-repo#601 S2 / S4 (GrindMode 1, OB-10 rev. 2 points 2 / 5): one "[GrindWindow] minute starts= expired= engaged=
-// grey_engaged= no_dest= r4_skips= r4_empty=" line per minute - the gap filler's windows, plain grind engagements, R4 skips
-// and passes left empty by R4 counted on the map threads since the last line (atomics in PlayerbotAI.cpp). Gated by
-// GrindMode 1 alone and omitted when every count is 0. World thread only, same pattern as ReportQuestFeasibility (the
-// first line after a full minute).
-void ReportGrindWindow()
-{
-    if (!ai::quest_grind_mode::GapFiller(sPlayerbotAIConfig.questFirstProgressionGrindMode))
-        return;   // GrindMode 0 / 2: not even the clock is read
-
-    static uint32 lastReport = 0;
-    uint32 const now = uint32(time(nullptr));
-    if (!lastReport)
-    {
-        lastReport = now;
-        return;
-    }
-    if (now < lastReport + 60)
-        return;
-    lastReport = now;
-
-    std::string const line = PlayerbotAI::TakeGrindWindowMinuteLine();
-    if (!line.empty())
-        sLog.outBasic("%s", line.c_str());
-}
-
 // twow-repo#601 decision order (AiPlayerbot.Grind.QuestFirstOrder, owner 20.10.2026): one "[QuestOrder] minute skipped=
 // objective= blocker= quest_work= no_quest= grind_refused=" line per minute - the grind candidates turned down, the picks and the passes left
 // empty (with / without a travel target) counted on the map threads since the last line (atomics in PlayerbotAI.cpp). Gated
 // by the switch alone (not even the clock is read with 0); the first call only starts the clock. World thread only, same
-// pattern as ReportGrindWindow; always printed with the switch on (a 0 line shows the switch works and nothing was skipped).
+// pattern as ReportRouteFail; always printed with the switch on (a 0 line shows the switch works and nothing was skipped).
 void ReportQuestOrder()
 {
     if (!sPlayerbotAIConfig.grindQuestFirstOrder)
@@ -1731,7 +1687,7 @@ void ReportQuestOrder()
 // expired= ..., QuestBandPolicy.h FormatMinute) once a minute per cohort - the band steps, ends, rescues and skips counted
 // on the map threads since the last line (relaxed atomics in QuestBand.cpp), omitted when every count of the cohort is 0.
 // Gated by the switch alone (not even the clock is read with 0); the first call only starts the clock.
-// World thread only, same pattern as ReportGrindWindow.
+// World thread only, same pattern as ReportQuestOrder.
 void ReportQuestBand()
 {
     if (!sPlayerbotAIConfig.questFirstProgressionBandLadder)
@@ -1799,7 +1755,7 @@ void ReportRestGate()
 
 // twow-repo#601 S3a (AiPlayerbot.QuestFeasibility.Enable): one "[QuestFeasibility] minute skips= drops= giver_inactive="
 // line per minute - accept / item skips, infeasible drops and inactive giver relations counted on the map threads since
-// the last line (atomics in PlayerbotAI.cpp). World thread only, same pattern as ReportQuestIdle; the first line comes
+// the last line (atomics in PlayerbotAI.cpp). World thread only, same pattern as ReportQuestOrder; the first line comes
 // after a full minute. Nothing with Enable 0.
 void ReportQuestFeasibility()
 {
@@ -2073,8 +2029,6 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     ReportRouteTime();    // twow-repo#592 (PATH-02): [RouteTime] once per minute (AiPlayerbot.Perf.RouteTimeTrace)
     ReportRoutePrecheck(); // twow-repo#592 (PATH-02): [RoutePrecheck] once per minute (AiPlayerbot.Perf.RoutePrecheck)
     ReportDirectTargets(); // twow-repo#594 / P3: [DirectTarget] state=summary once per minute (AiPlayerbot.DirectTargets.*)
-    ReportQuestIdle();    // twow-repo#601 GrindMode: [QuestIdle] minute once per minute (AiPlayerbot.QuestFirstProgression.GrindMode = 2)
-    ReportGrindWindow();  // twow-repo#601 S2 / S4: [GrindWindow] minute once per minute, not when empty (GrindMode = 1)
     ReportQuestOrder();   // twow-repo#601 decision order: [QuestOrder] minute once per minute (AiPlayerbot.Grind.QuestFirstOrder)
     ReportQuestBand();    // twow-repo#601 S5a: [QuestBand] minute once per minute per cohort, not when empty (BandLadder > 0)
     ReportRotCast();      // twow-repo#602 ROT-01 D0: [RotCast] once per minute (AiPlayerbot.Rotation.CastTrace)

@@ -56,7 +56,7 @@ namespace ai
 	{
 	public:
 		PlayerTravelInfo() {};
-		PlayerTravelInfo(Player* player, bool gapGrind = false);   // twow-repo#601 S2 R3: gapGrind = a GrindMode 1 gap grind fetch / choice / trip
+		PlayerTravelInfo(Player* player);
 		
 		const WorldPosition& GetPosition() const { return position; }
 		Team GetTeam() const { return team; }
@@ -75,14 +75,6 @@ namespace ai
 		uint8 GetUint8Value(const std::string& valueName) const { return uint8Values.at(valueName);};
 		uint8 GetUint32Value(const std::string& valueName) const { return uint32Values.at(valueName); };
 
-		// twow-repo#601 S2 R3 (GrindMode 1, OB-10 rev. 2 point 1): the scope bit - the creature level window of the gap filler's
-		// population, set in the constructor on the bot thread and read by the async grind fetch only as a value
-		// (GrindTravelDestination::IsPossible, TravelMgr::IsLocationLevelValid). 0 / 0 = no window: every other bot, GrindMode 0 / 2,
-		// and every snapshot that is not for a gap grind (review C-F2: a quest objective fetch, choice or trip to grind mobs keeps
-		// the old template test and area gate; only the gap grind fetch, its choice and the gap trip pass gapGrind).
-		bool HasGapWindow() const { return gapWindowHigh != 0; }
-		uint32 GetGapWindowLow() const { return gapWindowLow; }
-		uint32 GetGapWindowHigh() const { return gapWindowHigh; }
 		// twow-repo#601 S5a (BandLadder, S5A-DESIGN.md 5.4): the band giver filter bit and the grey level, set in the constructor on the
 		// bot thread (PlayerbotAI::QuestBandGiverFilter: switch first, then the scope and a usable ladder row for the bot's band);
 		// read by QuestRelationTravelDestination::IsPossible / IsActive only as values. false / 0 for every other bot.
@@ -104,8 +96,6 @@ namespace ai
 		WorldPosition position;
 		Team team = TEAM_NONE;
 		uint32 level = 0;
-		uint32 gapWindowLow = 0;    // twow-repo#601 S2 R3: 0 / 0 for every bot but the GrindMode 1 population
-		uint32 gapWindowHigh = 0;
 		bool bandGiverFilter = false;    // twow-repo#601 S5a: false for every bot but an in-scope BandLadder bot with a usable row
 		bool rpgAreaFromSpawn = false;   // twow-repo#333 P1-v: Travel.RpgAreaLevelFromSpawn applies to this bot
 		bool giverAnyQuest = false;     // twow-repo#601 lever (iv): QuestFirstProgression.GiverFetchAnyQuest applies to this bot
@@ -450,10 +440,6 @@ namespace ai
 		void SetExpireIn(uint32 expireMs) { statusTime = GetExpiredTime() + expireMs; }
 		void SetForced(bool forced1) { forced = forced1; }
 		void SetGroupCopy(GuidPosition member) { groupMember = member; }
-		// twow-repo#601 S2 / S4 R2 (GrindMode 1): a gap grind trip ends with its quest route backoff - READY, TRAVEL and WORK
-		// get the time left until this end (time(nullptr) seconds, 0 = none); its expiry counts as no failure.
-		void SetGapWindowEnd(uint32 windowEnd) { gapWindowEnd = windowEnd; }
-		uint32 GetGapWindowEnd() const { return gapWindowEnd; }
 		// twow-repo#601 S5a (BandLadder): the band trip's wall-clock end (time(nullptr) s), decided once at the step; 0 = no band
 		// trip. The trip ends only in CheckStatus (CheckBandTrip / EndBandTrip, QuestBand.cpp) or when another destination
 		// replaces it (NoteBandTripReplaced from SetTarget); nothing extends it.
@@ -466,10 +452,6 @@ namespace ai
 		// no band trip) and the zone it started in; set with the trip end by the walk, cleared with it.
 		void SetBandWalk(uint32 startedAt, uint32 fromZone) { bandWalkAt = startedAt; bandWalkFromZone = fromZone; }
 		uint32 GetBandWalkAt() const { return bandWalkAt; }
-		// twow-repo#601 S2 R3 (GrindMode 1, review C-F2): this choice is the gap grind choice (set by ChooseTravelTargetAction on the
-		// new target only, never copied) - the R3 window snapshot and the own-map skip apply to it, not to a quest choice.
-		void SetGapGrindChoice(bool gapGrindChoice1) { gapGrindChoice = gapGrindChoice1; }
-		bool IsGapGrindChoice() const { return gapGrindChoice; }
 
 		void IncRetry(bool isMove) { if (isMove) moveRetryCount+=2; else extendRetryCount++; }
         void DecRetry(bool isMove);
@@ -558,11 +540,9 @@ namespace ai
 
 		uint32 startTime = WorldTimer::getMSTime();
 		uint32 statusTime = 0;
-		uint32 gapWindowEnd = 0;   // twow-repo#601 S2 / S4 R2: 0 for every target but a GrindMode 1 gap grind trip
 		uint32 bandTripEnd = 0;    // twow-repo#601 S5a: 0 for every target but a running band trip
 		uint32 bandWalkAt = 0;     // twow-repo#601 S5a F4: 0 for every target but a running backoff walk
 		uint32 bandWalkFromZone = 0;
-		bool gapGrindChoice = false;   // twow-repo#601 S2 R3: only the new target of a GrindMode 1 gap grind choice
 		bool restPausePending = false;   // twow-repo#602 X1: a rest ended since the last turn-in observation
 
 		bool forced = false;
@@ -648,7 +628,7 @@ namespace ai
 
 		DestinationList GetDestinations(const PlayerTravelInfo& info, uint32 purposeFlag = (uint32)TravelDestinationPurpose::None, const std::vector<int32>& entries = {}, bool onlyPossible = true, float maxDistance = 10000.0f) const;
 		void GetPartitionsLock(bool getLock = true);
-		static bool IsLocationLevelValid(const WorldPosition& position, const PlayerTravelInfo& info, uint32 purposeFlag = (uint32)TravelDestinationPurpose::None, bool gapWindowApplies = true);   // twow-repo#601 S2 R3: false = no GrindMode 1 window (fetches without IsPossible)
+		static bool IsLocationLevelValid(const WorldPosition& position, const PlayerTravelInfo& info, uint32 purposeFlag = (uint32)TravelDestinationPurpose::None);
 		PartitionedTravelList GetPartitions(const WorldPosition& center, const std::vector<uint32>& distancePartitions, const PlayerTravelInfo& info, uint32 purposeFlag = (uint32)TravelDestinationPurpose::None, const std::vector<int32>& entries = {}, bool onlyPossible = true, float maxDistance = 10000.0f) const;
 		static void ShuffleTravelPoints(std::vector<TravelPoint>& points);
 

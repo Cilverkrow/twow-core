@@ -12,7 +12,7 @@
 // "[ConfigEcho] <Key>=<value> ... part=<i>/<n>" lines at the end of PlayerbotAIConfig::Initialize with the values the
 // process parsed (after clamps and defaults). <Key> is the full config key (a list key echoes its parsed size as
 // <Key>.count), <value> the parsed member, so an arm proves a switch with one regex like
-// " AiPlayerbot.QuestFirstProgression.GrindMode=1( |$)". No key of its own, one set of lines per Initialize (start and
+// " AiPlayerbot.Grind.QuestFirstOrder=2( |$)". No key of its own, one set of lines per Initialize (start and
 // config reload), no state. Pure (std only), so the unit test and the source contract pin the format without game headers.
 //
 // OB-00 29.10.2026 (OB-30 finding): the log path cuts a line at about 4096 characters, and the single line had grown past

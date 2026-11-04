@@ -89,7 +89,6 @@ require_text("${grind}" "bool const relationWorkOpen = ai::cohort::Applies(sPlay
 require_order("${grind}" "logGrind(unit, \"(hostile) selected.\");" "bool const relationWorkOpen =" "attackers before the rule")
 between("${grind}" "        if (entry && !needForQuest)\n        {" "else if (urand(0, 100) < 75)" plain)
 require_text("${plain}" "if (ai::quest_loop::RelationWorkGrindSkipped(relationWorkOpen, needForQuest))\n            {\n                logGrind(unit, \"ignored (QuestLoop.RelationWorkNoGrind: the hand-in / accept at the NPC first).\");\n                continue;\n            }" "the skip")
-require_order("${plain}" "RelationWorkGrindSkipped(relationWorkOpen, needForQuest)" "ai::quest_grind_mode::GapTargetSkipped" "before the gap window")
 require_order("${plain}" "RelationWorkGrindSkipped(relationWorkOpen, needForQuest)" "urand(0, 100) < 20" "before the 20 % skip")
 
 # 4. RelationArriveRpgTarget: on arrival before WORK, roster bot on its own without a group; one grid search; rpg target + next action.

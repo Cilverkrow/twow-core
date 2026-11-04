@@ -23,9 +23,9 @@ namespace ai::quest_first_order
 // skipped candidates and has no travel target is "no quest work" - a defect for the quest search (S5a / R08), counted as
 // no_quest=, never a reason to grind. The same population takes no kill trip the filter would refuse (CLI-Deep review): the
 // 8.32 grind fallback and the money grind are refused (grind_refused=), as are pure grind destinations, boss, skinning and
-// forced guild kill trips (PlayerbotAI::IsQuestNoGrindTrip, the GrindMode 2 points). A quest objective of ANOTHER active quest
+// forced guild kill trips (PlayerbotAI::IsQuestNoGrindTrip). A quest objective of ANOTHER active quest
 // still wins the 5.0 tie against the walk to a turn-in (quest work, accepted). skipped= counts candidate skips per value pass,
-// not bots or decisions. Not touched: GrindMode 1 / 2 (their own rules come first), mining / herbalism / fishing, dps / tank
+// not bots or decisions. Not touched: mining / herbalism / fishing, dps / tank
 // assist, real players' bots.
 
 inline bool Applies(bool enabled, bool questFirstRosterBot, bool realPlayerMaster, std::uint32_t level, std::uint32_t maxLevel)

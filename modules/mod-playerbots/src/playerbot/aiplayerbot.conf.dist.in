@@ -769,7 +769,7 @@ AiPlayerbot.Grind.GreyByLevel = 0
 # bot= level= band= zone= map=", ended by the next quest target with "state=quest_found ... seconds= had=" (how often and how long
 # no quest is found, per bot / band / zone - the input for S5a / R08). With BandLadder >= 1 the S5a band step is tried on every
 # empty quest search before the grind fallback counts, so "no quest in this zone" first leads to the next hub; without it the
-# bot stands. GrindMode 1 and 2 keep their own rules. Mode (in-realm A/B, cohort parity): 0 = as before (default), 1 = every
+# bot stands. Mode (in-realm A/B, cohort parity): 0 = as before (default), 1 = every
 # bot, 2 = only cohort B (odd low guid; cohort A stays as before). Any other value acts like 0.
 AiPlayerbot.Grind.QuestFirstOrder = 0
 
@@ -1499,35 +1499,6 @@ AiPlayerbot.QuestFirstProgression.AbandonStructuralParked = 0
 # filter on and leaves only hub_filter rejections. Both loops ask the same check. 0 = the pre-check as before.
 # Restart-only.
 AiPlayerbot.QuestFirstProgression.HubPreloopSameFilters = 0
-# twow-repo#601 GrindMode (owner decision 17.10.2026: while the quests are tested up to level 60 a bot should rather
-# stand around than grind, so it shows). Restart-only.
-#   0 = today's behaviour (default).
-#   1 = gap filler (twow-repo#601 S2/S4, OB-10 rev. 2): the bots of 2 (below) grind only while their quest route
-#       backoff runs (the last quest search found nothing, any FailureClasses class, a transient one too), never through
-#       GrindFallbackFailures, a travel refresh or a group
-#       member's grind trip (the money grind too only inside that window); the grind trip ends with the backoff
-#       (remaining backoff, at most 10 min, + 30 s) and its end counts as no failure. [QuestSearch]
-#       state=grind_window bot= level= backoff_s= window=<min>-<max> map= once per window (window= the S2 creature
-#       level window max(gray + 1, L - 5) to L + 1). They grind on their own map only, at grind
-#       destinations whose template max level and area level are in that window, and plain grind targets (no quest
-#       need, not attacking the bot) need their level in it; attackers and quest mobs stay. Grind destinations
-#       are recognised for the 20 % quest skip (bug fix, mode 1 only). [GrindWindow] minute starts= expired= engaged=
-#       grey_engaged= no_dest= r4_skips= r4_empty= once a minute, not when all are 0 (r4_empty= = grind target
-#       passes in which the level window skipped a candidate and no target was left). For the A2 test realm arm;
-#       default 0.
-#   2 = no grind as a substitute activity for quest-first roster bots on their own (QuestFirstProgression.Enabled,
-#       persistent roster member, no real player leading) below the max player level: no GrindFallbackFailures
-#       fallback, no money grind ("should get money"), no pure grind travel destination, no "attack anything" on a
-#       creature that neither attacks the bot or its group nor is needed for an active quest, and no kill trip that
-#       would end in such a refused kill: no skinning or boss travel purpose, no forced guild-order kill trip (grind
-#       mob, boss, skinning) to a creature no active quest needs. The bot stands idle and logs why: [QuestIdle]
-#       reason=fallback|money|opportunistic|no_target bot= level= zone= target= class= once per reason until it finds a
-#       quest route again (at most 4 lines per idle episode; class= is the latest FailureClasses rejection class,
-#       transient|structural|empty_offer, none without one), and [QuestIdle] minute fallback= money= opportunistic=
-#       no_target= once a minute. Fights against attackers (self-defence, group help), quest objective kills,
-#       GenericRpg, Explore, mining, herbalism, fishing, skinning the corpses of its own kills and RosterGuild travel
-#       stay. Other values act like 0.
-AiPlayerbot.QuestFirstProgression.GrindMode = 0
 # twow-repo#601 R01 v4 (cohort mode, an A/B inside one realm): for which bots the S1 key group (FailureClasses,
 # ResetOnProgressEvents, AbandonStructuralParked) and the S3 key group (QuestFeasibility.Enable with its lists,
 # HubPreloopSameFilters, ZoneExit.TurnInTravelStall with TurnInNearRadius) act as their keys are set. 0 or 1 = every
@@ -1626,7 +1597,7 @@ AiPlayerbot.QuestFirstProgression.GiverFetchAnyQuest = 0
 # leaves the bot standing through the route backoff (2, 4, 8, then 10 min). With BandLadder on, from this many failed
 # searches in a row on (the streak F1 counts), such a search sends the bot toward the hub the step would take until the
 # backoff ends - same exclusions as the step (no open or offered turn-in, no danger map, room in the log); a backoff with
-# less than 30 s left is not walked, and a GrindMode 1 bot keeps its gap grind. The walk counts no expiry and asks for no
+# less than 30 s left is not walked. The walk counts no expiry and asks for no
 # rescue; an arrival at the hub starts the next search at once. [QuestBand] state=walk ... walk_s= streak= lead= and
 # state=walk_end ... how=arrived|end|cooldown|clock_shortened|scope_lost|orphan|replaced|park; the minute line counts
 # walks= walk_arrived= walk_ended= walk_replaced= walk_no_rung=. Below the F1 value the walks fill the backoffs before
@@ -1699,9 +1670,7 @@ AiPlayerbot.DirectTargets.FreshBackoffSeconds = 0
 # purpose; a pole and skill >= zone skill + 45, a catch chance of at least 50 %). Dungeon = 1 / Raid = 1: the open-world
 # point of an instance entrance (6.299 / 6.298, below the quest request; only without a running quest route backoff
 # and open turn-in, <= 1500 yd same map; level fit from the meeting stones; raids at the max level). Bots do not zone in.
-# Profile rule (OB-00 + CLI-Deep): QuestFirstProgression.GrindMode 2 => DirectTargets.Dungeon = DirectTargets.Raid = 0.
-# With a class on, the GrindMode 2 idle episodes ([QuestIdle]) include direct-target trip time; picks= gives the overlap.
-# Station, Cooking and Fishing stay allowed under GrindMode 2. Boot: [DirectTarget] state=loaded class= per class and
+# Boot: [DirectTarget] state=loaded class= per class and
 # state=loaded_total ms= tiles_added= rss_delta_kb=; trips: state=pick class= ... and state=trip_end class= seconds=
 # result=crafted|no_focus|expired|move_retry|arrived|inactive|ended|reset|replaced (a bot that logs out mid-trip has no
 # end line); a destination that keeps failing is disabled for 1 h (state=disable); the summary line adds picks= empty=
@@ -2005,8 +1974,7 @@ AiPlayerbot.ProfessionTraining.TraceCooldownSeconds = 300
 # first aid now - the first rank of its planned profession or the next rank at the skill cap (the core decides GREEN, the
 # profession pair and the cost rule are the ones above; recipes alone are no reason to travel). Only as a filler of the
 # quest-first gap: while the quest route backoff runs, no open turn-in waits and no band walk runs ("request named travel
-# target::trainer profession" at 6.296, below the quest request 6.3, above Explore 6.29; with QuestFirstProgression.
-# GrindMode 1 the gap grind at 6.35 fills the gap first). A started trip holds while the rank is still to learn, until
+# target::trainer profession" at 6.296, below the quest request 6.3, above Explore 6.29). A started trip holds while the rank is still to learn, until
 # the backoff of its start ended plus 10 min (never more than 30 min), and ends at once when a turn-in opens; at most one
 # trip per bot and hour. Only a trainer that is not hostile and has a spawn on an open-world map with a travel node within
 # 500 yd (2D) counts (P1-b2, CLI-PATH 25.10.: no trip to Blackstone Island, Alah'Thalas, an instance map ...). "[ProfTravel]

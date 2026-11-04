@@ -7,7 +7,6 @@
 #include "playerbot/StartZonePolicy.h"
 #include <numeric>
 #include "playerbot/QuestAreaLevelPolicy.h"
-#include "playerbot/QuestGrindModePolicy.h"
 #include "playerbot/QuestSearchPolicy.h"
 #include "playerbot/QuestFeasibilityPolicy.h"
 #include "playerbot/QuestGroupWorld.h"   // twow-repo#627 S7 hooks (CLI-Deep): help-group members out of PosStuck, S3c, turn-in recovery
@@ -92,7 +91,7 @@ bool ai::QuestRelationOpen(Player* bot, TravelDestination const* destination)
 // Penqle's Singleton<> requires an explicit instantiation in a .cpp file.
 INSTANTIATE_SINGLETON_1(ai::TravelMgr);
 
-PlayerTravelInfo::PlayerTravelInfo(Player* player, bool gapGrind)
+PlayerTravelInfo::PlayerTravelInfo(Player* player)
 {
     PlayerbotAI* ai = GetBotAI(player);
     AiObjectContext* context = ai->GetAiObjectContext();
@@ -126,17 +125,6 @@ PlayerTravelInfo::PlayerTravelInfo(Player* player, bool gapGrind)
 
     for (auto& [valueName, value] : uint32Values)
         value = AI_VALUE(uint32, valueName);
-
-    // twow-repo#601 S2 R3 (GrindMode 1, OB-10 rev. 2 point 1): the scope bit, here on the bot thread - only the gap filler's
-    // population gets its creature level window [max(gray + 1, L - 5), L + 1]; the async grind fetch reads it only as a
-    // value. GrindMode 0 / 2 and every other bot: 0 / 0 (IsQuestGapGrind reads the config first). Only a snapshot for a gap
-    // grind (gapGrind: the grind fetch, its choice, the gap trip; review C-F2) - a quest objective fetch, choice or trip to grind
-    // mobs keeps the old template test and area gate.
-    if (ai->IsQuestGapGrind() && gapGrind)
-    {
-        gapWindowLow = ai::quest_grind_mode::GapWindowLowLevel(level, MaNGOS::XP::GetGrayLevel(level));
-        gapWindowHigh = ai::quest_grind_mode::GapWindowHighLevel(level);
-    }
 
     // twow-repo#601 S5a (BandLadder, S5A-DESIGN.md 5.4): the band giver filter bit, here on the bot thread - only an in-scope bot
     // whose band has a usable ladder row (QuestBandGiverFilter reads the switch first); the giver checks of IsPossible (E) and
@@ -816,19 +804,12 @@ bool GrindTravelDestination::IsPossible(const PlayerTravelInfo& info) const
 
     int32 maxLevel = std::max(botLevel * (0.5f + levelMod), botLevel - 5.0f + levelBoost);
 
-    // twow-repo#601 S2 R3 (GrindMode 1, OB-10 rev. 2 point 1): the gap filler's population grinds where the template MaxLevel
-    // is inside [max(gray + 1, L - 5), L + 1] instead of the durability window below (money and elite tests stay). The
-    // window is a value of the snapshot, set on the bot thread (PlayerTravelInfo); every other bot: the old window.
-    bool const gapWindow = info.HasGapWindow();
-    if (gapWindow && !ai::quest_grind_mode::InGapWindow(info.GetGapWindowLow(), info.GetGapWindowHigh(), cInfo->MaxLevel))
-        return false;
-
-    if (!gapWindow && (int32)cInfo->MaxLevel > maxLevel) //@lvl5 max = 3, @lvl60 max = 57
+    if ((int32)cInfo->MaxLevel > maxLevel) //@lvl5 max = 3, @lvl60 max = 57
         return false;
 
     int32 minLevel = std::max(botLevel * (0.4f + levelMod), botLevel - 12.0f + levelBoost);
 
-    if (!gapWindow && (int32)cInfo->MaxLevel < minLevel) //@lvl5 min = 3, @lvl60 max = 50
+    if ((int32)cInfo->MaxLevel < minLevel) //@lvl5 min = 3, @lvl60 max = 50
         return false;
 
     if (cInfo->MinLootGold == 0)
@@ -848,14 +829,14 @@ bool GrindTravelDestination::IsActive(Player* bot, const PlayerTravelInfo& info)
     if (!IsPossible(info))
         return false;
 
-    // twow-repo#601 GrindMode 2 (owner 17.10.2026): the Grind bit of the shared entry purpose map (TravelValues.cpp,
+    // twow-repo#601 QuestFirstOrder (#601 review): the Grind bit of the shared entry purpose map (TravelValues.cpp,
     // creatures that drop money) makes every such creature a grind destination. For a quest-first roster bot on its
     // own only the ones needed for an active quest stay (quest objective mobs, e.g. the guild-order QuestReward
     // objectives); a pure grind destination is not active. One sorted per-bot list, no value per creature.
     if (ai->IsQuestNoGrindTrip())   // + QuestFirstOrder (#601 review)
     {
         std::vector<int32> const& needed = AI_VALUE(std::vector<int32>, "needed quest entries");
-        if (!ai::quest_grind_mode::GrindDestinationActive(true, std::binary_search(needed.begin(), needed.end(), GetEntry())))
+        if (!std::binary_search(needed.begin(), needed.end(), GetEntry()))
             return false;
     }
 
@@ -1120,11 +1101,6 @@ void TravelTarget::SetTarget(TravelDestination* tDestination1, WorldPosition* wP
     if (dynamic_cast<TemporaryTravelDestination*>(tDestination) && tDestination1 != tDestination)
         delete tDestination;
 
-    // twow-repo#601 S2 / S4 R2: a gap grind window belongs to its destination; another one (world buff, go, null target)
-    // never inherits it. The refresh keeps the destination and so the window end (no renewal). CopyTarget sets it again.
-    if (tDestination1 != tDestination)
-        gapWindowEnd = 0;
-
     // twow-repo#601 S5a (BandLadder): a band trip another destination replaces (zone escape, death suppression, park, rescue,
     // battleground, world buff, go, a reset) ends here - one skip line (replaced / park), no failure; bandTripEnd goes to 0.
     if (tDestination1 != tDestination && bandTripEnd)
@@ -1232,9 +1208,6 @@ bool TravelTarget::CopyTarget(TravelTarget* const target) {
         TraceQuestCommit(oldQuest, "drop", "replaced_by_non_quest_target");
 
     SetTarget(target->tDestination, target->wPosition);
-    // twow-repo#601 S2 / S4 R2: the choice's window end (0 for every target but a GrindMode 1 gap grind trip); setNewTarget
-    // sets READY next, which applies it.
-    gapWindowEnd = target->gapWindowEnd;
     // twow-repo#601 S5a (BandLadder): the band step's trip end (0 for every other choice; a group copy builds a new target).
     bandTripEnd = target->bandTripEnd;
     // F4: a backoff walk stays a walk (0 for every other choice).
@@ -1288,19 +1261,6 @@ void TravelTarget::SetStatus(TravelStatus status) {
         statusTime = tDestination->GetCooldownDelay();
     default: break;
     }
-
-    // twow-repo#601 S2 / S4 R2 (GrindMode 1, OB-10 rev. 2): a gap grind trip ends with its quest route backoff - READY,
-    // TRAVEL and WORK get the time left until the window end (at most RouteBackoffMaxSeconds + 30 s), so the request gate
-    // opens and the next quest search runs. gapWindowEnd is 0 for every other target: nothing changes there.
-    if (gapWindowEnd && (m_status == TravelStatus::TRAVEL_STATUS_READY || m_status == TravelStatus::TRAVEL_STATUS_TRAVEL ||
-            m_status == TravelStatus::TRAVEL_STATUS_WORK))
-        statusTime = ai::quest_grind_mode::GapStatusMs(statusTime, gapWindowEnd, uint32(time(nullptr)),
-            ai::quest_search::RouteBackoffMaxSeconds);
-    // twow-repo#601 S2 / S4 R2 (review C-F1 / B-F1): a COOLDOWN of a gap grind trip (move retries, a group member's check) never
-    // outlives the window either - the shorter of the cooldown and the time left. Counted as no expiry, no failure here.
-    else if (gapWindowEnd && m_status == TravelStatus::TRAVEL_STATUS_COOLDOWN)
-        statusTime = ai::quest_grind_mode::GapCooldownMs(statusTime, gapWindowEnd, uint32(time(nullptr)),
-            ai::quest_search::RouteBackoffMaxSeconds);
 
     // twow-repo#601 S5a (BandLadder): a band trip lasts exactly until its fixed end - READY / TRAVEL / WORK get the time left,
     // a COOLDOWN at most that, 1 ms once ended (capped: a clock step back fails closed). bandTripEnd is 0 for every other target.
@@ -2085,8 +2045,7 @@ void TravelTarget::OnRestEnded(uint32 durMs)
     restPausePending = true;
     // The rest held the bot still: a WORK phase (60 s at a quest objective) or a timed TRAVEL budget would otherwise count it as lost
     // work - quest loop / work-timeout suppression, a turn-in park, a direct-target failure. Progress-aware TRAVEL has no clock.
-    // Not for an S2 gap grind trip (gapWindowEnd): its clock is the quest-route backoff window (OB-10 review 18.10.2026).
-    if (statusTime != 0 && !IsForced() && !gapWindowEnd &&
+    if (statusTime != 0 && !IsForced() &&
         (GetStatus() == TravelStatus::TRAVEL_STATUS_WORK || GetStatus() == TravelStatus::TRAVEL_STATUS_TRAVEL))
         SetExpireIn(uint32(std::max<int32>(GetTimeLeft(), 0)) + durMs);
 }
@@ -2127,9 +2086,7 @@ bool TravelTarget::IsDestinationActive()
     if (!GetBotAI(player)) //No ai so clear target.
         return false;
 
-    // twow-repo#601 S2 R3 (review C-F2): the R3 window only for a gap grind trip (gapWindowEnd, GrindMode 1 only), never for a
-    // quest trip to grind mobs.
-    return tDestination->IsActive(player, PlayerTravelInfo(player, gapWindowEnd != 0));
+    return tDestination->IsActive(player, PlayerTravelInfo(player));
 }
 
 bool TravelTarget::IsConditionsActive(bool clear)
@@ -2371,9 +2328,8 @@ void TravelTarget::CheckStatus()
     }
 
     // twow-repo#602 ROT-01 X1 (AiPlayerbot.Rotation.RestGate): the status clock does not run out while the bot rests (the travel action
-    // still checks in WORK); OnRestEnded gives the rest time back when the episode ends. Not for an S2 gap grind trip (GrindMode 1,
-    // gapWindowEnd): its status time is the quest-route backoff window, which ends while resting too (OB-10 review 18.10.2026).
-    if (statusTime != 0 && !IsForced() && !gapWindowEnd && GetTimeLeft() <= 0 && RestGateValue::Resting(ai))
+    // still checks in WORK); OnRestEnded gives the rest time back when the episode ends.
+    if (statusTime != 0 && !IsForced() && GetTimeLeft() <= 0 && RestGateValue::Resting(ai))
         SetExpireIn(5000);
 
     if (statusTime != 0 && GetTimeLeft() <= 0 && !IsForced())
@@ -2385,15 +2341,8 @@ void TravelTarget::CheckStatus()
             GetStatus() == TravelStatus::TRAVEL_STATUS_TRAVEL ? "status_time_exceeded_travel" :
             GetStatus() == TravelStatus::TRAVEL_STATUS_WORK ? "status_time_exceeded_work" :
             GetStatus() == TravelStatus::TRAVEL_STATUS_COOLDOWN ? "status_time_exceeded_cooldown" : "status_time_exceeded");
-        // twow-repo#601 S2 / S4 R2 (OB-10 rev. 2 point 3): the end of a gap grind window is no failure - no work timeout,
-        // so no turn-in, quest loop or work-timeout count (gapWindowEnd is 0 for every other target).
-        if (GetStatus() == TravelStatus::TRAVEL_STATUS_WORK && !gapWindowEnd)
+        if (GetStatus() == TravelStatus::TRAVEL_STATUS_WORK)
             OnWorkTimeout();
-        // twow-repo#601 S2 / S4 [GrindWindow] expired= (OB-10 rev. 2): a gap grind trip ended by its window end (READY, TRAVEL
-        // or WORK carry the window time; gapWindowEnd is set only for the GrindMode 1 population). A relaxed count, no failure.
-        if (gapWindowEnd && (GetStatus() == TravelStatus::TRAVEL_STATUS_READY || GetStatus() == TravelStatus::TRAVEL_STATUS_TRAVEL ||
-                GetStatus() == TravelStatus::TRAVEL_STATUS_WORK))
-            PlayerbotAI::NoteGrindWindow(uint8(ai::quest_grind_mode::WindowEvent::Expired));
         // twow-repo#594 / P3-b: a direct-target trip out of travel time is a failure of its destination (out of work time
         // it ends in SetStatus).
         if (ai::direct_targets::AnyBuilt() && GetStatus() == TravelStatus::TRAVEL_STATUS_TRAVEL)
@@ -2527,19 +2476,6 @@ void TravelTarget::CheckStatus()
 
         if (destinationInactive || conditionsInactive)
         {
-            // twow-repo#601 S2 / S4 R2 (OB-10 rev. 2 point 3, review C-F1 / B-F1): a gap grind trip ends here at once - no COOLDOWN
-            // (its 60 s would hold every request past the window), no failure. Its condition is R1 itself ("need travel
-            // purpose::Grind"), so a condition end is the window end (the backoff ended or was reset): expired=. An
-            // inactive destination (a level-up out of the window, should sell) ends silently. gapWindowEnd: GrindMode 1 only.
-            if (gapWindowEnd)
-            {
-                ai->TellDebug(ai->GetMaster(), "The gap grind trip ends because its destination or its window is no longer active.", "debug travel");
-                if (conditionsInactive)
-                    PlayerbotAI::NoteGrindWindow(uint8(ai::quest_grind_mode::WindowEvent::Expired));
-                SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);
-                ai->GetAiObjectContext()->ClearValues("no active travel destinations");
-                return;
-            }
             // twow-repo#601 S5a (BandLadder, OB-10 Q1 19.10.2026): a quest giver trip that the band giver filter made inactive
             // because its quest is now in the log or done ends at once (EXPIRED, giver_done=) - a success, no 60 s COOLDOWN,
             // no failure. GiverTripDoneFor reads the switch first: BandLadder 0 never gets past it.
@@ -4615,7 +4551,7 @@ void TravelMgr::GetPartitionsLock(bool getLock)
     sTravelMgr.getDestinationVar.notify_one();
 }
 
-bool TravelMgr::IsLocationLevelValid(const WorldPosition& position, const PlayerTravelInfo& info, uint32 purposeFlag, bool gapWindowApplies)
+bool TravelMgr::IsLocationLevelValid(const WorldPosition& position, const PlayerTravelInfo& info, uint32 purposeFlag)
 {
     bool canFightElite = info.GetBoolValue("can fight elite");
     int32 botLevel = (int32)info.GetLevel();
@@ -4704,22 +4640,6 @@ bool TravelMgr::IsLocationLevelValid(const WorldPosition& position, const Player
             sPlayerbotAIConfig.questFirstProgressionQuestAreaLevelMargin);
     }
 
-    // twow-repo#601 S2 R3 (GrindMode 1, OB-10 rev. 2 point 1): a pure grind point of the gap filler's population - its area
-    // level inside the same window [max(gray + 1, L - 5), L + 1] as the template (IsPossible) replaces the area gate (L - 2 -
-    // deaths) and the zone floor below, so the two cannot disagree; an unknown area (0) stays rejected. The window is a
-    // value of the snapshot (bot thread); every other bot and purpose: unchanged. gapWindowApplies false: a fetch without
-    // IsPossible (guild order objective / kill mobs, GetPartitions onlyPossible false) keeps the old gate, as it keeps the
-    // old template test. OB-10 review #552: the death term stays - at the window's upper end, never below its low end
-    // (GapAreaHighLevel), for the bots the old gate applied it to (no boss / elite / equal fight); the mob window (R4) is
-    // unchanged.
-    if (info.HasGapWindow() && gapWindowApplies && purposeFlag == (uint32)TravelDestinationPurpose::Grind)
-    {
-        uint32 const gapDeaths = (info.GetBoolValue("can fight boss") || canFightElite || info.GetBoolValue("can fight equal")) ? 0 :
-            info.GetUint32Value("death count");
-        return ai::quest_grind_mode::InGapWindow(info.GetGapWindowLow(),
-            ai::quest_grind_mode::GapAreaHighLevel(info.GetGapWindowLow(), info.GetGapWindowHigh(), gapDeaths), areaLevel);
-    }
-
     if (!(purposeFlag & (uint32)TravelDestinationPurpose::QuestTaker))
     {
         if (!areaLevel || (uint32)botLevel < areaLevel) //Skip points that are in a area that is too high level.
@@ -4785,7 +4705,7 @@ PartitionedTravelList TravelMgr::GetPartitions(const WorldPosition& center, cons
 
         for (auto& position : points)
         {
-            if (!IsLocationLevelValid(*position, info, purposeFlag, onlyPossible))   // twow-repo#601 S2 R3: window only with IsPossible
+            if (!IsLocationLevelValid(*position, info, purposeFlag))
             {
                 probeRejectLevel++;
                 continue;

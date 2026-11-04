@@ -31,16 +31,16 @@ int main()
 
     Require(FormatLine({}) == "[ConfigEcho]", "no entries: only the tag");
     std::string const line = FormatLine({
-        {"QuestFirstProgression.GrindMode", Value(std::uint32_t(1))},
+        {"Grind.QuestFirstOrder", Value(std::uint32_t(1))},
         {"QuestFeasibility.Blocklist.count", Value(std::uint32_t(87))},
         {"ZoneExit.TurnInNearRadius", Value(60.0f)},
         {"QuestFirstProgression.FailureClasses", Value(false)},
     });
-    Require(line == "[ConfigEcho] AiPlayerbot.QuestFirstProgression.GrindMode=1 AiPlayerbot.QuestFeasibility.Blocklist.count=87"
+    Require(line == "[ConfigEcho] AiPlayerbot.Grind.QuestFirstOrder=1 AiPlayerbot.QuestFeasibility.Blocklist.count=87"
         " AiPlayerbot.ZoneExit.TurnInNearRadius=60.0 AiPlayerbot.QuestFirstProgression.FailureClasses=0",
         "entries in order, one space each, key=value");
     // a proof regex " <key>=<v>( |$)" must not match a longer key with the same prefix
-    Require(line.find(" AiPlayerbot.QuestFirstProgression.GrindMode=1 ") != std::string::npos, "token bounded by spaces");
+    Require(line.find(" AiPlayerbot.Grind.QuestFirstOrder=1 ") != std::string::npos, "token bounded by spaces");
     Require(line.back() == '0' && line.find('\n') == std::string::npos, "single line, no trailing space");
 
     // FormatLines (OB-00 29.10.2026: the log path cut the single line at about 4096): numbered parts of at most kMaxLine.

@@ -970,10 +970,6 @@ public:
     // main loop's post-IsActive deferrals (battleground quest, enemy home zone, route danger, danger map); acts only with
     // FailureClasses. false = the pre-loop as before.
     bool questFirstProgressionHubPreloopSameFilters = false;
-    // twow-repo#601 GrindMode (owner 17.10.2026, restart-only): 0 = today's behaviour; 1 = reserved for the S2/S4 gap
-    // filler, acts like 0 until then; 2 = no grind as a substitute activity for quest-first roster bots on their own
-    // below the max level, they stand idle and log [QuestIdle] (QuestGrindModePolicy.h). Other values act like 0.
-    uint32 questFirstProgressionGrindMode = 0;
     // twow-repo#601 R01 v4 cohort mode (rule in ai::r01_cohort): for which bots the S1 / S3 key groups act - 0 or 1 = all
     // (default), 2 = only cohort B (odd low guid), 3 = only cohort A (even); other values = none. Restart-only.
     uint32 questFirstProgressionS1Cohort = 0;
