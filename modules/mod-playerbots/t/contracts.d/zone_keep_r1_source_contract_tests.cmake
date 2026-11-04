@@ -88,14 +88,16 @@ require_text("${policy}" "return untilSec != 0 && std::int32_t(untilSec - nowSec
 require_text("${policy}" "return active && !turnIn && botZone != 0 && targetZone != 0 && targetZone != botZone;" "turn-ins exempt")
 forbid_text("${policy}" "Player*" "a game type in the pure policy")
 
-# 3. The deferrals: after LevelGuard, roster bots on their own, never forced; the area lookup only when a switch is set; counted.
+# 3. The deferrals: after LevelGuard, roster bots on their own; StartZone also for forced targets ("never below 5"), StaleKeepZone never
+#    for forced ones; the area lookup only when the key applies; counted.
 between("${choose}" "PostActiveDeferral PostActiveDeferralOf(" "\n}\n" deferral_of)
 require_order("${deferral_of}" "return PostActiveDeferral::LevelGuard;" "return PostActiveDeferral::StartZone;" "after LevelGuard")
-require_text("${deferral_of}" "if (!target->IsForced() && position && (sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevel || sPlayerbotAIConfig.questFirstProgressionStaleKeepZone) &&\n        sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster())" "gate")
-require_order("${deferral_of}" "if (gated || keepActive)" "AreaTableEntry const* area = position->GetArea();" "area lookup only when one applies")
+require_text("${deferral_of}" "if (position && sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevel && ai::zone_keep::StartZoneHolds(bot, ai) &&\n        ai::zone_keep::OutsideStartZone(bot, position))\n        return PostActiveDeferral::StartZone;" "start zone gate, forced targets too")
+require_text("${deferral_of}" "if (!target->IsForced() && position && sPlayerbotAIConfig.questFirstProgressionStaleKeepZone &&\n        sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster() &&" "keep zone gate, never forced")
+require_order("${deferral_of}" "ai::zone_keep::KeepActive(" "AreaTableEntry const* area = position->GetArea();" "area lookup only inside the window")
 require_text("${deferral_of}" "ai::cohort::Applies(sPlayerbotAIConfig.questFirstProgressionStaleKeepZone, bot->GetGUIDLow())" "keep window cohort-gated")
 require_text("${deferral_of}" "(uint32(destination->GetPurpose()) & uint32(TravelDestinationPurpose::QuestTaker)) != 0" "turn-ins exempt")
-require_text("${choose}" "case PostActiveDeferral::StartZone:   // twow-repo#601 owner rule R1 (StartZoneMinLevel)\n                        ++lastRejects.startZone;\n                        continue;" "start zone counted")
+require_text("${choose}" "case PostActiveDeferral::StartZone:   // twow-repo#601 owner rule R1 (StartZoneMinLevel)\n                        ++lastRejects.startZone;\n" "start zone counted")
 require_text("${choose}" "case PostActiveDeferral::StaleKeepZone:   // twow-repo#601 owner rule R1 (StaleKeepZone)\n                        ++lastRejects.staleKeepZone;\n                        continue;" "keep zone counted")
 require_text("${search_h}" "(startZone ? \" start_zone=\" + std::to_string(startZone) : std::string())" "line only when counted")
 require_text("${search_h}" "(staleKeepZone ? \" stale_keep_zone=\" + std::to_string(staleKeepZone) : std::string())" "line only when counted")
@@ -123,3 +125,19 @@ between("${travel}" "void ai::stale_objective::NoteObjectiveFailure(" "\n}\n" no
 require_text("${note_fn}" "staleObjectiveStoreVersion.fetch_add(1, std::memory_order_acq_rel);" "a failure changes the version")
 between("${travel}" "void ai::stale_objective::NoteQuestCredit(" "\n}\n" credit_fn)
 require_text("${credit_fn}" "staleObjectiveStoreVersion.fetch_add(1, std::memory_order_acq_rel);" "a credit changes the version")
+
+# 7. Forced trips below StartZoneMinLevel (OB-00 04.11.: "never below 5"): held, one line per trip and hold period, no retry every tick.
+read_source("TravelMgr.h" travel_h)
+read_source("QuestGroupWorld.cpp" group_world)
+require_text("${travel_h}" "bool StartZoneHolds(Player* bot, PlayerbotAI* botAI);" "shared gate declared")
+between("${travel}" "bool ai::zone_keep::StartZoneHolds(" "\n}\n" holds_fn)
+require_text("${holds_fn}" "ai::cohort::Applies(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevelCohort, bot->GetGUIDLow())" "cohort-selected")
+require_text("${holds_fn}" "sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !(botAI && botAI->HasRealPlayerMaster())" "roster bots on their own")
+between("${travel}" "void ai::zone_keep::NoteForcedHold(" "\n}\n" hold_fn)
+require_text("${hold_fn}" "if (!bot || !botAI || ai::zone_keep::ForcedHoldActive(botAI))\n        return;" "one line per hold period")
+require_order("${hold_fn}" "->Set(int(uint32(time(nullptr)) + StartZoneForcedHoldSeconds));" "[ZoneKeep] state=forced_hold bot=%u" "hold set with the line")
+require_text("${travel}" "constexpr uint32 StartZoneForcedHoldSeconds = 600;" "hold period")
+require_text("${choose}" "if (target->IsForced())\n                            ai::zone_keep::NoteForcedHold(bot, ai," "the main loop holds a deferred forced trip")
+require_text("${choose}" "if ((travelName == \"guild meeting\" || travelName == \"guild order\" || travelName == \"petition\") &&\n        ai::zone_keep::StartZoneHolds(bot, ai) && ai::zone_keep::ForcedHoldActive(ai))\n        return false;" "no named forced request during the hold")
+require_order("${group_world}" "if (startZoneHolds && ai::zone_keep::ForcedHoldActive(ai))\n        return false;" "TravelDestination* dest = FindQuestDest(bot, questId, objIdx, point);" "no group quest search during the hold")
+require_order("${group_world}" "ai::zone_keep::NoteForcedHold(bot, ai, \"group_quest\", outsideZone);" "t->SetTarget(dest, point);" "the group quest trip held before it is set")

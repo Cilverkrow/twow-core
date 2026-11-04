@@ -150,10 +150,21 @@ bool ForceQuestTravel(Player* bot, std::uint32_t questId, int objIdx)
         return false;   // an async search is running: next pass
     if (objIdx < 0 && t->IsTurnInParked(questId))
         return false;
+    // twow-repo#601 owner rule R1 (StartZoneMinLevel): below it no forced group quest trip out of the start zone - one
+    // [ZoneKeep] state=forced_hold line, then no such trip (and no search) for the hold period.
+    bool const startZoneHolds = ai::zone_keep::StartZoneHolds(bot, ai);
+    if (startZoneHolds && ai::zone_keep::ForcedHoldActive(ai))
+        return false;
     WorldPosition* point = nullptr;
     TravelDestination* dest = FindQuestDest(bot, questId, objIdx, point);
     if (!dest)
         return false;
+    if (startZoneHolds)
+        if (uint32 const outsideZone = ai::zone_keep::OutsideStartZone(bot, point))
+        {
+            ai::zone_keep::NoteForcedHold(bot, ai, "group_quest", outsideZone);
+            return false;
+        }
     t->SetTarget(dest, point);
     t->SetForced(true);
     t->SetRelevance(196);   // below guild order 198 and guild founding 197

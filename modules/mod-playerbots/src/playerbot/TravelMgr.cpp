@@ -13,6 +13,7 @@
 #include "playerbot/QuestGroupWorld.h"   // twow-repo#627 S7 hooks (CLI-Deep): help-group members out of PosStuck, S3c, turn-in recovery
 #include "playerbot/AdhocGroupWorld.h"   // twow-repo#601 F5b: a bot-only group shares the kill credit (CLI-GRP 25.10.)
 #include "playerbot/CohortPolicy.h"
+#include "playerbot/ZoneKeepPolicy.h"      // twow-repo#601 owner rule R1 (StartZoneMinLevel, forced trip hold)
 #include "playerbot/RpgAreaLevelPolicy.h"
 #include "playerbot/ContestedObjectivePolicy.h"
 #include "playerbot/StaleObjectivePolicy.h"   // twow-repo#601 cand4 (i) StaleObjectiveFilter
@@ -1801,6 +1802,49 @@ bool ai::stale_objective::IsObjectiveStale(QuestObjectiveTravelDestination const
     auto const it = std::lower_bound(snapshot.marked.begin(), snapshot.marked.end(), key,
         [](std::pair<ai::stale_objective::Key, uint32> const& item, ai::stale_objective::Key const& k) { return item.first < k; });
     return it != snapshot.marked.end() && it->first == key && int32(it->second - nowMs) > 0;
+}
+
+// twow-repo#601 owner rule R1 (StartZoneMinLevel, ZoneKeepPolicy.h): the game side of the start-zone gate (see TravelMgr.h).
+namespace
+{
+    constexpr char const* StartZoneForcedHoldValue = "start zone forced hold until";   // manual int, unix seconds
+    constexpr uint32 StartZoneForcedHoldSeconds = 600;
+}
+
+bool ai::zone_keep::StartZoneHolds(Player* bot, PlayerbotAI* botAI)
+{
+    return bot && sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevel &&
+        ai::zone_keep::StartZoneGated(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevel, bot->GetLevel()) &&
+        ai::cohort::Applies(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevelCohort, bot->GetGUIDLow()) &&
+        sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !(botAI && botAI->HasRealPlayerMaster());
+}
+
+uint32 ai::zone_keep::OutsideStartZone(Player* bot, WorldPosition const* point)
+{
+    if (!bot || !point)
+        return 0;
+    AreaTableEntry const* area = point->GetArea();
+    uint32 const zone = area ? (area->zone ? area->zone : area->ID) : 0;
+    PlayerInfo const* info = sObjectMgr.GetPlayerInfo(bot->getRace(), bot->getClass());
+    uint32 const createZone = info ? info->areaId : 0;
+    bool const customStarts = sPlayerbotAIConfig.customRaceStartZones;
+    return ai::zone_keep::StartZoneDefers(true, ai::zone_keep::StartZoneKnown(bot->getRace(), customStarts, createZone),
+        ai::zone_keep::InStartZone(bot->getRace(), customStarts, createZone, zone), zone) ? zone : 0;
+}
+
+bool ai::zone_keep::ForcedHoldActive(PlayerbotAI* botAI)
+{
+    return botAI && ai::zone_keep::KeepActive(uint32(std::max(0, botAI->GetAiObjectContext()->GetValue<int>("manual int", StartZoneForcedHoldValue)->Get())),
+        uint32(time(nullptr)));
+}
+
+void ai::zone_keep::NoteForcedHold(Player* bot, PlayerbotAI* botAI, char const* purpose, uint32 targetZone)
+{
+    if (!bot || !botAI || ai::zone_keep::ForcedHoldActive(botAI))
+        return;   // one line per held trip and hold period
+    botAI->GetAiObjectContext()->GetValue<int>("manual int", StartZoneForcedHoldValue)->Set(int(uint32(time(nullptr)) + StartZoneForcedHoldSeconds));
+    sLog.outBasic("[ZoneKeep] state=forced_hold bot=%u level=%u zone=%u purpose=%s target_zone=%u seconds=%u", bot->GetGUIDLow(), bot->GetLevel(),
+        bot->GetZoneId(), purpose, targetZone, StartZoneForcedHoldSeconds);
 }
 
 void TravelTarget::NoteQuestObjectiveFailure()

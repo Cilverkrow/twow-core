@@ -734,6 +734,19 @@ namespace ai
 		// Marked now (the skip itself is cohort-gated by the caller).
 		bool IsObjectiveStale(QuestObjectiveTravelDestination const* objective);
 	}
+
+	// twow-repo#601 owner rule R1 (AiPlayerbot.QuestFirstProgression.StartZoneMinLevel, ZoneKeepPolicy.h): the game side of the start-zone
+	// gate, shared by the travel choice, the forced trips (guild meeting / order, petition, group quest help) and their hold.
+	namespace zone_keep
+	{
+		// A roster bot on its own below StartZoneMinLevel in the .Cohort selection (0 off: always false).
+		bool StartZoneHolds(Player* bot, PlayerbotAI* botAI);
+		// The zone of a point outside the bot's start zone, 0 when inside or unknown (fail open).
+		uint32 OutsideStartZone(Player* bot, WorldPosition const* point);
+		// A held forced trip: one [ZoneKeep] state=forced_hold line, then no forced trip request for ForcedHoldSeconds (no retry loop).
+		bool ForcedHoldActive(PlayerbotAI* botAI);
+		void NoteForcedHold(Player* bot, PlayerbotAI* botAI, char const* purpose, uint32 targetZone);
+	}
 }
 
 #define sTravelMgr MaNGOS::Singleton<TravelMgr>::Instance()
