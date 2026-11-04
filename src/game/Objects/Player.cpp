@@ -23594,13 +23594,6 @@ void Player::SetHiddenFromBots(bool hidden)
         AddUnitState(UNIT_STAT_PENDING_VIS_UPDATE);
 }
 
-// twow-repo#541 (park, AiPlayerbot.Park.SleepGrid): see Player.h.
-bool Player::IsGridSleeping() const
-{
-    return HasGridSleepFlag() && IsAlive() && !IsInCombat() && getAttackers().empty() && !IsBeingTeleported() &&
-        !IsTaxiFlying();
-}
-
 // A real client: bots run free-floating sessions without a socket.
 bool Player::HasClientSocket() const
 {

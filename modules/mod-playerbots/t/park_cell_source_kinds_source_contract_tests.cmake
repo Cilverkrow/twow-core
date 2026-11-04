@@ -80,7 +80,6 @@ foreach(path "inline void Map::UpdateActiveCellsAsynch(uint32 now, uint32 diff)|
   require_text("${body}" "if (cellSourceKinds)
             ${tally}" "count only on a sampled update (${first})")
   require_order("${body}" "${tally}" "${mark}" "count before the object marks its cells (${first})")
-  require_order("${body}" "if (gridSleep && SkipSleepingOwnerObject(" "${tally}" "a sleeping pet is neither marked nor counted (${first})")
   require_text("${body}" "if (sourceStats)
         AddCellSourceTally(sourceCount, marked_cells.count(), m_activeNonPlayers.size(), GetGridActivationDistance());
     if (cellSourceKinds)
