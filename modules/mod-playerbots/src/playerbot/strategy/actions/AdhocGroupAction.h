@@ -21,6 +21,9 @@ namespace ai
         void RegisterPending(Group* group, uint32 now);
         bool CheckLeave(Group* group, uint32 now);
         void SendInvite(Player* inviter, Player* invitee) const;
+        // BOT-12 (twow-repo#677, BotGroups.OpQueue): the leave / the invite as an op of the world-thread group queue.
+        bool EnqueueLeave(Group* group, adhoc_group::Registry::Entry const& entry, adhoc_group::Leave reason, uint32 now);
+        bool EnqueueJoin(Player* inviter, Player* invitee, adhoc_group::ObjectiveKey const& key);
 
         uint32 lastScan = 0;
         adhoc_group::ObjectiveKey pendingKey;
@@ -32,6 +35,7 @@ namespace ai
         uint32 lastCounter = 0;
         uint32 outOfRangeSince = 0;
         uint32 levelWindowSince = 0;
-        uint32 leaderOtherMapSince = 0;   // BOT-09 (BotGroups.LeaderOtherMap)
+        uint32 leaderOtherMapSince = 0;   // BOT-12 (BotGroups.LeaderOtherMap)
+        uint32 opRetryAt = 0;             // BOT-12 (BotGroups.OpQueue): the queue refused the last leave - not before this
     };
 }

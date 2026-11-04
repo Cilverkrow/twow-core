@@ -1299,17 +1299,16 @@ AiPlayerbot.BotGroups.AdHoc.ScanBudgetUs = 0
 # is done), its idle clock is the group's freshest progress - and leaves with reason=group_done once nobody is left open.
 # "[BotGroup] kind=adhoc event=help" when a bot starts helping or switches whom it follows. 0 = leave at objective_done.
 AiPlayerbot.BotGroups.AdHoc.HelpUntilDone = 0
-# BOT-09 (twow-repo#672, #628 third finding; OB-00 04.11.2026; cand4G u2: an ad-hoc member followed its leader on another
+# BOT-12 (twow-repo#677, #628 third finding; OB-00 04.11.2026; cand4G u2: an ad-hoc member followed its leader on another
 # continent for 10 h, ~13 ms per update at a zeppelin dock, and never left): with the mode on for the bot
-# - the ad-hoc leave of the action path (AdHoc.WorldThread = 0) really leaves: a free (roster) bot stayed in its group when the
-#   ad-hoc action asked it to leave, so the decided leave never happened (7,574 decisions, 155 leaves). It now takes the core
-#   leave path every other bot takes. Risk: with WorldThread = 0 that leave runs the core group leave/disband on the bot's
-#   map thread (as for non-free bots today; twow-repo#628 group map not locked), now for every ad-hoc leave - watch Group
-#   crashes (cores in wsl-crashes) in the arms that turn this on; keep 0 in perf windows;
 # - a leader on another map id for LeaderOtherMapSeconds is the leave reason leader_other_map ([BotGroup] kind=adhoc
 #   event=leave ... reason=leader_other_map), checked before out_of_range, which then counts only the distance on the same
-#   map: a cross-map member leaves after LeaderOtherMapSeconds as leader_other_map, no longer after 60 s as out_of_range. A
-#   leader not in the world (far teleport, relog) keeps the clock. Both leave paths (WorldThread 0 and 1);
+#   map: a cross-map member decides to leave after LeaderOtherMapSeconds as leader_other_map, no longer after 60 s as
+#   out_of_range. A leader not in the world (far teleport, relog) keeps the clock. Both leave paths (WorldThread 0 and 1);
+# - the leave itself: with OpQueue on for the bot it is queued and really happens on the world thread (see OpQueue below);
+#   with WorldThread = 1 the manager leaves on the world thread as before. With WorldThread = 0 and OpQueue off for the bot it
+#   is today's no-op: the generic "leave" keeps a free (roster) bot in its group, clears its master and resets its AI - no
+#   group change on the map thread (OB-00 04.11.: no map-thread group mutation); a group of two is forgotten as ad-hoc;
 # - "follow" is not useful for a follow target on another map (or another instance of a dungeon, raid or battleground; not
 #   another region of a continent) that is no real player: no cross-map route each update. Bots with a real-player master
 #   and bots following a real player keep following as before. This also holds for bot-only groups that are not ad-hoc
@@ -1317,8 +1316,33 @@ AiPlayerbot.BotGroups.AdHoc.HelpUntilDone = 0
 # No new log lines. Mode (in-realm A/B, cohort parity): 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low
 # guid), 3 = only cohort A (even low guid; crossover unit 2). Any other value acts like 0.
 AiPlayerbot.BotGroups.LeaderOtherMap = 0
-# BOT-09: seconds the leader must be on another map before the leave (LeaderOtherMap on). Default 120, 30..900.
+# BOT-12: seconds the leader must be on another map before the leave (LeaderOtherMap on). Default 120, 30..900.
 AiPlayerbot.BotGroups.LeaderOtherMapSeconds = 120
+# BOT-12 (twow-repo#677, #628; OB-00 04.11.2026): the world-thread group queue. ObjectMgr::m_GroupMap (all groups) is an
+# unlocked map and group ids come from a plain counter; the core changes groups only while the maps are idle (player group
+# opcodes run on the world thread), but the ad-hoc action (AdHoc.WorldThread = 0) created and disbanded groups from the bots'
+# map threads while other maps ran. With the mode on for a bot, its ad-hoc leaves (every reason, leader_other_map included)
+# and the ad-hoc joins where it is the invitee are queued instead (guids only) and run at the end of the world tick, all maps
+# idle, at most OpQueueOpsPerTick per tick and none in a tick in which the ad-hoc manager or S7 already changed a group. The
+# world thread runs the core leave/join only; the AI part (strategy reset, accept tail, log lines) always runs on the bot's
+# own thread. An op whose bot or pair changed meanwhile is dropped (logged out, other group, already left, pair gone) and the
+# bot decides again on its next scan; a bot in a loading screen waits up to 30 s. The ad-hoc self-leave of a free bot really
+# happens only here (with 0 it stays the no-op above). Lines (world thread, with OpQueue on or BotGroups.Diagnostics = 1):
+# "[GroupOps] minute mode= ... enq_leave= exec_leave= ... drain_us_max= ... off_create= off_disband= off_map_<path>=" once a
+# minute - off_* counts group creates/disbands seen OFF the world thread, by the calling bot action (adhoc, leave_far, repop,
+# accept, invite_lfg, command, dungeon_clear, other_action, other): what is left for the other paths - and
+# "[GroupOps] ALERT depth= oldest_age_ms= ..." at most once a minute when an op waits longer than OpQueueAlertAgeSeconds.
+# Mode (in-realm A/B, cohort parity, of the leaver / invitee): 0 = as before (default), 1 = every bot, 2 = only cohort B (odd
+# low guid), 3 = only cohort A (even low guid). Any other value acts like 0 (one error line at load).
+AiPlayerbot.BotGroups.OpQueue = 0
+# BOT-12: ops run per world tick (1..16; default 1). The heavy-tick rule above still applies.
+AiPlayerbot.BotGroups.OpQueueOpsPerTick = 1
+# BOT-12: the most ops the queue holds (16..65536; default 2048). A full queue refuses new ops (dropped_full_leave/join in the
+# minute line): the bot keeps its group, waits one AdHoc.ScanIntervalSeconds and decides again - nothing grows without bound
+# after a reset or with 1000+ bots.
+AiPlayerbot.BotGroups.OpQueueMaxDepth = 2048
+# BOT-12: the "[GroupOps] ALERT" line when the oldest queued op is older than this (5..3600 s; default 60).
+AiPlayerbot.BotGroups.OpQueueAlertAgeSeconds = 60
 
 # #627 S7 help groups (owner 18.10./23.10.2026): roster bots holding the same elite
 # quest (Type 1; with SuggestedPlayers = 1 also SuggestedPlayers >= 2; never
@@ -2049,7 +2073,7 @@ AiPlayerbot.Buy.VendorTemplateItems = 1
 # Mode (in-realm A/B, cohort parity): 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other
 # value acts like 0.
 AiPlayerbot.Travel.RpgAreaLevelFromSpawn = 0
-# BOT-09 (twow-repo#672; cand4G u2: a bot at a zeppelin dock node with entry 0 paid ~13 ms per update): 1 = the elevator
+# BOT-12 (twow-repo#677; cand4G u2: a bot at a zeppelin dock node with entry 0 paid ~13 ms per update): 1 = the elevator
 # branch of the transport lookup (UseTransport, dock waits) walks a list per map of the transport-type gameobject spawns
 # (GAMEOBJECT_TYPE_TRANSPORT, GAMEOBJECT_TYPE_MO_TRANSPORT), built once on first use, instead of all gameobject spawn data
 # of every map on every call. Same transports found (only spawns of these types can be one). No log line.

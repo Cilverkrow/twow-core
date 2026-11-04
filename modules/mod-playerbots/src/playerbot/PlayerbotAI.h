@@ -1059,6 +1059,10 @@ protected:
     uint32 deferredLogsDropped = 0;
     std::atomic<bool> hasDeferredLogs{ false };   // the drain is free without lines (the key at 0)
     std::atomic<uint32> joinTailInviter{ 0 };      // JoinTail: the inviter (guid low) of the deferred accept
+    // BOT-12 (twow-repo#677, AiPlayerbot.BotGroups.OpQueue): the seq of this bot's op in the world-thread group queue (GroupOps.h;
+    // 0 = none). Set by the producer (a map thread) before the push, cleared by the world thread when the op ran or was
+    // dropped; a lock-free hint - the queue itself is the truth (group_ops::StillPending).
+    std::atomic<uint32> groupOpPending{ 0 };
     uint32 lastParkedUpdateMs = 0;
     // twow-repo#563 X5 (AiPlayerbot.ThreadSafeTeleportAck): set by a master's holder on another thread, taken by UpdateAI.
     std::atomic<bool> teleportAckRequested{ false };
@@ -1145,6 +1149,12 @@ public:
     void RequestQuestForce(uint32 packedForce) { questGroupForce.store(packedForce); RequestGroupAi(ai::group_ai_refresh::ForceTravel); }
     // s7r (BotGroups.WorldThreadDefer): the accept tail on the bot's own thread, for this inviter (the parameter before the bit).
     void RequestJoinTail(uint32 inviterGuidLow) { joinTailInviter.store(inviterGuidLow); RequestGroupAi(ai::group_ai_refresh::JoinReset | ai::group_ai_refresh::JoinTail); }
+    // BOT-12 (BotGroups.OpQueue): the pending mark of the world-thread group queue (groupOpPending above).
+    bool GroupOpPending() const { return groupOpPending.load() != 0; }
+    uint32 ExchangeGroupOpPending(uint32 seq) { return groupOpPending.exchange(seq); }
+    void RestoreGroupOpPending(uint32 seq, uint32 previous) { uint32 expected = seq; groupOpPending.compare_exchange_strong(expected, previous); }
+    void ClearGroupOpPending(uint32 seq) { uint32 expected = seq; groupOpPending.compare_exchange_strong(expected, 0); }
+    void ClearGroupOpPendingAny() { groupOpPending.store(0); }
     // Bot thread (UpdateAI): run the posted requests - strategy rebuild and reset first, then an S7 role set.
     void ApplyGroupAiRequests();
     // s7r (world thread, inside an ai::deferred_log::Scope): one line for this bot to write later (file "" = sLog).

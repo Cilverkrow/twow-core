@@ -1,9 +1,11 @@
 cmake_policy(VERSION 3.16)
-# BOT-09 (OB-00 04.11.2026; twow-repo#672, #628 third finding; cand4G u2: an ad-hoc member followed its leader on another
+# BOT-12 (OB-00 04.11.2026; twow-repo#677, #628 third finding; cand4G u2: an ad-hoc member followed its leader on another
 # continent for 10 h at ~13 ms per update and never left). Two switches, both default 0 = as before:
 # - AiPlayerbot.BotGroups.LeaderOtherMap (0 off, 1 all, 2 cohort B, 3 cohort A):
-#   (1) the ad-hoc leave of the action path really leaves for a free bot: LeaveGroupAction passes the "adhoc group" source
-#       to the tested stay rule (singleton_group::ShouldStayInGroup with adhocLeave);
+#   (1) REMOVED (OB-00 04.11.2026: no group mutation on a map thread): the map-thread self-leave of the narrow patch
+#       (LeaveGroupAction adhocLeave branch, ShouldStayInGroup(..., adhocLeave)) is gone - LeaveGroupAction and
+#       SingletonGroupPolicy.h stay as on release (check_no_map_thread_leave). The self-leave is the world-thread group
+#       queue's (AiPlayerbot.BotGroups.OpQueue, bot12_group_op_queue_source_contract_tests.cmake);
 #   (2a) leave reason leader_other_map after LeaderOtherMapSeconds (120, 30..900), checked before out_of_range, in both leave
 #       paths (action and world-thread pass), from their existing per-bot state - no new log line; the switch-0 wiring
 #       (OutOfRangeFact with otherMapRule, the gated instance arm), the leader guard (leader != bot), the tested clock
@@ -11,13 +13,13 @@ cmake_policy(VERSION 3.16)
 #   (2b) FollowAction::isUseful: the map check comes before the first distance (and before the rpg/free-move check).
 # - AiPlayerbot.Travel.ElevatorScanCache (0/1): getTransports' elevator branch walks a per-map list of transport-type
 #   spawns built once, not all gameobject spawn data on every call.
-# Pure rules: t/adhoc_group_policy_tests.cpp, t/singleton_group_policy_tests.cpp. Every check_* returns "" when it holds,
+# Pure rules: t/adhoc_group_policy_tests.cpp. Every check_* returns "" when it holds,
 # else the reason; the negative probes at the end reuse them on mutated text.
 if(NOT DEFINED PB_SOURCE_DIR)
-  message(FATAL_ERROR "bot09: PB_SOURCE_DIR is required")
+  message(FATAL_ERROR "bot12: PB_SOURCE_DIR is required")
 endif()
 
-set(TAG "bot09 leader_other_map")
+set(TAG "bot12 leader_other_map")
 
 function(read_source path out_var)
   if(NOT EXISTS "${PB_SOURCE_DIR}/${path}")
@@ -130,28 +132,27 @@ function(check_policy policy out)
   set(${out} "" PARENT_SCOPE)
 endfunction()
 
-# ---- (1) the leave consults the new stay rule ------------------------------------------------------------------------
-function(check_leave leave out)
-  region("${leave}" "bool LeaveGroupAction::Execute(Event& event)" "\n    }\n" exec)
-  foreach(needle
-      "bool const adhocLeave = master == bot && event.getSource() == \"adhoc group\" &&"
-      "ai::cohort::Applies(sPlayerbotAIConfig.botGroupsLeaderOtherMap, bot->GetGUIDLow());"
-      "return LeaveGroup(master, adhocLeave);")
-    string(FIND "${exec}" "${needle}" at)
-    if(at EQUAL -1)
-      set(${out} "LeaveGroupAction::Execute: missing ${needle}" PARENT_SCOPE)
+# ---- (1) removed: no map-thread self-leave (OB-00 04.11.2026) ---------------------------------------------------------
+# LeaveGroupAction keeps release's stay rule (a free bot asked by itself stays) and no LeaderOtherMap/adhocLeave branch;
+# SingletonGroupPolicy.h has no adhocLeave overload. The OpQueue contract pins the world-thread leave that replaces it.
+function(check_no_map_thread_leave leave singleton out)
+  foreach(forbidden "adhocLeave" "botGroupsLeaderOtherMap" "LeaveGroup(")
+    string(FIND "${leave}" "${forbidden}" at)
+    if(NOT at EQUAL -1)
+      set(${out} "LeaveGroupAction: the map-thread ad-hoc leave is back (${forbidden})" PARENT_SCOPE)
       return()
     endif()
   endforeach()
-  foreach(needle
-      "bool LeaveGroupAction::Leave(Player* player)\n    {\n        return LeaveGroup(player, false);\n    }"
-      "bool shouldStay = singleton_group::ShouldStayInGroup(freeBot, bot->GetGroup() != nullptr, player == bot, selfLedSingleton, adhocLeave);")
-    string(FIND "${leave}" "${needle}" at)
-    if(at EQUAL -1)
-      set(${out} "LeaveGroupAction: missing ${needle}" PARENT_SCOPE)
-      return()
-    endif()
-  endforeach()
+  string(FIND "${singleton}" "adhocLeave" at)
+  if(NOT at EQUAL -1)
+    set(${out} "SingletonGroupPolicy.h: the adhocLeave overload is back" PARENT_SCOPE)
+    return()
+  endif()
+  string(FIND "${leave}" "bool shouldStay = singleton_group::ShouldStayInGroup(freeBot, bot->GetGroup() != nullptr, player == bot, selfLedSingleton);" at)
+  if(at EQUAL -1)
+    set(${out} "LeaveGroupAction: release's stay rule changed" PARENT_SCOPE)
+    return()
+  endif()
   set(${out} "" PARENT_SCOPE)
 endfunction()
 
@@ -243,12 +244,10 @@ check_follow("${follow}" r)
 fail_if("${r}")
 check_policy("${policy}" r)
 fail_if("${r}")
-check_leave("${leave}" r)
+check_no_map_thread_leave("${leave}" "${singleton}" r)
 fail_if("${r}")
 check_transports("${wp}" r)
 fail_if("${r}")
-
-require_text("${singleton}" "    return !adhocLeave && ShouldStayInGroup(freeBot, inGroup, requestedByBotItself, selfLedSingleton);" "the stay rule with adhocLeave")
 
 # (2a) both leave paths feed the clock from their existing per-bot state; the action keeps its core leave call and line.
 foreach(src action world)
@@ -262,7 +261,7 @@ check_leave_facts("${world}" "" "${WORLD_CLOCK}" "${WORLD_RESET_START}" "${WORLD
 fail_if("${r}")
 require_text("${world_h}" "std::uint32_t leaderOtherMapSince = 0;" "world Track: the clock starts at 0 (track = Track() resets it)")
 require_text("${policy}" "inline std::uint32_t LeaderOtherMapClock(bool ruleOn, bool leaderSeen, bool otherMap, std::uint32_t since, std::uint32_t now)\n{\n    if (!ruleOn)\n        return 0;" "the clock is 0 with the rule off")
-require_text("${action}" "ai->DoSpecificAction(\"leave\", Event(\"adhoc group\", \"\", bot), true);" "the action's leave call (its source is what LeaveGroupAction reads)")
+require_text("${action}" "ai->DoSpecificAction(\"leave\", Event(\"adhoc group\", \"\", bot), true);" "the action's leave call with OpQueue off (release behaviour: a free bot stays)")
 require_text("${action}" "[BotGroup] kind=adhoc event=leave bot=%u group=%u quest=%u objective=%u reason=%s members=%u\"" "the existing leave line carries the reason")
 
 # Config: keys, defaults, clamps, echo, documented with default 0.
@@ -330,13 +329,16 @@ string(REPLACE "    if (f.leaderOtherMapSeconds && f.leaderOtherMapSince && f.no
 string(REPLACE "        return Leave::OutOfRange;\n" "        return Leave::OutOfRange;\n    if (f.leaderOtherMapSeconds && f.leaderOtherMapSince && f.now - f.leaderOtherMapSince >= f.leaderOtherMapSeconds)\n        return Leave::LeaderOtherMap;\n" probe "${probe}")
 check_policy("${probe}" r)
 expect_caught("leader_other_map after out_of_range" "${r}")
-# The leave without the new rule.
-string(REPLACE "player == bot, selfLedSingleton, adhocLeave);" "player == bot, selfLedSingleton);" probe "${leave}")
-check_leave("${probe}" r)
-expect_caught("stay rule without adhocLeave" "${r}")
+# The map-thread ad-hoc leave brought back.
+string(REPLACE "player == bot, selfLedSingleton);" "player == bot, selfLedSingleton, adhocLeave);" probe "${leave}")
+check_no_map_thread_leave("${probe}" "${singleton}" r)
+expect_caught("map-thread adhocLeave in LeaveGroupAction" "${r}")
+string(APPEND probe_s "${singleton}" "\ninline bool ShouldStayInGroup(bool a, bool b, bool c, bool d, bool adhocLeave) { return !adhocLeave; }\n")
+check_no_map_thread_leave("${leave}" "${probe_s}" r)
+expect_caught("adhocLeave overload in SingletonGroupPolicy.h" "${r}")
 # The cached branch falling through to the full walk.
 string(REPLACE "                                transports.insert(transport);\n            return transports;\n" "                                transports.insert(transport);\n" probe "${wp}")
 check_transports("${probe}" r)
 expect_caught("cached branch without its return" "${r}")
 
-message(STATUS "BOT09_LEADER_OTHER_MAP_SOURCE_CONTRACT=PASS")
+message(STATUS "BOT12_LEADER_OTHER_MAP_SOURCE_CONTRACT=PASS")

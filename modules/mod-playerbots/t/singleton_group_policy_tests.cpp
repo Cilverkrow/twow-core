@@ -33,16 +33,5 @@ int main()
     Require(!ShouldStayInGroup(true, true, false, false), "a player's leave request is carried out");
     Require(!ShouldStayInGroup(false, true, true, false), "a bot with a master leaves when told");
     Require(!ShouldStayInGroup(true, false, true, false), "not in a group: nothing to stay in (repeat is a no-op)");
-
-    // BOT-09 (AiPlayerbot.BotGroups.LeaderOtherMap): the ad-hoc group action's own leave request.
-    Require(!ShouldStayInGroup(true, true, true, false, true), "switch on: a free bot's ad-hoc leave really leaves");
-    Require(ShouldStayInGroup(true, true, true, false, false), "switch off: a free bot's ad-hoc leave keeps the group, as before");
-    // adhocLeave false is the old rule for every input; adhocLeave true never stays.
-    for (int i = 0; i < 16; ++i)
-    {
-        bool const a = (i & 1) != 0, b = (i & 2) != 0, c = (i & 4) != 0, d = (i & 8) != 0;
-        Require(ShouldStayInGroup(a, b, c, d, false) == ShouldStayInGroup(a, b, c, d), "adhocLeave false = the old rule");
-        Require(!ShouldStayInGroup(a, b, c, d, true), "adhocLeave true never stays");
-    }
     return 0;
 }

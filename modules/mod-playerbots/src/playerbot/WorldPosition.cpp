@@ -588,7 +588,7 @@ bool WorldPosition::HasFaction(const Team team) const
 
 namespace
 {
-// BOT-09 (AiPlayerbot.Travel.ElevatorScanCache, twow-repo#672): the elevator branch of getTransports below walked all
+// BOT-12 (AiPlayerbot.Travel.ElevatorScanCache, twow-repo#677): the elevator branch of getTransports below walked all
 // gameobject spawn data of every map (sObjectMgr.DoGOData) on every call. A bot waiting at a dock node with entry 0 paid that
 // every update (cand4G u2: a follower at the Grom'gol zeppelin dock for 10 h, ~13 ms per update). With the switch on, the
 // branch walks a list per map of the spawns whose template type can be a GenericTransport at all - GAMEOBJECT_TYPE_TRANSPORT
@@ -653,7 +653,7 @@ std::set<GenericTransport*> WorldPosition::getTransports(uint32 entry)
 
     if (transports.empty() || !entry) //Elevators&rams
     {
-        // BOT-09 (Travel.ElevatorScanCache): the transport-type spawns of this map only, same result (see above). A null
+        // BOT-12 (Travel.ElevatorScanCache): the transport-type spawns of this map only, same result (see above). A null
         // position (0,0,0) matched every map in the walk, so it keeps the walk.
         if (sPlayerbotAIConfig.travelElevatorScanCache && *this)
         {
