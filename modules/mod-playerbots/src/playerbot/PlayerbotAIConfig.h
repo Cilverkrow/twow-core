@@ -1056,6 +1056,10 @@ public:
     float pathPosStuckProgress = 5.0f;  // yards closer that count as progress and restart the window, clamped 1..50
     uint32 pathPosStuckEpisodeMinutes = 30;  // an episode within this many minutes of the previous one escalates the series, clamped 5..240
     uint32 pathPosStuckRateMinutes = 30;  // at most one unstuck / home bind per bot in this many minutes, clamped 5..240
+    // twow-repo#575 / #601 (OB-00 04.11.2026): "combat stuck" / "combat long stuck" count the fight with the current target
+    // (from the combat start, restarted on a target change; CombatStuckClockPolicy.h) instead of the stale "time since last change"
+    // of "combat::self target". 0 off (default), 1 all, 2 cohort B, 3 cohort A; any other value acts like 0.
+    uint32 unstuckCombatFightClock = 0;
     bool pathTaxiTrace = false;  // twow-repo#575 (PATH-01 b): [TaxiUse] / [TransportWait] lines and a minute summary of bot flights and ship waits, 0 = off
     bool pathTransportEdgeTrace = false;  // twow-repo#342 (S1): [TransportWait] state= lines per transport edge episode (attempt / board / arrive / fail) + summary, 0 = off
     bool pathTransportDeckProbe = false;  // twow-repo#342 (S3b-0): once per dock wait 8 fixed vessel deck probes, one [TransportDeck] line (30/min) + [TransportBoard] summary, 0 = off
