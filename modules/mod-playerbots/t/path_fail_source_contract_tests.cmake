@@ -94,7 +94,7 @@ require_order("${config_cpp}" "pathStartZoneExactBounds = config.GetBoolDefault(
 foreach(key RouteFailDetail HonestRouteFail StartZoneExactBounds RpgTargetSnap)
   require_text("${conf_dist}" "\nAiPlayerbot.Path.${key} = 0\n" "${key} documented off")
 endforeach()
-require_text("${conf_dist}" "\nAiPlayerbot.Path.RouteFailDetail.LinesPerMinute = 30\n" "lines per minute documented")
+require_text("${conf_dist}" "\nAiPlayerbot.Path.RouteFailDetail.LinesPerMinute = 10\n" "lines per minute documented")
 count_text("${conf_dist}" "(PATH-01 #" 4 "PATH-01 conf blocks")
 
 # 1. #4 start-zone boxes: the old boxes stay the off path, the zone boxes are the on path.
