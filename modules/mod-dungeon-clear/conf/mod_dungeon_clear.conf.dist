@@ -166,6 +166,22 @@ DungeonClear.StayDeadInRun = 0
 DungeonClear.StayDeadMaxSecs = 600
 
 #
+#    DungeonClear.RezCapableOnly
+#        BUG FIX (CLI-GRP 04.11.2026, g1/CAUSE-DC-REVIVE-PFAD-20261104 F1+F3, ordered by OB-00 04.11.). The post-combat
+#        rez elected its rezzer by CLASS, healers first, and counted the druid - whose out-of-combat rez ("revive") does
+#        not exist in 1.12: 566 failed casts, the living paladin never elected, the run disabled at the 90 s timeout. And
+#        DungeonClear.StayDeadInRun held the corpse while that druid lived, so the ghost walk (back alive in 8-10 s)
+#        never ran. 1 = only a member who can rez NOW counts, for both: a bot must know a rank of its class rez spell
+#        (the rank the rez action would cast), off cooldown, with the mana for it; a human keeps the class rule. With no
+#        such member the run takes the no-rezzer path and the corpse releases like stock. The election order (healers
+#        first, ...) is unchanged among those members. 0 = the class rule as before.
+#
+#        Default: 0
+#
+
+DungeonClear.RezCapableOnly = 0
+
+#
 #    DungeonClear.BearShiftBeforeMove
 #        BUG FIX (CLI-GRP, 02.11.2026, g2/CAUSE-DRUIDE-SHIFT-ABBRUCH). Before a pull and on the walk-in engage the druid
 #        tank casts Bear/Dire Bear Form and then moves in the same tick. The instant form sits in "preparing" until the

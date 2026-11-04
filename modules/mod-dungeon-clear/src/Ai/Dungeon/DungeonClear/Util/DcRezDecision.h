@@ -49,11 +49,36 @@ namespace DcRezDecision
     struct Member
     {
         bool isDead = false;
-        bool canRezClass = false;  // Priest / Paladin / Shaman / Druid
+        bool canRezClass = false;  // Priest / Paladin / Shaman / Druid; with RezCapableOnly: CanRezNow below
         bool isHealerRole = false; // PlayerbotAI::IsHeal — healers rez first
         bool isTankRole = false;   // PlayerbotAI::IsTank — target priority
         bool isBot = false;        // has a PlayerbotAI to drive (humans don't)
     };
+
+    // DungeonClear.RezCapableOnly (CLI-GRP 04.11.2026, g1/CAUSE-DC-REVIVE-PFAD-20261104 F1+F3, OB-00 04.11.): the class
+    // rule elected a druid, whose out-of-combat rez ("revive") does not exist in 1.12 - 566 failed casts, the living
+    // paladin never elected, TimedOut. Capability is read from the spell the rez rung would cast, not from the class.
+    // Snapshotted by the glue (DcRezRecovery::CanRezNow) for one living member.
+    struct RezCaster
+    {
+        bool          isRezClass = false;  // the old class rule (Priest / Paladin / Shaman / Druid)
+        bool          isBot = false;       // only a bot's rez spell is resolved; a human keeps the class rule
+        std::uint32_t spellId = 0;         // the rank the rez rung would cast, known by the member (0 = none)
+        bool          spellReady = false;  // not on cooldown
+        std::uint32_t powerCost = 0;       // that rank's cost
+        std::uint32_t power = 0;           // the member's current power of that type
+    };
+
+    // Can this living member be elected / hold a corpse now? capableOnly = false is the old class rule exactly. A human
+    // (no bot AI to resolve the spell through) keeps the class rule: the human decides, and may battle-rez.
+    inline bool CanRezNow(RezCaster const& c, bool capableOnly)
+    {
+        if (!c.isRezClass)
+            return false;
+        if (!capableOnly || !c.isBot)
+            return true;
+        return c.spellId != 0 && c.spellReady && c.power >= c.powerCost;
+    }
 
     struct Inputs
     {

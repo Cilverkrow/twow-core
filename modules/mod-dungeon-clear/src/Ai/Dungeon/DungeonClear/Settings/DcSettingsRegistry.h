@@ -178,6 +178,11 @@ inline constexpr DcSettingDef kDcSettings[] =
     { "StayDeadInRun",            DcType::Bool,   0,   0,     1,  false },
     // Its bound: seconds after the death the corpse waits at most (then the stock release; pre-review 26.10.).
     { "StayDeadMaxSecs",          DcType::UInt, 600,  60,  3600,  false },
+    // CLI-GRP 04.11.2026 (g1/CAUSE-DC-REVIVE-PFAD-20261104 F1+F3, OB-00 04.11.): 1 = the post-combat rezzer is elected,
+    // and a StayDeadInRun corpse waits, only for a member who can rez now - the rank of its class rez spell known, off
+    // cooldown, affordable (DcRezRecovery::CanRezNow); a druid has none out of combat in 1.12. Server-only, default 0 =
+    // the class rule as before.
+    { "RezCapableOnly",           DcType::Bool,   0,   0,     1,  false },
     // CLI-GRP 02.11.2026 (g2/CAUSE-DRUIDE-SHIFT-ABBRUCH): the druid tank's pre-pull Bear Form shift is cancelled by the
     // same tick's approach (MoveTo / SplinePath interrupt the preparing instant). 1 = hold that approach one tick, at most
     // once per window (DcTankForm::ShiftHoldsApproach); server-only, default 0 = fire and forget as before.
