@@ -207,6 +207,23 @@ int main()
             "the near tool check keeps its own values (a bot may run both checks in one tick)");
     }
 
+    // P1-aa (ProfessionTraining.TripNoGrind): the trip kind from its travel condition, the arrival rpg action, the status names.
+    {
+        Require(TripKindOfCondition("should travel named::trainer profession hold") == kTripKindTrainer, "gap trainer hold");
+        Require(TripKindOfCondition("should travel named::trainer profession near hold") == kTripKindTrainer, "near trainer hold");
+        Require(TripKindOfCondition("should travel named::tool vendor hold") == kTripKindTool, "gap tool hold");
+        Require(TripKindOfCondition("should travel named::tool vendor near hold") == kTripKindTool, "near tool hold");
+        Require(TripKindOfCondition("should travel named::tool vendor near") == kTripKindNone, "a start condition is no trip");
+        Require(TripKindOfCondition("should travel named::guild meeting") == kTripKindNone && TripKindOfCondition("") == kTripKindNone, "other targets");
+        Require(std::strcmp(TripArriveRpgAction(kTripKindTrainer), "rpg train") == 0 && std::strcmp(TripArriveRpgAction(kTripKindTool), "rpg buy") == 0 &&
+            std::strcmp(TripArriveRpgAction(kTripKindNone), "") == 0, "arrival rpg actions");
+        Require(std::strcmp(TripKindName(kTripKindTrainer), "trainer") == 0 && std::strcmp(TripKindName(kTripKindTool), "tool") == 0, "kind names");
+        Require(std::strcmp(TripStatusName(true, 2), "READY") == 0 && std::strcmp(TripStatusName(true, 3), "TRAVEL") == 0 &&
+            std::strcmp(TripStatusName(true, 4), "WORK") == 0 && std::strcmp(TripStatusName(false, 4), "OTHER") == 0 &&
+            std::strcmp(TripStatusName(true, 9), "NONE") == 0, "status names");
+        Require(kTripArriveYards > 5.0f && kTripRpgSearchYards > kTripArriveYards, "trip arrival wider than IsIn, the NPC search wider still");
+    }
+
     std::cout << "profession_travel_policy_tests: OK\n";
     return 0;
 }

@@ -545,6 +545,10 @@ public:
     // twow-repo#601 no-route gate (CLI-Deep 29.10.2026, OB-00 go, CLI-Berufe M1r6b): the same rule skips a finished quest whose last
     // turn-in route request found no taker route (every taker judged), until a request finds one; 0 off (default), 1 all, 2 cohort B.
     uint32 professionTrainingTurnInGateSkipNoRoute = 0;
+    // twow-repo#333 Berufe P1-aa (OB-00 04.11.2026 after M1r run 8): an open profession trip (trainer or tool) runs without a proactive
+    // "attack anything" (self-defence stays), its vendor / trainer becomes the rpg target on arrival, it ends on time, and with
+    // ProfessionTraining.Trace a status line; 0 off (default), 1 all, 2 cohort B (odd guid), 3 cohort A (even guid).
+    uint32 professionTrainingTripNoGrind = 0;
     uint32 professionUseToolBuy = 0;
     // twow-repo#333 P1-z (OB-00 31.10.2026, bug fix: code default 1, 0 = rollback, 2 cohort B): BuyAction "vendor" also reads the
     // vendor template items (creature_template.vendor_id), as the player's buy, the by-name buy and the vendor map already do.

@@ -2006,6 +2006,29 @@ AiPlayerbot.ProfessionTraining.TurnInGateSkipSuppressed = 0
 # when none) and nearest= / nearest_entry= (the nearest trainer / vendor without the radius, at result=not_near; 0 otherwise).
 #   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid); other values act like 0.
 AiPlayerbot.ProfessionTraining.TurnInGateSkipNoRoute = 0
+# twow-repo#333 Berufe P1-aa (OB-00 04.11.2026; M1r run 8: a level-7 skinner on a near tool trip, vendor 66 at 209 yd, never
+# bought its knife - "attack anything" (5.0) beat "move to travel target" (1.0) and "rpg buy" (1.03), the target stayed READY,
+# and the "reason=cap" end of the 600 s hold came 19 min late, from the first travel check after the grinding). TripNoGrind,
+# for a roster bot on its own while a profession trip (trainer or tool, gap or near) is open and its hold has not run out:
+#   - no proactive "attack anything", not even the "attack before being attacked" rule; a creature that attacks the bot, its
+#     pet or its group, or has the bot as its victim, is still fought (self-defence; the combat start is unchanged);
+#   - the trip also arrives within 15 yd of its NPC's spawn (otherwise 5 yd), and on arrival the trip's vendor / trainer
+#     (nearest spawn within 25 yd) becomes the rpg target with "rpg buy" / "rpg train" as the next rpg action;
+#   - a check once a minute, in and out of combat, ends the trip on time: on the trip's own travel target the hold rule runs
+#     at once ("[ProfTravel] state=end ... reason=done|turn_in|cap", the travel target expires); when the travel target is no
+#     longer the trip, "state=end ... reason=lost" comes within 60 s of its hold end (trip_s + seen_after_s <= hold_s of the
+#     request line + 60; seen_after_s counts from the last hold check that held) instead of at the next request of its kind.
+# With ProfessionTraining.Trace and this mode on for the bot, one line per arrival and per trip end:
+#   [ProfTravel] state=status kind=trainer|tool bot= level= cohort= event=arrive|end status= reason= entry= npc= npc_dist=
+#   radius=stock|trip|- rpg=buy|train|none|- trip_s= path=near|gap
+# event=arrive: status=WORK reason=- radius=stock (within 5 yd) or trip (within 15 yd), npc=0 rpg=none when no NPC was found.
+# event=end: reason=done|turn_in|cap|lost|no_target, status = the travel target's status at the end (READY, TRAVEL, WORK,
+# COOLDOWN, EXPIRED; NONE at no_target; OTHER = the travel target is not the trip's, or is prepared or cleared and still
+# carries the old conditions; entry=0 then), npc=0 npc_dist=-1.0 radius=- rpg=-. A lost end that only the next request
+# finds (the minute check did not run in time) writes its line there.
+# Profile value 1 only after an accepted A/B test (strangler rule).
+#   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid); other values act like 0.
+AiPlayerbot.ProfessionTraining.TripNoGrind = 0
 # Profession use (#333), persistent roster bots without a real-player master.
 # GatherDistance: passive gathering radius for such a bot on its own (herbs,
 # ore, skinning); 0 = GatheringDistance. The hostile check stays in force.
