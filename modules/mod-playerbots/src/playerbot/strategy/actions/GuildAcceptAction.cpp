@@ -145,7 +145,7 @@ bool GuildAcceptAction::Execute(Event& event)
             sLog.outBasic("[RosterGuild] event=invite_declined bot=%u inviter=%u guild=%u reason=poached_keeps_charter",
                 bot->GetGUIDLow(), inviter->GetGUIDLow(), guildId);
     }
-    else if (!roster_guild::JoinAllowed(bot->GetLevel(), sPlayerbotAIConfig.rosterGuildMinLevel,
+    else if (!roster_guild::JoinAllowed(bot->GetLevel(), sPlayerbotAIConfig.rosterGuildJoinMinLevel,
         sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster(), IsRealPlayer(inviter)))
     {
         // Owner 05.10.2026: no bot guild below AiPlayerbot.RosterGuild.MinLevel (players reserve first).
