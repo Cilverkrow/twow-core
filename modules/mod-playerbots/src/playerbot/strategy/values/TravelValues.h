@@ -281,4 +281,19 @@ namespace ai
     // the open trip ends at once (reason=no_target) instead of an hour later as "lost". The hourly limit stays spent.
     void ProfessionTripNoTarget(PlayerbotAI* ai, std::string const& travelPurpose, uint32 ranges, uint32 points,
         std::string const& rejects);
+
+    // twow-repo#333 P1-aa (AiPlayerbot.ProfessionTraining.TripNoGrind, OB-00 04.11.2026). The callers test the switch first.
+    class TravelTarget;
+    // The trip kind (ProfessionTravelPolicy.h kTripKind*) whose "... hold" condition this travel target carries; 0 for every other
+    // target and for a group copy.
+    uint8 ProfessionTripKindOf(TravelTarget* travelTarget);
+    // The kind of the bot's open profession trip that still holds: a roster bot on its own, its travel target is the trip (READY /
+    // TRAVEL / WORK with the trip's condition, PREPARE with it as the future condition), " open" = 1 and before " hold until"; 0
+    // otherwise. Reads values only, writes nothing.
+    uint8 ProfessionTripOpenKind(PlayerbotAI* ai);
+    // Once a minute from PlayerbotAI::UpdateAI, in and out of combat: an open trip ends on time even when no travel action runs.
+    void ProfessionTripTick(PlayerbotAI* ai);
+    // ProfessionTraining.Trace: "[ProfTravel] state=status ... event=arrive|end" (status nullptr = the travel target's own).
+    void ProfessionTripStatusLine(PlayerbotAI* ai, uint8 kind, char const* event, char const* reason, char const* status,
+        uint32 npc, float npcDistance, char const* radius, char const* rpg);
 }

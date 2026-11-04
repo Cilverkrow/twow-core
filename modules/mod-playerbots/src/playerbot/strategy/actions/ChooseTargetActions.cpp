@@ -3,6 +3,7 @@
 #include "Movement/MovementGenerator.h"
 #include "AI/CreatureAI.h"
 #include "playerbot/TravelMgr.h"
+#include "playerbot/strategy/values/TravelValues.h"   // twow-repo#333 P1-aa: ProfessionTripOpenKind
 #include "playerbot/strategy/generic/PullStrategy.h"
 #include "playerbot/strategy/values/FreeMoveValues.h"
 #include "playerbot/CohortPolicy.h"
@@ -39,6 +40,19 @@ bool AttackAnythingAction::isUseful()
 
     if (!target || !ai->IsSafe(target))
         return false;
+
+    // twow-repo#333 Berufe P1-aa (AiPlayerbot.ProfessionTraining.TripNoGrind, OB-00 04.11.2026 after M1r run 8): on an open profession
+    // trip (trainer or tool, ai::ProfessionTripOpenKind) a roster bot on its own starts no grind fight - not even through the "attack
+    // before being attacked" rule below - so the walk, "rpg buy" and the trainer win. Self-defence stays: a creature that has the bot as
+    // its victim or attacks the bot, its pet or its group ("possible attack targets") is still taken (the combat itself starts through
+    // "has attackers" -> "set combat state", not here). Switch 0 or another cohort: nothing is read.
+    if (ai::cohort::Applies(sPlayerbotAIConfig.professionTrainingTripNoGrind, bot->GetGUIDLow()) && target->GetVictim() != bot &&
+        ai::ProfessionTripOpenKind(ai))
+    {
+        std::list<ObjectGuid> const attackers = AI_VALUE(std::list<ObjectGuid>, "possible attack targets");
+        if (std::find(attackers.begin(), attackers.end(), target->GetObjectGuid()) == attackers.end())
+            return false;
+    }
 
     if (ai->ContainsStrategy(STRATEGY_TYPE_HEAL) && !ai->HasStrategy("offdps", BotState::BOT_STATE_COMBAT))
         return false;
