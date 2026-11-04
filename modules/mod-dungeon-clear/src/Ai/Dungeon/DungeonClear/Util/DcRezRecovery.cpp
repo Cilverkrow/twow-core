@@ -412,6 +412,12 @@ namespace DcRezRecovery
         c.isRezClass = member && IsRezClass(member);
         if (!c.isRezClass || !capableOnly)
             return DcRezDecision::CanRezNow(c, capableOnly);
+        // The "spell id" read below fills the MEMBER's value cache from the caller's thread: sequential only on a map
+        // that updates its objects in one thread (Map.cpp starts m_objectThreads for continents only). Off a dungeon -
+        // the `dc on` chat path on a continent - the class rule; the election and the veto are dungeon-gated anyway.
+        Map* map = member->FindMap();
+        if (!map || !map->IsDungeon())
+            return DcRezDecision::CanRezNow(c, false);
 
         PlayerbotAI* ai = GET_PLAYERBOT_AI(member);
         c.isBot = ai != nullptr;
@@ -426,9 +432,10 @@ namespace DcRezRecovery
             {
                 c.spellId = spellId;
                 c.spellReady = member->IsSpellReady(spellId);
+                // Base cost without spell mods (no Spell object): errs high, i.e. towards "cannot rez".
                 c.powerCost = member->HasOption(PLAYER_CHEAT_NO_POWER) ? 0u
                     : Spell::CalculatePowerCost(info, member);
-                c.power = info->powerType < MAX_POWERS ? member->GetPower(Powers(info->powerType)) : 0u;
+                c.maxPower = info->powerType < MAX_POWERS ? member->GetMaxPower(Powers(info->powerType)) : 0u;
             }
         }
         return DcRezDecision::CanRezNow(c, capableOnly);
@@ -446,7 +453,7 @@ namespace DcRezRecovery
         {
             Player* member = ref->GetSource();
             if (member && member != bot && member->IsInWorld() && member->FindMap() == map && member->IsAlive() &&
-                IsRezClass(member) && (!capableOnly || CanRezNow(member, true)))
+                CanRezNow(member, capableOnly))
                 return true;
         }
         return false;

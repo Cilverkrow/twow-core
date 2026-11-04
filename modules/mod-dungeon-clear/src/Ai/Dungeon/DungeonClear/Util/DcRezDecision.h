@@ -27,6 +27,8 @@
 // candidate is elected):
 //   rezzer: first living rez-class BOT, healers before non-healers. If only
 //           non-bot (human) rezzers are alive -> WaitingOnHuman.
+//           With DungeonClear.RezCapableOnly "rez-class" means CanRezNow below
+//           (the glue narrows canRezClass).
 //   target: dead healer -> dead tank -> group order (recover the run's spine
 //           first).
 //
@@ -66,18 +68,21 @@ namespace DcRezDecision
         std::uint32_t spellId = 0;         // the rank the rez rung would cast, known by the member (0 = none)
         bool          spellReady = false;  // not on cooldown
         std::uint32_t powerCost = 0;       // that rank's cost
-        std::uint32_t power = 0;           // the member's current power of that type
+        std::uint32_t maxPower = 0;        // the member's MAX power of that type (not the current one, see below)
     };
 
     // Can this living member be elected / hold a corpse now? capableOnly = false is the old class rule exactly. A human
     // (no bot AI to resolve the spell through) keeps the class rule: the human decides, and may battle-rez.
+    // Mana is the pool, not the current mana: an out-of-mana rezzer is elected and drinks first (the rez rung yields
+    // to drink/eat at 26.5, PostCombatRezTimeoutSecs bounds it). Current mana would turn a sole drained priest/paladin
+    // into NoRezzer -> Disable after the 12 s quiet grace, and drop the StayDeadInRun veto on its first low tick.
     inline bool CanRezNow(RezCaster const& c, bool capableOnly)
     {
         if (!c.isRezClass)
             return false;
         if (!capableOnly || !c.isBot)
             return true;
-        return c.spellId != 0 && c.spellReady && c.power >= c.powerCost;
+        return c.spellId != 0 && c.spellReady && c.maxPower >= c.powerCost;
     }
 
     struct Inputs
@@ -118,7 +123,7 @@ namespace DcRezDecision
         Recovering,      // a bot rezzer is elected and will act
         WaitingOnHuman,  // only a human can rez — hold and prompt
         Wipe,            // everyone on the map is dead
-        NoRezzer,        // no living member's class can rez
+        NoRezzer,        // no living member's class can rez (RezCapableOnly: none passes CanRezNow)
         NoRezzerInFight, // ditto, but the survivors are still swinging — hold
         TimedOut         // out-of-combat recovery clock expired
     };
@@ -183,7 +188,7 @@ namespace DcRezDecision
             return r;
         }
 
-        // Election: first living rez-class bot, healers before non-healers;
+        // Election: first living rez-class bot (RezCapableOnly: CanRezNow), healers before non-healers;
         // remember the first living human rezzer for the WaitingOnHuman path.
         int botHealer = -1, botAny = -1, humanAny = -1;
         for (std::size_t i = 0; i < members.size(); ++i)
