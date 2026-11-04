@@ -78,7 +78,7 @@ endforeach()
 # 2. The death: living attackers counted once, only with a switch on; the danger map records them; the camp ring gets the position
 #    whatever the travel target (not behind IsActiveForDeathAttribution).
 between("${ai_source}" "void PlayerbotAI::OnDeath()" "\nvoid PlayerbotAI::" on_death)
-require_text("${on_death}" "if (sPlayerbotAIConfig.destinationDeathsCampBlock || sPlayerbotAIConfig.dangerMapCountAddDeaths)" "attackers only read with a switch on")
+require_text("${on_death}" "if (ai::cohort::Applies(sPlayerbotAIConfig.destinationDeathsCampBlock, bot->GetGUIDLow()) || sPlayerbotAIConfig.dangerMapCountAddDeaths)" "attackers only read with a switch on")
 require_text("${on_death}" "ai::death_adds::MergeAdds(live, deathAdds, ai::death_adds::Fresh(deathAdds, WorldTimer::getMSTime())," "adds from the fight snapshot")
 require_text("${on_death}" "if (deathTarget && deathTarget->IsAlive())\n                    ++deathAttackers;" "the living target counts")
 require_text("${on_death}" "RecordDangerMapDeath(bot, AI_VALUE(Unit*, \"current target\"), deathAttackers);" "attackers into the danger map")
@@ -110,8 +110,10 @@ require_text("${policy}" "return questDestination ? Verdict::Fallback : Verdict:
 # 4. Danger map: the add-death rule only through Params, set per query for the bot's cohort; the level rule unchanged.
 require_text("${danger}" "std::uint32_t addDeathMinAttackers = 0;" "rule off by default")
 require_text("${danger}" "return death.killerLevel >= botLevel + params.levelMargin ||\n        (params.addDeathMinAttackers && death.attackers >= params.addDeathMinAttackers);" "level rule or crowd")
-require_text("${choose}" "if (bot && ai::cohort::Applies(sPlayerbotAIConfig.dangerMapCountAddDeaths, bot->GetGUIDLow()))\n        params.addDeathMinAttackers = sPlayerbotAIConfig.dangerMapAddDeathMinAttackers;" "cohort per query (travel choice)")
-require_text("${movement}" "if (ai::cohort::Applies(sPlayerbotAIConfig.dangerMapCountAddDeaths, bot->GetGUIDLow()))\n            params.addDeathMinAttackers = sPlayerbotAIConfig.dangerMapAddDeathMinAttackers;" "cohort per query (far-move arrival)")
+read_source("DangerMapConfig.h" danger_cfg)   # twow-repo#679 (#10d): one definition of the config parameters
+require_text("${danger_cfg}" "if (addDeathRule)\n        params.addDeathMinAttackers = sPlayerbotAIConfig.dangerMapAddDeathMinAttackers;" "add-death threshold only when the rule applies")
+require_text("${choose}" "danger_map::ConfigParams(bot && ai::cohort::Applies(sPlayerbotAIConfig.dangerMapCountAddDeaths, bot->GetGUIDLow()))" "cohort per query (travel choice)")
+require_text("${movement}" "danger_map::ConfigParams(ai::cohort::Applies(sPlayerbotAIConfig.dangerMapCountAddDeaths, bot->GetGUIDLow()))" "cohort per query (far-move arrival)")
 forbid_text("${choose}" "DangerMapParams())" "every travel-choice query passes the bot")
 
 message(STATUS "camp_block source contract passed")
