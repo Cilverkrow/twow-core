@@ -1642,6 +1642,24 @@ add_test(NAME adhoc_group_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/adhoc_group_source_contract_tests.cmake")
 
+# BOT-12 (twow-repo#677, #628; AiPlayerbot.BotGroups.OpQueue): the world-thread group-operation queue and its pure rules
+# (GroupOpQueue.h, GroupOpPolicy.h; no game header). The game side is pinned by
+# t/contracts.d/bot12_group_op_queue_source_contract_tests.cmake.
+add_executable(group_op_queue_tests
+  "${PB_MODULE_DIR}/t/group_op_queue_tests.cpp")
+
+target_include_directories(group_op_queue_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+target_link_libraries(group_op_queue_tests PRIVATE Threads::Threads)
+
+set_target_properties(group_op_queue_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME group_op_queue
+  COMMAND group_op_queue_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # #628: ad-hoc groups form and leave on the world thread (AdHoc.WorldThread).
 add_test(NAME adhoc_group_world_thread_source_contract
   COMMAND "${CMAKE_COMMAND}"
@@ -3118,6 +3136,21 @@ add_test(NAME pos_stuck_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/pos_stuck_source_contract_tests.cmake")
+
+# twow-repo#575 / #601 (AiPlayerbot.Unstuck.CombatFightClock, OB-00 04.11.2026): the fight clock of "combat stuck" /
+# "combat long stuck" (CombatStuckClockPolicy.h); source contract in t/contracts.d.
+add_executable(combat_stuck_clock_policy_tests
+  "${PB_MODULE_DIR}/t/combat_stuck_clock_policy_tests.cpp")
+
+target_include_directories(combat_stuck_clock_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(combat_stuck_clock_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME combat_stuck_clock_policy
+  COMMAND combat_stuck_clock_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
 # twow-repo#587 Z4 (owner 14.10.2026): stuck turn-ins drop out of the recovery loop (AiPlayerbot.ZoneExit.TurnInStallCounts).
 add_test(NAME turnin_stall_source_contract

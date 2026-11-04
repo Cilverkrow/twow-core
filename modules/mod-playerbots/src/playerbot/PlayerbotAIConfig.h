@@ -550,6 +550,7 @@ public:
     // vendor template items (creature_template.vendor_id), as the player's buy, the by-name buy and the vendor map already do.
     uint32 buyVendorTemplateItems = 1;
     uint32 travelRpgAreaLevelFromSpawn = 0;  // twow-repo#333 P1-v: RpgTravelDestination::IsPossible reads the area level at the spawn nearest to the bot, not at the map origin (RpgAreaLevelPolicy.h); 0 off, 1 all, 2 cohort B (odd guid)
+    bool travelElevatorScanCache = false;  // BOT-12 (twow-repo#677): WorldPosition::getTransports' elevator branch walks a per-map list of the transport-type gameobject spawns, built once, instead of all gameobject spawn data on every call
     uint32 gatherQuestHerbFilter = 0;  // twow-repo#333 P1-f: a quest herb (lock 259) is picked only with its quest active (modes 0/1/2)
     // #333: roster bots use their professions while levelling.
     float professionUseGatherDistance = 0.0f;     // 0 = GatheringDistance
@@ -701,15 +702,6 @@ public:
     bool possibleTargetsSharedSearch = false;  // twow-repo#541 (audit A32): unqualified "possible targets" variants of a bot without a group filter its own sight-range snapshot again instead of a second grid search (0 = off)
     bool x3bPublishedTargets = false;  // twow-repo#563 (X3b): other bots read published targets, not our values
     bool x3bPublishedConditions = false;  // twow-repo#563 (X3b site 2): group conditions answered by each member itself
-    bool dietRogueCombatBoostInCombat = false;  // twow-repo#568 (diet D03): combat rogue boost registers adrenaline rush / blade flurry in the combat engine, not the non-combat engine where BoostTrigger is never active (0 = off)
-    bool dietRogueNoMutilate = false;  // twow-repo#568 (diet D15): assassination builders map to backstab (behind) / sinister strike (front) instead of the non-existent Mutilate (0 = off)
-    bool dietWarriorNoHeroicThrow = false;  // twow-repo#568 (diet D16): protection warriors push charge / taunt / taunt on snare target without the non-existent Heroic Throw step (0 = off)
-    bool dietArmsSnareHamstring = false;  // twow-repo#568 (diet D17): arms cc 'hamstring' trigger pushes hamstring instead of piercing howl -> mocking blow (taunt) -> hamstring (0 = off)
-    bool dietWarriorNoDevastate = false;  // twow-repo#568 (diet D36): protection 'sunder armor' trigger pushes sunder armor instead of the unlearnable devastate (0 = off)
-    bool dietWarriorDisarmGate = false;  // twow-repo#568 (diet D37): 'disarm' trigger also requires a known, ready Disarm and Defensive Stance (0 = off)
-    bool dietWarriorBerserkerStanceGate = false;  // twow-repo#568 (diet D38): stance rules (owner 11.10.2026): the 'berserker stance' trigger requires the spell, arms does not register it, protection has no Defensive Tactics swap, Berserker Rage has no stance prerequisite (0 = off)
-    bool dietWarriorNoInterceptAndRage = false;  // twow-repo#568 (diet D39): protection does not register the never-firing 'intercept and rage' nodes (sub-trigger "enemy is out of melee" has no creator) (0 = off)
-    bool dietWarriorDedupBloodrage = false;  // twow-repo#568 (diet D40): 'bloodrage' trigger requires a known, ready Bloodrage; protection drops its duplicate bloodrage / concussion blow nodes (0 = off)
     bool dietPriestRacials = false;  // twow-repo#568 (D20): priest race spells (touch of weakness, shadowguard, hex of weakness, devouring plague, elune's grace, desperate prayer, starshards) only for races that can learn them; the four race triggers wait for a known spell id (0 = off)
     bool dietPriestSelfBuffKnown = false;  // twow-repo#568 (D22): inner fire / shadowform / inner focus triggers wait for a known spell id, inner focus also for its cooldown (0 = off)
     bool dietShadowPriestDeadNodes = false;  // twow-repo#568 (D32): shadow priest strategy does not register "vampiric touch" (passive talent in Turtle) and "shadowfiend" (no such spell in Turtle 1.18) (0 = off)
@@ -720,19 +712,6 @@ public:
     bool dietMageTalentBoostKnown = false;  // twow-repo#568 (D34): arcane power / presence of mind / combustion / ice barrier triggers wait for the known and ready spell (0 = off)
     bool dietMageBlastWave = false;  // twow-repo#568 (D35): fire cc pushes blast wave only while it is known ("blast wave" trigger), and the blast wave node drops its frost nova alternative (vanilla build) (0 = off)
     bool dietMageInvisibility = false;  // twow-repo#568 (D53): mage raid strategy does not register "invisibility" on high threat / multiple attackers (not learnable in Turtle 1.18) (0 = off)
-    bool dietLevelingDruidWrath = false;  // twow-repo#568 D04: leveling druid Wrath node uses the registered trigger "enemy out of melee" (0 = off, node stays dead)
-    bool dietShockCooldownGate = false;  // twow-repo#568 D26: shaman "shock" trigger off while the shared shock category cooldown runs (0 = off)
-    bool dietFireNovaTotem = false;  // twow-repo#568 D27: shamans cast "fire nova totem" where vanilla pushed the uncastable "fire nova" (0 = off)
-    bool dietNoWrathOfAirTotem = false;  // twow-repo#568 D28: vanilla ele/resto shamans skip the nonexistent "wrath of air totem" node and alternative (0 = off)
-    bool dietShamanVanillaNames = false;  // twow-repo#568 D29: vanilla shamans push healing wave / searing totem / flametongue weapon instead of riptide / totem of wrath / earthliving; dead resto factory keys dropped (0 = off)
-    bool dietInnervateFix = false;  // twow-repo#568 D30: Innervate trigger/action use the real mana percent and accept the solo druid itself (0 = off)
-    bool dietRetRepentanceKey = false;  // twow-repo#568 D31: Ret "repentance or shield" node registered under its pushed name (0 = off, factory key typo)
-    bool dietExorcismCreatureType = false;  // twow-repo#568 D41: paladin "exorcism" trigger only for targets of Exorcism's creature types (undead/demon) (0 = off)
-    bool dietProtSealDirect = false;  // twow-repo#568 D42: vanilla Prot "seal" pushes seal of righteousness directly, seal trigger skips the dead vengeance name (0 = off)
-    bool dietFeralNoMangle = false;  // twow-repo#568 D43: vanilla feral nodes push claw / maul instead of the nonexistent mangle (cat)/(bear) (0 = off)
-    bool dietFeralNoCatSwipe = false;  // twow-repo#568 D44: vanilla DPS-feral AoE strategy skips the nonexistent "swipe (cat)" node (0 = off)
-    bool dietDruidCooldownGates = false;  // twow-repo#568 D45: druid Enrage / Nature's Grasp triggers quiet while the spell is unknown or cooling down (0 = off)
-    bool dietLevelingDruidKnownSpells = false;  // twow-repo#568 D46: leveling druid Rejuvenation/Moonfire triggers only once the spell is known (0 = off)
     bool dietHunterBestSting = false;  // twow-repo#568 (D10): one 'no stings usable' node per vanilla spec sting strategy (manual stings keep 'no stings'), it fires only when viper or serpent sting can be used, serpent sting also on mana targets while viper sting is unknown (0 = off)
     bool dietHunterTalentShotsKnown = false;  // twow-repo#568 (D19): deterrence / scatter shot nodes on own triggers that wait for the known, ready talent spell; scatter shot aims at the closest attacker targeting the bot (0 = off)
     bool dietHunterTranqKnown = false;  // twow-repo#568 (D47): the hunter reaction "dispel enrage" -> tranquilizing shot node uses a trigger that waits for the known, ready spell before the aura scan (0 = off)
@@ -740,9 +719,6 @@ public:
     bool perfEventTriggerSkip = false;  // twow-repo#568 (D63): ProcessTriggers skips the Check() of chat-command / world-packet triggers whose event flag is unset; a set flag is handled on the same pass as before (0 = off)
     bool dietHunterAspectGate = false;  // twow-repo#568 (D65): vanilla "aspect of the hawk" trigger fires only while the bot knows Aspect of the Hawk (same "spell id" value its cast checks) (0 = off)
     bool dietHunterRapidFireGate = false;  // twow-repo#568 (D66): vanilla "rapid fire" trigger fires only while Rapid Fire is known and off cooldown, the node drops the "readiness" alternative; both unless the bot knows Readiness (0 = off)
-    bool dietWanderSoloGuard = false;  // twow-repo#568 (D67): "wander near" without a follow target fires only on a FOLLOW motion, the only state in which its "stop follow" is useful (0 = off)
-    bool dietRpgDeadTriggers = false;  // twow-repo#568 (D68): "rpg ai chat" (LLMEnabled 0), "rpg wander" (no real master) and "rpg quest use" (entry not 190767) answer from their first IsActive condition before the rpg pre-check values (0 = off)
-    bool dietDuelTriggerGate = false;  // twow-repo#568 (D69): the duel strategy pushes "attack duel opponent" from "duel no attackers" (only with a duel) instead of "no attackers"; read at engine build (0 = off)
     uint32 perfRouteFailCooldownSeconds = 0;  // twow-repo#541 (L1b): a node route search without a route blocks the same bot and target cell for that many seconds, clamped to 0..300 (0 = off)
     bool perfRouteTimeTrace = false;  // twow-repo#592 (PATH-02): phase times of every node route build, [RouteTime] once a minute, appended to M:route / [RouteFailDetail]; dispatch_* times the MovePoint path search in DispatchMovement (0 = off, no clock read)
     bool perfDispatchPrecomputedPath = false;  // twow-repo#592 (PATH-02 A20): DispatchMovement hands the built path to MovePoint instead of MovePoint(MOVE_PATHFINDING) + MovePath (0 = as before)
@@ -897,6 +873,17 @@ public:
     uint32 botGroupsAdhocScanSlices = 0;
     uint32 botGroupsAdhocScanBudgetUs = 0;   // s7r: a slice ends once it took this many us (at least one bot; 0 = by count only)
     bool botGroupsAdhocHelpUntilDone = false;  // twow-repo#365 (owner 25.10.): whoever is done follows a member with the objective open until the group is done
+    // BOT-12 (twow-repo#677, #628 third finding; OB-00 04.11.2026): a leader on another map is the ad-hoc leave reason
+    // leader_other_map after LeaderOtherMapSeconds, and follow is not useful for a target on another map that is no real player.
+    // The leave itself really happens only with OpQueue on for the bot (world thread). 0 off, 1 all, 2 cohort B, 3 cohort A.
+    uint32 botGroupsLeaderOtherMap = 0;
+    uint32 botGroupsLeaderOtherMapSeconds = 120;   // 30..900
+    // BOT-12 (twow-repo#677, #628; OB-00 04.11.2026): the ad-hoc leaves and joins of a free bot are queued and run on the world
+    // thread (GroupOps.cpp; ObjectMgr::m_GroupMap is not locked). 0 off, 1 all, 2 cohort B, 3 cohort A; other = 0 + error line.
+    uint32 botGroupsOpQueue = 0;
+    uint32 botGroupsOpQueueOpsPerTick = 1;          // ops per world tick, 1..16 (none in a tick with a manager group step)
+    uint32 botGroupsOpQueueMaxDepth = 2048;         // 16..65536; a full queue refuses new ops (dropped_full)
+    uint32 botGroupsOpQueueAlertAgeSeconds = 60;    // 5..3600; "[GroupOps] ALERT" when the oldest op is older
     // twow-repo#627 S7 help groups (QuestGroupPolicy.h, QuestGroupWorld.cpp); Enable: 0 off, 1 all, 2 cohort B, 3 cohort A.
     uint32 questGroupsEnable = 0;
     uint32 questGroupsScanSeconds = 60;
@@ -1042,6 +1029,10 @@ public:
     bool rosterFarMoveWatchRoute = true;  // hotfix 8.36: walk when a real player is near the route
     uint32 rosterFarMoveArriveSafe = 0;  // twow-repo#601 cand4-B: check the far-move arrival for aggro right before the teleport; 0 off, 1 all, 2 cohort B
     uint32 rosterFarMoveLevelGuard = 0;  // twow-repo#601 cand4 lever (ii): defer a destination with a higher-level hostile spawn near it; 0 off, 1 all, 2 cohort B, 3 cohort A
+    // twow-repo#601 A3 step 1 (owner 04.11.2026, CLI-Deep): the hand-in at a quest giver is never pushed down by the RPG sequencing
+    // (RpgActionMultiplier x0.1, the weighted random sub-action pick, the 10 % / 30 % "rpg cancel" after each RPG action).
+    // 0 off (default), 1 all, 2 cohort B, 3 cohort A.
+    uint32 rpgTurnInFirst = 0;
     uint32 rosterFarMoveLevelGuardMargin = 3;    // spawn level_max >= bot level + Margin (LevelGuardPolicy.h, 1..10)
     float rosterFarMoveLevelGuardRadius = 50.0f; // yd around the chosen point, 2D (10..100)
     // twow-repo#595 P4 S0 + B1 (shortcuts by player proximity): all 0 = today's behaviour (ShortcutPolicy.h)
@@ -1063,6 +1054,10 @@ public:
     float pathPosStuckProgress = 5.0f;  // yards closer that count as progress and restart the window, clamped 1..50
     uint32 pathPosStuckEpisodeMinutes = 30;  // an episode within this many minutes of the previous one escalates the series, clamped 5..240
     uint32 pathPosStuckRateMinutes = 30;  // at most one unstuck / home bind per bot in this many minutes, clamped 5..240
+    // twow-repo#575 / #601 (OB-00 04.11.2026): "combat stuck" / "combat long stuck" count the fight with the current target
+    // (from the combat start, restarted on a target change; CombatStuckClockPolicy.h) instead of the stale "time since last change"
+    // of "combat::self target". 0 off (default), 1 all, 2 cohort B, 3 cohort A; any other value acts like 0.
+    uint32 unstuckCombatFightClock = 0;
     bool pathTaxiTrace = false;  // twow-repo#575 (PATH-01 b): [TaxiUse] / [TransportWait] lines and a minute summary of bot flights and ship waits, 0 = off
     bool pathTransportEdgeTrace = false;  // twow-repo#342 (S1): [TransportWait] state= lines per transport edge episode (attempt / board / arrive / fail) + summary, 0 = off
     bool pathTransportDeckProbe = false;  // twow-repo#342 (S3b-0): once per dock wait 8 fixed vessel deck probes, one [TransportDeck] line (30/min) + [TransportBoard] summary, 0 = off

@@ -1,9 +1,9 @@
-
 #include "playerbot/playerbot.h"
 #include "playerbot/ValueEvictPolicy.h"
 #include "RpgSubActions.h"
 #include "ChooseRpgTargetAction.h"
 #include "playerbot/PlayerbotAIConfig.h"
+#include "playerbot/CohortPolicy.h"   // twow-repo#601 A3 step 1 (Rpg.TurnInFirst)
 #include "playerbot/strategy/values/PossibleRpgTargetsValue.h"
 #include "playerbot/strategy/values/Formations.h"
 #include "playerbot/strategy/values/SharedValueContext.h"
@@ -17,6 +17,11 @@
 
 
 using namespace ai;
+
+bool ai::RpgTurnInFirst(PlayerbotAI* ai)
+{
+    return ai && ai->GetBot() && ai::cohort::Applies(sPlayerbotAIConfig.rpgTurnInFirst, ai->GetBot()->GetGUIDLow()) && !ai->HasRealPlayerMaster();
+}
 
 void RpgHelper::BeforeExecute()
 {
@@ -34,8 +39,17 @@ void RpgHelper::AfterExecute(bool doDelay, bool waitForGroup, std::string nextAc
         goToDifferentTargetChance = 30;
 
     if (nextAction == "rpg" && urand(0, 100) < goToDifferentTargetChance)
-        nextAction = "rpg cancel"; 
-    
+    {
+        // twow-repo#601 A3 step 1 (Rpg.TurnInFirst): no "rpg cancel" while the bot can still hand in a quest at its rpg target (the
+        // cancel would walk it away from a waiting turn-in); the value is read only when the roll would cancel.
+        GuidPosition const target = guidP();
+        int32 const entry = target.IsCreature() ? int32(target.GetEntry()) : -int32(target.GetEntry());
+        if (ai::RpgTurnInFirst(ai) && (target.IsCreature() || target.IsGameObject()) && AI_VALUE2(bool, "can turn in quest npc", entry))
+            sLog.outBasic("[RpgTurnIn] state=cancel_skipped bot=%u level=%u entry=%d", bot->GetGUIDLow(), bot->GetLevel(), entry);
+        else
+            nextAction = "rpg cancel";
+    }
+
     SET_AI_VALUE(std::string, "next rpg action", nextAction);
 
     if(doDelay)

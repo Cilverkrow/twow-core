@@ -14,6 +14,9 @@ float RpgActionMultiplier::GetValue(Action* action)
 
     if (dynamic_cast<RpgEnabled*>(action))
     {
+        // twow-repo#601 A3 step 1 (Rpg.TurnInFirst): the hand-in at the quest giver is never multiplied down by the sequencing below.
+        if (name == RpgEndQuestActionName && RpgTurnInFirst(ai))
+            return 1.0f;
         if (!nextAction.empty() && name != nextAction)
             return 0.1f;
         else if(nextAction.empty() && name == "rpg cancel")

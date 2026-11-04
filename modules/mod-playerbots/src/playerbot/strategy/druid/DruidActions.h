@@ -211,31 +211,15 @@ namespace ai
 
         bool IsTargetValid(Unit* target) override
         {
-            // twow-repo#568 D30 (AiPlayerbot.Diet.InnervateFix): same fix as InnervateTrigger::IsTargetValid.
-            if (sPlayerbotAIConfig.dietInnervateFix)
-            {
-                const bool validTarget = CastSpellTargetAction::IsTargetValid(target) ||
-                    (target == bot && ai->IsSafe(bot) && !bot->IsDead() && !ai->HasAura("innervate", bot));
-                if (!validTarget)
-                    return false;
+            // twow-repo#568 D30: same fix as InnervateTrigger::IsTargetValid.
+            const bool validTarget = CastSpellTargetAction::IsTargetValid(target) ||
+                (target == bot && ai->IsSafe(bot) && !bot->IsDead() && !ai->HasAura("innervate", bot));
+            if (!validTarget)
+                return false;
 
-                const uint32 currentMana = target->GetPower(POWER_MANA);
-                const uint32 maxMana = target->GetMaxPower(POWER_MANA);
-                return currentMana > 0 && maxMana > 0 && currentMana * 100 / maxMana < sPlayerbotAIConfig.lowMana;
-            }
-
-            if (CastSpellTargetAction::IsTargetValid(target))
-            {
-                const uint32 currentMana = target->GetPower(POWER_MANA);
-                if (currentMana > 0)
-                {
-                    const uint32 maxMana = target->GetMaxPower(POWER_MANA);
-                    const uint32 currentManaPct = (uint32)(currentMana / maxMana) * 100;
-                    return currentManaPct < sPlayerbotAIConfig.lowMana;
-                }
-            }
-
-            return false;
+            const uint32 currentMana = target->GetPower(POWER_MANA);
+            const uint32 maxMana = target->GetMaxPower(POWER_MANA);
+            return currentMana > 0 && maxMana > 0 && currentMana * 100 / maxMana < sPlayerbotAIConfig.lowMana;
         }
     };
 

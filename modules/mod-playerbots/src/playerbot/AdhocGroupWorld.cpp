@@ -10,6 +10,8 @@
 #include "playerbot/QuestGroupWorld.h"
 #include "playerbot/TravelMgr.h"
 #include "playerbot/ServerFacade.h"
+#include "playerbot/CohortPolicy.h"
+#include "playerbot/GroupOps.h"        // BOT-12: the heavy-tick mark of the group queue
 #include "Group/Group.h"
 
 #include <algorithm>
@@ -152,9 +154,14 @@ bool WorldThreadManager::CheckLeave(Player* bot, Group* group, std::uint32_t now
 
     Player* leader = sObjectMgr.GetPlayer(group->GetLeaderGuid());
     float const radius = sPlayerbotAIConfig.botGroupsAdhocRadius;
-    bool const outOfRange = leader && leader != bot &&
-        (leader->GetMapId() != bot->GetMapId() || sServerFacade.GetDistance2d(bot, leader) > 2.0f * radius);
+    // BOT-12 (AiPlayerbot.BotGroups.LeaderOtherMap): the same rule as AdhocGroupAction::CheckLeave, in this existing pass.
+    bool const otherMapRule = ai::cohort::Applies(sPlayerbotAIConfig.botGroupsLeaderOtherMap, bot->GetGUIDLow());
+    bool const otherMap = leader && leader != bot && OnOtherMap(leader->GetMapId() != bot->GetMapId(),
+        otherMapRule && leader->GetInstanceId() != bot->GetInstanceId(), bot->GetMap()->Instanceable());
+    bool const outOfRange = leader && leader != bot && OutOfRangeFact(otherMap,
+        !otherMap && sServerFacade.GetDistance2d(bot, leader) > 2.0f * radius, otherMapRule);
     track.outOfRangeSince = outOfRange ? (track.outOfRangeSince ? track.outOfRangeSince : now) : 0;
+    track.leaderOtherMapSince = LeaderOtherMapClock(otherMapRule, leader != nullptr, otherMap, track.leaderOtherMapSince, now);
 
     std::uint32_t minLevel = bot->GetLevel();
     std::uint32_t maxLevel = bot->GetLevel();
@@ -171,6 +178,8 @@ bool WorldThreadManager::CheckLeave(Player* bot, Group* group, std::uint32_t now
     facts.outOfRangeSince = track.outOfRangeSince;
     facts.levelWindowSince = track.levelWindowSince;
     facts.lastProgress = track.lastProgress;
+    facts.leaderOtherMapSince = track.leaderOtherMapSince;
+    facts.leaderOtherMapSeconds = otherMapRule ? sPlayerbotAIConfig.botGroupsLeaderOtherMapSeconds : 0;
 
     // twow-repo#365 HelpUntilDone (owner 25.10.2026): whoever is done stays and follows a member that still works on the
     // objective, until no member does (Leave::GroupDone). The helper's idle clock is the group's freshest progress.
@@ -432,6 +441,9 @@ void WorldThreadManager::Update(std::map<std::uint32_t, Player*> const& bots, st
     std::uint32_t const wallUs = UsSince(passStart);
     minute.passUsMax = std::max(minute.passUsMax, wallUs);
     minute.stallUsMax = std::max(minute.stallUsMax, thread_cpu::StallUs(wallUs, cpuStart, thread_cpu::NowUs()));
+    // BOT-12 (twow-repo#677, BotGroups.OpQueue; design 3.2): this update ran a scan slice (and maybe invites and leaves) - the
+    // world tick's heavy group step; the group queue runs no op in the same tick.
+    group_ops::MarkHeavyTick();
 }
 
 // Stages 1 and 2 for the bots pass.guids[pass.next, end): first the leave rules of all of them, then their candidates - with

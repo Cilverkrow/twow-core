@@ -26,6 +26,8 @@
 
 #include <numeric>
 #include <iomanip>
+#include <unordered_map>
+#include <vector>
 
 using namespace ai;
 using namespace MaNGOS;
@@ -584,6 +586,64 @@ bool WorldPosition::HasFaction(const Team team) const
     return false;
 }
 
+namespace
+{
+// BOT-12 (AiPlayerbot.Travel.ElevatorScanCache, twow-repo#677): the elevator branch of getTransports below walked all
+// gameobject spawn data of every map (sObjectMgr.DoGOData) on every call. A bot waiting at a dock node with entry 0 paid that
+// every update (cand4G u2: a follower at the Grom'gol zeppelin dock for 10 h, ~13 ms per update). With the switch on, the
+// branch walks a list per map of the spawns whose template type can be a GenericTransport at all - GAMEOBJECT_TYPE_TRANSPORT
+// (elevators, trams) and GAMEOBJECT_TYPE_MO_TRANSPORT (boats, zeppelins) - built once from the same spawn data.
+//
+// Same result as the full walk, for any map and entry: the walk kept a spawn only if its map matched, its entry matched (or
+// entry 0) and the live object behind it is a GenericTransport. A spawn of any other template type is never one, so dropping
+// it beforehand drops no hit, and the map, entry, guid, lookup and cast below are the same code for the rest. (In this core
+// no spawn from gameobject data is one either: spawns are plain GameObjects with HIGHGUID_GAMEOBJECT guids, and
+// GenericTransport = Transport, built only by TransportMgr with HIGHGUID_MO_TRANSPORT guids - both walks come back empty.)
+// The spawn data is loaded at startup; a spawn a GM adds later (.gobject add) is not in the list - a plain GameObject, so
+// that changes no result either.
+struct ElevatorSpawn
+{
+    uint32 guid;
+    uint32 entry;
+};
+
+typedef std::unordered_map<uint32, std::vector<ElevatorSpawn>> ElevatorSpawnIndex;
+
+class CollectElevatorSpawns
+{
+public:
+    explicit CollectElevatorSpawns(ElevatorSpawnIndex& out) : byMap(out) {}
+
+    bool operator()(GameObjectDataPair const& dataPair)
+    {
+        GameObjectInfo const* info = sObjectMgr.GetGameObjectInfo(dataPair.second.id);
+        if (info && (info->type == GAMEOBJECT_TYPE_TRANSPORT || info->type == GAMEOBJECT_TYPE_MO_TRANSPORT))
+            byMap[dataPair.second.position.mapid].push_back({ dataPair.first, dataPair.second.id });
+        return false;
+    }
+
+private:
+    ElevatorSpawnIndex& byMap;
+};
+
+ElevatorSpawnIndex BuildElevatorSpawns()
+{
+    ElevatorSpawnIndex byMap;
+    CollectElevatorSpawns worker(byMap);
+    sObjectMgr.DoGOData(worker);
+    return byMap;
+}
+
+// Built on the first call, from whichever map thread comes first: a function-local static is initialised under the
+// compiler's lock (C++11) and the other map threads wait for it. Read-only afterwards, so no lock per call.
+std::vector<ElevatorSpawn> const* ElevatorSpawnsOf(uint32 mapId)
+{
+    static ElevatorSpawnIndex const byMap = BuildElevatorSpawns();
+    auto const it = byMap.find(mapId);
+    return it == byMap.end() ? nullptr : &it->second;
+}
+}
+
 std::set<GenericTransport*> WorldPosition::getTransports(uint32 entry)
 {
     std::set<GenericTransport*> transports;
@@ -593,6 +653,20 @@ std::set<GenericTransport*> WorldPosition::getTransports(uint32 entry)
 
     if (transports.empty() || !entry) //Elevators&rams
     {
+        // BOT-12 (Travel.ElevatorScanCache): the transport-type spawns of this map only, same result (see above). A null
+        // position (0,0,0) matched every map in the walk, so it keeps the walk.
+        if (sPlayerbotAIConfig.travelElevatorScanCache && *this)
+        {
+            if (std::vector<ElevatorSpawn> const* spawns = ElevatorSpawnsOf(getMapId()))
+                for (ElevatorSpawn const& spawn : *spawns)
+                    if (!entry || spawn.entry == entry)
+                        if (GameObject* go = getMap(getFirstInstanceId())->GetGameObject(
+                                ObjectGuid(HIGHGUID_GAMEOBJECT, spawn.entry, spawn.guid)))
+                            if (GenericTransport* transport = dynamic_cast<GenericTransport*>(go))
+                                transports.insert(transport);
+            return transports;
+        }
+
         // gopair->first is a bare spawn id, not an ObjectGuid. Handing it over
         // straight compiled - ObjectGuid has a converting constructor from uint64 -
         // but produced a guid whose high bits are 0 instead of HIGHGUID_GAMEOBJECT,

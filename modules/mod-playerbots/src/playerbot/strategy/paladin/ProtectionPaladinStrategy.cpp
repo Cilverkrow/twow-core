@@ -64,10 +64,10 @@ void ProtectionPaladinStrategy::InitCombatTriggers(std::list<TriggerNode*>& trig
         "exorcism",
         NextAction::array(0, new NextAction("exorcism", ACTION_NORMAL + 3), NULL)));
 
-    // twow-repo#568 D42 (AiPlayerbot.Diet.ProtSealDirect): no Seal of Vengeance in vanilla, push its alternative.
+    // twow-repo#568 D42: no Seal of Vengeance in vanilla, push its alternative.
     triggers.push_back(new TriggerNode(
         "seal",
-        NextAction::array(0, new NextAction(sPlayerbotAIConfig.dietProtSealDirect ? "seal of righteousness" : "seal of vengeance", ACTION_NORMAL + 2), NULL)));
+        NextAction::array(0, new NextAction("seal of righteousness", ACTION_NORMAL + 2), NULL)));
 
     triggers.push_back(new TriggerNode(
         "judgement",
