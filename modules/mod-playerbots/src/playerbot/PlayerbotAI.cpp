@@ -58,6 +58,7 @@
 #include "strategy/values/PositionValue.h"
 #include "playerbot/ServerFacade.h"
 #include "playerbot/TravelMgr.h"
+#include "playerbot/strategy/values/TravelValues.h"   // twow-repo#333 P1-aa: ProfessionTripTick
 #include "playerbot/TravelNode.h"   // twow-repo#575 (PATH-01 F4): WalkToMachineByGraph
 #include "playerbot/DangerMapPolicy.h"
 #include "playerbot/GrindCapPolicy.h"
@@ -1475,6 +1476,10 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
                         travelTarget->SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);
                 }
             }
+            // twow-repo#333 P1-aa (AiPlayerbot.ProfessionTraining.TripNoGrind, M1r run 8: a 600 s near trip ended 19 min late): an open
+            // profession trip ends at its hold end within a minute, in and out of combat, also when no travel action runs.
+            if (sPlayerbotAIConfig.professionTrainingTripNoGrind)
+                ai::ProfessionTripTick(this);
             for (auto const& [questId, status] : bot->getQuestStatusMap())
             {
                 uint64 entry = uint64(questId) * 1000003ULL + uint64(status.m_status) * 131ULL + (status.m_rewarded ? 7ULL : 0ULL);

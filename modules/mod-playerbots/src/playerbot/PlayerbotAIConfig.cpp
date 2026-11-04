@@ -1605,6 +1605,13 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[ProfTravel] config key=TurnInGateSkipNoRoute value=%u result=off (0 off, 1 all, 2 cohort B)", professionTrainingTurnInGateSkipNoRoute);
         professionTrainingTurnInGateSkipNoRoute = 0;
     }
+    // twow-repo#333 Berufe P1-aa (OB-00 04.11.2026): an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B, 3 cohort A).
+    professionTrainingTripNoGrind = config.GetIntDefault("AiPlayerbot.ProfessionTraining.TripNoGrind", 0);
+    if (professionTrainingTripNoGrind > 3)
+    {
+        sLog.outError("[ProfTravel] config key=TripNoGrind value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", professionTrainingTripNoGrind);
+        professionTrainingTripNoGrind = 0;
+    }
     professionUseToolBuy = config.GetIntDefault("AiPlayerbot.ProfessionUse.ToolBuy", 0);
     if (professionUseToolBuy > 2)
         professionUseToolBuy = 0;
@@ -1929,6 +1936,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Perf.RouteTimeTrace", Value(perfRouteTimeTrace)},
             {"ProfessionTraining.NearRadius", Value(professionTrainingNearRadius)},
             {"ProfessionTraining.Travel", Value(professionTrainingTravel)},
+            {"ProfessionTraining.TripNoGrind", Value(professionTrainingTripNoGrind)},
             {"ProfessionTraining.TurnInGateSkipNoRoute", Value(professionTrainingTurnInGateSkipNoRoute)},
             {"ProfessionTraining.TurnInGateSkipSuppressed", Value(professionTrainingTurnInGateSkipSuppressed)},
             {"ProfessionUse.ToolBuy", Value(professionUseToolBuy)},
