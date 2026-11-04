@@ -156,21 +156,21 @@ extract_between("${choose}" "ai::turnin_park::RouteOutcome::NoTarget," "// Hotfi
 require_text("${no_target}" "chooseBudgetExceeded, lastRejects.crossMap + lastRejects.zoneLevel + lastRejects.dangerMap, lastRejects.turnInSuppressed,"
   "all route danger deferrals and suppressed routes (critic B1.3)")
 require_text("${no_target}"
-  "lastRejects.movedAway + lastRejects.rangeSkip + lastRejects.resumeSkipped,\n                sPlayerbotAIConfig.questFirstProgressionTurnInParkCountsRouteDanger)))\n            {\n                SET_AI_VALUE2(bool, \"no active travel destinations\", futureTravelPurpose, false);\n                SET_AI_VALUE2(int, \"manual int\", \"quest route failures\", 0);\n                SET_AI_VALUE2(int, \"manual int\", \"quest route backoff until\", 0);\n            }"
+  "lastRejects.movedAway + lastRejects.rangeSkip + lastRejects.resumeSkipped + lastRejects.startZone + lastRejects.staleKeepZone,\n                sPlayerbotAIConfig.questFirstProgressionTurnInParkCountsRouteDanger)))\n            {\n                SET_AI_VALUE2(bool, \"no active travel destinations\", futureTravelPurpose, false);\n                SET_AI_VALUE2(int, \"manual int\", \"quest route failures\", 0);\n                SET_AI_VALUE2(int, \"manual int\", \"quest route backoff until\", 0);\n            }"
   "every way a taker goes unjudged and the route danger switch; only a park ends the backoff")
 extract_between("${choose}" "// Hotfix 8.1: a route was found - no more backoff." "setNewTarget(requester, &newTarget, travelTarget);" chosen "no_route after a choice")
 require_text("${chosen}" "ai::turnin_park::RouteOutcome::Taker : ai::turnin_park::RouteOutcome::Fallback," "the quest giver fallback counts, a taker does not")
 require_text("${chosen}" "chooseBudgetExceeded, lastRejects.crossMap + lastRejects.zoneLevel + lastRejects.dangerMap, lastRejects.turnInSuppressed,"
   "same route danger inputs after a choice")
 require_text("${chosen}"
-  "lastRejects.movedAway + lastRejects.rangeSkip + lastRejects.resumeSkipped,\n            sPlayerbotAIConfig.questFirstProgressionTurnInParkCountsRouteDanger));"
+  "lastRejects.movedAway + lastRejects.rangeSkip + lastRejects.resumeSkipped + lastRejects.startZone + lastRejects.staleKeepZone,\n            sPlayerbotAIConfig.questFirstProgressionTurnInParkCountsRouteDanger));"
   "same unjudged inputs after a choice")
 # Exactly these calls, each with all groups - no call site with fewer reasons. Four since twow-repo#601 no-route gate (CLI-Deep
 # 29.10.2026): NoteTurnInRouteResults judges the same request with the same inputs right before each NoteNoRouteTurnIns.
 string(REGEX MATCHALL "CountsAsNoRoute\\(" no_route_calls "${choose}")
 string(REGEX MATCHALL "lastRejects\\.crossMap \\+ lastRejects\\.zoneLevel \\+ lastRejects\\.dangerMap, lastRejects\\.turnInSuppressed,"
   route_danger_groups "${choose}")
-string(REGEX MATCHALL "lastRejects\\.movedAway \\+ lastRejects\\.rangeSkip \\+ lastRejects\\.resumeSkipped,"
+string(REGEX MATCHALL "lastRejects\\.movedAway \\+ lastRejects\\.rangeSkip \\+ lastRejects\\.resumeSkipped \\+ lastRejects\\.startZone \\+ lastRejects\\.staleKeepZone,"
   unjudged_groups "${choose}")
 # The local quest hub filter is no "not judged" case: a retry hides the same takers again, so the
 # hub taker's own reason decides (bots 44, 310, 606, 2935 and 4512 stayed in hand-in-only in v24).

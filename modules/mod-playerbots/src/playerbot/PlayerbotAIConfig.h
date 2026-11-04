@@ -998,6 +998,16 @@ public:
     uint32 questFirstProgressionStaleObjectiveBots = 3;           // 1..8
     uint32 questFirstProgressionStaleObjectiveWindowSeconds = 3600;
     uint32 questFirstProgressionStaleObjectiveSeconds = 3600;
+    // twow-repo#601 owner rule R1 (04.11.2026, CLI-Deep; ZoneKeepPolicy.h): a stale objective is no reason to change zone. A quest search
+    // that came back empty while it skipped stale objectives neither widens nor counts toward a band step, and for Seconds the bot takes
+    // no quest target outside its zone (turn-ins exempt). Mode 0 off (default), 1 all, 2 cohort B, 3 cohort A.
+    uint32 questFirstProgressionStaleKeepZone = 0;
+    uint32 questFirstProgressionStaleKeepZoneSeconds = 900;      // 60..3600
+    // twow-repo#601 owner rule R1: below this level a roster bot on its own takes no travel target outside its start zone, no band step
+    // and no rescue out of it. 0 = off (default); the owner value is 5. .Cohort picks the bots for an in-realm A/B: 0 none, 1 all (default),
+    // 2 cohort B, 3 cohort A.
+    uint32 questFirstProgressionStartZoneMinLevel = 0;
+    uint32 questFirstProgressionStartZoneMinLevelCohort = 1;
     // twow-repo#601 S5a F4 (OB-00 24.10.2026, owner D1 "rumstehen ist keine Option"): from this many quest searches in a row
     // without a route on (the F1 streak), a search that does not step walks toward the rung the step would take until the
     // route backoff ends. 0 = off (default), 1..10; other values act like 0.
