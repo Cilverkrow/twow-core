@@ -48,8 +48,7 @@ public:
     public:
         CastScatterShotOnClosestAttackerTargetingMeAction(PlayerbotAI* ai) : CastRangedDebuffSpellAction(ai, "scatter shot") {}
         // twow-repo#568 (D19): the value is registered as "closest attacker targeting me" (ValueContext.h); the old
-        // "... target" name had no creator, so GetTarget would have read a null value. Created only with
-        // AiPlayerbot.Diet.HunterTalentShotsKnown = 1.
+        // "... target" name had no creator, so GetTarget would have read a null value.
         std::string GetTargetName() override { return "closest attacker targeting me"; }
     };
 

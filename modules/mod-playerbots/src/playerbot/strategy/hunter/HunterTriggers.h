@@ -9,7 +9,7 @@ namespace ai
     BEGIN_TRIGGER(HunterNoStingsActiveTrigger, Trigger)
     END_TRIGGER()
 
-    // twow-repo#568 (D10, AiPlayerbot.Diet.HunterBestSting): 'no stings' for the one viper/serpent spec node, active
+    // twow-repo#568 (D10): 'no stings' for the one viper/serpent spec node, active
     // only when one of those stings can be used. Registered as "no stings usable"; the manual 'sting <x>' strategies
     // keep 'no stings' and its old result.
     class HunterNoStingsUsableTrigger : public HunterNoStingsActiveTrigger
@@ -25,11 +25,11 @@ namespace ai
     public:
         AspectOfTheHawkTrigger(PlayerbotAI* ai) : BuffTrigger(ai, "aspect of the hawk") {}
 #ifdef MANGOSBOT_ZERO
-        // twow-repo#568 (D65, AiPlayerbot.Diet.HunterAspectGate): the "aspect of the hawk" node has no alternative and
+        // twow-repo#568 (D65): the "aspect of the hawk" node has no alternative and
         // its cast asks CanCastSpell for the same "spell id" value, so without a known Hawk it always ended IMPOSSIBLE.
         virtual bool IsActive() override
         {
-            if (sPlayerbotAIConfig.dietHunterAspectGate && !AI_VALUE2(uint32, "spell id", spell))
+            if (!AI_VALUE2(uint32, "spell id", spell))
                 return false;
 
             return BuffTrigger::IsActive();
@@ -178,17 +178,14 @@ namespace ai
     public:
         RapidFireTrigger(PlayerbotAI* ai) : BuffTrigger(ai, "rapid fire") {}
 #ifdef MANGOSBOT_ZERO
-        // twow-repo#568 (D66, AiPlayerbot.Diet.HunterRapidFireGate): the cast asks CanCastSpell for the "spell id"
+        // twow-repo#568 (D66): the cast asks CanCastSpell for the "spell id"
         // value and IsSpellReady, so an unknown or cooling-down Rapid Fire always ended IMPOSSIBLE and fell through
         // to "readiness". A bot that knows Readiness keeps that old path.
         virtual bool IsActive() override
         {
-            if (sPlayerbotAIConfig.dietHunterRapidFireGate)
-            {
-                const uint32 spellId = AI_VALUE2(uint32, "spell id", spell);
-                if ((!spellId || !bot->IsSpellReady(spellId)) && !AI_VALUE2(uint32, "spell id", "readiness"))
-                    return false;
-            }
+            const uint32 spellId = AI_VALUE2(uint32, "spell id", spell);
+            if ((!spellId || !bot->IsSpellReady(spellId)) && !AI_VALUE2(uint32, "spell id", "readiness"))
+                return false;
 
             return BuffTrigger::IsActive();
         }
@@ -215,9 +212,9 @@ namespace ai
         virtual bool IsActive() override;
     };
 
-    // twow-repo#568 (D19, AiPlayerbot.Diet.HunterTalentShotsKnown): "target of attacker close" for one talent spell
+    // twow-repo#568 (D19): "target of attacker close" for one talent spell
     // (Deterrence 19263 Survival, Scatter Shot 19503 Marksmanship; no trainer rows). Registered as "deterrence" and
-    // "scatter shot on closest attacker" and used by the vanilla buff/cc strategies only with the switch on. It asks
+    // "scatter shot on closest attacker" and used by the vanilla buff/cc strategies. It asks
     // for the known and ready spell before the closest-attacker lookup; without it the node ended IMPOSSIBLE.
     class TalentSpellTargetOfAttackerCloseTrigger : public TargetOfAttackerInRange
     {
@@ -238,7 +235,7 @@ namespace ai
         std::string spellName;
     };
 
-    // twow-repo#568 (D47, AiPlayerbot.Diet.HunterTranqKnown): "dispel enrage" for the hunter reaction node, registered
+    // twow-repo#568 (D47): "dispel enrage" for the hunter reaction node, registered
     // as "tranquilizing shot". Tranquilizing Shot 19801 (level 60, 20 s cooldown) comes only from a raid tome or
     // AutoLearnDroppedSpells, so the trigger asks for the known, ready spell before it copies the target's auras.
     class TranquilizingShotTrigger : public DispelEnrageOnTargetTrigger

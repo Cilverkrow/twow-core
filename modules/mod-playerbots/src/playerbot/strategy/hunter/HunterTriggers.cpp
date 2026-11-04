@@ -16,10 +16,10 @@ bool HunterNoStingsActiveTrigger::IsActive()
 
 bool HunterNoStingsUsableTrigger::IsActive()
 {
-    // twow-repo#568 (D10, AiPlayerbot.Diet.HunterBestSting): the old 'no stings' check, then fire only when one sting
+    // twow-repo#568 (D10): the old 'no stings' check, then fire only when one sting
     // of the viper/serpent spec node can be used, with the same rules as CastViperStingAction /
-    // CastSerpentStingAction::isUseful under the switch. Viper sting is learned at 36 and serpent sting at 4
-    // (spell_template 3034 / 1978). Only the switch-on spec nodes use this trigger; 'no stings' (manual
+    // CastSerpentStingAction::isUseful. Viper sting is learned at 36 and serpent sting at 4
+    // (spell_template 3034 / 1978). Only the spec nodes use this trigger; 'no stings' (manual
     // 'sting serpent/scorpid/viper') is unchanged.
     if (!HunterNoStingsActiveTrigger::IsActive())
         return false;

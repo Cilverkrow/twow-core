@@ -707,13 +707,7 @@ bool PlayerbotAIConfig::Initialize()
     dietFeralNoCatSwipe = config.GetBoolDefault("AiPlayerbot.Diet.FeralNoCatSwipe", false);
     dietDruidCooldownGates = config.GetBoolDefault("AiPlayerbot.Diet.DruidCooldownGates", false);
     dietLevelingDruidKnownSpells = config.GetBoolDefault("AiPlayerbot.Diet.LevelingDruidKnownSpells", false);
-    dietHunterBestSting = config.GetBoolDefault("AiPlayerbot.Diet.HunterBestSting", false);
-    dietHunterTalentShotsKnown = config.GetBoolDefault("AiPlayerbot.Diet.HunterTalentShotsKnown", false);
-    dietHunterTranqKnown = config.GetBoolDefault("AiPlayerbot.Diet.HunterTranqKnown", false);
-    dietLootRollPending = config.GetBoolDefault("AiPlayerbot.Diet.LootRollPending", false);
     perfEventTriggerSkip = config.GetBoolDefault("AiPlayerbot.Perf.EventTriggerSkip", false);
-    dietHunterAspectGate = config.GetBoolDefault("AiPlayerbot.Diet.HunterAspectGate", false);
-    dietHunterRapidFireGate = config.GetBoolDefault("AiPlayerbot.Diet.HunterRapidFireGate", false);
     dietWanderSoloGuard = config.GetBoolDefault("AiPlayerbot.Diet.WanderSoloGuard", false);
     dietRpgDeadTriggers = config.GetBoolDefault("AiPlayerbot.Diet.RpgDeadTriggers", false);
     dietDuelTriggerGate = config.GetBoolDefault("AiPlayerbot.Diet.DuelTriggerGate", false);
