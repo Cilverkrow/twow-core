@@ -1701,6 +1701,15 @@ AiPlayerbot.RosterFarMove.ArriveSafe = 0
 AiPlayerbot.RosterFarMove.LevelGuard = 0
 AiPlayerbot.RosterFarMove.LevelGuard.Margin = 3
 AiPlayerbot.RosterFarMove.LevelGuard.Radius = 50
+# twow-repo#601 A3 step 1 (owner 04.11.2026 via OB-00, A3-BOT-LOGIK.md 1.3): the RPG sequencing of upstream mangosbot - the generic
+# "rpg" action picks ONE sub-action by a weighted random draw (relevance - 1) x 1000, RpgActionMultiplier then gives every other RPG
+# action x0.1, and after each RPG action a 10 % (30 % in a group or with a real master) "rpg cancel" leaves the target - made a
+# hand-in at the quest giver wait behind start quest / sell / train (90 vs 80 vs ... weights, near uniform) or lose it to a cancel.
+# With Rpg.TurnInFirst a possible "rpg end quest" is picked first (no draw), is never multiplied down, and no "rpg cancel" is
+# rolled while the bot can still hand in at its rpg target ([RpgTurnIn] state=cancel_skipped). Variety elsewhere stays as before.
+#   0 = off (default), 1 = every bot on its own, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid); other values
+#   act like 0. A bot led by a real player is never changed.
+AiPlayerbot.Rpg.TurnInFirst = 0
 # twow-repo#595 P4 S0 (OB-00 17.10.2026, shortcuts by player proximity; measurement, no behaviour change): the world
 # thread keeps a snapshot of where the online real players are (map, zone, area, x, y and a camera body that differs;
 # GMs only while visible), built after the map update at most once a second, only while Trace = 1 or NearScope > 0.
