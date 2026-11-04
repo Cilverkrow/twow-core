@@ -1642,6 +1642,24 @@ add_test(NAME adhoc_group_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/adhoc_group_source_contract_tests.cmake")
 
+# BOT-12 (twow-repo#677, #628; AiPlayerbot.BotGroups.OpQueue): the world-thread group-operation queue and its pure rules
+# (GroupOpQueue.h, GroupOpPolicy.h; no game header). The game side is pinned by
+# t/contracts.d/bot12_group_op_queue_source_contract_tests.cmake.
+add_executable(group_op_queue_tests
+  "${PB_MODULE_DIR}/t/group_op_queue_tests.cpp")
+
+target_include_directories(group_op_queue_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+target_link_libraries(group_op_queue_tests PRIVATE Threads::Threads)
+
+set_target_properties(group_op_queue_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME group_op_queue
+  COMMAND group_op_queue_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # #628: ad-hoc groups form and leave on the world thread (AdHoc.WorldThread).
 add_test(NAME adhoc_group_world_thread_source_contract
   COMMAND "${CMAKE_COMMAND}"

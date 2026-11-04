@@ -13,6 +13,7 @@
 #include "playerbot/SpecPathPolicy.h"
 #include "playerbot/EmergencyLadderPolicy.h"
 #include "playerbot/RestGatePolicy.h"
+#include "playerbot/GroupOpPolicy.h"   // BOT-12: BotGroups.OpQueue clamps
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
@@ -890,6 +891,24 @@ bool PlayerbotAIConfig::Initialize()
     botGroupsAdhocScanSlices = std::min<uint32>(64, (uint32)config.GetIntDefault("AiPlayerbot.BotGroups.AdHoc.ScanSlices", 0));
     botGroupsAdhocScanBudgetUs = std::min<uint32>(20000, (uint32)config.GetIntDefault("AiPlayerbot.BotGroups.AdHoc.ScanBudgetUs", 0));
     botGroupsAdhocHelpUntilDone = config.GetBoolDefault("AiPlayerbot.BotGroups.AdHoc.HelpUntilDone", false);   // twow-repo#365
+    // BOT-12 (twow-repo#677, #628): an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B, 3 cohort A).
+    botGroupsLeaderOtherMap = config.GetIntDefault("AiPlayerbot.BotGroups.LeaderOtherMap", 0);
+    if (botGroupsLeaderOtherMap > 3)
+    {
+        sLog.outError("[BotGroup] config key=LeaderOtherMap value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", botGroupsLeaderOtherMap);
+        botGroupsLeaderOtherMap = 0;
+    }
+    botGroupsLeaderOtherMapSeconds = std::min<uint32>(900, uint32(std::max<int32>(30, config.GetIntDefault("AiPlayerbot.BotGroups.LeaderOtherMapSeconds", 120))));
+    // BOT-12 (twow-repo#677, #628): the world-thread group queue (GroupOpPolicy.h); an unknown mode is off.
+    botGroupsOpQueue = uint32(config.GetIntDefault("AiPlayerbot.BotGroups.OpQueue", 0));
+    if (!ai::group_ops::ValidMode(botGroupsOpQueue))
+    {
+        sLog.outError("[GroupOps] config key=OpQueue value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", botGroupsOpQueue);
+        botGroupsOpQueue = 0;
+    }
+    botGroupsOpQueueOpsPerTick = ai::group_ops::ClampOpsPerTick(config.GetIntDefault("AiPlayerbot.BotGroups.OpQueueOpsPerTick", 1));
+    botGroupsOpQueueMaxDepth = ai::group_ops::ClampMaxDepth(config.GetIntDefault("AiPlayerbot.BotGroups.OpQueueMaxDepth", 2048));
+    botGroupsOpQueueAlertAgeSeconds = ai::group_ops::ClampAlertAgeSeconds(config.GetIntDefault("AiPlayerbot.BotGroups.OpQueueAlertAgeSeconds", 60));
     questGroupsEnable = (uint32)config.GetIntDefault("AiPlayerbot.QuestGroups.Enable", 0);
     questGroupsScanSeconds = std::max<uint32>(10, config.GetIntDefault("AiPlayerbot.QuestGroups.ScanSeconds", 60));
     questGroupsScanSlices = std::min<uint32>(64, (uint32)config.GetIntDefault("AiPlayerbot.QuestGroups.ScanSlices", 0));
@@ -1596,6 +1615,8 @@ bool PlayerbotAIConfig::Initialize()
     travelRpgAreaLevelFromSpawn = config.GetIntDefault("AiPlayerbot.Travel.RpgAreaLevelFromSpawn", 0);
     if (travelRpgAreaLevelFromSpawn > 2)
         travelRpgAreaLevelFromSpawn = 0;
+    // BOT-12 (twow-repo#677): the elevator branch of getTransports from a per-map spawn list, built once (WorldPosition.cpp).
+    travelElevatorScanCache = config.GetBoolDefault("AiPlayerbot.Travel.ElevatorScanCache", false);
     gatherQuestHerbFilter = config.GetIntDefault("AiPlayerbot.Gather.QuestHerbFilter", 0);
     if (gatherQuestHerbFilter > 2)
         gatherQuestHerbFilter = 0;
@@ -1861,6 +1882,12 @@ bool PlayerbotAIConfig::Initialize()
             {"BotGroups.AdHoc.ScanSlices", Value(botGroupsAdhocScanSlices)},
             {"BotGroups.AdHoc.WorldThread", Value(botGroupsAdhocWorldThread)},
             {"BotGroups.Enabled", Value(botGroupsEnabled)},
+            {"BotGroups.LeaderOtherMap", Value(botGroupsLeaderOtherMap)},
+            {"BotGroups.LeaderOtherMapSeconds", Value(botGroupsLeaderOtherMapSeconds)},
+            {"BotGroups.OpQueue", Value(botGroupsOpQueue)},
+            {"BotGroups.OpQueueAlertAgeSeconds", Value(botGroupsOpQueueAlertAgeSeconds)},
+            {"BotGroups.OpQueueMaxDepth", Value(botGroupsOpQueueMaxDepth)},
+            {"BotGroups.OpQueueOpsPerTick", Value(botGroupsOpQueueOpsPerTick)},
             {"BotGroups.WorldThreadDefer", Value(botGroupsWorldThreadDefer)},
             {"BotUpdateTrace", Value(botUpdateTrace)},
             {"Buy.VendorTemplateItems", Value(buyVendorTemplateItems)},
@@ -1986,6 +2013,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Rotation.TankRoguePoison", Value(rotationTankRoguePoison)},
             {"ThreadSafeTeleportAck", Value(threadSafeTeleportAck)},
             {"ThrownUsageFix", Value(thrownUsageFix)},
+            {"Travel.ElevatorScanCache", Value(travelElevatorScanCache)},
             {"Travel.RpgAreaLevelFromSpawn", Value(travelRpgAreaLevelFromSpawn)},
             {"ZoneExit.TurnInNearRadius", Value(zoneExitTurnInNearRadius)},
             {"ZoneExit.TurnInStallCounts", Value(zoneExitTurnInStallCounts)},

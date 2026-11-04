@@ -8,6 +8,7 @@
 #include "playerbot/ScanSlicePolicy.h"
 #include "playerbot/GuidPosition.h"
 #include "playerbot/BotSlots.h"
+#include "playerbot/GroupOps.h"        // BOT-12: the heavy-tick mark of the group queue
 #include "playerbot/PlayerbotAI.h"
 #include "playerbot/strategy/AiObjectContext.h"
 #include "playerbot/PlayerbotAIConfig.h"
@@ -1069,8 +1070,10 @@ void WorldThreadManager::Update(std::map<std::uint32_t, Player*> const& bots, st
         minute.bots = std::max(minute.bots, std::uint32_t(bots.size()));
     }
     // OneHeavyStep: a running scan waits for an update without a dissolution or a group operation.
+    bool scanned = false;   // BOT-12: a scan slice is world-thread group work too (design 3.2)
     if (round.active && !HeavyStepTaken(oneStep, heavy))
     {
+        scanned = true;
         passFormUs = 0;
         auto const scanStart = std::chrono::steady_clock::now();
         ScanBots(bots, scan_slice::SliceEnd(round.guids.size(), round.next, sPlayerbotAIConfig.questGroupsScanSlices), now);
@@ -1088,6 +1091,10 @@ void WorldThreadManager::Update(std::map<std::uint32_t, Player*> const& bots, st
     std::uint32_t const wallUs = UsSince(start);
     minute.scanUsMax = std::max(minute.scanUsMax, wallUs);
     minute.stallUsMax = std::max(minute.stallUsMax, thread_cpu::StallUs(wallUs, cpuStart, thread_cpu::NowUs()));
+    // BOT-12 (twow-repo#677, BotGroups.OpQueue; design 3.2): a dissolution, a group operation or a scan slice is this world
+    // tick's heavy group step - the group queue runs no op in the same tick.
+    if (heavy || scanned)
+        group_ops::MarkHeavyTick();
 }
 
 WorldThreadManager& WorldManager()
