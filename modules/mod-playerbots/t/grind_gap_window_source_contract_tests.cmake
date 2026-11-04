@@ -4,8 +4,8 @@ cmake_policy(VERSION 3.16)
 # Pins:
 #  - the pure policy (GapFiller, the population, R1 GapWindowOpen, R2 GapWindowSeconds / GapStatusMs, the window line),
 #  - every new branch asks GrindMode 1 first (IsQuestGapGrind: the config before anything else),
-#  - R1 in NeedTravelPurposeValue(Grind): after S1's turn-in yield, before the S0 GrindFallbackMinutes, FreshGrindFailures
-#    and 8.32 GrindFallbackFailures lines, an unconditional return (S0 and the gap filler never both), any failure class
+#  - R1 in NeedTravelPurposeValue(Grind): after S1's turn-in yield, before the 8.32 GrindFallbackFailures
+#    lines, an unconditional return (S0 and the gap filler never both), any failure class
 #    (OP4), no refresh renewal,
 #  - no money grind for the population outside the R1 window: the grind request only inside it, whichever trigger queued it,
 #    and the gap trip's condition is R1 itself, never the money condition (recheck of review B-F3, OB-10 18.10.2026), so a
@@ -143,8 +143,6 @@ require_order("${grind_case}" "if (ai::quest_failure_class::GrindYieldsToTurnIn(
 foreach(s0_line
     "uint32 const failures = uint32(std::max(0, AI_VALUE2(int, \"manual int\", \"quest route failures\")));"
     "if (ai->IsQuestNoGrind())"
-    "if (!ai::quest_search::GrindFallbackFresh(sPlayerbotAIConfig.questFirstProgressionGrindFallbackMinutes,"
-    "return ai::quest_search::GrindFallback(true, failures, sPlayerbotAIConfig.directTargetsFreshGrindFailures) &&"
     "return ai::quest_search::GrindFallback(true, failures, sPlayerbotAIConfig.questFirstProgressionGrindFallbackFailures) &&")
   require_order("${grind_case}" "if (ai->IsQuestGapGrind())" "${s0_line}" "R1 returns before the S0 / P3-a / 8.32 lines")
 endforeach()
@@ -471,7 +469,7 @@ foreach(src grind_target choose_target)
 endforeach()
 # Recheck (fix 3): the mode-1 text says the money grind happens only inside the window (27c04733), never the old "never
 # through ... the money grind".
-require_text("${conf}" "#       GrindFallbackFailures, GrindFallbackMinutes, DirectTargets.FreshGrindFailures, a travel refresh or a group\n#       member's grind trip (the money grind too only inside that window); the grind trip ends with the backoff" "mode-1 text: the money grind only inside the window")
+require_text("${conf}" "#       GrindFallbackFailures, a travel refresh or a group\n#       member's grind trip (the money grind too only inside that window); the grind trip ends with the backoff" "mode-1 text: the money grind only inside the window")
 forbid_text("${conf}" "DirectTargets.FreshGrindFailures, the money grind, a travel" "mode-1 text: the old 'never through ... the money grind' wording")
 require_text("${conf}" "[GrindWindow] minute starts= expired= engaged=\n#       grey_engaged= no_dest= r4_skips= r4_empty= once a minute, not when all are 0 (r4_empty= = grind target\n#       passes in which the level window skipped a candidate and no target was left)." "the minute line documented (OB-10 18.10.: r4_empty=)")
 foreach(src config_h config_cpp)
