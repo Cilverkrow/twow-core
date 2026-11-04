@@ -1656,7 +1656,7 @@ void ReportDirectTargets()
         c.freshRejections.exchange(0, std::memory_order_relaxed), c.freshBackoffs.exchange(0, std::memory_order_relaxed),
         c.rescueSkips.exchange(0, std::memory_order_relaxed), c.freshGrind.exchange(0, std::memory_order_relaxed),
         sPlayerbotAIConfig.directTargetsFreshMaxLevel, sPlayerbotAIConfig.directTargetsFreshBackoffSeconds,
-        sPlayerbotAIConfig.directTargetsFreshGrindFailures, reasons.FormatInactiveReasons().c_str(),
+        sPlayerbotAIConfig.questFirstProgressionGrindFallbackFailures, reasons.FormatInactiveReasons().c_str(),
         ai::direct_targets::TakeSummaryFields().c_str());
 }
 
