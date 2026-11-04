@@ -1299,6 +1299,21 @@ AiPlayerbot.BotGroups.AdHoc.ScanBudgetUs = 0
 # is done), its idle clock is the group's freshest progress - and leaves with reason=group_done once nobody is left open.
 # "[BotGroup] kind=adhoc event=help" when a bot starts helping or switches whom it follows. 0 = leave at objective_done.
 AiPlayerbot.BotGroups.AdHoc.HelpUntilDone = 0
+# BOT-09 (twow-repo#672, #628 third finding; OB-00 04.11.2026; cand4G u2: an ad-hoc member followed its leader on another
+# continent for 10 h, ~13 ms per update at a zeppelin dock, and never left): with the mode on for the bot
+# - the ad-hoc leave of the action path (AdHoc.WorldThread = 0) really leaves: a free (roster) bot stayed in its group when the
+#   ad-hoc action asked it to leave, so the decided leave never happened (7,574 decisions, 155 leaves). It now takes the core
+#   leave path every other bot takes;
+# - a leader on another map (or another instance of a dungeon, raid or battleground; not another region of a continent) for
+#   LeaderOtherMapSeconds is the leave reason leader_other_map ([BotGroup] kind=adhoc event=leave ... reason=leader_other_map),
+#   checked before out_of_range, which then counts only the distance on the same map. Both leave paths (WorldThread 0 and 1);
+# - "follow" is not useful for a follow target on another map that is no real player: no cross-map route each update. Bots of
+#   a real player keep following it as before.
+# No new log lines. Mode (in-realm A/B, cohort parity): 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low
+# guid), 3 = only cohort A (even low guid; crossover unit 2). Any other value acts like 0.
+AiPlayerbot.BotGroups.LeaderOtherMap = 0
+# BOT-09: seconds the leader must be on another map before the leave (LeaderOtherMap on). Default 120, 30..900.
+AiPlayerbot.BotGroups.LeaderOtherMapSeconds = 120
 
 # #627 S7 help groups (owner 18.10./23.10.2026): roster bots holding the same elite
 # quest (Type 1; with SuggestedPlayers = 1 also SuggestedPlayers >= 2; never
@@ -2029,6 +2044,12 @@ AiPlayerbot.Buy.VendorTemplateItems = 1
 # Mode (in-realm A/B, cohort parity): 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other
 # value acts like 0.
 AiPlayerbot.Travel.RpgAreaLevelFromSpawn = 0
+# BOT-09 (twow-repo#672; cand4G u2: a bot at a zeppelin dock node with entry 0 paid ~13 ms per update): 1 = the elevator
+# branch of the transport lookup (UseTransport, dock waits) walks a list per map of the transport-type gameobject spawns
+# (GAMEOBJECT_TYPE_TRANSPORT, GAMEOBJECT_TYPE_MO_TRANSPORT), built once on first use, instead of all gameobject spawn data
+# of every map on every call. Same transports found (only spawns of these types can be one). No log line.
+# 0 = the full walk on every call (default).
+AiPlayerbot.Travel.ElevatorScanCache = 0
 # RealReagents (twow-repo#485): under the item cheat (RndBotCheats "item") every
 # recipe counts as having its reagents, a random one is queued and the core
 # fails the cast silently. 1 = check reagents and tools in the bags and cast

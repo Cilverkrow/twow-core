@@ -32,5 +32,6 @@ namespace ai
         uint32 lastCounter = 0;
         uint32 outOfRangeSince = 0;
         uint32 levelWindowSince = 0;
+        uint32 leaderOtherMapSince = 0;   // BOT-09 (BotGroups.LeaderOtherMap)
     };
 }

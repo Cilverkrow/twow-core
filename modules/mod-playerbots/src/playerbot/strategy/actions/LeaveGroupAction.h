@@ -14,6 +14,11 @@ namespace ai
         virtual bool isUsefulWhenStunned() override { return true; }
 
         virtual bool Leave(Player* player);
+
+    protected:
+        // BOT-09 (AiPlayerbot.BotGroups.LeaderOtherMap): adhocLeave = the ad-hoc group action asked the bot itself to leave
+        // and the switch is on for the bot - a free bot then leaves too (singleton_group::ShouldStayInGroup).
+        bool LeaveGroup(Player* player, bool adhocLeave);
     };
 
     class PartyCommandAction : public LeaveGroupAction 

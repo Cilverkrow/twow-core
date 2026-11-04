@@ -4,6 +4,7 @@
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/TravelMgr.h"
 #include "playerbot/ServerFacade.h"
+#include "playerbot/CohortPolicy.h"
 #include "Group/Group.h"
 
 #include <algorithm>
@@ -79,6 +80,7 @@ bool AdhocGroupAction::CheckLeave(Group* group, uint32 now)
         lastCounter = ObjectiveCounter(bot, entry.key);
         outOfRangeSince = 0;
         levelWindowSince = 0;
+        leaderOtherMapSince = 0;
     }
 
     uint32 const counter = ObjectiveCounter(bot, entry.key);
@@ -90,9 +92,15 @@ bool AdhocGroupAction::CheckLeave(Group* group, uint32 now)
 
     Player* leader = sObjectMgr.GetPlayer(group->GetLeaderGuid());
     float const radius = sPlayerbotAIConfig.botGroupsAdhocRadius;
-    bool const outOfRange = leader && leader != bot &&
-        (leader->GetMapId() != bot->GetMapId() || sServerFacade.GetDistance2d(bot, leader) > 2.0f * radius);
+    // BOT-09 (AiPlayerbot.BotGroups.LeaderOtherMap): with the rule on for the bot, a leader on another map (or dungeon
+    // instance) runs its own clock and OutOfRange keeps the distance on the same map. Off: the old expression.
+    bool const otherMapRule = ai::cohort::Applies(sPlayerbotAIConfig.botGroupsLeaderOtherMap, bot->GetGUIDLow());
+    bool const otherMap = leader && leader != bot && adhoc_group::OnOtherMap(leader->GetMapId() != bot->GetMapId(),
+        otherMapRule && leader->GetInstanceId() != bot->GetInstanceId(), bot->GetMap()->Instanceable());
+    bool const outOfRange = leader && leader != bot && adhoc_group::OutOfRangeFact(otherMap,
+        !otherMap && sServerFacade.GetDistance2d(bot, leader) > 2.0f * radius, otherMapRule);
     outOfRangeSince = outOfRange ? (outOfRangeSince ? outOfRangeSince : now) : 0;
+    leaderOtherMapSince = otherMapRule && otherMap ? (leaderOtherMapSince ? leaderOtherMapSince : now) : 0;
 
     uint32 minLevel = bot->GetLevel();
     uint32 maxLevel = bot->GetLevel();
@@ -109,6 +117,8 @@ bool AdhocGroupAction::CheckLeave(Group* group, uint32 now)
     facts.outOfRangeSince = outOfRangeSince;
     facts.levelWindowSince = levelWindowSince;
     facts.lastProgress = lastProgress;
+    facts.leaderOtherMapSince = leaderOtherMapSince;
+    facts.leaderOtherMapSeconds = otherMapRule ? sPlayerbotAIConfig.botGroupsLeaderOtherMapSeconds : 0;
 
     adhoc_group::Leave const reason = adhoc_group::DecideLeave(facts);
     if (reason == adhoc_group::Leave::None)
@@ -124,7 +134,8 @@ bool AdhocGroupAction::CheckLeave(Group* group, uint32 now)
         adhoc_group::Groups().Forget(group->GetId());
 
     trackedGroup = 0;
-    // The Core leave path (#301), with the bot itself as the issuer.
+    // The Core leave path (#301), with the bot itself as the issuer. BOT-09: a free (roster) bot stayed in its group here
+    // (ShouldStayInGroup); with BotGroups.LeaderOtherMap on for it, LeaveGroupAction sees the "adhoc group" source and leaves.
     ai->DoSpecificAction("leave", Event("adhoc group", "", bot), true);
     return true;
 }
