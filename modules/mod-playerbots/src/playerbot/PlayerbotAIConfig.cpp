@@ -1057,6 +1057,10 @@ bool PlayerbotAIConfig::Initialize()
     rosterFarMoveLevelGuard = config.GetIntDefault("AiPlayerbot.RosterFarMove.LevelGuard", 0);
     if (rosterFarMoveLevelGuard > 3)
         rosterFarMoveLevelGuard = 0;
+    // twow-repo#601 A3 step 1: Rpg.TurnInFirst, an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B, 3 cohort A).
+    rpgTurnInFirst = config.GetIntDefault("AiPlayerbot.Rpg.TurnInFirst", 0);
+    if (rpgTurnInFirst > 3)
+        rpgTurnInFirst = 0;
     rosterFarMoveLevelGuardMargin = ai::level_guard::ClampMargin(config.GetIntDefault("AiPlayerbot.RosterFarMove.LevelGuard.Margin", 3));
     rosterFarMoveLevelGuardRadius = ai::level_guard::ClampRadius(config.GetFloatDefault("AiPlayerbot.RosterFarMove.LevelGuard.Radius", 50.0f));
     shortcutNearScope = ai::shortcut::ClampScope(config.GetIntDefault("AiPlayerbot.Shortcut.NearScope", 0));
@@ -1984,6 +1988,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Rotation.SpecFromPath", Value(rotationSpecFromPath)},
             {"Rotation.TankKitFromLevel", Value(rotationTankKitFromLevel)},
             {"Rotation.TankRoguePoison", Value(rotationTankRoguePoison)},
+            {"Rpg.TurnInFirst", Value(rpgTurnInFirst)},
             {"ThreadSafeTeleportAck", Value(threadSafeTeleportAck)},
             {"ThrownUsageFix", Value(thrownUsageFix)},
             {"Travel.RpgAreaLevelFromSpawn", Value(travelRpgAreaLevelFromSpawn)},

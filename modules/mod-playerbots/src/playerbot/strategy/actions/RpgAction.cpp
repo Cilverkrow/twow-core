@@ -127,11 +127,25 @@ bool RpgAction::SetNextRpgAction()
         }
     }
 
-    std::mt19937 gen(time(0));
+    // twow-repo#601 A3 step 1 (Rpg.TurnInFirst): a possible hand-in is picked first, without the weighted draw (end quest 90 vs start
+    // quest 80, sell, train ... - near uniform, so the turn-in waited behind other RPG actions).
+    Action* action = nullptr;
+    if (RpgTurnInFirst(ai))
+        for (Action* candidate : actions)
+            if (candidate->getName() == RpgEndQuestActionName)
+            {
+                action = candidate;
+                break;
+            }
 
-    WeightedShuffle(actions.begin(), actions.end(), relevances.begin(), relevances.end(), gen);
+    if (!action)
+    {
+        std::mt19937 gen(time(0));
 
-    Action* action = actions.front();
+        WeightedShuffle(actions.begin(), actions.end(), relevances.begin(), relevances.end(), gen);
+
+        action = actions.front();
+    }
 
     if ((ai->HasStrategy("debug", BotState::BOT_STATE_NON_COMBAT) || ai->HasStrategy("debug rpg", BotState::BOT_STATE_NON_COMBAT)))
     {

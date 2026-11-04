@@ -71,7 +71,7 @@ function(check policy mgr_cpp mgr_h ai_cpp ai_h config_h config_cpp dist rnd_cpp
   need("${dist}" "\nAiPlayerbot.ThreadSafeTeleportAck = 0\n" "dist key, default 0")
   need("${config_h}" "bool threadSafeTeleportAck = false;" "config member, default off")
   need("${config_cpp}" "threadSafeTeleportAck = config.GetIntDefault(\"AiPlayerbot.ThreadSafeTeleportAck\", 0) == 1;" "config read, only 1 = on")
-  need("${config_cpp}" "            {\"Rotation.TankRoguePoison\", Value(rotationTankRoguePoison)},\n            {\"ThreadSafeTeleportAck\", Value(threadSafeTeleportAck)},\n            {\"ThrownUsageFix\"" "[ConfigEcho], sorted (owner rule #615, #710)")
+  need("${config_cpp}" "            {\"Rpg.TurnInFirst\", Value(rpgTurnInFirst)},\n            {\"ThreadSafeTeleportAck\", Value(threadSafeTeleportAck)},\n            {\"ThrownUsageFix\"" "[ConfigEcho], sorted (owner rule #615, #710)")
 
   # 2. Pure policy and its rules.
   string(REGEX MATCHALL "#include [<\"][^>\"]+[>\"]" incs "${policy}")
