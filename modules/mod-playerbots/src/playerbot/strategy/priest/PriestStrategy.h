@@ -3,7 +3,7 @@
 
 namespace ai
 {
-    // twow-repo#568 (D20, AiPlayerbot.Diet.PriestRacials): race masks of the priest race spells, from
+    // twow-repo#568 (D20): race masks of the priest race spells, from
     // skill_line_ability.race_mask (sql/base and database_updates/world/20260513084003, every rank; no Turtle
     // row widens them). A priest of another race can never learn the spell (trainer state checks the race).
     namespace dietpriest
@@ -13,7 +13,7 @@ namespace ai
         constexpr uint32 RaceMaskNightElf = 8;     // 1 << (RACE_NIGHTELF - 1): elune's grace, starshards
         constexpr uint32 RaceMaskHumanDwarf = 5;   // (1 << (RACE_HUMAN - 1)) | (1 << (RACE_DWARF - 1)): desperate prayer
 
-        // true = register the node: switch off, no bot, or the bot's race is in the mask.
+        // true = register the node: no bot, or the bot's race is in the mask.
         bool RaceMayLearn(PlayerbotAI* ai, uint32 raceMask);
     }
 
