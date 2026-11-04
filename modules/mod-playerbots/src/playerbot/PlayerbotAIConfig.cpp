@@ -714,9 +714,6 @@ bool PlayerbotAIConfig::Initialize()
     perfEventTriggerSkip = config.GetBoolDefault("AiPlayerbot.Perf.EventTriggerSkip", false);
     dietHunterAspectGate = config.GetBoolDefault("AiPlayerbot.Diet.HunterAspectGate", false);
     dietHunterRapidFireGate = config.GetBoolDefault("AiPlayerbot.Diet.HunterRapidFireGate", false);
-    dietWanderSoloGuard = config.GetBoolDefault("AiPlayerbot.Diet.WanderSoloGuard", false);
-    dietRpgDeadTriggers = config.GetBoolDefault("AiPlayerbot.Diet.RpgDeadTriggers", false);
-    dietDuelTriggerGate = config.GetBoolDefault("AiPlayerbot.Diet.DuelTriggerGate", false);
     perfPartialPathReuse = config.GetBoolDefault("AiPlayerbot.Perf.PartialPathReuse", false);
     perfPartialPathReuseMs = ai::path_reuse::ClampMs(config.GetIntDefault("AiPlayerbot.Perf.PartialPathReuseMs", int32(ai::path_reuse::DefaultMs)));
     perfRouteFailCooldownSeconds = ai::stall_guard::ClampRouteFailCooldownSeconds(config.GetIntDefault("AiPlayerbot.Perf.RouteFailCooldownSeconds", 0));
