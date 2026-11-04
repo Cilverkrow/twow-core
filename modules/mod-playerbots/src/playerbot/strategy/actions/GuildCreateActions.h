@@ -23,6 +23,8 @@ namespace ai
         static bool MayOfferNearby(PlayerbotAI* ai);
         // Purchase: target not covered by guilds + open bot charters, and an approved name free.
         static bool MayBuyCharter(Player* bot, char const*& reason);
+        // owner 04.11.2026: the guild cap for a non-roster bot on its own (legacy path).
+        static bool MayBuyLegacyCharter(Player* bot, char const*& reason);
         // Takes an approved name and counts the charter at once; "" = no purchase.
         static std::string ReserveCharter(Player* bot);
         // Below the target and a name available (the charter's own name or a free approved one).
