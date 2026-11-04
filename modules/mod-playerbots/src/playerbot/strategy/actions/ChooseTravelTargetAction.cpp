@@ -1186,7 +1186,7 @@ bool ChooseTravelTargetAction::Execute(Event& event)
             // twow-repo#601 no-route gate: the same no-route judgement for the profession trip gate, before #485 below clears the list.
             NoteTurnInRouteResults(context, travelTarget, ai::turnin_park::CountsAsNoRoute(ai::turnin_park::RouteOutcome::NoTarget,
                 chooseBudgetExceeded, lastRejects.crossMap + lastRejects.zoneLevel + lastRejects.dangerMap, lastRejects.turnInSuppressed,
-                lastRejects.movedAway + lastRejects.rangeSkip + lastRejects.resumeSkipped,
+                lastRejects.movedAway + lastRejects.rangeSkip + lastRejects.resumeSkipped + lastRejects.startZone + lastRejects.staleKeepZone,
                 sPlayerbotAIConfig.questFirstProgressionTurnInParkCountsRouteDanger), false);
 
             // twow-repo#485: no way to any offered taker - unless not every taker was judged (a stale
@@ -1198,7 +1198,7 @@ bool ChooseTravelTargetAction::Execute(Event& event)
             // holds the next request back, so that one need not wait out the backoff.
             if (NoteNoRouteTurnIns(context, travelTarget, ai::turnin_park::CountsAsNoRoute(ai::turnin_park::RouteOutcome::NoTarget,
                 chooseBudgetExceeded, lastRejects.crossMap + lastRejects.zoneLevel + lastRejects.dangerMap, lastRejects.turnInSuppressed,
-                lastRejects.movedAway + lastRejects.rangeSkip + lastRejects.resumeSkipped,
+                lastRejects.movedAway + lastRejects.rangeSkip + lastRejects.resumeSkipped + lastRejects.startZone + lastRejects.staleKeepZone,
                 sPlayerbotAIConfig.questFirstProgressionTurnInParkCountsRouteDanger)))
             {
                 SET_AI_VALUE2(bool, "no active travel destinations", futureTravelPurpose, false);
@@ -1299,7 +1299,7 @@ bool ChooseTravelTargetAction::Execute(Event& event)
         NoteTurnInRouteResults(context, travelTarget, ai::turnin_park::CountsAsNoRoute(
             takerFound ? ai::turnin_park::RouteOutcome::Taker : ai::turnin_park::RouteOutcome::Fallback,
             chooseBudgetExceeded, lastRejects.crossMap + lastRejects.zoneLevel + lastRejects.dangerMap, lastRejects.turnInSuppressed,
-            lastRejects.movedAway + lastRejects.rangeSkip + lastRejects.resumeSkipped,
+            lastRejects.movedAway + lastRejects.rangeSkip + lastRejects.resumeSkipped + lastRejects.startZone + lastRejects.staleKeepZone,
             sPlayerbotAIConfig.questFirstProgressionTurnInParkCountsRouteDanger), takerFound);
 
         // twow-repo#485: another target than a taker is the quest giver fallback - the job found
@@ -1308,7 +1308,7 @@ bool ChooseTravelTargetAction::Execute(Event& event)
             newTarget.GetDestination()->GetPurpose() == TravelDestinationPurpose::QuestTaker ?
                 ai::turnin_park::RouteOutcome::Taker : ai::turnin_park::RouteOutcome::Fallback,
             chooseBudgetExceeded, lastRejects.crossMap + lastRejects.zoneLevel + lastRejects.dangerMap, lastRejects.turnInSuppressed,
-            lastRejects.movedAway + lastRejects.rangeSkip + lastRejects.resumeSkipped,
+            lastRejects.movedAway + lastRejects.rangeSkip + lastRejects.resumeSkipped + lastRejects.startZone + lastRejects.staleKeepZone,
             sPlayerbotAIConfig.questFirstProgressionTurnInParkCountsRouteDanger));
     }
     else if (futureTravelPurpose == std::to_string(uint32(TravelDestinationPurpose::Grind)) && UsesQuestFirstProgression(bot))

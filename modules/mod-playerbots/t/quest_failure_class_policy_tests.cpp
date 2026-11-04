@@ -42,19 +42,20 @@ int main()
 
     // 1) Every RejectCounts reason is in exactly one class sum (a new reason must be classified on purpose).
     {
-        // An 18th reason field changes the size: classify it in QuestFailureClassPolicy.h and count it below. The two diagnostic
+        // A 20th reason field changes the size: classify it in QuestFailureClassPolicy.h and count it below. The two diagnostic
         // splits (notActiveReason, noMarkWhy) are no reasons and sit in the size apart.
-        static_assert(sizeof(RejectCounts) == (17 + RejectCounts::InactiveReasons + ai::quest_search::NoMarkReasons) * sizeof(std::uint32_t),
+        static_assert(sizeof(RejectCounts) == (19 + RejectCounts::InactiveReasons + ai::quest_search::NoMarkReasons) * sizeof(std::uint32_t),
             "classify the new reject reason (StructuralRejects / TransientRejects / OtherRejects)");
         RejectCounts all;
         all.turnInSuppressed = 1; all.deathSuppressed = 1; all.otherMapGather = 1; all.knownInactive = 1;
         all.hubFilter = 1; all.notActive = 1; all.enemyZone = 1; all.crossMap = 1; all.zoneLevel = 1;
         all.dangerMap = 1; all.rangeSkip = 1; all.movedAway = 1; all.resumeSkipped = 1;
         all.questLoopSuppressed = 1; all.battlegroundQuest = 1; all.inactiveReselect = 1; all.levelGuard = 1;
+        all.startZone = 1; all.staleKeepZone = 1;
         Require(StructuralRejects(all) == 2, "structural: cross_map, zone_level");
         Require(TransientRejects(all) == 8, "transient: turn-in/death/quest-loop suppression, hub, range skip, moved away, resume skip, emptied camp");
-        Require(OtherRejects(all) == 7, "other: other-map gather, known inactive, not active, enemy zone, danger map, level guard (#601), battleground");
-        Require(StructuralRejects(all) + TransientRejects(all) + OtherRejects(all) == 17, "17 reasons, each counted once");
+        Require(OtherRejects(all) == 9, "other: other-map gather, known inactive, not active, enemy zone, danger map, level guard (#601), battleground, start zone + stale keep zone (R1)");
+        Require(StructuralRejects(all) + TransientRejects(all) + OtherRejects(all) == 19, "19 reasons, each counted once");
         // The P3-0 split of not_active is no extra reason: it is part of notActive.
         RejectCounts split;
         split.notActiveReason[RejectCounts::InactiveNoMark] = 5;
@@ -86,6 +87,17 @@ int main()
         Require(std::strcmp(Classify(true, both, 2, 0).reason, "structural_route") == 0, "reason mixed route danger");
         Require(!Classify(true, both, 2, 0).abandonable, "mixed with zone level: never abandoned");
         Require(!Classify(true, RejectCounts(), 1, 1).abandonable, "takerless only: the caller decides (no destination)");
+        // twow-repo#601 owner rule R1 (OB-10 review #833): a start-zone (or stale-keep-zone) deferral next to cross_map keeps a
+        // turn-in-only search out of "all structural" - nothing is parked, nothing can lead to an abandon.
+        RejectCounts crossStart;
+        crossStart.crossMap = 2;
+        crossStart.startZone = 1;
+        Require(!Classify(true, crossStart, 1, 0).parkAllOffered, "cross_map + start_zone: the offered turn-in is not parked");
+        Require(Classify(true, crossStart, 1, 0).failureClass != FailureClass::Structural, "cross_map + start_zone: not structural");
+        RejectCounts crossKeep;
+        crossKeep.crossMap = 1;
+        crossKeep.staleKeepZone = 3;
+        Require(!Classify(true, crossKeep, 2, 0).parkAllOffered, "cross_map + stale_keep_zone: nothing parked");
     }
 
     // 3) Structural: no taker point for an offered turn-in (no spawn, script-only GO, excluded zone): the global

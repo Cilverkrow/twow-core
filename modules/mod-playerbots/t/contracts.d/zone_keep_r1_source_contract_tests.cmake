@@ -149,3 +149,10 @@ between("${choose}" "bool ChooseTravelTargetAction::SetBestTarget(" "\n}\n" best
 require_order("${best_fn}" "case PostActiveDeferral::StartZone:" "target->SetTarget(destination, position);" "deferred before the target is set")
 between("${choose}" "bool RequestNamedTravelTargetAction::Execute(" "\n}\n" named_fn)
 require_order("${named_fn}" "ai::zone_keep::StartZoneHolds(bot, ai) && ai::zone_keep::ForcedHoldActive(ai))\n        return false;" "*AI_VALUE(FutureDestinations*, \"future travel destinations\") = std::async(" "no search during the hold")
+
+# 9. OB-10 review #833: the zone deferrals are never "structural" (QuestFailureClassPolicy OtherRejects, so no park-all and no abandon)
+#    and never a turn-in no-route verdict (unjudged in CountsAsNoRoute, like moved away / range skip).
+read_source("QuestFailureClassPolicy.h" failure_h)
+require_text("${failure_h}" "rejects.battlegroundQuest + rejects.startZone + rejects.staleKeepZone;" "zone deferrals in OtherRejects")
+require_text("${choose}" "lastRejects.movedAway + lastRejects.rangeSkip + lastRejects.resumeSkipped + lastRejects.startZone + lastRejects.staleKeepZone," "zone deferrals unjudged for the turn-in park")
+forbid_text("${choose}" "lastRejects.movedAway + lastRejects.rangeSkip + lastRejects.resumeSkipped,\n" "an unjudged sum without the zone deferrals")
