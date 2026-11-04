@@ -56,6 +56,13 @@ int main()
     Require(!QueueApplies(4, 3) && !QueueApplies(4, 4) && !QueueApplies(0xFFFFFFFFu, 4), "unknown mode: off");
     Require(ValidMode(0) && ValidMode(3) && !ValidMode(4), "valid modes 0..3");
     Require(SanitizeMode(7) == 0 && SanitizeMode(2) == 2, "an unknown mode is sanitised to 0");
+    // A join: queued when the mode applies to either bot (OB-00: a queue bot's invites never run on its map thread).
+    Require(!JoinQueueApplies(0, 3, 4) && !JoinQueueApplies(9, 3, 4), "join, mode 0 / unknown: map-thread path");
+    Require(JoinQueueApplies(1, 3, 4), "join, mode 1: queued");
+    Require(JoinQueueApplies(2, 3, 4) && JoinQueueApplies(2, 4, 3), "join, mode 2: a cross-cohort pair is queued, whoever invites");
+    Require(JoinQueueApplies(3, 3, 4) && JoinQueueApplies(3, 4, 3), "join, mode 3: a cross-cohort pair is queued, whoever invites");
+    Require(!JoinQueueApplies(2, 4, 6) && JoinQueueApplies(2, 5, 7), "join, mode 2: two cohort-A bots keep the old path, two B bots queue");
+    Require(!JoinQueueApplies(3, 5, 7) && JoinQueueApplies(3, 4, 6), "join, mode 3: two cohort-B bots keep the old path, two A bots queue");
 
     // ---- limits ---------------------------------------------------------------------------------------------------------
     Require(ClampOpsPerTick(0) == 1 && ClampOpsPerTick(-5) == 1 && ClampOpsPerTick(1) == 1, "ops per tick: at least 1");
@@ -78,6 +85,27 @@ int main()
     Require(!AlertDue(true, 70000, 60, true, 1000 + kAlertIntervalMs - 1, 1000), "rate limit: one alert per minute");
     Require(AlertDue(true, 70000, 60, true, 1000 + kAlertIntervalMs, 1000), "the next alert after a minute");
 
+    // ---- age_ms_p99: fixed buckets, the percentile as its bucket's upper edge (never above the max) -------------------------
+    {
+        Require(AgeBucket(0) == 0 && AgeBucket(1) == 0 && AgeBucket(2) == 1 && AgeBucket(500) == 8 && AgeBucket(501) == 9,
+            "age buckets by inclusive upper edge (500 is an edge)");
+        Require(AgeBucket(60000) == kAgeBuckets - 2 && AgeBucket(60001) == kAgeBuckets - 1 && AgeBucket(0xFFFFFFFFu) == kAgeBuckets - 1,
+            "everything above the last edge in the overflow bucket");
+        std::uint32_t hist[kAgeBuckets] = {};
+        Require(AgeP99Ms(hist, 0) == 0, "no op: 0");
+        hist[AgeBucket(40)] = 99;
+        hist[AgeBucket(450)] = 1;
+        Require(AgeP99Ms(hist, 450) == 50, "100 ops: p99 is the 99th - in the 50 ms bucket");
+        hist[AgeBucket(450)] = 2;
+        Require(AgeP99Ms(hist, 450) == 450, "101 ops: p99 reaches the top bucket, capped at the max (450, not 500)");
+        std::uint32_t one[kAgeBuckets] = {};
+        one[AgeBucket(70000)] = 1;
+        Require(AgeP99Ms(one, 70000) == 70000, "overflow bucket: the max");
+        std::uint32_t edge[kAgeBuckets] = {};
+        edge[AgeBucket(500)] = 10;
+        Require(AgeP99Ms(edge, 500) == 500 && AgeP99Ms(edge, 499) == 499, "p99 <= 500 is decided exactly");
+    }
+
     // ---- staleness of a leave (design 3.4) ----------------------------------------------------------------------------
     {
         LeaveOpFacts f;
@@ -91,9 +119,9 @@ int main()
         Require(DecideLeaveOp(g) == Verdict::DropLoggedOut, "leave: logged out: drop");
         g = f;
         g.teleporting = true;
-        g.ageMs = kTransitMaxAgeMs - 1;
+        g.transitMs = kTransitMaxAgeMs - 1;
         Require(DecideLeaveOp(g) == Verdict::Retry, "leave: in transit: retry");
-        g.ageMs = kTransitMaxAgeMs;
+        g.transitMs = kTransitMaxAgeMs;
         Require(DecideLeaveOp(g) == Verdict::DropTransit, "leave: in transit too long: drop");
         g = f;
         g.inWorld = false;
@@ -128,7 +156,7 @@ int main()
         g = f;
         g.teleporting = true;
         Require(DecideJoinOp(g) == Verdict::Retry, "join: in transit: retry");
-        g.ageMs = kTransitMaxAgeMs;
+        g.transitMs = kTransitMaxAgeMs;
         Require(DecideJoinOp(g) == Verdict::DropTransit, "join: in transit too long: drop");
         g = f;
         g.realMaster = true;
@@ -259,7 +287,85 @@ int main()
         q.Finish(op);
     }
     {
-        // Oldest age at the heads; a preset seq (GroupOps.cpp sets it before the push) is kept.
+        // Transit clock: the drain stamps the first transit look on the op; a requeue keeps it (the 30 s count from there).
+        Queue q;
+        Op a = Leave(1, 1, 5);
+        q.Push(a, 4);
+        Op op;
+        Require(q.Pop(op) == Popped::Live && !op.inTransit, "not in transit before the first look");
+        op.inTransit = 1;
+        op.transitSinceMs = 90000;
+        q.Requeue(op);
+        Require(q.Pop(op) == Popped::Live && op.inTransit && op.transitSinceMs == 90000 && op.enqueuedMs == 5,
+            "the transit stamp survives the requeue, the enqueue time too");
+        LeaveOpFacts f;
+        f.found = true;
+        f.teleporting = true;
+        f.groupId = 1;
+        f.opGroupId = 1;
+        f.transitMs = 0;
+        Require(DecideLeaveOp(f) == Verdict::Retry, "a backlog op (old enqueue) found in transit at once: it waits, not dropped");
+        q.Finish(op);
+    }
+    {
+        // Lock-free depth hint follows every push/pop/requeue/clear.
+        Queue q;
+        Require(q.DepthHint() == 0, "hint: empty");
+        Op a = Leave(1, 1);
+        Op b = Join(2, 3);
+        q.Push(a, 8);
+        q.Push(b, 8);
+        Require(q.DepthHint() == 2 && q.Depth() == 2, "hint after two pushes");
+        Op op;
+        q.Pop(op);
+        Require(q.DepthHint() == 1, "hint after a pop");
+        q.Requeue(op);
+        Require(q.DepthHint() == 2, "hint after a requeue");
+        q.Clear();
+        Require(q.DepthHint() == 0, "hint after clear");
+    }
+    {
+        // A superseded join keeps its FIFO slot until popped: it counts against MaxDepth (bounded: one dead entry per
+        // superseding leave), and the queue stays bounded when filled up.
+        Queue q;
+        Op j = Join(50, 51);
+        Op l = Leave(51, 9);
+        Require(q.Push(j, 4) == Pushed::Queued && q.Push(l, 4) == Pushed::Queued, "join, then the inviter's leave");
+        Require(q.Depth() == 2, "the dead join still holds a slot");
+        Op c = Leave(52, 9);
+        Op d = Leave(53, 9);
+        Require(q.Push(c, 4) == Pushed::Queued && q.Push(d, 4) == Pushed::Queued, "fill to MaxDepth 4");
+        Op e = Leave(54, 9);
+        Require(q.Push(e, 4) == Pushed::RefusedFull && q.Depth() == 4, "full with a dead entry: refused, still bounded");
+        Op op;
+        int live = 0;
+        int dead = 0;
+        while (true)
+        {
+            Popped const p = q.Pop(op);
+            if (p == Popped::None)
+                break;
+            (p == Popped::Live ? live : dead) += 1;
+            q.Finish(op);
+        }
+        Require(live == 3 && dead == 1 && q.Depth() == 0, "three live leaves, one dead join, then empty");
+        Require(q.Push(e, 4) == Pushed::Queued, "room again after the drain");
+    }
+    {
+        // Oldest age over every entry (a requeued transit op sits at the back with its first enqueue time).
+        Queue q;
+        Op a = Leave(1, 1, 100);
+        Op b = Leave(2, 2, 900);
+        q.Push(a, 8);
+        q.Push(b, 8);
+        Op op;
+        q.Pop(op);
+        q.Requeue(op);   // a (enqueued at 100) now behind b
+        std::uint32_t age = 0;
+        Require(q.OldestEnqueuedMs(1000, age) && age == 900, "the requeued op at the back still counts as the oldest");
+    }
+    {
+        // Oldest age; a preset seq (GroupOps.cpp sets it before the push) is kept.
         Queue q;
         std::uint32_t age = 0;
         Require(!q.OldestEnqueuedMs(1000, age), "empty: no oldest");
@@ -292,6 +398,10 @@ int main()
     Require(OffSourceOf(true, "repop") == OffSource::Repop && OffSourceOf(true, "auto release") == OffSource::Repop &&
         OffSourceOf(true, "release") == OffSource::Repop, "repop / release spirit");
     Require(OffSourceOf(true, "accept invitation") == OffSource::Accept, "accept invitation");
+    Require(OffSourceOf(true, "accept invitation", true) == OffSource::Adhoc,
+        "the accept of an ad-hoc invite (the old path's group create) counts as the ad-hoc path");
+    Require(OffSourceOf(true, "accept invitation", false) == OffSource::Accept && OffSourceOf(true, "leave far away", true) == OffSource::LeaveFar,
+        "the ad-hoc tag changes only the accept");
     Require(OffSourceOf(true, "invite nearby") == OffSource::InviteLfg && OffSourceOf(true, "lfg") == OffSource::InviteLfg &&
         OffSourceOf(true, "lfg join") == OffSource::InviteLfg && OffSourceOf(true, "join") == OffSource::InviteLfg, "invite / LFG");
     Require(OffSourceOf(true, "leave") == OffSource::Command && OffSourceOf(true, "uninvite") == OffSource::Command, "commands");

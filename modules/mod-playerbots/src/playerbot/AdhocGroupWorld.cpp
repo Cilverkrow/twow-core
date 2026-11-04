@@ -415,9 +415,6 @@ void WorldThreadManager::Update(std::map<std::uint32_t, Player*> const& bots, st
             pass.guids.push_back(guid);
         minute.bots = std::max(minute.bots, std::uint32_t(bots.size()));
     }
-    // BOT-12 (twow-repo#677, BotGroups.OpQueue): an invite or a leave in this update is the world tick's heavy group step - the
-    // group queue runs no op in the same tick.
-    std::uint32_t const groupOpsBefore = minute.invites + minute.leaves;
     auto const passStart = std::chrono::steady_clock::now();
     std::uint64_t const cpuStart = thread_cpu::NowUs();   // s7r: stall control (ThreadCpuClock.h)
     passLeaveUs = 0;
@@ -444,8 +441,9 @@ void WorldThreadManager::Update(std::map<std::uint32_t, Player*> const& bots, st
     std::uint32_t const wallUs = UsSince(passStart);
     minute.passUsMax = std::max(minute.passUsMax, wallUs);
     minute.stallUsMax = std::max(minute.stallUsMax, thread_cpu::StallUs(wallUs, cpuStart, thread_cpu::NowUs()));
-    if (minute.invites + minute.leaves != groupOpsBefore)
-        group_ops::MarkHeavyTick();
+    // BOT-12 (twow-repo#677, BotGroups.OpQueue; design 3.2): this update ran a scan slice (and maybe invites and leaves) - the
+    // world tick's heavy group step; the group queue runs no op in the same tick.
+    group_ops::MarkHeavyTick();
 }
 
 // Stages 1 and 2 for the bots pass.guids[pass.next, end): first the leave rules of all of them, then their candidates - with

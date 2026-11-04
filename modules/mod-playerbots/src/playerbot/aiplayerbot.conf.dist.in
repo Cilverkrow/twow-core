@@ -1322,18 +1322,29 @@ AiPlayerbot.BotGroups.LeaderOtherMapSeconds = 120
 # unlocked map and group ids come from a plain counter; the core changes groups only while the maps are idle (player group
 # opcodes run on the world thread), but the ad-hoc action (AdHoc.WorldThread = 0) created and disbanded groups from the bots'
 # map threads while other maps ran. With the mode on for a bot, its ad-hoc leaves (every reason, leader_other_map included)
-# and the ad-hoc joins where it is the invitee are queued instead (guids only) and run at the end of the world tick, all maps
-# idle, at most OpQueueOpsPerTick per tick and none in a tick in which the ad-hoc manager or S7 already changed a group. The
-# world thread runs the core leave/join only; the AI part (strategy reset, accept tail, log lines) always runs on the bot's
-# own thread. An op whose bot or pair changed meanwhile is dropped (logged out, other group, already left, pair gone) and the
-# bot decides again on its next scan; a bot in a loading screen waits up to 30 s. The ad-hoc self-leave of a free bot really
-# happens only here (with 0 it stays the no-op above). Lines (world thread, with OpQueue on or BotGroups.Diagnostics = 1):
-# "[GroupOps] minute mode= ... enq_leave= exec_leave= ... drain_us_max= ... off_create= off_disband= off_map_<path>=" once a
-# minute - off_* counts group creates/disbands seen OFF the world thread, by the calling bot action (adhoc, leave_far, repop,
-# accept, invite_lfg, command, dungeon_clear, other_action, other): what is left for the other paths - and
-# "[GroupOps] ALERT depth= oldest_age_ms= ..." at most once a minute when an op waits longer than OpQueueAlertAgeSeconds.
-# Mode (in-realm A/B, cohort parity, of the leaver / invitee): 0 = as before (default), 1 = every bot, 2 = only cohort B (odd
-# low guid), 3 = only cohort A (even low guid). Any other value acts like 0 (one error line at load).
+# and every ad-hoc join it is part of (as inviter or invitee: a pair is queued when the mode applies to either bot) are queued
+# instead (guids only) and run at the end of the world tick, all maps idle, at most OpQueueOpsPerTick per tick and none in a
+# tick in which the ad-hoc manager or S7 already did group work (a scan slice, an invite, a leave, a dissolution). The world
+# thread runs the core leave/join only; the AI part (strategy reset, accept tail, log lines) always runs on the bot's own
+# thread. An op whose bot or pair changed meanwhile is dropped (logged out, other group, already left, pair gone) and the bot
+# decides again on its next scan; a bot in a loading screen waits up to 30 s (fixed; counted from the first look that found it
+# in transit). The ad-hoc self-leave of a free bot really happens only here (with 0 it stays the no-op above).
+# Scope: only the ad-hoc ACTION path (AdHoc.WorldThread = 0). With AdHoc.WorldThread = 1 the action is off and the manager
+# keeps its own inline world-thread leaves and joins (now marking the tick heavy); OpQueue changes nothing there. A member
+# whose leader is on another map leaves reliably only with LeaderOtherMap on for the same bots: without it, "follow" starves
+# the ad-hoc action (CAUSE defect 3) - kits set both keys. Not covered (PR2/PR3, still off the world thread): leave far away,
+# repop, accepts of other invites, invite nearby / LFG, commands; the minute line counts them.
+# Lines (world thread, with OpQueue on or BotGroups.Diagnostics = 1): "[GroupOps] minute mode= ... enq_leave= exec_leave= ...
+# age_ms_p99= drain_us_max= ... off_create= off_disband= off_map_<path>= off_q_<path>=" once a minute. off_* counts group
+# changes seen OFF the world thread by the calling bot action (adhoc - the ad-hoc action and the accept of its invite -,
+# leave_far, repop, accept, invite_lfg, command, dungeon_clear, other_action, other): off_map_<path> the creates/disbands
+# (m_GroupMap writes) of every bot, off_q_<path> the creates/disbands/adds/removes of bots the mode applies to (off_q_adhoc = 0
+# expected). "[GroupOps] ALERT depth= oldest_age_ms= ..." at most once a minute when an op waits longer than
+# OpQueueAlertAgeSeconds. In queue mode "[BotGroup] kind=adhoc event=invite|leave ... via=queue" means queued (exec_*/stale_*
+# in the minute line count what ran), and the join's register line can come before its membership line (pair them by bot
+# and group, not by order).
+# Mode (in-realm A/B, cohort parity, of the leaver / either bot of a join): 0 = as before (default), 1 = every bot, 2 = only
+# cohort B (odd low guid), 3 = only cohort A (even low guid). Any other value acts like 0 (one error line at load).
 AiPlayerbot.BotGroups.OpQueue = 0
 # BOT-12: ops run per world tick (1..16; default 1). The heavy-tick rule above still applies.
 AiPlayerbot.BotGroups.OpQueueOpsPerTick = 1

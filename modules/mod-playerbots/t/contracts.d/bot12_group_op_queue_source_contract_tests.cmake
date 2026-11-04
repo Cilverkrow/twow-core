@@ -92,8 +92,10 @@ endfunction()
 set(MUTATIONS "HandleGroup" "DoSpecificAction(" "SendInvite(" "RemoveMember(" "RemoveFromGroup(" "Disband(" "AddMember("
   "UninviteFromGroup(" "SetLootMethod(" "ConvertToRaid(" "ChangeLeader(" "Groups().Register(" "Groups().Forget(")
 
-set(LEAVE_GATE "    if (group_ops::QueueApplies(sPlayerbotAIConfig.botGroupsOpQueue, bot->GetGUIDLow()))\n        return EnqueueLeave(group, entry, reason, now);")
-set(JOIN_GATE "        if (group_ops::QueueApplies(sPlayerbotAIConfig.botGroupsOpQueue, invitee->GetGUIDLow()))")
+# A decided leave ends the Execute whether the push was queued or refused (no scan for invites by a bot that wants to leave).
+set(LEAVE_GATE "    if (group_ops::QueueApplies(sPlayerbotAIConfig.botGroupsOpQueue, bot->GetGUIDLow()))\n    {\n        EnqueueLeave(group, entry, reason, now);\n        return true;\n    }")
+# OB-00 04.11.: a join is queued when the mode applies to either bot (inviter or invitee).
+set(JOIN_GATE "        if (group_ops::JoinQueueApplies(sPlayerbotAIConfig.botGroupsOpQueue, inviter->GetGUIDLow(), invitee->GetGUIDLow()))")
 set(PENDING_GATE "    if (group_ops::StillPending(ai, bot->GetGUIDLow()))\n        return false;")
 
 # ---- (a) the action path enqueues, never mutates, with OpQueue on --------------------------------------------------
@@ -175,9 +177,23 @@ function(check_action action out)
     set(${out} "${r}" PARENT_SCOPE)
     return()
   endif()
-  string(FIND "${scan}" "if (group_ops::StillPending(otherAi, other->GetGUIDLow()))" at)
+  string(FIND "${scan}" "if (group_ops::PendingHint(otherAi, other->GetGUIDLow()))" at)
   if(at EQUAL -1)
     set(${out} "Scan: a neighbour with a pending op is still a candidate" PARENT_SCOPE)
+    return()
+  endif()
+  # A neighbour's scan reads the mark only; clearing a stale mark is the owner's job (StillPending in its own Execute).
+  string(FIND "${scan}" "StillPending(" at)
+  if(NOT at EQUAL -1)
+    set(${out} "Scan: StillPending (which clears marks) on a neighbour" PARENT_SCOPE)
+    return()
+  endif()
+  # The old path tags the invitee before its invite, so its accept (the group create) is attributed to the ad-hoc path.
+  region("${action}" "void AdhocGroupAction::SendInvite(Player* inviter, Player* invitee) const" "\n}\n" send)
+  check_before("${send}" "group_ops::NoteAdhocInvite(GetBotAI(invitee), inviter->GetGUIDLow());" "HandleGroupInviteOpcode"
+    "SendInvite: the ad-hoc invite tag before the invite" r)
+  if(NOT r STREQUAL "")
+    set(${out} "${r}" PARENT_SCOPE)
     return()
   endif()
 
@@ -220,11 +236,20 @@ function(check_drain_site scripts all_sources out)
       return()
     endif()
   endforeach()
-  # Exactly these two calls in the whole module source.
+  # Exactly these two calls in the whole module source - qualified, or unqualified inside namespace group_ops (any Drain()
+  # call that is not a definition `void Drain()` or another class's `X::Drain()`).
   string(REGEX MATCHALL "group_ops::Drain\\(\\)" calls "${all_sources}")
   list(LENGTH calls n)
   if(NOT n EQUAL 2)
     set(${out} "group_ops::Drain() called ${n} times in the module (2 expected, both in PlayerbotWorldScript::OnUpdate)" PARENT_SCOPE)
+    return()
+  endif()
+  # ops_sources: GroupOps.cpp + GroupOps.h (set before the calls; CMake functions see the caller's variables).
+  string(REPLACE "void Drain()" "" ops_calls "${ops_sources}")
+  string(REGEX MATCHALL "(^|[^A-Za-z_:])Drain\\(\\)" bare "${ops_calls}")
+  list(LENGTH bare nb)
+  if(NOT nb EQUAL 0)
+    set(${out} "GroupOps.cpp/.h: ${nb} unqualified Drain() call(s) inside namespace group_ops (only the two in OnUpdate)" PARENT_SCOPE)
     return()
   endif()
   set(${out} "" PARENT_SCOPE)
@@ -237,9 +262,21 @@ function(check_drain ops out)
     set(${out} "group_ops::Drain not found" PARENT_SCOPE)
     return()
   endif()
+  # The switch-0 fast path (no lock, no clock) comes after the heavy flag is consumed and the world thread is marked.
+  check_before("${drain}" "    bool const heavy = w.heavyTick;\n    w.heavyTick = false;"
+    "    if (!queue.DepthHint() && !ObserverOn())\n        return;" "Drain: the heavy flag consumed before the fast path" r)
+  if(NOT r STREQUAL "")
+    set(${out} "${r}" PARENT_SCOPE)
+    return()
+  endif()
   foreach(needle
       "    t_worldThread = true;"
       "    bool const heavy = w.heavyTick;\n    w.heavyTick = false;"
+      "    if (!queue.DepthHint() && !ObserverOn())\n        return;"
+      "                    if (!op.inTransit)\n                    {\n                        op.inTransit = 1;\n                        op.transitSinceMs = nowMs;\n                    }"
+      "std::uint32_t const transitMs = op.inTransit ? nowMs - op.transitSinceMs : 0u;"
+      "++m.ageHist[AgeBucket(ageMs)];"
+      "if (!w.alertChecked || nowMs - w.lastAlertCheckMs >= kAlertCheckIntervalMs)"
       "std::uint32_t const budget = OpsThisTick(sPlayerbotAIConfig.botGroupsOpQueueOpsPerTick, heavy);"
       "std::uint32_t looks = LooksThisTick(budget);"
       "while (ran < budget && looks)"
@@ -259,7 +296,7 @@ function(check_drain ops out)
     return()
   endif()
 
-  region("${ops}" "Verdict RunLeave(Op const& op, std::uint32_t ageMs, DrainMinute& m)" "\n}\n" run_leave)
+  region("${ops}" "Verdict RunLeave(Op const& op, std::uint32_t transitMs, DrainMinute& m)" "\n}\n" run_leave)
   check_before("${run_leave}" "Verdict const v = DecideLeaveOp(f);\n    if (v != Verdict::Execute)\n        return v;"
     "HandleGroupDisbandOpcode" "RunLeave: the staleness rules before the core leave" r)
   if(NOT r STREQUAL "")
@@ -277,8 +314,21 @@ function(check_drain ops out)
     set(${out} "RunLeave: the leave reset is not posted to the bot" PARENT_SCOPE)
     return()
   endif()
+  # The registry forgets the group only once the bot is out (a refused core leave keeps the group ad-hoc).
+  check_before("${run_leave}" "bot->GetSession()->HandleGroupDisbandOpcode(p);" "adhoc_group::Groups().Forget(groupId);"
+    "RunLeave: Forget only after the core leave" r)
+  if(NOT r STREQUAL "")
+    set(${out} "${r}" PARENT_SCOPE)
+    return()
+  endif()
+  check_before("${run_leave}" "        ++m.failed[std::size_t(OpKind::Leave)];\n        return v;\n    }\n    if (lastPair)\n        adhoc_group::Groups().Forget(groupId);"
+    "adhoc_group::Groups().Forget(groupId);" "RunLeave: a failed leave returns before Forget" r)
+  if(NOT r STREQUAL "")
+    set(${out} "${r}" PARENT_SCOPE)
+    return()
+  endif()
 
-  region("${ops}" "Verdict RunJoin(Op const& op, std::uint32_t ageMs, DrainMinute& m)" "\n}\n" run_join)
+  region("${ops}" "Verdict RunJoin(Op const& op, std::uint32_t transitMs, DrainMinute& m)" "\n}\n" run_join)
   check_before("${run_join}" "Verdict const v = DecideJoinOp(f);\n    if (v != Verdict::Execute)\n        return v;"
     "HandleGroupInviteOpcode" "RunJoin: the staleness rules before the core invite" r)
   if(NOT r STREQUAL "")
@@ -343,18 +393,21 @@ function(check_heavy adhoc s7 policy out)
       return()
     endif()
   endforeach()
-  foreach(needle "    if (minute.invites + minute.leaves != groupOpsBefore)\n        group_ops::MarkHeavyTick();")
-    string(FIND "${adhoc}" "${needle}" at)
+  # Design 3.2: the ad-hoc manager marks every update that ran a scan slice (unconditionally, at the end of its Update).
+  string(FIND "${adhoc}" "    // world tick's heavy group step; the group queue runs no op in the same tick.\n    group_ops::MarkHeavyTick();\n}" at)
+  if(at EQUAL -1)
+    set(${out} "ad-hoc manager: the mark is not unconditional at the end of its update (a scan slice is heavy)" PARENT_SCOPE)
+    return()
+  endif()
+  # S7: a dissolution, a group operation or a scan slice.
+  foreach(needle "    if (heavy || scanned)\n        group_ops::MarkHeavyTick();"
+      "    if (round.active && !HeavyStepTaken(oneStep, heavy))\n    {\n        scanned = true;")
+    string(FIND "${s7}" "${needle}" at)
     if(at EQUAL -1)
-      set(${out} "ad-hoc manager: the mark is not tied to its invites/leaves" PARENT_SCOPE)
+      set(${out} "S7: the mark is not tied to its heavy step and its scan slice: ${needle}" PARENT_SCOPE)
       return()
     endif()
   endforeach()
-  string(FIND "${s7}" "    if (heavy)\n        group_ops::MarkHeavyTick();" at)
-  if(at EQUAL -1)
-    set(${out} "S7: the mark is not tied to its heavy step" PARENT_SCOPE)
-    return()
-  endif()
   string(FIND "${policy}" "    return heavyTaken ? 0u : ClampOpsPerTick(opsPerTick);" at)
   if(at EQUAL -1)
     set(${out} "OpsThisTick: not 0 in a heavy tick" PARENT_SCOPE)
@@ -380,6 +433,7 @@ read_source("PlayerbotAI.h" ai_h)
 read_source("PlayerbotAIConfig.cpp" config_cpp)
 read_source("PlayerbotAIConfig.h" config_h)
 read_source("aiplayerbot.conf.dist.in" conf_dist)
+set(ops_sources "${ops}\n${ops_h}")
 
 file(GLOB_RECURSE module_sources "${PB_SOURCE_DIR}/*.cpp" "${PB_SOURCE_DIR}/*.h")
 set(all_sources "")
@@ -427,17 +481,38 @@ require_text("${ops}" "Pushed const r = Ops().Push(op, sPlayerbotAIConfig.botGro
 require_text("${ai_h}" "void ClearGroupOpPending(uint32 seq) { uint32 expected = seq; groupOpPending.compare_exchange_strong(expected, 0); }" "clear by seq")
 require_text("${ai_h}" "std::atomic<uint32> groupOpPending{ 0 };" "the pending mark, 0 = none")
 require_text("${action_h}" "uint32 opRetryAt = 0;" "the retry time after a refused push")
+# The mark is a hint: the owner clears a stale mark by the seq it read (a newer mark survives); a neighbour only reads it.
+region("${ops}" "bool StillPending(PlayerbotAI* ai, std::uint32_t guidLow)\n{" "\n}\n" still_pending)
+region("${ops}" "bool PendingHint(PlayerbotAI* ai, std::uint32_t guidLow)\n{" "\n}\n" pending_hint)
+foreach(needle "    std::uint32_t const seq = ai->GroupOpPendingSeq();" "    ai->ClearGroupOpPending(seq);")
+  require_text("${still_pending}" "${needle}" "StillPending clears by the seq it read")
+endforeach()
+require_text("${pending_hint}" "    return ai->GroupOpPending() && Ops().IsPending(guidLow);" "PendingHint reads only")
+foreach(src ops ai_h)
+  string(FIND "${${src}}" "ClearGroupOpPendingAny" at)
+  if(NOT at EQUAL -1)
+    message(FATAL_ERROR "${TAG}: ${src}: ClearGroupOpPendingAny (an unconditional clear can drop a newer mark)")
+  endif()
+endforeach()
 
 # Off-thread observer: a module GroupScript (no core hook), counters only, the world thread marked in Drain; the outermost
-# action from Engine::ListenAndExecute.
+# action from Engine::ListenAndExecute; the old path's ad-hoc accept counted as the ad-hoc path; queue bots per path.
 foreach(needle "class GroupOpsObserver : public GroupScript"
-    "if (group && !group->isBGGroup())\n            Observe(EvCreate);"
-    "if (group && !group->isBGGroup())\n            Observe(EvDisband);"
+    "if (group && !group->isBGGroup())\n            Observe(EvCreate, group);"
+    "if (group && !group->isBGGroup())\n            Observe(EvDisband, group);"
+    "if (group && !group->isBGGroup())\n            Observe(EvAdd, group, guid.GetCounter());"
+    "if (group && !group->isBGGroup())\n            Observe(EvLeader, group);"
+    "if (group && !group->isBGGroup())\n            Observe(EvInvite, group);"
     "    if (t_worldThread)\n"
-    "OffSource const src = t_outerAction ? OffSourceOf(true, t_outerAction->getName()) : OffSource::Other;"
-    "    return sPlayerbotAIConfig.botGroupsDiagnostics || sPlayerbotAIConfig.botGroupsOpQueue;")
+    "        adhocInvite = tag && tag == group->GetLeaderGuid().GetCounter();"
+    "OffSource const src = OffSourceOf(t_outerAction != nullptr, action, adhocInvite);"
+    "    if (actorBot && QueueApplies(sPlayerbotAIConfig.botGroupsOpQueue, actorBot->GetGUIDLow()))\n        offCounts.byQueueBot[std::size_t(src)].fetch_add(1, std::memory_order_relaxed);"
+    "    return sPlayerbotAIConfig.botGroupsDiagnostics || sPlayerbotAIConfig.botGroupsOpQueue;"
+    "    if (inviteeAi && ObserverOn())\n        inviteeAi->SetAdhocInviteFrom(inviterGuidLow);")
   require_text("${ops}" "${needle}" "observer")
 endforeach()
+require_text("${policy}" "        return adhocInvite ? OffSource::Adhoc : OffSource::Accept;" "the ad-hoc accept is the ad-hoc path")
+require_text("${policy}" "    return QueueApplies(mode, inviterLow) || QueueApplies(mode, inviteeLow);" "a join queued when the mode applies to either bot")
 require_text("${scripts}" "    ai::group_ops::AddGroupOpsObserver();\n}" "observer registered in AddSC_playerbot_hooks")
 check_before("${engine}" "ai::group_ops::ActionScope const groupOpScope(ai, action);" "action->Execute(event)"
   "the action scope around Execute" r)
@@ -449,6 +524,10 @@ foreach(needle "std::string line = \"[GroupOps] minute\";" "AddField(line, \"mod
     "AddField(line, \"drain_us_max\", m.drainUsMax);" "AddField(line, \"depth_max\", pc.depthMax);"
     "AddField(line, \"age_ms_max\", m.ageMsMax);" "AddField(line, \"dropped_full_leave\", pc.droppedFull[L]);"
     "AddField(line, \"off_create\", off[EvCreate]);" "AddField(line, \"off_disband\", off[EvDisband]);"
+    "AddField(line, \"age_ms_p99\", AgeP99Ms(m.ageHist, m.ageMsMax));" "AddField(line, \"off_leader\", off[EvLeader]);"
+    "AddField(line, \"off_invite\", off[EvInvite]);" "AddField(line, \"off_map_real\", real);"
+    "AddField(line, (\"off_map_\" + std::string(OffSourceName(OffSource(i)))).c_str(), bySource[i]);"
+    "AddField(line, (\"off_q_\" + std::string(OffSourceName(OffSource(i)))).c_str(), byQueueBot[i]);"
     "\"[GroupOps] ALERT depth=%u oldest_age_ms=%u ops_per_tick=%u")
   require_text("${ops}" "${needle}" "minute/ALERT line")
 endforeach()
@@ -469,7 +548,10 @@ foreach(needle "uint32 botGroupsOpQueue = 0;" "uint32 botGroupsOpQueueOpsPerTick
 endforeach()
 foreach(needle "\nAiPlayerbot.BotGroups.OpQueue = 0\n" "\nAiPlayerbot.BotGroups.OpQueueOpsPerTick = 1\n"
     "\nAiPlayerbot.BotGroups.OpQueueMaxDepth = 2048\n" "\nAiPlayerbot.BotGroups.OpQueueAlertAgeSeconds = 60\n"
-    "# BOT-12 (twow-repo#677, #628; OB-00 04.11.2026): the world-thread group queue.")
+    "# BOT-12 (twow-repo#677, #628; OB-00 04.11.2026): the world-thread group queue."
+    "# Scope: only the ad-hoc ACTION path (AdHoc.WorldThread = 0)."
+    "a pair is queued when the mode applies to either bot"
+    "kits set both keys")
   require_text("${conf_dist}" "${needle}" "conf.dist")
 endforeach()
 foreach(needle "constexpr std::uint32_t kOpsPerTickMin = 1;" "constexpr std::uint32_t kOpsPerTickMax = 16;"
@@ -551,9 +633,61 @@ string(REPLACE "    return source == GroupOpSource;\n}" "    return false;\n}" p
 check_tail("${accept}" "${probe}" r)
 expect_caught("AlwaysDeferTail always false" "${r}")
 # The heavy marks gone.
-string(REPLACE "    if (heavy)\n        group_ops::MarkHeavyTick();" "" probe "${s7}")
+string(REPLACE "    if (heavy || scanned)\n        group_ops::MarkHeavyTick();" "" probe "${s7}")
 check_heavy("${adhoc}" "${probe}" "${policy}" r)
 expect_caught("S7 without the heavy mark" "${r}")
+string(REPLACE "    if (heavy || scanned)\n" "    if (heavy)\n" probe "${s7}")
+check_heavy("${adhoc}" "${probe}" "${policy}" r)
+expect_caught("S7 scan slice not heavy" "${r}")
+string(REPLACE "    // world tick's heavy group step; the group queue runs no op in the same tick.\n    group_ops::MarkHeavyTick();\n}"
+  "    // world tick's heavy group step; the group queue runs no op in the same tick.\n    if (minute.invites)\n        group_ops::MarkHeavyTick();\n}" probe "${adhoc}")
+check_heavy("${probe}" "${s7}" "${policy}" r)
+expect_caught("ad-hoc manager mark conditional (scan slice not heavy)" "${r}")
+# The fast path before the heavy flag is consumed (a stale heavy flag would skip a later tick).
+string(REPLACE "    bool const heavy = w.heavyTick;\n    w.heavyTick = false;\n" "" probe "${ops}")
+string(REPLACE "    Queue& queue = Ops();\n    // Switch 0" "    Queue& queue = Ops();\n    if (!queue.DepthHint() && !ObserverOn())\n        return;\n    bool const heavy = w.heavyTick;\n    w.heavyTick = false;\n    // Switch 0" probe "${probe}")
+check_drain("${probe}" r)
+expect_caught("fast path before the heavy flag is consumed" "${r}")
+# The transit limit from the enqueue time again.
+string(REPLACE "std::uint32_t const transitMs = op.inTransit ? nowMs - op.transitSinceMs : 0u;" "std::uint32_t const transitMs = ageMs;" probe "${ops}")
+check_drain("${probe}" r)
+expect_caught("transit limit counted from the enqueue" "${r}")
+# Forget before the core leave (a refused leave would drop the ad-hoc registry entry).
+string(REPLACE "    if (lastPair)\n        adhoc_group::Groups().Forget(groupId);\n" "" probe "${ops}")
+string(REPLACE "    bool const lastPair = group->GetMembersCount() <= 2;\n" "    bool const lastPair = group->GetMembersCount() <= 2;\n    if (lastPair)\n        adhoc_group::Groups().Forget(groupId);\n" probe "${probe}")
+check_drain("${probe}" r)
+expect_caught("Forget before the core leave" "${r}")
+# Switch 0: the old action path deleted (each of its needles).
+foreach(old "            SendInvite(other, bot);\n" "            SendInvite(bot, other);\n" "        pendingKey = key;\n"
+    "    ai->DoSpecificAction(\"leave\", Event(\"adhoc group\", \"\", bot), true);\n")
+  string(REPLACE "${old}" "" probe "${action}")
+  check_action("${probe}" r)
+  expect_caught("switch 0: old path lost ${old}" "${r}")
+endforeach()
+# The join gate back to "the invitee's cohort decides" (a queue-cohort inviter would invite on its map thread).
+string(REPLACE "${JOIN_GATE}" "        if (group_ops::QueueApplies(sPlayerbotAIConfig.botGroupsOpQueue, invitee->GetGUIDLow()))" probe "${action}")
+check_action("${probe}" r)
+expect_caught("join gate on the invitee only" "${r}")
+# A refused leave falling through to the scan.
+string(REPLACE "        EnqueueLeave(group, entry, reason, now);\n        return true;" "        if (!EnqueueLeave(group, entry, reason, now))\n            return false;\n        return true;" probe "${action}")
+check_action("${probe}" r)
+expect_caught("refused leave falls through to Scan" "${r}")
+# A neighbour's scan clearing marks.
+string(REPLACE "group_ops::PendingHint(otherAi, other->GetGUIDLow())" "group_ops::StillPending(otherAi, other->GetGUIDLow())" probe "${action}")
+check_action("${probe}" r)
+expect_caught("neighbour scan clears marks" "${r}")
+# The ad-hoc invite tag dropped (its accept would count as a PR2/PR3 accept).
+string(REPLACE "    group_ops::NoteAdhocInvite(GetBotAI(invitee), inviter->GetGUIDLow());\n" "" probe "${action}")
+check_action("${probe}" r)
+expect_caught("ad-hoc invite tag missing" "${r}")
+# An unqualified Drain() call inside namespace group_ops.
+set(saved_ops_sources "${ops_sources}")
+set(ops_sources "${ops_sources}\nvoid MarkHeavyTick()\n{\n    Drain();\n}\n")
+check_drain_site("${scripts}" "${all_sources}" r)
+expect_caught("unqualified Drain() call" "${r}")
+set(ops_sources "${saved_ops_sources}")
+check_drain_site("${scripts}" "${all_sources}" r)
+fail_if("${r}")
 string(REPLACE "    return heavyTaken ? 0u : ClampOpsPerTick(opsPerTick);" "    return ClampOpsPerTick(opsPerTick);" probe "${policy}")
 check_heavy("${adhoc}" "${s7}" "${probe}" r)
 expect_caught("OpsThisTick ignores the heavy tick" "${r}")

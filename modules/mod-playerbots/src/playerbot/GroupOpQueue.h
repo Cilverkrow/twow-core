@@ -5,6 +5,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <atomic>
 #include <deque>
 #include <mutex>
 #include <unordered_map>
@@ -21,12 +22,14 @@ struct Op
     std::uint8_t reason = 0;        // Leave: the ad-hoc reason (adhoc_group::Leave)
     std::uint8_t source = 0;        // OpSource
     std::uint8_t objective = 0;     // the ad-hoc key, registered on a join
+    std::uint8_t inTransit = 0;     // set by the drain at the first look that found a bot in transit (transitSinceMs valid)
     std::uint32_t bot = 0;          // the bot whose group changes: the leaver, the invitee
     std::uint32_t other = 0;        // Leave: the group leader at the decision; Join: the inviter
     std::uint32_t groupId = 0;      // Leave: the group it decided to leave; Join: the joining group (0 = a new one)
     std::uint32_t questId = 0;
     std::uint32_t enqueuedMs = 0;
     std::uint32_t seq = 0;          // never 0 once queued (GroupOps.cpp sets it before the push, else Push does)
+    std::uint32_t transitSinceMs = 0;   // the drain's clock at that first transit look (the 30 s transit limit counts from here)
 };
 
 enum class Pushed : std::uint8_t
@@ -109,6 +112,7 @@ public:
             latest[op.other] = { op.seq, op.kind, op.bot };
         fifo[k].push_back(op);
         ++depth;
+        depthHint.store(depth, std::memory_order_relaxed);
         ++counts.queued[k];
         if (depth > counts.depthMax)
             counts.depthMax = std::uint32_t(depth);
@@ -126,6 +130,7 @@ public:
         out = q->front();
         q->pop_front();
         --depth;
+        depthHint.store(depth, std::memory_order_relaxed);
         return IsLatestLocked(out) ? Popped::Live : Popped::Superseded;
     }
 
@@ -136,6 +141,7 @@ public:
         std::lock_guard<std::mutex> lock(mutex);
         fifo[std::size_t(op.kind)].push_back(op);
         ++depth;
+        depthHint.store(depth, std::memory_order_relaxed);
     }
 
     // The op ran or was dropped: its bots may queue again.
@@ -159,17 +165,24 @@ public:
         return depth;
     }
 
-    // The oldest enqueue time at the heads of the two FIFOs (an op put back for transit sits at the back: at most
-    // kTransitMaxAgeMs old, then dropped).
+    // Lock-free: the depth as of the last push/pop (the drain's empty-queue fast path; exact for the world thread, which is
+    // the only popper, up to pushes racing it - those wait one tick).
+    std::size_t DepthHint() const
+    {
+        return depthHint.load(std::memory_order_relaxed);
+    }
+
+    // The age of the oldest entry: every entry, since an op put back for transit sits at the back of its FIFO with its
+    // first enqueue time (O(depth) - the drain calls it at most once per kAlertCheckIntervalMs).
     bool OldestEnqueuedMs(std::uint32_t nowMs, std::uint32_t& ageMs) const
     {
         std::lock_guard<std::mutex> lock(mutex);
         bool any = false;
         ageMs = 0;
         for (auto const& q : fifo)
-            if (!q.empty())
+            for (Op const& op : q)
             {
-                std::uint32_t const age = nowMs - q.front().enqueuedMs;
+                std::uint32_t const age = nowMs - op.enqueuedMs;
                 ageMs = any ? (age > ageMs ? age : ageMs) : age;
                 any = true;
             }
@@ -192,6 +205,7 @@ public:
             q.clear();
         latest.clear();
         depth = 0;
+        depthHint.store(0, std::memory_order_relaxed);
     }
 
 private:
@@ -224,6 +238,7 @@ private:
     std::array<std::deque<Op>, kKinds> fifo;   // [Leave], [Join]
     std::unordered_map<std::uint32_t, Pending> latest;
     std::size_t depth = 0;
+    std::atomic<std::size_t> depthHint{ 0 };   // a copy of depth, written under the mutex, read without it
     std::uint32_t nextSeq = 1;
     PushCounts counts;
 };

@@ -54,9 +54,12 @@ std::uint32_t NextSeq()
 
 // ---- off-thread observer (OB-00 04.11. addition b) -------------------------------------------------------------------------
 // The world thread marks itself in every Drain (PlayerbotWorldScript::OnUpdate). That is the thread that also runs
-// World::UpdateSessions, where the core handles the players' group opcodes (PACKET_PROCESS_GROUP = PACKET_PROCESS_WORLD):
-// a group event on it happens with the maps idle (outside sMapMgr.Update). Any other thread is a map/region thread, a
-// command thread or another module's thread - "off the world thread".
+// World::UpdateSessions, where the core handles the players' group opcodes (PACKET_PROCESS_GROUP = PACKET_PROCESS_WORLD).
+// Call chain of the drain: World::Update -> UpdateSessions (World.cpp:2996) -> sMapMgr.Update (:3038; continents.wait() and
+// the instance f.wait() loop, then the teleports) -> WORLDHOOK_ON_UPDATE (:3310) -> PlayerbotWorldScript::OnUpdate ->
+// sRandomPlayerbotMgr.UpdateAI -> group_ops::Drain: the maps are idle. An instance updated inline on the world thread (no
+// instance pool; MapManager::Update collection loop, before the continents are dispatched) is serial, so on-thread is right
+// there too. Any other thread is a map/region thread, a command thread or another module's thread - "off the world thread".
 thread_local bool t_worldThread = false;
 std::atomic<bool> worldSeen{ false };
 
@@ -66,15 +69,17 @@ enum GroupEvent : std::size_t
     EvDisband,
     EvAdd,
     EvRemove,
+    EvLeader,
+    EvInvite,
     kEvents,
 };
 
 struct OffCounts
 {
     std::array<std::atomic<std::uint32_t>, kEvents> off{};
-    std::array<std::atomic<std::uint32_t>, kOffSources> bySource{};   // creates + disbands
-    std::atomic<std::uint32_t> queueBot{ 0 };     // creates + disbands from a bot OpQueue applies to
-    std::atomic<std::uint32_t> realMaster{ 0 };   // creates + disbands from a bot with a real-player master (PR3)
+    std::array<std::atomic<std::uint32_t>, kOffSources> bySource{};    // creates + disbands (m_GroupMap writes), every bot
+    std::array<std::atomic<std::uint32_t>, kOffSources> byQueueBot{};  // creates + disbands + adds + removes by a queue bot
+    std::atomic<std::uint32_t> real{ 0 };   // creates + disbands with a real player involved: the actor's master or the leader (PR3)
     std::atomic<std::uint32_t> wtCreate{ 0 };
     std::atomic<std::uint32_t> wtDisband{ 0 };
 };
@@ -86,8 +91,14 @@ bool ObserverOn()
     return sPlayerbotAIConfig.botGroupsDiagnostics || sPlayerbotAIConfig.botGroupsOpQueue;
 }
 
-// Counter only: relaxed atomics, no lock, no log line per event.
-void Observe(GroupEvent e)
+bool IsRealPlayerOrSelfBot(Player* player)
+{
+    PlayerbotAI* const ai = player ? GetBotAI(player) : nullptr;
+    return player && (!ai || ai->IsRealPlayer());
+}
+
+// Counter only: relaxed atomics, no lock, no log line per event. addedLow: the member an EvAdd adds.
+void Observe(GroupEvent e, Group* group, std::uint32_t addedLow = 0)
 {
     if (!ObserverOn())
         return;
@@ -101,24 +112,40 @@ void Observe(GroupEvent e)
     if (!worldSeen.load(std::memory_order_relaxed))
         return;   // before the first world tick: no world thread known yet
     offCounts.off[e].fetch_add(1, std::memory_order_relaxed);
-    if (!mapWrite)
-        return;
-    OffSource const src = t_outerAction ? OffSourceOf(true, t_outerAction->getName()) : OffSource::Other;
-    offCounts.bySource[std::size_t(src)].fetch_add(1, std::memory_order_relaxed);
-    if (t_actionAi)
+    if (!mapWrite && e != EvAdd && e != EvRemove)
+        return;   // leader change / invite: totals only
+
+    PlayerbotAI* const actor = t_outerAction ? t_actionAi : nullptr;
+    Player* const actorBot = actor ? actor->GetBot() : nullptr;
+    std::string const action = t_outerAction ? t_outerAction->getName() : std::string();
+    // The old ad-hoc path creates the group in the invitee's own "accept invitation" (HandleGroupAcceptOpcode): an accept whose
+    // group leader is the inviter the bot was tagged with is the ad-hoc path, not a PR2/PR3 accept.
+    bool adhocInvite = false;
+    if (actor && action == "accept invitation")
     {
-        if (Player* bot = t_actionAi->GetBot())
-            if (QueueApplies(sPlayerbotAIConfig.botGroupsOpQueue, bot->GetGUIDLow()))
-                offCounts.queueBot.fetch_add(1, std::memory_order_relaxed);
-        if (t_actionAi->HasRealPlayerMaster())
-            offCounts.realMaster.fetch_add(1, std::memory_order_relaxed);
+        std::uint32_t const tag = actor->AdhocInviteFrom();
+        adhocInvite = tag && tag == group->GetLeaderGuid().GetCounter();
+        if (e == EvAdd && actorBot && addedLow == actorBot->GetGUIDLow())
+            actor->TakeAdhocInviteFrom();   // the bot joined (Create adds the leader first, then OnCreate, then the bot)
     }
+    OffSource const src = OffSourceOf(t_outerAction != nullptr, action, adhocInvite);
+    if (mapWrite)
+    {
+        offCounts.bySource[std::size_t(src)].fetch_add(1, std::memory_order_relaxed);
+        // A real player's own group opcodes run on the world thread; off it, a real player is involved through a bot with a
+        // real-player master, or through a group a real player leads (a bot's first accept of a real player's invite: the
+        // master is set only after the core accept).
+        if ((actor && actor->HasRealPlayerMaster()) || IsRealPlayerOrSelfBot(sObjectMgr.GetPlayer(group->GetLeaderGuid())))
+            offCounts.real.fetch_add(1, std::memory_order_relaxed);
+    }
+    if (actorBot && QueueApplies(sPlayerbotAIConfig.botGroupsOpQueue, actorBot->GetGUIDLow()))
+        offCounts.byQueueBot[std::size_t(src)].fetch_add(1, std::memory_order_relaxed);
 }
 
-// The core's group hooks (Group::Create, Group::Disband, AddMember, RemoveMember; src/game/Group/Group.cpp) fire on the
-// thread that changes the group. Create/Disband of a non-battleground group are the m_GroupMap writes (AddGroup after
-// Create in HandleGroupAcceptOpcode, RemoveGroup after the disband in Player::RemoveFromGroup / UninviteFromGroup).
-// No core hook was needed.
+// The core's group hooks (Group::Create, Group::Disband, AddMember, RemoveMember, ChangeLeader, AddInvite;
+// src/game/Group/Group.cpp) fire on the thread that changes the group. Create/Disband of a non-battleground group are the
+// m_GroupMap writes (AddGroup after Create in HandleGroupAcceptOpcode, RemoveGroup after the disband in
+// Player::RemoveFromGroup / UninviteFromGroup). No core hook was needed.
 class GroupOpsObserver : public GroupScript
 {
 public:
@@ -127,22 +154,32 @@ public:
     void OnCreate(Group* group, ObjectGuid /*leaderGuid*/, uint8 /*groupType*/) override
     {
         if (group && !group->isBGGroup())
-            Observe(EvCreate);
+            Observe(EvCreate, group);
     }
-    void OnAddMember(Group* group, ObjectGuid /*guid*/) override
+    void OnInviteMember(Group* group, ObjectGuid /*guid*/) override
     {
         if (group && !group->isBGGroup())
-            Observe(EvAdd);
+            Observe(EvInvite, group);
+    }
+    void OnAddMember(Group* group, ObjectGuid guid) override
+    {
+        if (group && !group->isBGGroup())
+            Observe(EvAdd, group, guid.GetCounter());
     }
     void OnRemoveMember(Group* group, ObjectGuid /*guid*/, uint8 /*method*/) override
     {
         if (group && !group->isBGGroup())
-            Observe(EvRemove);
+            Observe(EvRemove, group);
+    }
+    void OnChangeLeader(Group* group, ObjectGuid /*newLeaderGuid*/, ObjectGuid /*oldLeaderGuid*/) override
+    {
+        if (group && !group->isBGGroup())
+            Observe(EvLeader, group);
     }
     void OnDisband(Group* group) override
     {
         if (group && !group->isBGGroup())
-            Observe(EvDisband);
+            Observe(EvDisband, group);
     }
 };
 
@@ -155,6 +192,7 @@ struct DrainMinute
     std::array<std::uint32_t, kVerdicts> verdicts{};
     std::uint32_t superseded = 0;
     std::uint32_t ageMsMax = 0;
+    std::uint32_t ageHist[kAgeBuckets] = {};       // ages of the ops looked at (age_ms_p99)
     std::uint32_t drainUsMax = 0;
     std::uint32_t opUsMax = 0;
     std::uint32_t leaveCoreUsMax = 0;
@@ -171,6 +209,8 @@ struct WorldState
     std::uint32_t minuteStartMs = 0;
     bool alerted = false;
     std::uint32_t lastAlertMs = 0;
+    bool alertChecked = false;
+    std::uint32_t lastAlertCheckMs = 0;
     DrainMinute minute;
 };
 
@@ -203,7 +243,7 @@ void ClearPending(Op const& op)
 // The core leave of the ad-hoc manager (WorldThreadManager::LeaveGroup, S7 LeaveCore): HandleGroupDisbandOpcode ->
 // RemoveFromGroup -> RemoveMember, or Disband + RemoveGroup + delete for a group of two. With the maps idle. The log lines and
 // the AI part (strategy reset) go to the bot's own thread - always, whatever WorldThreadDefer says.
-Verdict RunLeave(Op const& op, std::uint32_t ageMs, DrainMinute& m)
+Verdict RunLeave(Op const& op, std::uint32_t transitMs, DrainMinute& m)
 {
     Player* bot = FindPlayer(op.bot);
     PlayerbotAI* ai = bot ? GetBotAI(bot) : nullptr;
@@ -219,15 +259,16 @@ Verdict RunLeave(Op const& op, std::uint32_t ageMs, DrainMinute& m)
         f.groupId = now ? now->GetId() : 0u;
     }
     f.opGroupId = op.groupId;
-    f.ageMs = ageMs;
+    f.transitMs = transitMs;
     Verdict const v = DecideLeaveOp(f);
     if (v != Verdict::Execute)
         return v;
 
     Group* group = bot->GetGroup();
-    // The ad-hoc registry: the group ends with the second-to-last member (core disband).
-    if (group->GetMembersCount() <= 2)
-        adhoc_group::Groups().Forget(group->GetId());
+    // The ad-hoc registry: the group ends with the second-to-last member (core disband) - forgotten below, only once the bot is
+    // really out (a refused core leave keeps the group ad-hoc, so the bot decides again).
+    std::uint32_t const groupId = group->GetId();
+    bool const lastPair = group->GetMembersCount() <= 2;
     {
         deferred_log::Scope const deferLogs(ai, true);
         sPlayerbotAIConfig.logEvent(ai, "LeaveGroupAction", group->GetLeaderName(), std::to_string(group->GetMembersCount() - 1));
@@ -247,17 +288,21 @@ Verdict RunLeave(Op const& op, std::uint32_t ageMs, DrainMinute& m)
     ai->RequestGroupAi(group_ai_refresh::LeaveReset);
 
     Group* after = bot->GetGroup();
-    if (after && after->GetId() == op.groupId)
+    if (after && after->GetId() == groupId)
+    {
         ++m.failed[std::size_t(OpKind::Leave)];
-    else
-        ++m.executed[std::size_t(OpKind::Leave)];
+        return v;
+    }
+    if (lastPair)
+        adhoc_group::Groups().Forget(groupId);
+    ++m.executed[std::size_t(OpKind::Leave)];
     return v;
 }
 
 // The core join of the ad-hoc manager (WorldThreadManager::Join): the inviter's invite opcode, then the invitee's
 // "accept invitation" with the group-op source - the accept keeps only the core join here and posts its tail to the bot
 // (AcceptInvitationAction, group_ai_refresh::GroupOpSource) - then the ad-hoc registry and free-for-all loot.
-Verdict RunJoin(Op const& op, std::uint32_t ageMs, DrainMinute& m)
+Verdict RunJoin(Op const& op, std::uint32_t transitMs, DrainMinute& m)
 {
     Player* invitee = FindPlayer(op.bot);
     Player* inviter = FindPlayer(op.other);
@@ -283,7 +328,7 @@ Verdict RunJoin(Op const& op, std::uint32_t ageMs, DrainMinute& m)
             sServerFacade.GetDistance2d(inviter, invitee) <= 2.0f * sPlayerbotAIConfig.botGroupsAdhocRadius;
     }
     f.opGroupId = op.groupId;
-    f.ageMs = ageMs;
+    f.transitMs = transitMs;
     Verdict const v = DecideJoinOp(f);
     if (v != Verdict::Execute)
         return v;
@@ -369,10 +414,13 @@ void FlushMinute(WorldState& w, std::uint32_t nowMs)
     for (std::size_t i = 0; i < kEvents; ++i)
         off[i] = Take(offCounts.off[i]);
     std::array<std::uint32_t, kOffSources> bySource{};
+    std::array<std::uint32_t, kOffSources> byQueueBot{};
     for (std::size_t i = 0; i < kOffSources; ++i)
+    {
         bySource[i] = Take(offCounts.bySource[i]);
-    std::uint32_t const queueBot = Take(offCounts.queueBot);
-    std::uint32_t const realMaster = Take(offCounts.realMaster);
+        byQueueBot[i] = Take(offCounts.byQueueBot[i]);
+    }
+    std::uint32_t const real = Take(offCounts.real);
     std::uint32_t const wtCreate = Take(offCounts.wtCreate);
     std::uint32_t const wtDisband = Take(offCounts.wtDisband);
     if (!ObserverOn())
@@ -403,6 +451,7 @@ void FlushMinute(WorldState& w, std::uint32_t nowMs)
     AddField(line, "depth", std::uint32_t(Ops().Depth()));
     AddField(line, "depth_max", pc.depthMax);
     AddField(line, "age_ms_max", m.ageMsMax);
+    AddField(line, "age_ms_p99", AgeP99Ms(m.ageHist, m.ageMsMax));
     AddField(line, "drain_us_max", m.drainUsMax);
     AddField(line, "op_us_max", m.opUsMax);
     AddField(line, "leave_core_us_max", m.leaveCoreUsMax);
@@ -414,10 +463,13 @@ void FlushMinute(WorldState& w, std::uint32_t nowMs)
     AddField(line, "off_disband", off[EvDisband]);
     AddField(line, "off_add", off[EvAdd]);
     AddField(line, "off_remove", off[EvRemove]);
-    AddField(line, "off_map_queue_bot", queueBot);
-    AddField(line, "off_map_real_master", realMaster);
+    AddField(line, "off_leader", off[EvLeader]);
+    AddField(line, "off_invite", off[EvInvite]);
+    AddField(line, "off_map_real", real);
     for (std::size_t i = 0; i < kOffSources; ++i)
         AddField(line, ("off_map_" + std::string(OffSourceName(OffSource(i)))).c_str(), bySource[i]);
+    for (std::size_t i = 0; i < kOffSources; ++i)
+        AddField(line, ("off_q_" + std::string(OffSourceName(OffSource(i)))).c_str(), byQueueBot[i]);
     AddField(line, "wt_create", wtCreate);
     AddField(line, "wt_disband", wtDisband);
     sLog.outBasic("%s", line.c_str());
@@ -451,12 +503,24 @@ Pushed Enqueue(Op& op, PlayerbotAI* botAi, PlayerbotAI* otherAi)
 
 bool StillPending(PlayerbotAI* ai, std::uint32_t guidLow)
 {
-    if (!ai->GroupOpPending())
+    std::uint32_t const seq = ai->GroupOpPendingSeq();
+    if (!seq)
         return false;
     if (Ops().IsPending(guidLow))
         return true;
-    ai->ClearGroupOpPendingAny();   // ran or dropped while the bot was gone: the queue is the truth
+    ai->ClearGroupOpPending(seq);   // ran or dropped while the bot was not found: the queue is the truth; a newer mark survives
     return false;
+}
+
+bool PendingHint(PlayerbotAI* ai, std::uint32_t guidLow)
+{
+    return ai->GroupOpPending() && Ops().IsPending(guidLow);
+}
+
+void NoteAdhocInvite(PlayerbotAI* inviteeAi, std::uint32_t inviterGuidLow)
+{
+    if (inviteeAi && ObserverOn())
+        inviteeAi->SetAdhocInviteFrom(inviterGuidLow);
 }
 
 void MarkHeavyTick()
@@ -471,8 +535,11 @@ void Drain()
     WorldState& w = WorldSide();
     bool const heavy = w.heavyTick;
     w.heavyTick = false;
-    std::uint32_t const nowMs = NowMs();
     Queue& queue = Ops();
+    // Switch 0 (OpQueue off, no diagnostics) with nothing queued: no clock read, no lock.
+    if (!queue.DepthHint() && !ObserverOn())
+        return;
+    std::uint32_t const nowMs = NowMs();
 
     std::size_t const depth = queue.Depth();
     if (depth)
@@ -504,11 +571,19 @@ void Drain()
                 }
                 std::uint32_t const ageMs = nowMs - op.enqueuedMs;
                 m.ageMsMax = std::max(m.ageMsMax, ageMs);
+                ++m.ageHist[AgeBucket(ageMs)];
+                // The transit limit counts from the first look that found a bot in transit, not from the enqueue.
+                std::uint32_t const transitMs = op.inTransit ? nowMs - op.transitSinceMs : 0u;
                 auto const opStart = Clock::now();
-                Verdict const v = op.kind == OpKind::Leave ? RunLeave(op, ageMs, m) : RunJoin(op, ageMs, m);
+                Verdict const v = op.kind == OpKind::Leave ? RunLeave(op, transitMs, m) : RunJoin(op, transitMs, m);
                 ++m.verdicts[std::size_t(v)];
                 if (v == Verdict::Retry)
                 {
+                    if (!op.inTransit)
+                    {
+                        op.inTransit = 1;
+                        op.transitSinceMs = nowMs;
+                    }
                     later.push_back(op);
                     continue;
                 }
@@ -534,16 +609,22 @@ void Drain()
             }
         }
 
-        // OB-00 04.11. (a): the oldest op waits longer than AlertAgeSeconds - one line, at most once a minute.
-        std::uint32_t oldestMs = 0;
-        bool const hasOldest = queue.OldestEnqueuedMs(nowMs, oldestMs);
-        if (AlertDue(hasOldest, oldestMs, sPlayerbotAIConfig.botGroupsOpQueueAlertAgeSeconds, w.alerted, nowMs, w.lastAlertMs))
+        // OB-00 04.11. (a): the oldest op waits longer than AlertAgeSeconds - one line, at most once a minute. The age walks the
+        // whole queue (put-back transit ops included), at most once a second.
+        if (!w.alertChecked || nowMs - w.lastAlertCheckMs >= kAlertCheckIntervalMs)
         {
-            w.alerted = true;
-            w.lastAlertMs = nowMs;
-            sLog.outBasic("[GroupOps] ALERT depth=%u oldest_age_ms=%u ops_per_tick=%u max_depth=%u alert_age_s=%u heavy_skips=%u mode=%u",
-                uint32(queue.Depth()), oldestMs, sPlayerbotAIConfig.botGroupsOpQueueOpsPerTick, sPlayerbotAIConfig.botGroupsOpQueueMaxDepth,
-                sPlayerbotAIConfig.botGroupsOpQueueAlertAgeSeconds, m.heavySkips, sPlayerbotAIConfig.botGroupsOpQueue);
+            w.alertChecked = true;
+            w.lastAlertCheckMs = nowMs;
+            std::uint32_t oldestMs = 0;
+            bool const hasOldest = queue.OldestEnqueuedMs(nowMs, oldestMs);
+            if (AlertDue(hasOldest, oldestMs, sPlayerbotAIConfig.botGroupsOpQueueAlertAgeSeconds, w.alerted, nowMs, w.lastAlertMs))
+            {
+                w.alerted = true;
+                w.lastAlertMs = nowMs;
+                sLog.outBasic("[GroupOps] ALERT depth=%u oldest_age_ms=%u ops_per_tick=%u max_depth=%u alert_age_s=%u heavy_skips=%u mode=%u",
+                    uint32(queue.Depth()), oldestMs, sPlayerbotAIConfig.botGroupsOpQueueOpsPerTick, sPlayerbotAIConfig.botGroupsOpQueueMaxDepth,
+                    sPlayerbotAIConfig.botGroupsOpQueueAlertAgeSeconds, m.heavySkips, sPlayerbotAIConfig.botGroupsOpQueue);
+            }
         }
     }
 
