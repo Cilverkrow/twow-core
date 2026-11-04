@@ -90,9 +90,6 @@ PriestStrategy::PriestStrategy(PlayerbotAI* ai) : ClassStrategy(ai)
 // twow-repo#568 (D20): the race is fixed, so the answer holds for the engine's lifetime (read at engine init).
 bool ai::dietpriest::RaceMayLearn(PlayerbotAI* ai, uint32 raceMask)
 {
-    if (!sPlayerbotAIConfig.dietPriestRacials)
-        return true;
-
     Player* bot = ai ? ai->GetBot() : nullptr;
     if (!bot)
         return true;

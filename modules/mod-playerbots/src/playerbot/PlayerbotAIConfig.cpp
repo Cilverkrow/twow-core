@@ -684,16 +684,6 @@ bool PlayerbotAIConfig::Initialize()
     dietWarriorBerserkerStanceGate = config.GetBoolDefault("AiPlayerbot.Diet.WarriorBerserkerStanceGate", false);
     dietWarriorNoInterceptAndRage = config.GetBoolDefault("AiPlayerbot.Diet.WarriorNoInterceptAndRage", false);
     dietWarriorDedupBloodrage = config.GetBoolDefault("AiPlayerbot.Diet.WarriorDedupBloodrage", false);
-    dietPriestRacials = config.GetBoolDefault("AiPlayerbot.Diet.PriestRacials", false);
-    dietPriestSelfBuffKnown = config.GetBoolDefault("AiPlayerbot.Diet.PriestSelfBuffKnown", false);
-    dietShadowPriestDeadNodes = config.GetBoolDefault("AiPlayerbot.Diet.ShadowPriestDeadNodes", false);
-    dietWarlockCcKnown = config.GetBoolDefault("AiPlayerbot.Diet.WarlockCcKnown", false);
-    dietWarlockTalentKnown = config.GetBoolDefault("AiPlayerbot.Diet.WarlockTalentKnown", false);
-    dietWarlockAmplifyCurse = config.GetBoolDefault("AiPlayerbot.Diet.WarlockAmplifyCurse", false);
-    dietMageArmorKnown = config.GetBoolDefault("AiPlayerbot.Diet.MageArmorKnown", false);
-    dietMageTalentBoostKnown = config.GetBoolDefault("AiPlayerbot.Diet.MageTalentBoostKnown", false);
-    dietMageBlastWave = config.GetBoolDefault("AiPlayerbot.Diet.MageBlastWave", false);
-    dietMageInvisibility = config.GetBoolDefault("AiPlayerbot.Diet.MageInvisibility", false);
     dietLevelingDruidWrath = config.GetBoolDefault("AiPlayerbot.Diet.LevelingDruidWrath", false);
     dietShockCooldownGate = config.GetBoolDefault("AiPlayerbot.Diet.ShockCooldownGate", false);
     dietFireNovaTotem = config.GetBoolDefault("AiPlayerbot.Diet.FireNovaTotem", false);

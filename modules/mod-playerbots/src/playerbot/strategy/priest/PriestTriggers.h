@@ -23,17 +23,16 @@ namespace ai
     INTERRUPT_HEALER_TRIGGER(SilenceEnemyHealerTrigger, "silence");
 
     // racials
-    // twow-repo#568 (D20, AiPlayerbot.Diet.PriestRacials): with the switch the four race triggers stay quiet
+    // twow-repo#568 (D20): the four race triggers stay quiet
     // while the bot knows no rank of the spell (right race below the learn level, or a node registered by a
     // custom strategy). The pushed action would end IMPOSSIBLE (spell id 0) and has no alternative.
-    // Switch off: exactly the old Buff/DebuffTrigger::IsActive.
     class DevouringPlagueTrigger : public DebuffTrigger
     {
     public:
         DevouringPlagueTrigger(PlayerbotAI* ai) : DebuffTrigger(ai, "devouring plague") {}
         virtual bool IsActive() override
         {
-            if (sPlayerbotAIConfig.dietPriestRacials && !AI_VALUE2(uint32, "spell id", spell))
+            if (!AI_VALUE2(uint32, "spell id", spell))
                 return false;
             return DebuffTrigger::IsActive();
         }
@@ -45,7 +44,7 @@ namespace ai
         TouchOfWeaknessTrigger(PlayerbotAI* ai) : BuffTrigger(ai, "touch of weakness") {}
         virtual bool IsActive() override
         {
-            if (sPlayerbotAIConfig.dietPriestRacials && !AI_VALUE2(uint32, "spell id", spell))
+            if (!AI_VALUE2(uint32, "spell id", spell))
                 return false;
             return BuffTrigger::IsActive();
         }
@@ -57,7 +56,7 @@ namespace ai
         HexOfWeaknessTrigger(PlayerbotAI* ai) : DebuffTrigger(ai, "hex of weakness") {}
         virtual bool IsActive() override
         {
-            if (sPlayerbotAIConfig.dietPriestRacials && !AI_VALUE2(uint32, "spell id", spell))
+            if (!AI_VALUE2(uint32, "spell id", spell))
                 return false;
             return DebuffTrigger::IsActive();
         }
@@ -69,7 +68,7 @@ namespace ai
         ShadowguardTrigger(PlayerbotAI* ai) : BuffTrigger(ai, "shadowguard") {}
         virtual bool IsActive() override
         {
-            if (sPlayerbotAIConfig.dietPriestRacials && !AI_VALUE2(uint32, "spell id", spell))
+            if (!AI_VALUE2(uint32, "spell id", spell))
                 return false;
             return BuffTrigger::IsActive();
         }

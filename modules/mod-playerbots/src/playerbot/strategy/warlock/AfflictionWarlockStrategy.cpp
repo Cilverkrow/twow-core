@@ -19,7 +19,7 @@ void AfflictionWarlockStrategy::InitCombatTriggers(std::list<TriggerNode*>& trig
     WarlockStrategy::InitCombatTriggers(triggers);
 
     triggers.push_back(new TriggerNode(
-        sPlayerbotAIConfig.dietWarlockTalentKnown ? "dark pact" : "low mana",  // twow-repo#568 (D24)
+        "dark pact",  // twow-repo#568 (D24)
         NextAction::array(0, new NextAction("dark pact", ACTION_HIGH + 2), NULL)));
 
     triggers.push_back(new TriggerNode(
