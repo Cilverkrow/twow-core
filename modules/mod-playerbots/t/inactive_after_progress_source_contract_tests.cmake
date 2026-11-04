@@ -55,7 +55,7 @@ require_text("${conf_dist}" "\nAiPlayerbot.QuestLoop.InactiveAfterProgress = 0\n
 
 # 2. The count: taken when a new destination is set (a refresh keeps it), quest items for loot objectives, credit otherwise.
 between("${travel}" "void TravelTarget::SetTarget(" "\n}\n" set_target)
-require_text("${set_target}" "if (sPlayerbotAIConfig.questLoopInactiveAfterProgress && tDestination1 != tDestination)\n        objectiveCountAtStart = ObjectiveCountOf(bot, tDestination1);" "count at a new destination")
+require_text("${set_target}" "if (ai::cohort::Applies(sPlayerbotAIConfig.questLoopInactiveAfterProgress, bot->GetGUIDLow()) && tDestination1 != tDestination)\n        objectiveCountAtStart = ObjectiveCountOf(bot, tDestination1);" "count at a new destination")
 require_order("${set_target}" "objectiveCountAtStart = ObjectiveCountOf(bot, tDestination1);" "tDestination = tDestination1;" "taken before the destination changes")
 require_text("${travel}" "return quest->ReqItemCount[index] > 0 ? int32(it->second.m_itemcount[index]) : int32(it->second.m_creatureOrGOcount[index]);" "items or credit")
 require_text("${travel_h}" "int32 objectiveCountAtStart = -1;" "no count by default")
