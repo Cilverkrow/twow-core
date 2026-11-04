@@ -78,7 +78,7 @@ endforeach()
 # 2. The death: living attackers counted once, only with a switch on; the danger map records them; the camp ring gets the position
 #    whatever the travel target (not behind IsActiveForDeathAttribution).
 between("${ai_source}" "void PlayerbotAI::OnDeath()" "\nvoid PlayerbotAI::" on_death)
-require_text("${on_death}" "if (sPlayerbotAIConfig.destinationDeathsCampBlock || sPlayerbotAIConfig.dangerMapCountAddDeaths)" "attackers only read with a switch on")
+require_text("${on_death}" "if (ai::cohort::Applies(sPlayerbotAIConfig.destinationDeathsCampBlock, bot->GetGUIDLow()) || sPlayerbotAIConfig.dangerMapCountAddDeaths)" "attackers only read with a switch on")
 require_text("${on_death}" "ai::death_adds::MergeAdds(live, deathAdds, ai::death_adds::Fresh(deathAdds, WorldTimer::getMSTime())," "adds from the fight snapshot")
 require_text("${on_death}" "if (deathTarget && deathTarget->IsAlive())\n                    ++deathAttackers;" "the living target counts")
 require_text("${on_death}" "RecordDangerMapDeath(bot, AI_VALUE(Unit*, \"current target\"), deathAttackers);" "attackers into the danger map")
