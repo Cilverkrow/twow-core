@@ -45,4 +45,33 @@ foreach (var accept sign manage)
     message(FATAL_ERROR "guild min level: ${var} still reads rosterGuildMinLevel (join paths use JoinMinLevel)")
   endif()
 endforeach()
+
+# Owner 04.11.2026 (OB-00: the guild rule applies to all bots): the level gates take every bot on its own (no real master), not
+# only roster members; a non-roster bot on its own (legacy path) also stops buying and handing in charters at the guild cap.
+foreach (pair
+    "accept|!ai->HasRealPlayerMaster(), IsRealPlayer(inviter)))"
+    "sign|!ai->HasRealPlayerMaster(), IsRealPlayer(_inviter)))"
+    "create|GetBotAI(bot) && !GetBotAI(bot)->HasRealPlayerMaster()))"
+    "create|!(GetBotAI(player) && GetBotAI(player)->HasRealPlayerMaster()), false))"
+    "create|bool RosterGuildPlan::MayBuyLegacyCharter(Player* bot, char const*& reason)"
+    "create|!roster_guild::MayBuyCharter(fs.target, fs.ledger.guilds + fs.ledger.reserved + fs.otherBotGuilds, fs.openCharters))"
+    "create|if (sPlayerbotAIConfig.randomBotGuildCount && allBotGuilds >= sPlayerbotAIConfig.randomBotGuildCount)"
+    "create|else if (sRandomPlayerbotMgr.IsRandomBot(guild.leaderGuid.GetCounter()))"
+    "create|else if (!ai->HasRealPlayerMaster() && !RosterGuildPlan::MayBuyLegacyCharter(bot, reason))"
+    "create|return due && (ai->HasRealPlayerMaster() || RosterGuildPlan::MayBuyLegacyCharter(bot, capReason));")
+  string(FIND "${pair}" "|" bar)
+  string(SUBSTRING "${pair}" 0 ${bar} var)
+  math(EXPR start "${bar} + 1")
+  string(SUBSTRING "${pair}" ${start} -1 needle)
+  string(FIND "${${var}}" "${needle}" at)
+  if (at EQUAL -1)
+    message(FATAL_ERROR "guild min level (all bots): missing ${needle}")
+  endif()
+endforeach()
+foreach (var accept sign)
+  string(FIND "${${var}}" "IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster(), IsRealPlayer" roster_only)
+  if (NOT roster_only EQUAL -1)
+    message(FATAL_ERROR "guild min level: ${var} still gates roster members only")
+  endif()
+endforeach()
 message(STATUS "GUILD_JOIN_MIN_LEVEL_CONTRACT=PASS")

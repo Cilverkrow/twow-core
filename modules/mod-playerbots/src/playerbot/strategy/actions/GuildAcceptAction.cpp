@@ -146,7 +146,7 @@ bool GuildAcceptAction::Execute(Event& event)
                 bot->GetGUIDLow(), inviter->GetGUIDLow(), guildId);
     }
     else if (!roster_guild::JoinAllowed(bot->GetLevel(), sPlayerbotAIConfig.rosterGuildJoinMinLevel,
-        sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster(), IsRealPlayer(inviter)))
+        !ai->HasRealPlayerMaster(), IsRealPlayer(inviter)))   // owner 04.11.2026: every bot on its own
     {
         // Owner 05.10.2026: no bot guild below AiPlayerbot.RosterGuild.MinLevel (players reserve first).
         ai->TellError(requester, "Sorry, I am too young for a guild");

@@ -42,6 +42,7 @@ namespace
         uint32 target = 0;
         roster_guild::FoundingLedger ledger;    // bot guilds + foundings in flight
         uint32 openCharters = 0;                // open charters of roster bots, purchases since the recount
+        uint32 otherBotGuilds = 0;              // owner 04.11.2026: guilds led by a non-roster random bot (legacy path cap)
         uint32 freeNames = 0;
         uint32 traced[5] = { 0, 0, 0, 0, 0 };   // last event=plan line
         bool hasTraced = false;
@@ -395,6 +396,7 @@ namespace
         sGuildMgr.CollectPetitionSummaries(petitions);
 
         uint32 botGuilds[2] = { 0, 0 };
+        uint32 otherBotGuilds[2] = { 0, 0 };
         uint32 openCharters[2] = { 0, 0 };
         state.guildNames.clear();
         state.charterNames.clear();
@@ -404,6 +406,10 @@ namespace
             auto it = rosterFaction.find(guild.leaderGuid.GetCounter());
             if (it != rosterFaction.end())
                 ++botGuilds[it->second];
+            // owner 04.11.2026: the guilds of non-roster random bots count toward the cap of the legacy path.
+            else if (sRandomPlayerbotMgr.IsRandomBot(guild.leaderGuid.GetCounter()))
+                if (PlayerCacheData const* leader = sObjectMgr.GetPlayerDataByGUID(guild.leaderGuid.GetCounter()))
+                    ++otherBotGuilds[RosterGuildFactionIndex(Player::TeamForRace(uint8(leader->uiRace)))];
         }
         for (PetitionSummary const& petition : petitions)
         {
@@ -419,6 +425,7 @@ namespace
             fs.roster = roster[f];
             fs.target = roster_guild::TargetGuilds(roster[f], sPlayerbotAIConfig.rosterGuildBotsPerGuild);
             fs.ledger.guilds = botGuilds[f];
+            fs.otherBotGuilds = otherBotGuilds[f];
             fs.openCharters = openCharters[f];
             fs.freeNames = 0;
             for (std::string const& name : RosterGuildNames(f))
@@ -548,6 +555,33 @@ bool RosterGuildPlan::MayBuyCharter(Player* bot, char const*& reason)
     if (PickFreeRosterGuildName(state, RosterGuildNames(RosterGuildFactionIndex(bot->GetTeam()))).empty())
     {
         reason = "no_name";
+        return false;
+    }
+
+    return true;
+}
+
+// Owner 04.11.2026 (via OB-00: the guild rule applies to all bots): a non-roster bot on its own (legacy path) buys no charter once
+// the bot guilds of its faction (roster + non-roster) and the open roster charters reach the faction target (with the roster guild
+// system on), or once all bot guilds reach AiPlayerbot.RandomBotGuildCount (0 = no count cap).
+bool RosterGuildPlan::MayBuyLegacyCharter(Player* bot, char const*& reason)
+{
+    RosterGuildState& state = GetRosterGuildState();
+    std::lock_guard<std::mutex> guard(state.lock);
+    RosterGuildFaction const& fs = FreshRosterGuildFaction(state, bot->GetTeam());
+    if (sPlayerbotAIConfig.rosterGuildBotsPerGuild &&
+        !roster_guild::MayBuyCharter(fs.target, fs.ledger.guilds + fs.ledger.reserved + fs.otherBotGuilds, fs.openCharters))
+    {
+        reason = "target_reached";
+        return false;
+    }
+
+    uint32 allBotGuilds = 0;
+    for (RosterGuildFaction const& faction : state.faction)
+        allBotGuilds += faction.ledger.guilds + faction.ledger.reserved + faction.otherBotGuilds;
+    if (sPlayerbotAIConfig.randomBotGuildCount && allBotGuilds >= sPlayerbotAIConfig.randomBotGuildCount)
+    {
+        reason = "guild_count";
         return false;
     }
 
@@ -885,7 +919,7 @@ bool BuyPetitionAction::canBuyPetition(Player* bot, char const*& reason)
 
     // Owner 05.10.2026: a roster bot founds no guild below AiPlayerbot.RosterGuild.MinLevel.
     if (!roster_guild::FoundAllowed(bot->GetLevel(), sPlayerbotAIConfig.rosterGuildMinLevel,
-            sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && GetBotAI(bot) && !GetBotAI(bot)->HasRealPlayerMaster()))
+            GetBotAI(bot) && !GetBotAI(bot)->HasRealPlayerMaster()))   // owner 04.11.2026: every bot on its own
     {
         reason = "min_level";
         return false;
@@ -960,6 +994,13 @@ bool BuyPetitionAction::canBuyPetition(Player* bot, char const*& reason)
                 sLog.outBasic("[RosterGuild] event=buy_blocked bot=%u reason=%s", bot->GetGUIDLow(), reason);
             return false;
         }
+    }
+    // Owner 04.11.2026: the guild rule applies to all bots - a non-roster bot on its own (legacy path) stops at the guild cap too.
+    else if (!ai->HasRealPlayerMaster() && !RosterGuildPlan::MayBuyLegacyCharter(bot, reason))
+    {
+        if (RosterGuildPlan::IsDue(ai, "roster guild buy trace", HOUR))
+            sLog.outBasic("[RosterGuild] event=buy_blocked bot=%u reason=%s path=legacy", bot->GetGUIDLow(), reason);
+        return false;
     }
 
     return true;
@@ -1063,7 +1104,7 @@ bool PetitionOfferNearbyAction::Execute(Event& event)
         // Owner 05.10.2026: no charter offer to a roster bot below AiPlayerbot.RosterGuild.JoinMinLevel
         // (it would refuse to sign anyway).
         if (!IsRealPlayer(player) && !roster_guild::JoinAllowed(player->GetLevel(), sPlayerbotAIConfig.rosterGuildJoinMinLevel,
-                sRandomPlayerbotMgr.IsPersistentRosterMember(player->GetGUIDLow()), false))
+                !(GetBotAI(player) && GetBotAI(player)->HasRealPlayerMaster()), false))   // owner 04.11.2026: every bot on its own
             continue;
 
         if (!sPlayerbotAIConfig.randomBotInvitePlayer && IsRealPlayer(player))
@@ -1262,7 +1303,10 @@ bool PetitionTurnInAction::isUseful()
             inCity = true;
     }
 
-    return inCity && !bot->GetGuildId() && AI_VALUE2(uint32, "item count", chat->formatQItem(5863)) && AI_VALUE(uint8, "petition signs") >= sWorld.getConfig(CONFIG_UINT32_MIN_PETITION_SIGNS) && !AI_VALUE(bool, "travel target traveling");
+    bool const due = inCity && !bot->GetGuildId() && AI_VALUE2(uint32, "item count", chat->formatQItem(5863)) && AI_VALUE(uint8, "petition signs") >= sWorld.getConfig(CONFIG_UINT32_MIN_PETITION_SIGNS) && !AI_VALUE(bool, "travel target traveling");
+    // Owner 04.11.2026: a non-roster bot on its own hands in no charter at the guild cap either (no guild beyond it).
+    char const* capReason = "";
+    return due && (ai->HasRealPlayerMaster() || RosterGuildPlan::MayBuyLegacyCharter(bot, capReason));
 };
 
 bool BuyTabardAction::Execute(Event& event)
