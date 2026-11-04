@@ -630,36 +630,28 @@ PostActiveDeferral PostActiveDeferralOf(PlayerbotAI* ai, Player* bot, TravelTarg
             return PostActiveDeferral::LevelGuard;
     }
 
-    // twow-repo#601 owner rule R1 (ZoneKeepPolicy.h): roster bots on their own, never a forced target or a bot led by a real player.
-    // StartZoneMinLevel: below it no point outside the bot's start zone (any purpose). StaleKeepZone: inside the window after an
-    // empty search with stale skips, no quest point outside the bot's current zone (turn-ins exempt). The area lookup only for the
-    // point IsActive accepted, and only when one of the two applies.
-    if (!target->IsForced() && position && (sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevel || sPlayerbotAIConfig.questFirstProgressionStaleKeepZone) &&
-        sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster())
+    // twow-repo#601 owner rule R1 (ZoneKeepPolicy.h, TravelMgr.cpp ai::zone_keep): roster bots on their own, never a bot led by a real
+    // player. StartZoneMinLevel: below it no point outside the bot's start zone, any purpose and forced targets too ("never below 5",
+    // OB-00 04.11.: guild meeting / order and petition trips; the main loop then holds the forced trip). The area lookup only for the
+    // point IsActive accepted, and only when the key applies to the bot.
+    if (position && sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevel && ai::zone_keep::StartZoneHolds(bot, ai) &&
+        ai::zone_keep::OutsideStartZone(bot, position))
+        return PostActiveDeferral::StartZone;
+
+    // StaleKeepZone: inside the window after an empty search with stale skips, no quest point outside the bot's current zone (turn-ins
+    // exempt); never a forced target.
+    if (!target->IsForced() && position && sPlayerbotAIConfig.questFirstProgressionStaleKeepZone &&
+        sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster() &&
+        ai::cohort::Applies(sPlayerbotAIConfig.questFirstProgressionStaleKeepZone, bot->GetGUIDLow()) &&
+        dynamic_cast<QuestTravelDestination const*>(destination) &&
+        ai::zone_keep::KeepActive(uint32(std::max(0, ai->GetAiObjectContext()->GetValue<int>("manual int", StaleKeepZoneUntilValue)->Get())),
+            uint32(time(nullptr))))
     {
-        bool const gated = ai::zone_keep::StartZoneGated(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevel, bot->GetLevel()) &&
-            ai::cohort::Applies(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevelCohort, bot->GetGUIDLow());
-        bool const keepActive = ai::cohort::Applies(sPlayerbotAIConfig.questFirstProgressionStaleKeepZone, bot->GetGUIDLow()) &&
-            dynamic_cast<QuestTravelDestination const*>(destination) &&
-            ai::zone_keep::KeepActive(uint32(std::max(0, ai->GetAiObjectContext()->GetValue<int>("manual int", StaleKeepZoneUntilValue)->Get())),
-                uint32(time(nullptr)));
-        if (gated || keepActive)
-        {
-            AreaTableEntry const* area = position->GetArea();
-            uint32 const targetZone = area ? (area->zone ? area->zone : area->ID) : 0;
-            if (gated)
-            {
-                PlayerInfo const* info = sObjectMgr.GetPlayerInfo(bot->getRace(), bot->getClass());
-                uint32 const createZone = info ? info->areaId : 0;
-                bool const customStarts = sPlayerbotAIConfig.customRaceStartZones;
-                if (ai::zone_keep::StartZoneDefers(true, ai::zone_keep::StartZoneKnown(bot->getRace(), customStarts, createZone),
-                        ai::zone_keep::InStartZone(bot->getRace(), customStarts, createZone, targetZone), targetZone))
-                    return PostActiveDeferral::StartZone;
-            }
-            if (keepActive && ai::zone_keep::KeepZoneDefers(true, (uint32(destination->GetPurpose()) & uint32(TravelDestinationPurpose::QuestTaker)) != 0,
-                    bot->GetZoneId(), targetZone))
-                return PostActiveDeferral::StaleKeepZone;
-        }
+        AreaTableEntry const* area = position->GetArea();
+        uint32 const targetZone = area ? (area->zone ? area->zone : area->ID) : 0;
+        if (ai::zone_keep::KeepZoneDefers(true, (uint32(destination->GetPurpose()) & uint32(TravelDestinationPurpose::QuestTaker)) != 0,
+                bot->GetZoneId(), targetZone))
+            return PostActiveDeferral::StaleKeepZone;
     }
 
     return PostActiveDeferral::None;
@@ -1993,6 +1985,10 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
                     }
                     case PostActiveDeferral::StartZone:   // twow-repo#601 owner rule R1 (StartZoneMinLevel)
                         ++lastRejects.startZone;
+                        // a forced trip out of the start zone is held: one line, then no forced trip request for the hold period
+                        if (target->IsForced())
+                            ai::zone_keep::NoteForcedHold(bot, ai, AI_VALUE2(std::string, "manual string", "future travel purpose").c_str(),
+                                ai::zone_keep::OutsideStartZone(bot, position));
                         continue;
                     case PostActiveDeferral::StaleKeepZone:   // twow-repo#601 owner rule R1 (StaleKeepZone)
                         ++lastRejects.staleKeepZone;
@@ -2656,6 +2652,12 @@ bool RequestNamedTravelTargetAction::Execute(Event& event)
         return false;
 
     std::string travelName = getQualifier();
+
+    // twow-repo#601 owner rule R1 (StartZoneMinLevel): while a held forced trip's hold runs, no new forced trip request (no search) -
+    // no retry every tick (OB-00 04.11.).
+    if ((travelName == "guild meeting" || travelName == "guild order" || travelName == "petition") &&
+        ai::zone_keep::StartZoneHolds(bot, ai) && ai::zone_keep::ForcedHoldActive(ai))
+        return false;
 
     WorldPosition center = event.getOwner() ? event.getOwner() : (GetMaster() ? GetMaster() : bot);
 

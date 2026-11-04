@@ -1547,7 +1547,8 @@ AiPlayerbot.QuestFirstProgression.StaleKeepZone.Seconds = 900
 # twow-repo#601 owner rule R1: below this level a roster bot on its own takes no travel target outside its start zone (any purpose;
 # the search line counts start_zone=), no band step, and no quest rescue out of it - inside the zone there is no rescue, outside it
 # the rescue takes it to its race's start point ([ZoneKeep] state=rescue_gate). Start zone = the playercreateinfo zone of its race,
-# with CustomRaceStartZones the goblin / high-elf start zones. An unknown start zone is not gated.
+# with CustomRaceStartZones the goblin / high-elf start zones. An unknown start zone is not gated. Forced trips too (guild meeting /
+# order, petition, group quest help): a held one writes one [ZoneKeep] state=forced_hold line and is not requested again for 600 s.
 #   0 = off (default), 2..60; other values act like 0. Owner value 5.
 #   .Cohort picks the bots for an in-realm A/B: 0 = none, 1 = every roster bot (default), 2 = only cohort B (odd low guid), 3 = only cohort A
 #   (even low guid); other values act like 1. Without StartZoneMinLevel it does nothing.
