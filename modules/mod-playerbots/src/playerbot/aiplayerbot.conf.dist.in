@@ -1540,6 +1540,26 @@ AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter.Failures = 4
 AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter.Bots = 3
 AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter.WindowSeconds = 3600
 AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter.Seconds = 3600
+# twow-repo#601 owner rule R1 (owner 04.11.2026 via OB-00: a bot leaves its start zone at level 5-7, never below 5, and a stale
+# objective is no reason to change zone; CLI-Deep, ZoneKeepPolicy.h, evidence cli-quest-organic/cand4/R1-OFFLINE.md - in cand4G 90 zone
+# changes followed a stale skip within 600 s). StaleKeepZone: a quest search that came back empty while it skipped stale objectives
+# neither widens the search nor counts toward a band step ([ZoneKeep] state=stale_keep bot= zone= skipped=), and for .Seconds the bot
+# takes no quest target outside its current zone (turn-ins exempt; the search line counts stale_keep_zone=). The bot waits the
+# usual backoff, does other quests or grinds in the zone, and searches again. Roster bots on their own only.
+#   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid); other values act
+#   like 0. .Seconds 60..3600 (default 900).
+AiPlayerbot.QuestFirstProgression.StaleKeepZone = 0
+AiPlayerbot.QuestFirstProgression.StaleKeepZone.Seconds = 900
+# twow-repo#601 owner rule R1: below this level a roster bot on its own takes no travel target outside its start zone (any purpose;
+# the search line counts start_zone=), no band step, and no quest rescue out of it - inside the zone there is no rescue, outside it
+# the rescue takes it to its race's start point ([ZoneKeep] state=rescue_gate). Start zone = the playercreateinfo zone of its race,
+# with CustomRaceStartZones the goblin / high-elf start zones. An unknown start zone is not gated. Forced trips too (guild meeting /
+# order, petition, group quest help): a held one writes one [ZoneKeep] state=forced_hold line and is not requested again for 600 s.
+#   0 = off (default), 2..60; other values act like 0. Owner value 5.
+#   .Cohort picks the bots for an in-realm A/B: 0 = none, 1 = every roster bot (default), 2 = only cohort B (odd low guid), 3 = only cohort A
+#   (even low guid); other values act like 1. Without StartZoneMinLevel it does nothing.
+AiPlayerbot.QuestFirstProgression.StartZoneMinLevel = 0
+AiPlayerbot.QuestFirstProgression.StartZoneMinLevel.Cohort = 1
 # twow-repo#601 quest acceptance lever (iv) (OB-00 28.10.2026, BUG FIX behind a switch, cli-quest-organic/quest-acceptance/STEP2.md):
 # the radius quest giver fetch of a quest route request (GiverRadius, the #421 B stages) asked TravelMgr for entry 0, but every
 # quest giver is filed under its quest id - so it never returned a giver. Givers reached the route choice only through the
