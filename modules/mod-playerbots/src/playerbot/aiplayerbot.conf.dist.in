@@ -1846,6 +1846,16 @@ AiPlayerbot.Path.PosStuck.Minutes = 10
 AiPlayerbot.Path.PosStuck.Progress = 5
 AiPlayerbot.Path.PosStuck.EpisodeMinutes = 30
 AiPlayerbot.Path.PosStuck.RateMinutes = 30
+# twow-repo#575 / #601 (OB-00 04.11.2026, ws-10/cli-pathfinding/movement-a3/ROOT-HEARTH-FARMOVE.md §4): the clock of the triggers
+# "combat stuck" (5 min -> unstuck -> reset, which clears the travel target) and "combat long stuck" (15 min -> unstuck ->
+# hearthstone or repop). They compared the "time since last change" of the value "combat::self target"; that value notices a
+# change only when it is read, and both triggers read it only in combat - the end of a fight was usually never seen, so a new
+# fight began with a clock from an earlier one (cand4G u2: 390 "combat long stuck" hearthstones, 2 of them in a fight running
+# > 60 s; rot01-tank run T: 1,136 triggers, none in a fight running >= 60 s). With the key the clock is the fight with the
+# current target: from the combat start ("combat start time"), restarted whenever the current target changes; a check more
+# than 30 s after the previous one in combat starts a new fight. The duel rule is unchanged.
+#   0 = off (default), 1 = every bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid); other values act like 0.
+AiPlayerbot.Unstuck.CombatFightClock = 0
 # twow-repo#575 (PATH-01 b, trace, no behaviour change; enable only after OB-30 measurement + owner go - nach Abnahme
 # an): 1 = every bot flight attempt (UseTaxi) is counted by result - ok, noPath (stored TaxiPath id unknown), noNpc (no
 # flight master in reach), tooFar (more than 31.6 yd from the start node of the stored path), failed - and every wait at a
