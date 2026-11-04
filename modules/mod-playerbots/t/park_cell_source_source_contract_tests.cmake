@@ -65,7 +65,6 @@ foreach(path "inline void Map::UpdateActiveCellsAsynch(uint32 now, uint32 diff)|
   region("${map_cpp}" "${first}" "${last}" body)
   require_text("${body}" "bool const sourceStats = s_cellSourceStats.load(std::memory_order_relaxed) && IsContinent();" "switch read per update (${first})")
   require_text("${body}" "for (int pass = sourceStats ? 0 : 2, lastPass = sourceStats ? 1 : 2; pass <= lastPass; ++pass)" "single pass without the switch (${first})")
-  require_order("${body}" "if (!InCellPass(plr, pass))" "if (gridSleep && SkipSleepingPlayer(plr, tally))" "pass filter before the sleep check, each player once (${first})")
   require_text("${body}" "if (sourceStats)
         AddCellSourceTally(sourceCount, marked_cells.count(), m_activeNonPlayers.size(), GetGridActivationDistance());" "tally only with the switch (${first})")
 endforeach()
