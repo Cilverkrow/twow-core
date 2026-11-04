@@ -27,7 +27,6 @@
 #include "playerbot/RandomPlayerbotMgr.h"
 #include "playerbot/ShortcutPolicy.h"   // twow-repo#595 P4 S0: [Shortcut] counters
 #include "playerbot/BotUpdateTrace.h"   // twow-repo#541 (L0): NowUs/SinceUs for the path sub-phase trace
-#include "playerbot/PathReusePolicy.h"   // twow-repo#541 (L1): Perf.PartialPathReuse
 #include "playerbot/RouteTimePolicy.h"   // twow-repo#592 (PATH-02): Perf.RouteTimeTrace
 #include "playerbot/TransportEdgePolicy.h"   // twow-repo#342 (S1): Path.TransportEdgeTrace
 #include "playerbot/TransportBoardPolicy.h"   // twow-repo#342 (S3b-0): Path.TransportDeckProbe / TransportWaitTimeoutMin
@@ -1595,42 +1594,6 @@ TravelPath MovementAction::ResolveMovePath(const WorldPosition& startPosition, c
                 lastMove.lastPath.getBack().distance(endPosition), maxDistChange);
     }
 
-    // twow-repo#541 (L1, AiPlayerbot.Perf.PartialPathReuse, default 0): the path last built here for the same
-    // destination is used again, without a rebuild, while it is younger than PartialPathReuseMs, still the stored
-    // path (same end point), the bot is on the map of the build, not on a transport and not yet at the path's end.
-    // A rebuild that ends no closer to the destination is thrown away below anyway (keep-old rule), so the skipped
-    // rebuild only delays a truly better path by at most PartialPathReuseMs. Every reset of lastPath or the
-    // movement (clear(), setPath) and a destination change of more than maxDistChange still force a rebuild.
-    // Off: no clock read, no stamp, the same rebuild as before.
-    bool const pathReuse = sPlayerbotAIConfig.perfPartialPathReuse;
-    if (pathReuse)
-    {
-        bool reuse = false;
-        uint32 ageMs = 0;
-        if (lastMove.pathReuseStamped && !lastMove.lastPath.empty())
-        {
-            WorldPosition const pathEnd = lastMove.lastPath.getBack();
-            ageMs = WorldTimer::getMSTimeDiff(lastMove.pathReuseBuiltMs, WorldTimer::getMSTime());
-            reuse = path_reuse::MayReuse(true,
-                pathEnd.getMapId() == lastMove.pathReuseBack.getMapId() && pathEnd.distance(lastMove.pathReuseBack) < path_reuse::SameEndYards,
-                lastMove.pathReuseDest.getMapId() == endPosition.getMapId() && lastMove.pathReuseDest.distance(endPosition) < maxDistChange,
-                lastMove.pathReuseStartMap == startPosition.getMapId(),
-                pathEnd.getMapId() == startPosition.getMapId() && startPosition.distance(pathEnd) < sPlayerbotAIConfig.targetPosRecalcDistance,
-                bot->GetTransport() != nullptr,
-                ageMs, sPlayerbotAIConfig.perfPartialPathReuseMs);
-        }
-
-        if (reuse)
-        {
-            path_reuse::hits.fetch_add(1, std::memory_order_relaxed);
-            if (traceEngine)
-                traceEngine->TraceNote("M:reuse hit age=%ums", ageMs);
-            return lastMove.lastPath;
-        }
-
-        path_reuse::misses.fetch_add(1, std::memory_order_relaxed);
-    }
-
     bool needsLongPath = false;
         
     if (startPosition.getMapId() != endPosition.getMapId())
@@ -1682,19 +1645,6 @@ TravelPath MovementAction::ResolveMovePath(const WorldPosition& startPosition, c
 
     if (outMovePath.empty())
         outMovePath.addPoint(endPosition);
-
-    // twow-repo#541 (L1): stamp the path that MoveTo2 stores as lastPath next (also a kept old path: the rebuild just
-    // ran and was not better, so the next one is due PartialPathReuseMs from now). twow-repo#575 (PATH-01 #3): not
-    // when no node route was found - the result is only the target point, and reusing it would skip the
-    // HonestRouteFail answer and the L1b route-fail cooldown, which already make the next try cheap.
-    if (pathReuse && !noRoute)
-    {
-        lastMove.pathReuseStamped = true;
-        lastMove.pathReuseDest = endPosition;
-        lastMove.pathReuseBack = outMovePath.getBack();
-        lastMove.pathReuseStartMap = startPosition.getMapId();
-        lastMove.pathReuseBuiltMs = WorldTimer::getMSTime();
-    }
 
     if (outNoRoute)
         *outNoRoute = noRoute;

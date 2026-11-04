@@ -47,11 +47,6 @@ namespace ai
             fleeBreakCount = other.fleeBreakCount;
             fleeChaseTarget = other.fleeChaseTarget;
             fleeChaseMs = other.fleeChaseMs;
-            pathReuseStamped = other.pathReuseStamped;
-            pathReuseDest = other.pathReuseDest;
-            pathReuseBack = other.pathReuseBack;
-            pathReuseStartMap = other.pathReuseStartMap;
-            pathReuseBuiltMs = other.pathReuseBuiltMs;
             dispatchSet = other.dispatchSet;
             dispatchTarget = other.dispatchTarget;
             dispatchFrom = other.dispatchFrom;
@@ -69,7 +64,6 @@ namespace ai
             lastFleeAttempt = 0;
             lastMoveShort = WorldPosition();
             nextTeleport = 0;
-            pathReuseStamped = false;  // twow-repo#541 (L1): every reset of the movement drops the reuse stamp
             moveEvent = Event();
         }
 
@@ -149,15 +143,6 @@ namespace ai
         // twow-repo#601 cand4-B (RosterFarMove.ArriveSafe): when the far-move decline lapses - 0 for the hotfix 8.36 decline (until
         // the target changes), now + ArriveSafeDeclineSeconds after an arrival further back (FarMovePolicy.h DeclineActive).
         time_t farMoveDeclinedUntil = 0;
-        // twow-repo#541 (L1, AiPlayerbot.Perf.PartialPathReuse): stamp of the path MovementAction::ResolveMovePath
-        // last built - the requested destination, the end point of that path, the bot's map and the build time
-        // (WorldTimer ms). Written and read only with the switch on, only by the bot's own movement (own value,
-        // own thread); clear() drops it, and a lastPath that no longer ends at pathReuseBack is not reused.
-        bool pathReuseStamped = false;
-        WorldPosition pathReuseDest;
-        WorldPosition pathReuseBack;
-        uint32 pathReuseStartMap = 0;
-        uint32 pathReuseBuiltMs = 0;
         // twow-repo#592 (PATH-02 diag, AiPlayerbot.Perf.RouteTimeTrace): target and start of the bot's previous dispatch
         // (MoveTo2), for the reason count in [RouteTime]. Written and read only with the trace on, by the bot's own movement;
         // clear() leaves it alone (a cleared path to the same target is still the same target).
