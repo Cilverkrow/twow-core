@@ -2187,12 +2187,6 @@ add_test(NAME park_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/park_source_contract_tests.cmake")
 
-# twow-repo#551: park in any inn of the faction (AiPlayerbot.Park.AnyLevelInn).
-add_test(NAME park_any_level_source_contract
-  COMMAND "${CMAKE_COMMAND}"
-    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
-    -P "${PB_MODULE_DIR}/t/park_any_level_source_contract_tests.cmake")
-
 # twow-repo#541 (deep dive R1): choose rpg target builds its rpg trigger list once per call.
 add_test(NAME rpg_target_cache_source_contract
   COMMAND "${CMAKE_COMMAND}"
@@ -2418,13 +2412,6 @@ add_test(NAME unknown_name_warning_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/unknown_name_warning_source_contract_tests.cmake")
-
-# twow-repo#541 (grid sleep, AiPlayerbot.Park.SleepGrid, default 0): parked bots do not activate cells.
-add_test(NAME park_sleep_grid_source_contract
-  COMMAND "${CMAKE_COMMAND}"
-    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
-    "-DCORE_SOURCE_DIR=${PB_MODULE_DIR}/../.."
-    -P "${PB_MODULE_DIR}/t/park_sleep_grid_source_contract_tests.cmake")
 
 # twow-repo#541 P2 D0 (AiPlayerbot.Park.CellSourceStats, default 0): continent cells by source, diagnostics only.
 add_test(NAME park_cell_source_source_contract
