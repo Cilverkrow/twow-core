@@ -55,7 +55,7 @@ read_source("aiplayerbot.conf.dist.in" conf_dist)
 
 # 1. Switch: default 0 in code and conf, clamped 0..300, documented with the acceptance note.
 require_text("${config_h}" "    uint32 perfRouteFailCooldownSeconds = 0;  // twow-repo#541 (L1b)" "member default off")
-require_order("${config_h}" "bool dietDuelTriggerGate = false;" "uint32 perfRouteFailCooldownSeconds = 0;" "appended after the L1 members")
+require_order("${config_h}" "bool dietHunterRapidFireGate = false;" "uint32 perfRouteFailCooldownSeconds = 0;" "appended after the L1 members")
 require_text("${config_cpp}" "perfRouteFailCooldownSeconds = ai::stall_guard::ClampRouteFailCooldownSeconds(config.GetIntDefault(\"AiPlayerbot.Perf.RouteFailCooldownSeconds\", 0));" "load default 0, clamped")
 require_text("${config_cpp}" "#include \"playerbot/StallGuardPolicy.h\"" "policy header in the config")
 require_text("${policy}" "constexpr std::uint32_t RouteFailCooldownMaxSeconds = 300;" "upper clamp")
