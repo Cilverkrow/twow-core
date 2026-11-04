@@ -88,15 +88,19 @@ bool FollowAction::isUseful()
     // BOT-09 (AiPlayerbot.BotGroups.LeaderOtherMap): a follow target on another map (or dungeon instance) that is no real
     // player cannot be followed. Follow sent the bot into MoveTo2's cross-map route every update (zeppelin dock, transport
     // wait, getTransports(0)) and reported OK, which starved the ad-hoc leave (cand4G u2: 10 h, ~13 ms per update). Map ids
-    // first; no distance, no path. Bots of a real player keep following it as before.
+    // first; no distance, no path. Bots of a real player (master or follow target) keep following as before; the cohort and
+    // real-player tests run only when the maps differ.
     if (followTarget && sPlayerbotAIConfig.botGroupsLeaderOtherMap)
     {
         bool const otherMap = adhoc_group::OnOtherMap(followTarget->GetMapId() != bot->GetMapId(),
             followTarget->GetInstanceId() != bot->GetInstanceId(), bot->GetMap()->Instanceable());
-        if (otherMap && adhoc_group::FollowUselessAcrossMaps(
-                ai::cohort::Applies(sPlayerbotAIConfig.botGroupsLeaderOtherMap, bot->GetGUIDLow()), otherMap,
-                IsRealPlayerTarget(followTarget)))
-            return false;
+        if (otherMap)
+        {
+            bool const ruleOn = ai::cohort::Applies(sPlayerbotAIConfig.botGroupsLeaderOtherMap, bot->GetGUIDLow());
+            if (ruleOn && adhoc_group::FollowUselessAcrossMaps(ruleOn, otherMap, ai->HasRealPlayerMaster(),
+                    IsRealPlayerTarget(followTarget)))
+                return false;
+        }
     }
 
     Formation* formation = AI_VALUE(Formation*, "formation");

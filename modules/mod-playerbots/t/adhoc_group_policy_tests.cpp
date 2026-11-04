@@ -133,11 +133,34 @@ int main()
         Require(!OnOtherMap(false, true, false), "another continent region (instance) is the same map");
         Require(!OnOtherMap(false, false, true), "same dungeon instance");
 
-        // Follow: useless only with the rule on, the target on another map and no real player.
-        Require(FollowUselessAcrossMaps(true, true, false), "switch on, bot leader on another map: follow not useful");
-        Require(!FollowUselessAcrossMaps(true, true, true), "switch on, real player on another map: follow as before");
-        Require(!FollowUselessAcrossMaps(true, false, false), "switch on, same map: follow as before");
-        Require(!FollowUselessAcrossMaps(false, true, false), "switch off: follow as before");
+        // Follow: useless only with the rule on, the target on another map and no real player (master or target).
+        Require(FollowUselessAcrossMaps(true, true, false, false), "switch on, bot leader on another map: follow not useful");
+        Require(!FollowUselessAcrossMaps(true, true, false, true), "switch on, real player on another map: follow as before");
+        Require(!FollowUselessAcrossMaps(true, true, true, false), "switch on, real-player master, bot target: follow as before");
+        Require(!FollowUselessAcrossMaps(true, false, false, false), "switch on, same map: follow as before");
+        Require(!FollowUselessAcrossMaps(false, true, false, false), "switch off: follow as before");
+
+        // The clock: switch off always 0; starts on the first other-map observation and keeps its start; a leader not in the
+        // world keeps it (running or not); a same-map observation (or the bot leading itself: otherMap false) resets it.
+        Require(LeaderOtherMapClock(false, true, true, 500, 1000) == 0, "clock: switch off is 0");
+        Require(LeaderOtherMapClock(false, false, false, 500, 1000) == 0, "clock: switch off, leader gone is 0");
+        Require(LeaderOtherMapClock(true, true, true, 0, 1000) == 1000, "clock: starts on another map");
+        Require(LeaderOtherMapClock(true, true, true, 500, 1000) == 500, "clock: keeps its start on another map");
+        Require(LeaderOtherMapClock(true, false, false, 500, 1000) == 500, "clock: leader not in the world keeps it");
+        Require(LeaderOtherMapClock(true, false, false, 0, 1000) == 0, "clock: leader not in the world does not start it");
+        Require(LeaderOtherMapClock(true, true, false, 500, 1000) == 0, "clock: same map resets it");
+        // Far-teleport gap: another map at 1000, gone at 1060, back on another map at 1120 -> due at N = 120 from 1000.
+        {
+            std::uint32_t since = 0;
+            since = LeaderOtherMapClock(true, true, true, since, 1000);
+            since = LeaderOtherMapClock(true, false, false, since, 1060);
+            since = LeaderOtherMapClock(true, true, true, since, 1120);
+            LeaveFacts gap = f;
+            gap.now = 1120;
+            gap.leaderOtherMapSeconds = n;
+            gap.leaderOtherMapSince = since;
+            Require(DecideLeave(gap) == Leave::LeaderOtherMap, "a far teleport in between does not postpone the leave");
+        }
     }
 
     // OB-10 review #660 B1: every way out of the help drops the follower role, except where it is no longer ours.

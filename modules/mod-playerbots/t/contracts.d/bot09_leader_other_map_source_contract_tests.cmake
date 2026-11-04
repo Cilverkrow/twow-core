@@ -5,7 +5,9 @@ cmake_policy(VERSION 3.16)
 #   (1) the ad-hoc leave of the action path really leaves for a free bot: LeaveGroupAction passes the "adhoc group" source
 #       to the tested stay rule (singleton_group::ShouldStayInGroup with adhocLeave);
 #   (2a) leave reason leader_other_map after LeaderOtherMapSeconds (120, 30..900), checked before out_of_range, in both leave
-#       paths (action and world-thread pass), from their existing per-bot state - no new log line;
+#       paths (action and world-thread pass), from their existing per-bot state - no new log line; the switch-0 wiring
+#       (OutOfRangeFact with otherMapRule, the gated instance arm), the leader guard (leader != bot), the tested clock
+#       (LeaderOtherMapClock: a leader not in the world keeps it) and its reset on a group change are pinned per copy;
 #   (2b) FollowAction::isUseful: the map check comes before the first distance (and before the rpg/free-move check).
 # - AiPlayerbot.Travel.ElevatorScanCache (0/1): getTransports' elevator branch walks a per-map list of transport-type
 #   spawns built once, not all gameobject spawn data on every call.
@@ -89,9 +91,9 @@ function(check_follow follow out)
   endforeach()
   foreach(needle
       "adhoc_group::OnOtherMap(followTarget->GetMapId() != bot->GetMapId(),"
-      "if (otherMap && adhoc_group::FollowUselessAcrossMaps("
-      "ai::cohort::Applies(sPlayerbotAIConfig.botGroupsLeaderOtherMap, bot->GetGUIDLow()), otherMap,"
-      "IsRealPlayerTarget(followTarget)))\n            return false;")
+      "bool const ruleOn = ai::cohort::Applies(sPlayerbotAIConfig.botGroupsLeaderOtherMap, bot->GetGUIDLow());"
+      "if (ruleOn && adhoc_group::FollowUselessAcrossMaps(ruleOn, otherMap, ai->HasRealPlayerMaster(),"
+      "IsRealPlayerTarget(followTarget)))\n                return false;")
     string(FIND "${body}" "${needle}" at)
     if(at EQUAL -1)
       set(${out} "follow map check: missing ${needle}" PARENT_SCOPE)
@@ -189,12 +191,49 @@ function(check_transports wp out)
   set(${out} "" PARENT_SCOPE)
 endfunction()
 
+# ---- (2a) the switch-0 wiring and the leader guard in a CheckLeave copy (OB-10 review) ---------------------------------
+# ns: "adhoc_group::" in the action, "" in the world pass; reset_start/reset_needle: the group-change block and its reset.
+function(check_leave_facts src ns clock reset_start reset_needle out)
+  foreach(needle
+      # The leader never runs the clock for itself, and no leader (not in the world) is no other-map fact.
+      "bool const otherMap = leader && leader != bot && ${ns}OnOtherMap(leader->GetMapId() != bot->GetMapId(),"
+      # Another instance counts only with the rule on (switch 0: the old map-id test alone).
+      "otherMapRule && leader->GetInstanceId() != bot->GetInstanceId(), bot->GetMap()->Instanceable());"
+      "bool const outOfRange = leader && leader != bot && ${ns}OutOfRangeFact(otherMap,"
+      # Switch 0: OutOfRangeFact(otherMap, d, false) == otherMap || d, the old expression.
+      "!otherMap && sServerFacade.GetDistance2d(bot, leader) > 2.0f * radius, otherMapRule);"
+      "facts.leaderOtherMapSeconds = otherMapRule ? sPlayerbotAIConfig.botGroupsLeaderOtherMapSeconds : 0;"
+      "${clock}")
+    string(FIND "${src}" "${needle}" at)
+    if(at EQUAL -1)
+      set(${out} "CheckLeave wiring: missing ${needle}" PARENT_SCOPE)
+      return()
+    endif()
+  endforeach()
+  region("${src}" "${reset_start}" "\n    }\n" reset)
+  string(FIND "${reset}" "${reset_needle}" at)
+  if(at EQUAL -1)
+    set(${out} "CheckLeave: the group change does not reset the clock (${reset_needle})" PARENT_SCOPE)
+    return()
+  endif()
+  set(${out} "" PARENT_SCOPE)
+endfunction()
+
+set(ACTION_CLOCK "leaderOtherMapSince = adhoc_group::LeaderOtherMapClock(otherMapRule, leader != nullptr, otherMap, leaderOtherMapSince, now);")
+set(WORLD_CLOCK "track.leaderOtherMapSince = LeaderOtherMapClock(otherMapRule, leader != nullptr, otherMap, track.leaderOtherMapSince, now);")
+set(ACTION_RESET_START "    if (trackedGroup != group->GetId())")
+# region() ends before the block's closing "\n    }\n", so the last reset line has no newline of its own there.
+set(ACTION_RESET "\n        leaderOtherMapSince = 0;")
+set(WORLD_RESET_START "    if (track.group != group->GetId())")
+set(WORLD_RESET "\n        track = Track();")
+
 read_source("strategy/actions/FollowActions.cpp" follow)
 read_source("AdhocGroupPolicy.h" policy)
 read_source("SingletonGroupPolicy.h" singleton)
 read_source("strategy/actions/LeaveGroupAction.cpp" leave)
 read_source("strategy/actions/AdhocGroupAction.cpp" action)
 read_source("AdhocGroupWorld.cpp" world)
+read_source("AdhocGroupWorld.h" world_h)
 read_source("WorldPosition.cpp" wp)
 read_source("PlayerbotAIConfig.cpp" config_cpp)
 read_source("PlayerbotAIConfig.h" config_h)
@@ -217,8 +256,12 @@ foreach(src action world)
   require_text("${${src}}" "facts.leaderOtherMapSeconds = otherMapRule ? sPlayerbotAIConfig.botGroupsLeaderOtherMapSeconds : 0;" "${src}: the switch reaches the facts")
   require_text("${${src}}" "OutOfRangeFact(otherMap," "${src}: out_of_range from the tested fact")
 endforeach()
-require_text("${action}" "leaderOtherMapSince = otherMapRule && otherMap ? (leaderOtherMapSince ? leaderOtherMapSince : now) : 0;" "action clock")
-require_text("${world}" "track.leaderOtherMapSince = otherMapRule && otherMap ? (track.leaderOtherMapSince ? track.leaderOtherMapSince : now) : 0;" "world-pass clock")
+check_leave_facts("${action}" "adhoc_group::" "${ACTION_CLOCK}" "${ACTION_RESET_START}" "${ACTION_RESET}" r)
+fail_if("${r}")
+check_leave_facts("${world}" "" "${WORLD_CLOCK}" "${WORLD_RESET_START}" "${WORLD_RESET}" r)
+fail_if("${r}")
+require_text("${world_h}" "std::uint32_t leaderOtherMapSince = 0;" "world Track: the clock starts at 0 (track = Track() resets it)")
+require_text("${policy}" "inline std::uint32_t LeaderOtherMapClock(bool ruleOn, bool leaderSeen, bool otherMap, std::uint32_t since, std::uint32_t now)\n{\n    if (!ruleOn)\n        return 0;" "the clock is 0 with the rule off")
 require_text("${action}" "ai->DoSpecificAction(\"leave\", Event(\"adhoc group\", \"\", bot), true);" "the action's leave call (its source is what LeaveGroupAction reads)")
 require_text("${action}" "[BotGroup] kind=adhoc event=leave bot=%u group=%u quest=%u objective=%u reason=%s members=%u\"" "the existing leave line carries the reason")
 
@@ -253,6 +296,35 @@ expect_caught("map check after a distance" "${r}")
 string(REPLACE "IsRealPlayerTarget(followTarget)))" "false))" probe "${follow}")
 check_follow("${probe}" r)
 expect_caught("real players no longer excepted" "${r}")
+# The map check without the real-player-master exception.
+string(REPLACE "ai->HasRealPlayerMaster()," "false," probe "${follow}")
+check_follow("${probe}" r)
+expect_caught("real-player masters no longer excepted" "${r}")
+# Switch 0 wiring: OutOfRangeFact forced to the switch-on rule (switch 0 would lose the 60 s cross-map out_of_range).
+foreach(src action world)
+  string(REPLACE ", otherMapRule);" ", true);" probe "${${src}}")
+  if(src STREQUAL "action")
+    check_leave_facts("${probe}" "adhoc_group::" "${ACTION_CLOCK}" "${ACTION_RESET_START}" "${ACTION_RESET}" r)
+  else()
+    check_leave_facts("${probe}" "" "${WORLD_CLOCK}" "${WORLD_RESET_START}" "${WORLD_RESET}" r)
+  endif()
+  expect_caught("${src}: OutOfRangeFact without otherMapRule" "${r}")
+endforeach()
+# The leader guard dropped: the leader would run the clock for itself.
+string(REPLACE "bool const otherMap = leader && leader != bot && adhoc_group::OnOtherMap(" "bool const otherMap = leader && adhoc_group::OnOtherMap(" probe "${action}")
+check_leave_facts("${probe}" "adhoc_group::" "${ACTION_CLOCK}" "${ACTION_RESET_START}" "${ACTION_RESET}" r)
+expect_caught("action: leader != bot dropped" "${r}")
+string(REPLACE "bool const otherMap = leader && leader != bot && OnOtherMap(" "bool const otherMap = leader && OnOtherMap(" probe "${world}")
+check_leave_facts("${probe}" "" "${WORLD_CLOCK}" "${WORLD_RESET_START}" "${WORLD_RESET}" r)
+expect_caught("world: leader != bot dropped" "${r}")
+# The instance arm without the rule gate (switch 0 would count another continent region).
+string(REPLACE "otherMapRule && leader->GetInstanceId()" "leader->GetInstanceId()" probe "${world}")
+check_leave_facts("${probe}" "" "${WORLD_CLOCK}" "${WORLD_RESET_START}" "${WORLD_RESET}" r)
+expect_caught("world: instance arm without the rule" "${r}")
+# The group change without the clock reset (an old since-time would fire at once in the new group).
+string(REPLACE "        levelWindowSince = 0;\n        leaderOtherMapSince = 0;\n" "        levelWindowSince = 0;\n" probe "${action}")
+check_leave_facts("${probe}" "adhoc_group::" "${ACTION_CLOCK}" "${ACTION_RESET_START}" "${ACTION_RESET}" r)
+expect_caught("action: group change without the clock reset" "${r}")
 # leader_other_map behind out_of_range.
 string(REPLACE "    if (f.leaderOtherMapSeconds && f.leaderOtherMapSince && f.now - f.leaderOtherMapSince >= f.leaderOtherMapSeconds)\n        return Leave::LeaderOtherMap;\n" "" probe "${policy}")
 string(REPLACE "        return Leave::OutOfRange;\n" "        return Leave::OutOfRange;\n    if (f.leaderOtherMapSeconds && f.leaderOtherMapSince && f.now - f.leaderOtherMapSince >= f.leaderOtherMapSeconds)\n        return Leave::LeaderOtherMap;\n" probe "${probe}")
