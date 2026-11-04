@@ -10,7 +10,6 @@
 #include "playerbot/TravelChoosePolicy.h"
 #include "playerbot/QuestSearchPolicy.h"
 #include "playerbot/QuestFailureClassPolicy.h"
-#include "playerbot/QuestGrindModePolicy.h"
 #include "playerbot/GatherPurposePolicy.h"
 #include "playerbot/DirectTargetDestinations.h"
 #include "playerbot/ProfessionTravelPolicy.h"   // twow-repo#333 Berufe P1-a / P1-b
@@ -1026,10 +1025,10 @@ bool NeedTravelPurposeValue::Calculate()
     case TravelDestinationPurpose::GatherMining:
     case TravelDestinationPurpose::GatherHerbalism:
     {
-        // twow-repo#601 GrindMode 2 (review): a skinning trip is a kill trip - GatherTravelDestination::IsActive needs
+        // twow-repo#601 QuestFirstOrder (review): a skinning trip is a kill trip - GatherTravelDestination::IsActive needs
         // living creatures of the entry, and the grind target filter refuses that kill, so the bot would travel, stand
         // and log "opportunistic" until the work time ran out. No skinning purpose for the population (no [Purpose]
-        // start); skinning the corpses of its own kills, mining, herbalism and fishing stay. GrindMode 0 / 1: false.
+        // start); skinning the corpses of its own kills, mining, herbalism and fishing stay. Off: false.
         if (purpose == TravelDestinationPurpose::GatherSkinning && ai->IsQuestNoGrindTrip())   // + QuestFirstOrder (#601 review)
             return false;
 
@@ -1077,8 +1076,8 @@ bool NeedTravelPurposeValue::Calculate()
         }
     }
     case TravelDestinationPurpose::Boss:
-        // twow-repo#601 GrindMode 2 (review): a boss trip is a kill trip the grind target filter refuses unless the boss
-        // attacks or a quest needs it (quest bosses come through the quest objective destinations). GrindMode 0 / 1: as before.
+        // twow-repo#601 QuestFirstOrder (review): a boss trip is a kill trip the grind target filter refuses unless the boss
+        // attacks or a quest needs it (quest bosses come through the quest objective destinations). Off: as before.
         if (ai->IsQuestNoGrindTrip())   // + QuestFirstOrder (#601 review)
             return false;
         return AI_VALUE(bool, "can fight boss");
@@ -1124,30 +1123,9 @@ bool NeedTravelPurposeValue::Calculate()
                     return false;
             }
 
-            // twow-repo#601 S2 / S4 R1 (GrindMode 1, OB-10 rev. 2): the gap filler grinds only while the quest route backoff
-            // runs (the last quest search found nothing, any S1 class - a transient one too, OP4) and S1's turn-in yield
-            // above did not hold; never as a refresh renewal. It returns before the
-            // 8.32 GrindFallbackFailures lines below, so S0 stays GrindMode 0 (never both).
-            // GrindMode 0 / 2: IsQuestGapGrind() is false, everything below as before.
-            if (ai->IsQuestGapGrind())
-                return ai::quest_grind_mode::GapWindowOpen(
-                    uint32(time(nullptr)) < uint32(std::max(0, AI_VALUE2(int, "manual int", "quest route backoff until"))),
-                    AI_VALUE2(bool, "manual bool", "is travel refresh"));
-
             // Hotfix 8.32 (twow-repo#544): after repeated empty quest route searches a quest-first
             // bot grinds instead of idling ("no destination").
             uint32 const failures = uint32(std::max(0, AI_VALUE2(int, "manual int", "quest route failures")));
-            // twow-repo#601 GrindMode 2 (owner 17.10.2026): no grind fallback as a substitute activity - the bot stands
-            // idle; [QuestIdle] reason=fallback when the 8.32 rule (fresh threshold included) would have let it grind.
-            // GrindMode 0 / 1: IsQuestNoGrind() is false, everything below as before.
-            if (ai->IsQuestNoGrind())
-            {
-                if (ai::quest_search::GrindFallback(true, failures, sPlayerbotAIConfig.questFirstProgressionGrindFallbackFailures) &&
-                    !AI_VALUE2(bool, "manual bool", "is travel refresh"))
-                    ai->NoteQuestIdle(uint8(ai::quest_grind_mode::Reason::Fallback),
-                        ai::quest_grind_mode::TargetText("grind_fallback_failures", failures));
-                return false;
-            }
             return ai::quest_search::GrindFallback(true, failures, sPlayerbotAIConfig.questFirstProgressionGrindFallbackFailures) &&
                 !AI_VALUE2(bool, "manual bool", "is travel refresh");
         }

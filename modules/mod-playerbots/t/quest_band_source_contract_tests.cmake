@@ -260,7 +260,7 @@ require_text("${step}" "homebind::IsZoneClearlyAboveLevel(" "hubs clearly above 
 count_text("${travel_mgr}" "info.HasBandGiverFilter()" 2 "the snapshot bit read in IsPossible (E) and IsActive (F) only")
 count_text("${travel_mgr}" "bandGiverFilter = " 1 "the bit written only in the snapshot constructor")
 count_text("${travel_mgr}" "QuestBandGiverFilter()" 1 "the scope read once, in the constructor (never in the async job)")
-region("${travel_mgr}" "PlayerTravelInfo::PlayerTravelInfo(Player* player, bool gapGrind)\n{" "\n}\n" info_ctor)
+region("${travel_mgr}" "PlayerTravelInfo::PlayerTravelInfo(Player* player)\n{" "\n}\n" info_ctor)
 require_text("${info_ctor}" "    bandGiverFilter = ai->QuestBandGiverFilter();\n    bandGreyLevel = bandGiverFilter ? MaNGOS::XP::GetGrayLevel(level) : 0;" "the band snapshot on the bot thread")
 require_text("${travel_h}" "bool bandGiverFilter = false;" "no filter by default")
 forbid_text("${travel_h}" "SetBandGiverFilter" "a setter (the snapshot is written only by its constructor)")
@@ -440,8 +440,8 @@ require_text("${policy}" "    return walkAfter && f.emptyStreak >= walkAfter && 
 require_text("${policy}" "    return walkEnd > now && walkEnd - now >= MinWalkSeconds;" "F4: no walk without a backoff, none below 30 s")
 require_text("${policy}" "constexpr std::uint32_t MinWalkSeconds = 30;" "F4: 30 s")
 require_text("${policy}" "\"walks\", \"walk_arrived\", \"walk_ended\", \"walk_replaced\", \"walk_no_rung\" };" "F4 minute counts appended")
-# the plan: only behind its key (the caller passes no plan at 0), only when the step is not due, never for GrindMode 1
-require_text("${step}" "    bool const walk = walkPlan && verdict == qb::StepVerdict::NotDue && !ai->IsQuestGapGrind() &&\n        qb::WalkDue(facts, sPlayerbotAIConfig.questFirstProgressionBandWalkAfterEmptySearches);\n    if (verdict == qb::StepVerdict::NotDue && !walk)\n        return false;" "F4: the plan only when no step is due")
+# the plan: only behind its key (the caller passes no plan at 0), only when the step is not due
+require_text("${step}" "    bool const walk = walkPlan && verdict == qb::StepVerdict::NotDue &&\n        qb::WalkDue(facts, sPlayerbotAIConfig.questFirstProgressionBandWalkAfterEmptySearches);\n    if (verdict == qb::StepVerdict::NotDue && !walk)\n        return false;" "F4: the plan only when no step is due")
 region("${step}" "    if (walk)\n    {" "        return false;\n    }" walk_plan)
 require_order("${step}" "    if (walk)\n    {" "    setNewTarget(requester, &band, travelTarget);" "F4: the plan returns before the step's trip")
 foreach(banned "setNewTarget" "OnBandStep" "RequestQuestRouteReset" "NoteBand(" "sLog")

@@ -148,7 +148,7 @@ require_text("${conf}" "\nAiPlayerbot.QuestFeasibility.SoloSkipGroupQuests = 0\n
 forbid_text("${conf}" "AiPlayerbot.QuestFeasibility.Enable = 1" "Enable shipped as 1")
 forbid_text("${conf}" "AiPlayerbot.QuestFeasibility.SoloSkipGroupQuests = 1" "SoloSkipGroupQuests shipped as 1")
 count_text("${conf}" "\nAiPlayerbot.QuestFeasibility." 4 "exactly the four S3a keys, once each")
-require_order("${conf}" "AiPlayerbot.QuestFirstProgression.GrindMode = 0" "AiPlayerbot.QuestFeasibility.Enable = 0" "documented next to the S1 / GrindMode keys")
+require_order("${conf}" "AiPlayerbot.QuestFirstProgression.HubPreloopSameFilters = 0" "AiPlayerbot.QuestFeasibility.Enable = 0" "documented next to the S1 keys")
 
 # ---- 3. The game-side helper: Enable first, the S3a scope, atomics, bounded line ------------------------
 region("${ai_cpp}" "ai::quest_feasibility::Reason PlayerbotAI::QuestFeasibilityReason(Quest const* quest)" "\n}\n" reason_fn)

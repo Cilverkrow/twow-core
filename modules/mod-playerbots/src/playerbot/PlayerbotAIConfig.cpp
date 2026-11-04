@@ -942,7 +942,6 @@ bool PlayerbotAIConfig::Initialize()
     questFirstProgressionTransientCountsAfter = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TransientCountsAfter", 0)));
     // twow-repo#601 S3b: the hub pre-loop also asks the main loop's post-IsActive deferrals (acts only with FailureClasses).
     questFirstProgressionHubPreloopSameFilters = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.HubPreloopSameFilters", false);
-    questFirstProgressionGrindMode = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.GrindMode", 0);
     // twow-repo#601 R01 v4: cohort mode of the S1 / S3 key groups (R01CohortPolicy.h), 0 = all bots.
     questFirstProgressionS1Cohort = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.S1Cohort", 0);
     questFirstProgressionS3Cohort = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.S3Cohort", 0);
@@ -1946,7 +1945,6 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestFirstProgression.FailureClasses.GroupNeeded", Value(questFirstProgressionFailureClassesGroupNeeded)},
             {"QuestFirstProgression.GiverFetchAnyQuest", Value(questFirstProgressionGiverFetchAnyQuest)},
             {"QuestFirstProgression.GrindFallbackFailures", Value(questFirstProgressionGrindFallbackFailures)},
-            {"QuestFirstProgression.GrindMode", Value(questFirstProgressionGrindMode)},
             {"QuestFirstProgression.HubPreloopSameFilters", Value(questFirstProgressionHubPreloopSameFilters)},
             {"QuestFirstProgression.MinLevelForCrossMapQuestRoute", Value(questFirstProgressionMinLevelForCrossMapQuestRoute)},
             {"QuestFirstProgression.ResetOnProgressEvents", Value(questFirstProgressionResetOnProgressEvents)},
