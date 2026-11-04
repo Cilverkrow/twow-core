@@ -475,6 +475,29 @@ void PlayerbotHolder::UpdateAIInternal(uint32 elapsed, bool minimal)
 #endif
 }
 
+// twow-repo#676 (BOT-HOLDER-FARACK-01): the far-teleport acks a master's holder queued in UpdateSessions (on the master's map
+// thread). World thread only: PlayerbotWorldScript::OnUpdate, after sMapMgr.Update returned - no map worker runs, so
+// HandleMoveWorldportAckOpcode's Map::Add and the Reset() after it touch the bot alone. Each guid is resolved again.
+void PlayerbotHolder::DrainFarTeleportAcks()
+{
+    ai::teleport_ack::FarAckQueue& queue = ai::teleport_ack::FarAcks();
+    if (queue.Empty())
+        return;
+
+    for (uint32 const guidLow : queue.Take())
+    {
+        Player* bot = ObjectAccessor::FindPlayerNotInWorld(ObjectGuid(HIGHGUID_PLAYER, guidLow));
+        PlayerbotAI* botAI = GetBotAI(bot);
+        if (ai::teleport_ack::WorldThreadAcks(botAI != nullptr, bot && bot->IsInWorld(), bot && bot->IsBeingTeleportedFar()))
+        {
+            botAI->HandleTeleportAck();
+            ai::teleport_ack::Global().farWorldAcks.fetch_add(1, std::memory_order_relaxed);
+        }
+        else
+            ai::teleport_ack::Global().farSkips.fetch_add(1, std::memory_order_relaxed);
+    }
+}
+
 void PlayerbotHolder::UpdateSessions(uint32 elapsed)
 {
     ForEachPlayerbot([&](Player* bot)
@@ -504,7 +527,9 @@ void PlayerbotHolder::UpdateSessions(uint32 elapsed)
 
         // twow-repo#563 X5 (AiPlayerbot.ThreadSafeTeleportAck, default 0): a master's holder runs on the master's map thread;
         // a bot in world on another map is updated by another thread. Its near teleport is acked by its own UpdateAI
-        // (TeleportAckThreadPolicy.h). Off: every pending teleport is acked below, as before.
+        // (TeleportAckThreadPolicy.h). Off: a near teleport is acked below, as before.
+        // twow-repo#676 (no switch): a master's holder only queues a far teleport's guid; DrainFarTeleportAcks acks it in the
+        // world-thread phase (Map::Add + Reset must not run on the master's map thread while the destination map's worker runs).
         ai::teleport_ack::Acker const acker = GetBotAI(bot) && bot->IsBeingTeleported() ?
             ai::teleport_ack::Choose(sPlayerbotAIConfig.threadSafeTeleportAck, IsMasterHolder(), bot->IsInWorld(),
                 bot->IsBeingTeleportedNear(), bot->IsBeingTeleportedFar()) : ai::teleport_ack::Acker::Holder;
@@ -513,9 +538,13 @@ void PlayerbotHolder::UpdateSessions(uint32 elapsed)
             GetBotAI(bot)->RequestTeleportAck();
             ai::teleport_ack::Global().requested.fetch_add(1, std::memory_order_relaxed);
         }
-        else if (acker == ai::teleport_ack::Acker::Wait)
+        else if (acker == ai::teleport_ack::Acker::WorldThread)
         {
-            ai::teleport_ack::Global().waits.fetch_add(1, std::memory_order_relaxed);
+            ai::teleport_ack::Queued const queued = ai::teleport_ack::FarAcks().Push(bot->GetGUIDLow());
+            if (queued == ai::teleport_ack::Queued::Added)
+                ai::teleport_ack::Global().farQueued.fetch_add(1, std::memory_order_relaxed);
+            else if (queued == ai::teleport_ack::Queued::Full)
+                ai::teleport_ack::Global().farFull.fetch_add(1, std::memory_order_relaxed);
         }
         else if (GetBotAI(bot) && bot->IsBeingTeleported())
         {

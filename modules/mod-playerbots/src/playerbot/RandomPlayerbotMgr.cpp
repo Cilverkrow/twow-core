@@ -2469,6 +2469,14 @@ void RandomPlayerbotMgr::TraceWorldBots(uint64 desiredBots, uint64 sessionsUs, u
             tpAck = " teleport_ack_requested=" + std::to_string(c.requested.exchange(0)) +
                 " teleport_ack_bot=" + std::to_string(c.botAcks.exchange(0)) + " teleport_ack_wait=" + std::to_string(c.waits.exchange(0));
         }
+        // twow-repo#676 (no switch): the master holders' far acks queued for the world thread, acked there, skipped there (no
+        // longer pending), refused at the depth limit - after the X5 suffix, increments since the last line.
+        {
+            ai::teleport_ack::Counters& c = ai::teleport_ack::Global();
+            tpAck += " far_ack_queued=" + std::to_string(c.farQueued.exchange(0)) +
+                " far_ack_world=" + std::to_string(c.farWorldAcks.exchange(0)) +
+                " far_ack_skip=" + std::to_string(c.farSkips.exchange(0)) + " far_ack_full=" + std::to_string(c.farFull.exchange(0));
+        }
         sLog.outBasic("[WorldBots] passes=%u bots_avg=%u sessions_ms=%u process_ms=%u other_ms=%u max_pass_ms=%u share_pm=%u logins=%u teleport_ack_calls=%u online=%u%s",
             w.passes, w.passes ? uint32(w.bots / w.passes) : 0u, uint32(w.sessionsUs / 1000), uint32(w.processUs / 1000),
             uint32(w.otherUs / 1000), uint32(w.maxPassUs / 1000), w.PerMille(), w.logins, w.teleportAcks, uint32(GetPlayerbotsAmount()),
