@@ -168,10 +168,9 @@ set_tests_properties(premade_specs_rate2 PROPERTIES
 # -- CMake's regex engine is not the tool for that, and getting it wrong makes a
 # guard that reports false positives and then gets switched off.
 #
-# Six known-dead keys are allowlisted with reasons rather than deleted: they are
-# upstream's, ADR-0040 keeps our delta upstream-shaped, and resolving them is
-# twow-repo#8's decision. The allowlist is checked in both directions, so an
-# entry that stops being dead is also an error.
+# The allowlist is empty since twow-repo#679 (the dead upstream keys lost their reader line, ADR-0040 keeps the header members).
+# It is checked in both directions, so an entry that stops being dead is also an error. The declaration test knows comma lists
+# and initialised members, and the scan covers the whole module source tree (twow-repo#679, switch audit #10a).
 # --------------------------------------------------------------------------
 
 add_test(NAME playerbot_config_key_usage
