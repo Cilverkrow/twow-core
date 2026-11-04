@@ -48,6 +48,9 @@ public:
     // twow-repo#563 X5 (AiPlayerbot.ThreadSafeTeleportAck): true for a master's holder (PlayerbotMgr) - it runs inside the
     // master's Map::Update, in parallel with the maps of its bots (TeleportAckThreadPolicy.h).
     virtual bool IsMasterHolder() const { return false; }
+    // twow-repo#676: acks the far teleports the master holders queued (TeleportAckThreadPolicy.h FarAcks). World thread only,
+    // after sMapMgr.Update (PlayerbotWorldScript::OnUpdate).
+    static void DrainFarTeleportAcks();
 
     void ForEachPlayerbot(std::function<void(Player*)> fct) const;
 
