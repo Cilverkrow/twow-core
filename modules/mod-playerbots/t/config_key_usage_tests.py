@@ -41,25 +41,10 @@ import pathlib
 import re
 import sys
 
-# Members assigned from a config read and read nowhere else, as of 2026-09-08.
-# Each needs a reason, and the reason should say what resolving it would mean.
-ALLOWED = {
-    "randomBotLoginAtStartup":
-        "twow-repo#8 tracks this one explicitly. Upstream's; either log bots in "
-        "at startup or drop the key.",
-    "botsSilent":
-        "Upstream. A global mute that never reached the chat paths.",
-    "disableBotOptimizations":
-        "Upstream. Would gate the bot update-throttling paths; nothing reads it.",
-    "randomBotBracketCount":
-        "Upstream. Level-bracket count for random bot distribution, unused since "
-        "the bracket logic it belonged to was replaced.",
-    "randomGearTabardsUnobtainable":
-        "Upstream. Gear-roll filter for tabards; the roll does not consult it.",
-    "RandombotsWalkingRPGInDoors":
-        "Upstream. Indoor variant of the walking-RPG toggle; only the outdoor one "
-        "is read.",
-}
+# Members assigned from a config read and read nowhere else. Each entry needs a reason, and the reason should say what resolving it
+# would mean. Empty since SWITCH-CLEAN-01 (twow-repo#679): the six upstream keys that were listed here lost their reader line
+# (profile/compose lines removed first); their header members stay, so a rebase on upstream does not conflict (ADR-0040).
+ALLOWED = {}
 
 # `member = config.GetIntDefault("Key", ...)` at the start of a line.
 #
