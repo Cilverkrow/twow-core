@@ -1060,9 +1060,9 @@ bool PetitionOfferNearbyAction::Execute(Event& event)
         if (player->GetGuildIdInvited())
             continue;
 
-        // Owner 05.10.2026: no charter offer to a roster bot below AiPlayerbot.RosterGuild.MinLevel
+        // Owner 05.10.2026: no charter offer to a roster bot below AiPlayerbot.RosterGuild.JoinMinLevel
         // (it would refuse to sign anyway).
-        if (!IsRealPlayer(player) && !roster_guild::JoinAllowed(player->GetLevel(), sPlayerbotAIConfig.rosterGuildMinLevel,
+        if (!IsRealPlayer(player) && !roster_guild::JoinAllowed(player->GetLevel(), sPlayerbotAIConfig.rosterGuildJoinMinLevel,
                 sRandomPlayerbotMgr.IsPersistentRosterMember(player->GetGUIDLow()), false))
             continue;
 
