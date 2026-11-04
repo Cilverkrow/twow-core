@@ -141,3 +141,11 @@ require_text("${choose}" "if (target->IsForced())\n                            a
 require_text("${choose}" "if ((travelName == \"guild meeting\" || travelName == \"guild order\" || travelName == \"petition\") &&\n        ai::zone_keep::StartZoneHolds(bot, ai) && ai::zone_keep::ForcedHoldActive(ai))\n        return false;" "no named forced request during the hold")
 require_order("${group_world}" "if (startZoneHolds && ai::zone_keep::ForcedHoldActive(ai))\n        return false;" "TravelDestination* dest = FindQuestDest(bot, questId, objIdx, point);" "no group quest search during the hold")
 require_order("${group_world}" "ai::zone_keep::NoteForcedHold(bot, ai, \"group_quest\", outsideZone);" "t->SetTarget(dest, point);" "the group quest trip held before it is set")
+
+# 8. Owner question (04.11.): a held forced trip never turns into a trip without a valid target - the deferred point is skipped before
+#    the target is set (the loop continues; an all-deferred choice sets no target and the bot keeps its normal quest choices), and a
+#    named forced request during the hold returns before any destination search starts.
+between("${choose}" "bool ChooseTravelTargetAction::SetBestTarget(" "\n}\n" best_fn)
+require_order("${best_fn}" "case PostActiveDeferral::StartZone:" "target->SetTarget(destination, position);" "deferred before the target is set")
+between("${choose}" "bool RequestNamedTravelTargetAction::Execute(" "\n}\n" named_fn)
+require_order("${named_fn}" "ai::zone_keep::StartZoneHolds(bot, ai) && ai::zone_keep::ForcedHoldActive(ai))\n        return false;" "*AI_VALUE(FutureDestinations*, \"future travel destinations\") = std::async(" "no search during the hold")
