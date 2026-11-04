@@ -6,6 +6,7 @@
 #include "gtest/gtest.h"
 
 #include "DcRezDecision.h"
+#include "DcRunRobustPolicy.h"   // CLI-GRP 04.11.2026: the StayDeadInRun veto with RezCapableOnly
 
 using DcRezDecision::Decide;
 using DcRezDecision::Inputs;
@@ -451,4 +452,130 @@ TEST(DcRezDecisionTest, SoloDeadTankIsAWipe)
     Result const r = Decide(BaseInputs(), {solo});
     EXPECT_EQ(r.outcome, Outcome::Disable);
     EXPECT_EQ(r.reason, Reason::Wipe);
+}
+
+// ---- DungeonClear.RezCapableOnly (CLI-GRP 04.11.2026, g1/CAUSE-DC-REVIVE-PFAD-20261104 F1+F3) ---------------------
+
+namespace
+{
+    using DcRezDecision::CanRezNow;
+    using DcRezDecision::RezCaster;
+
+    // A druid bot: rez class, but "revive" resolves to no spell it knows in 1.12.
+    RezCaster DruidNoRezSpell()
+    {
+        RezCaster c;
+        c.isRezClass = true;
+        c.isBot = true;
+        return c;
+    }
+
+    // A paladin bot with Redemption (rank 1, 7328) off cooldown and the mana for it.
+    RezCaster PaladinWithRedemption()
+    {
+        RezCaster c;
+        c.isRezClass = true;
+        c.isBot = true;
+        c.spellId = 7328;
+        c.spellReady = true;
+        c.powerCost = 125;
+        c.power = 400;
+        return c;
+    }
+}
+
+TEST(DcRezCapableTest, DruidWithoutARezSpellCannotRez)
+{
+    EXPECT_FALSE(CanRezNow(DruidNoRezSpell(), true));
+}
+
+TEST(DcRezCapableTest, PaladinWithRedemptionManaAndNoCooldownCanRez)
+{
+    EXPECT_TRUE(CanRezNow(PaladinWithRedemption(), true));
+}
+
+TEST(DcRezCapableTest, TooLittleManaOrCooldownCannotRez)
+{
+    RezCaster lowMana = PaladinWithRedemption();
+    lowMana.power = 124;  // one short of the rank's cost
+    EXPECT_FALSE(CanRezNow(lowMana, true));
+
+    RezCaster exact = PaladinWithRedemption();
+    exact.power = exact.powerCost;
+    EXPECT_TRUE(CanRezNow(exact, true));
+
+    RezCaster cooldown = PaladinWithRedemption();
+    cooldown.spellReady = false;
+    EXPECT_FALSE(CanRezNow(cooldown, true));
+}
+
+TEST(DcRezCapableTest, SwitchOffIsTheOldClassRule)
+{
+    EXPECT_TRUE(CanRezNow(DruidNoRezSpell(), false));  // the class counts, as before
+    RezCaster lowMana = PaladinWithRedemption();
+    lowMana.power = 0;
+    EXPECT_TRUE(CanRezNow(lowMana, false));
+    RezCaster mage;  // no rez class: never, either way
+    mage.isBot = true;
+    EXPECT_FALSE(CanRezNow(mage, false));
+    EXPECT_FALSE(CanRezNow(mage, true));
+}
+
+TEST(DcRezCapableTest, AHumanKeepsTheClassRule)
+{
+    RezCaster human = DruidNoRezSpell();
+    human.isBot = false;  // no bot AI to resolve the spell through
+    EXPECT_TRUE(CanRezNow(human, true));
+}
+
+TEST(DcRezCapableTest, ElectionSkipsTheIncapableDruidHealer)
+{
+    // The CAUSE shape: paladin tank [0] and druid healer [1] alive, a DPS dead. The class rule elects the healer
+    // druid (healers first); with the switch the glue's canRezClass is CanRezNow and the paladin is elected.
+    for (bool const capableOnly : {false, true})
+    {
+        auto party = BaseParty();
+        party[0].canRezClass = CanRezNow(PaladinWithRedemption(), capableOnly);
+        party[1].canRezClass = CanRezNow(DruidNoRezSpell(), capableOnly);
+        party[2].isDead = true;
+        Result const r = Decide(BaseInputs(), party);
+        EXPECT_EQ(r.outcome, Outcome::Hold);
+        EXPECT_EQ(r.reason, Reason::Recovering);
+        EXPECT_EQ(r.rezzerIdx, capableOnly ? 0 : 1);
+    }
+}
+
+TEST(DcRezCapableTest, HealersFirstAmongCapableMembers)
+{
+    // Two capable bots: the order rules are unchanged - the healer [1] before the tank [0].
+    auto party = BaseParty();
+    party[0].canRezClass = CanRezNow(PaladinWithRedemption(), true);
+    party[1].canRezClass = CanRezNow(PaladinWithRedemption(), true);
+    party[2].isDead = true;
+    Result const r = Decide(BaseInputs(), party);
+    EXPECT_EQ(r.rezzerIdx, 1);
+}
+
+TEST(DcRezCapableTest, OnlyAnIncapableDruidLeftIsNoRezzer)
+{
+    auto party = BaseParty();
+    party[0].isDead = true;  // the paladin tank is the corpse
+    party[1].canRezClass = CanRezNow(DruidNoRezSpell(), true);
+    Inputs in = BaseInputs();
+    in.noRezzerQuietGraceMs = 0;  // quiet already held: the classic NoRezzer, not the in-fight hold
+    Result const r = Decide(in, party);
+    EXPECT_EQ(r.outcome, Outcome::Disable);
+    EXPECT_EQ(r.reason, Reason::NoRezzer);
+}
+
+TEST(DcRezCapableTest, StayDeadVetoNeedsACapableRezzer)
+{
+    // StayDeadInRunVeto passes LivingRezzerOnMap, which with the switch asks CanRezNow of each living rez class.
+    using DcRunRobust::StayDead;
+    // Only an incapable druid alive: switch 1 -> no veto (the corpse releases, the ghost walk runs) ...
+    EXPECT_FALSE(StayDead(true, true, true, false, CanRezNow(DruidNoRezSpell(), true), 30, 600));
+    // ... switch 0 -> the veto is kept, as before.
+    EXPECT_TRUE(StayDead(true, true, true, false, CanRezNow(DruidNoRezSpell(), false), 30, 600));
+    // A capable paladin alive: the veto holds either way.
+    EXPECT_TRUE(StayDead(true, true, true, false, CanRezNow(PaladinWithRedemption(), true), 30, 600));
 }

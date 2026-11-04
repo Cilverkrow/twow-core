@@ -17,12 +17,17 @@
 #include <string>
 #include <vector>
 
+#include "AiObjectContext.h"
 #include "Group.h"
 #include "Log.h"
 #include "Map.h"
 #include "Player.h"
 #include "PlayerbotAI.h"
 #include "Playerbots.h"
+#include "SharedDefines.h"
+#include "Spell.h"
+#include "SpellEntry.h"
+#include "SpellMgr.h"
 #include "Timer.h"
 
 namespace
@@ -214,6 +219,15 @@ namespace
             }
         }
 
+        // DungeonClear.RezCapableOnly (CLI-GRP 04.11.2026, g1/CAUSE-DC-REVIVE-PFAD-20261104 F1): elect only among the
+        // members who can rez NOW, by the spell the rung would cast - a druid has no out-of-combat rez in 1.12. Here,
+        // past the no-deaths return, so the spell reads only run while someone is dead; the order rules are the
+        // kernel's, unchanged. 0 = the class rule BuildSnapshot set.
+        if (DcSettings::GetBool(bot, "RezCapableOnly"))
+            for (std::size_t i = 0; i < members.size(); ++i)
+                if (!members[i].isDead && members[i].canRezClass)
+                    members[i].canRezClass = DcRezRecovery::CanRezNow(players[i], true);
+
         // The recovery clock: runs only while nobody is FIGHTING (a fight clears
         // it, so a mid-recovery add pull resets the budget instead of burning it).
         bool const partyEngaged = AnyMemberEngaged(players);
@@ -362,18 +376,62 @@ namespace DcRezRecovery
     {
         if (!bot || !Enabled(bot))
             return false;
+        bool const capableOnly = DcSettings::GetBool(bot, "RezCapableOnly");
         Group* group = bot->GetGroup();
         if (!group)
-            return bot->IsAlive() && IsRezClass(bot);
+            return bot->IsAlive() && CanRezNow(bot, capableOnly);
         for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
         {
             Player* member = ref->GetSource();
             if (!member || member->GetMapId() != bot->GetMapId())
                 continue;
-            if (member->IsAlive() && IsRezClass(member))
+            if (member->IsAlive() && CanRezNow(member, capableOnly))
                 return true;
         }
         return false;
+    }
+
+    char const* RezActionNameFor(uint8 playerClass)
+    {
+        // Druid battle-rez ("rebirth") is deliberately out of scope for v1 — the
+        // rung only runs out of combat. "revive" resolves to no spell in 1.12
+        // (CAUSE-DC-REVIVE-PFAD), which RezCapableOnly reads as "cannot rez".
+        switch (playerClass)
+        {
+            case CLASS_PRIEST:  return "resurrection";
+            case CLASS_PALADIN: return "redemption";
+            case CLASS_SHAMAN:  return "ancestral spirit";
+            case CLASS_DRUID:   return "revive";
+            default:            return nullptr;
+        }
+    }
+
+    bool CanRezNow(Player* member, bool capableOnly)
+    {
+        DcRezDecision::RezCaster c;
+        c.isRezClass = member && IsRezClass(member);
+        if (!c.isRezClass || !capableOnly)
+            return DcRezDecision::CanRezNow(c, capableOnly);
+
+        PlayerbotAI* ai = GET_PLAYERBOT_AI(member);
+        c.isBot = ai != nullptr;
+        char const* name = RezActionNameFor(member->getClass());
+        if (ai && name)
+        {
+            // The resolution the rung's CastSpell(name) uses (rank by the bot's mana save level), then the member's
+            // OWN spellbook: the value falls back to the pet's (DcActionShared::ResolvePullSpell, same guard).
+            uint32 const spellId = ai->GetAiObjectContext()->GetValue<uint32>(DcKey::Stock::SpellId, name)->Get();
+            SpellEntry const* info = spellId ? sSpellMgr.GetSpellEntry(spellId) : nullptr;
+            if (info && member->HasSpell(spellId))
+            {
+                c.spellId = spellId;
+                c.spellReady = member->IsSpellReady(spellId);
+                c.powerCost = member->HasOption(PLAYER_CHEAT_NO_POWER) ? 0u
+                    : Spell::CalculatePowerCost(info, member);
+                c.power = info->powerType < MAX_POWERS ? member->GetPower(Powers(info->powerType)) : 0u;
+            }
+        }
+        return DcRezDecision::CanRezNow(c, capableOnly);
     }
 
     bool LivingRezzerOnMap(Player* bot)
@@ -382,11 +440,13 @@ namespace DcRezRecovery
         Group* group = bot ? bot->GetGroup() : nullptr;
         if (!map || !group)
             return false;
+        // RezCapableOnly (CAUSE F3): the corpse waits only for a member who can rez now; server-only, read once.
+        bool const capableOnly = DcSettings::GetBool(bot, "RezCapableOnly");
         for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
         {
             Player* member = ref->GetSource();
             if (member && member != bot && member->IsInWorld() && member->FindMap() == map && member->IsAlive() &&
-                IsRezClass(member))
+                IsRezClass(member) && (!capableOnly || CanRezNow(member, true)))
                 return true;
         }
         return false;
