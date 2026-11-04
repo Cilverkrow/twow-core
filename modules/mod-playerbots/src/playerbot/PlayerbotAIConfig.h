@@ -691,6 +691,7 @@ public:
     uint32 rotationOomBackoffDelayMs = 1000;  // ... the wait after such a pass (ends early when the mana is back or the health low)
     uint32 rotationMeleeSkipAttacking = 1;  // twow-repo#602 (failure census 27.10., OB-00: code default 1, 0 = rollback): the default "melee" action is USELESS while the bot already attacks its current target, faces it and its pet is on it (MeleeSkipPolicy.h); 0 off, 1 all, 2 cohort B
     uint32 rotationNeverPossibleSkip = 1;  // twow-repo#602 (failure census v3 28.10., OB-00: code default 1, 0 = rollback): a spell action whose spell the bot does not know is IMPOSSIBLE at once and pushes no reach prerequisite (NeverPossiblePolicy.h); 0 off, 1 all, 2 cohort B
+    uint32 rotationKnownSpellNodes = 0;  // twow-repo#602 (owner 04.11.2026, OB-00 plan OK): the engine does not check a trigger node whose every handler is a spell the bot does not know, without alternatives (KnownSpellNodesPolicy.h); 0 off, 1 all, 2 cohort B, 3 cohort A
     bool rotationMeleeFleeBreakRanged = false;  // twow-repo#602 (step 2, 21.10.): the same hold for ranged bots (cohort from Rotation.MeleeFleeBreak); kite triggers untouched
     uint32 rotationFleeAway = 0;  // twow-repo#602 (c) (hunter + adds analysis 25.10.): flee chase angle relative to the enemy's facing, a kept chase (1 s), hunter flee only in the dead zone while the pet holds the enemy (FleeAwayPolicy.h); 0 off, 1 all, 2 cohort B
     uint32 rotationFleeAwayScope = 0;  // twow-repo#602 (c) scope (hunter restart 26.10.): which bots of Rotation.FleeAway's cohort get it; 0 every bot (as before), 1 hunters, 2 hunters + bots with a living pet out
@@ -708,16 +709,6 @@ public:
     bool possibleTargetsSharedSearch = false;  // twow-repo#541 (audit A32): unqualified "possible targets" variants of a bot without a group filter its own sight-range snapshot again instead of a second grid search (0 = off)
     bool x3bPublishedTargets = false;  // twow-repo#563 (X3b): other bots read published targets, not our values
     bool x3bPublishedConditions = false;  // twow-repo#563 (X3b site 2): group conditions answered by each member itself
-    bool dietPriestRacials = false;  // twow-repo#568 (D20): priest race spells (touch of weakness, shadowguard, hex of weakness, devouring plague, elune's grace, desperate prayer, starshards) only for races that can learn them; the four race triggers wait for a known spell id (0 = off)
-    bool dietPriestSelfBuffKnown = false;  // twow-repo#568 (D22): inner fire / shadowform / inner focus triggers wait for a known spell id, inner focus also for its cooldown (0 = off)
-    bool dietShadowPriestDeadNodes = false;  // twow-repo#568 (D32): shadow priest strategy does not register "vampiric touch" (passive talent in Turtle) and "shadowfiend" (no such spell in Turtle 1.18) (0 = off)
-    bool dietWarlockCcKnown = false;  // twow-repo#568 (D23): warlock cc pushes death coil (snare) and howl of terror only while the spell is known (0 = off)
-    bool dietWarlockTalentKnown = false;  // twow-repo#568 (D24): warlock talent spells siphon life (also on attacker), conflagrate, shadowburn (pve + pvp) and dark pact fire only while the spell is known (0 = off)
-    bool dietWarlockAmplifyCurse = false;  // twow-repo#568 (D25): warlock boost does not register "amplify curse" (only "[Deprecated] Amplify Curse" exists in Turtle 1.18) (0 = off)
-    bool dietMageArmorKnown = false;  // twow-repo#568 (D33): "mage armor" trigger of a mage without mage armor asks for the best known armor (ice armor, else frost armor) (0 = off)
-    bool dietMageTalentBoostKnown = false;  // twow-repo#568 (D34): arcane power / presence of mind / combustion / ice barrier triggers wait for the known and ready spell (0 = off)
-    bool dietMageBlastWave = false;  // twow-repo#568 (D35): fire cc pushes blast wave only while it is known ("blast wave" trigger), and the blast wave node drops its frost nova alternative (vanilla build) (0 = off)
-    bool dietMageInvisibility = false;  // twow-repo#568 (D53): mage raid strategy does not register "invisibility" on high threat / multiple attackers (not learnable in Turtle 1.18) (0 = off)
     bool perfEventTriggerSkip = false;  // twow-repo#568 (D63): ProcessTriggers skips the Check() of chat-command / world-packet triggers whose event flag is unset; a set flag is handled on the same pass as before (0 = off)
     bool perfPartialPathReuse = false;  // twow-repo#541 (L1): MoveTo uses the path last built for an unchanged destination again, without a rebuild, for up to perfPartialPathReuseMs while its end is not reached (0 = off)
     uint32 perfPartialPathReuseMs = 10000;  // twow-repo#541 (L1): age limit of such a path in ms, clamped to 1000..60000
@@ -923,7 +914,6 @@ public:
     bool questFirstProgressionProgressAwareObjectives = true;
     uint32 questFirstProgressionTurnInMaxDeathsOnRoute = 2;
     uint32 questFirstProgressionGrindFallbackFailures = 0;  // hotfix 8.32 (#544), 0 = off
-    uint32 questFirstProgressionGrindFallbackMinutes = 0;   // twow-repo#601: the 8.32 fallback holds N min after the last empty search, 0 = for good
     // twow-repo#601 S1 "latch semantics" (OB-10 17.10.2026), all false = today's behaviour, restart-only
     // (aiplayerbot.conf.dist.in): failure classes + taker pre-validation + grind yield + pre-loop filters.
     bool questFirstProgressionFailureClasses = false;
@@ -1018,7 +1008,6 @@ public:
     bool directTargetsTraceInactive = false;
     uint32 directTargetsFreshMaxLevel = 5;
     uint32 directTargetsFreshBackoffSeconds = 0;  // 0 = the 8.1 backoff
-    uint32 directTargetsFreshGrindFailures = 0;   // 0 = QuestFirstProgression.GrindFallbackFailures
     // twow-repo#594 / P3-b (direct targets, all default 0, built at boot only, each behind directTargetsEnabled): anvil /
     // forge, cooking fire, fishing-hole shore points, dungeon and raid entrances (DirectTargetPolicy.h)
     bool directTargetsStation = false;

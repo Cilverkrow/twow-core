@@ -128,6 +128,9 @@ namespace ai
         // walk owns the queue right now; see the comment at Engine::Reset.
         bool Reset();
         void ProcessTriggers(bool minimal);
+        // twow-repo#602 (AiPlayerbot.Rotation.KnownSpellNodes): every handler of the node is an unknown spell without
+        // alternatives (KnownSpellNodesPolicy.h); cached on the node, taken again after a known-spell stamp change.
+        bool KnownSpellNodeSkip(TriggerNode* node);
         void PushDefaultActions();
         void PushAgain(ActionNode* actionNode, float relevance, const Event& event, bool ownerCache = false);
         ActionNode* CreateActionNode(const std::string& name, bool ownerCache = false);

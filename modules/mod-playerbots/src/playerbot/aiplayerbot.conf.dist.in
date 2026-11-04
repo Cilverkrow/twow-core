@@ -1427,11 +1427,6 @@ AiPlayerbot.QuestFirstProgression.TurnInMaxDeathsOnRoute = 2
 # times in a row (route backoff 2, 4, 8, 10 min) may choose a grind spot as travel target instead of
 # idling ("no destination"). [QuestSearch] state=grind_fallback. 0 = off (old behaviour).
 AiPlayerbot.QuestFirstProgression.GrindFallbackFailures = 0
-# twow-repo#601 (soak 17.10.2026): GrindFallbackMinutes = N > 0: the grind fallback above holds only N minutes after the
-# last empty quest route search; then the bot asks for a quest route again (behind the route backoff). The fallback grind
-# (6.35) outranks the generic quest request (6.3) and the failure count only resets on a found route, so with 0 (default,
-# as before) a bot that fell into it grinds for good - L10+ roster bots stopped questing within about 2 hours.
-AiPlayerbot.QuestFirstProgression.GrindFallbackMinutes = 0
 # twow-repo#601 S1 "latch semantics" (OB-00 / OB-10 17.10.2026). Three separate switches so an A/B can isolate
 # them (arm A1 sets all three to 1); all 0 = today's behaviour. Restart-only. Quest-first roster bots on their
 # own only.
@@ -1498,7 +1493,7 @@ AiPlayerbot.QuestFirstProgression.HubPreloopSameFilters = 0
 #   0 = today's behaviour (default).
 #   1 = gap filler (twow-repo#601 S2/S4, OB-10 rev. 2): the bots of 2 (below) grind only while their quest route
 #       backoff runs (the last quest search found nothing, any FailureClasses class, a transient one too), never through
-#       GrindFallbackFailures, GrindFallbackMinutes, DirectTargets.FreshGrindFailures, a travel refresh or a group
+#       GrindFallbackFailures, a travel refresh or a group
 #       member's grind trip (the money grind too only inside that window); the grind trip ends with the backoff
 #       (remaining backoff, at most 10 min, + 30 s) and its end counts as no failure. [QuestSearch]
 #       state=grind_window bot= level= backoff_s= window=<min>-<max> map= once per window (window= the S2 creature
@@ -1677,15 +1672,13 @@ AiPlayerbot.QuestFeasibility.SoloSkipGroupQuests = 0
 # twow-repo#594 / P3 (owner 15.10.2026, direct travel targets). Enable = master switch (0 = off, default); the fresh-bot
 # rules below act only with it. A fresh bot is a quest-first roster bot at or below FreshMaxLevel (live 14.10.: L1-3 bots
 # stood a median 10 min after a rejected first quest route). FreshBackoffSeconds = N > 0: such a bot asks for a quest
-# route again after N s instead of the 8.1 backoff (2, 4, 8, 10 min); the failure count still grows. FreshGrindFailures
-# = N > 0: such a bot may choose a grind spot after N empty searches instead of GrindFallbackFailures. TraceInactive = 1
+# route again after N s instead of the 8.1 backoff (2, 4, 8, 10 min); the failure count still grows. TraceInactive = 1
 # (works without Enable): the [QuestFirstRoute] rejected line splits not_active by reason (not_active_reasons=impossible,
 # map, no_mark, low_level_no_reward, no_turnin, hostile, other). [DirectTarget] state=summary once a minute.
 AiPlayerbot.DirectTargets.Enable = 0
 AiPlayerbot.DirectTargets.TraceInactive = 0
 AiPlayerbot.DirectTargets.FreshMaxLevel = 5
 AiPlayerbot.DirectTargets.FreshBackoffSeconds = 0
-AiPlayerbot.DirectTargets.FreshGrindFailures = 0
 # twow-repo#594 / P3-b (direct targets, design rev. 2, 18.10.2026): each class needs the master Enable = 1 and is built
 # once at boot (a reload switches a built class off and on, never builds one: [DirectTarget] state=reload_ignored).
 # Station = 1: anvils and forges as travel targets (6.505, above gathering, yields to open turn-ins, 10 min cooldown,
@@ -3528,6 +3521,15 @@ AiPlayerbot.Rotation.MeleeSkipAttacking = 1
 # spells, item actions such as the soulstone, mount) keep the full checks. "[NeverPossible] mode= possible= prereq=" once a minute.
 # 0 = as before, 1 = every bot (default), 2 = only cohort B (odd low guid). Any other value acts like 1.
 AiPlayerbot.Rotation.NeverPossibleSkip = 1
+# twow-repo#602 ROT-01 (owner 04.11.2026 "die fähigkeiten ab dem fähigen level"; meant to change no play, A/B before
+# enabling): the engine does not check a trigger node whose every handler is a spell the bot does not know (its "spell id" is 0)
+# and that has no alternatives - spells not learned yet and racials of other races, which could only end IMPOSSIBLE (11-51 %
+# of a questing bot's action time in the archived action logs). A node with alternatives keeps running (its IMPOSSIBLE pushes
+# them). The answer is cached per node and taken again after a learn, level-up or talent change, at least every 10 s, so a
+# spell learned now is tried on the next tick. "[KnownSpellNodes] mode= skipped= checked= recomputes= stamp_changes= cls=" once
+# a minute. 0 = every node is checked as before (default), 1 = every bot, 2 = only cohort B (odd low guid), 3 = only cohort A.
+# Any other value acts like 0.
+AiPlayerbot.Rotation.KnownSpellNodes = 0
 # twow-repo#602 ROT-01 (c) (hunter + adds analysis 25.10.2026, BEHAVIOUR CHANGE, enable only after A/B + owner go): the flee of a
 # bot without a real master is a chase of the enemy at the flee distance. Its angle was the bot's world angle to the enemy, but the
 # core adds the chase angle to the ENEMY's facing, so the flee point lay on an effectively random side of the mob (often across it
@@ -3671,52 +3673,6 @@ AiPlayerbot.Perf.PartyTargetMemo = 0
 # within range) and the old filter, so the lists only lose units that came into range after that search (< 1 s
 # later than today). Grouped bots and "nearest adds" (flee range) search as before. 0 = separate searches (default).
 AiPlayerbot.PossibleTargetsSharedSearch = 0
-# twow-repo#568 (D20, strategy diet): 1 = priests only register the race spells their race can learn (touch of weakness /
-# devouring plague Undead, shadowguard / hex of weakness Troll, elune's grace / starshards Night Elf, desperate prayer
-# Human+Dwarf), and those four race triggers stay quiet until the spell is known (right race below the learn level).
-# Same casts: these nodes always ended IMPOSSIBLE. Read at engine (re)build. 0 = all nodes for every priest (default).
-AiPlayerbot.Diet.PriestRacials = 0
-# twow-repo#568 (D22, strategy diet): 1 = the priest triggers "inner fire" (learned at 12), "shadowform" and "inner focus"
-# (talents) stay quiet while the bot knows no rank of the spell, "inner focus" also while it is on cooldown. Same casts:
-# these actions ended IMPOSSIBLE in exactly those states (no alternatives). 0 = old triggers (default).
-AiPlayerbot.Diet.PriestSelfBuffKnown = 0
-# twow-repo#568 (D32, strategy diet): 1 = the shadow priest strategy no longer registers "vampiric touch" (all Turtle
-# 1.18 Vampiric Touch rows are passive, the talent works through Vampiric Embrace) and "shadowfiend" (no such spell in
-# Turtle 1.18). Both nodes could never cast. Read at engine (re)build. 0 = both nodes as before (default).
-AiPlayerbot.Diet.ShadowPriestDeadNodes = 0
-# twow-repo#568 (D23, strategy diet): 1 = the warlock cc nodes "death coil on snare target" (death coil, level 42) and
-# "howl of terror" (level 40, now on its own "howl of terror" trigger: enemy within 10 yd and the spell known) fire only
-# while the spell is known. Same casts: below the learn level they ended IMPOSSIBLE. Trigger choice read at engine
-# (re)build. 0 = old triggers (default).
-AiPlayerbot.Diet.WarlockCcKnown = 0
-# twow-repo#568 (D24, strategy diet): 1 = the warlock talent spells fire only while the bot knows them: "siphon life",
-# "siphon life on attacker" and "conflagrate" triggers check the spell first; shadowburn ("target critical health",
-# pvp "very often") and dark pact ("low mana") move to own triggers with the same condition plus the known spell.
-# Same casts: without the talent these nodes ended IMPOSSIBLE. Trigger choice read at engine (re)build. 0 = as before.
-AiPlayerbot.Diet.WarlockTalentKnown = 0
-# twow-repo#568 (D25, strategy diet): 1 = the warlock boost strategy no longer registers "amplify curse": Turtle 1.18 only
-# has "[Deprecated] Amplify Curse", so the node ended IMPOSSIBLE on every combat tick. Same casts. Read at engine
-# (re)build. 0 = node as before (default).
-AiPlayerbot.Diet.WarlockAmplifyCurse = 0
-# twow-repo#568 (D33, strategy diet): 1 = for a mage who does not know Mage Armor (below 34) the pve "mage armor" trigger
-# fires only while the best armor the mage can cast is missing (Ice Armor if known, else Frost Armor), instead of every
-# 5 s with ice/frost armor already up. The mage armor -> ice armor -> frost armor chain stays, same armor is cast.
-# 0 = old trigger (default).
-AiPlayerbot.Diet.MageArmorKnown = 0
-# twow-repo#568 (D34, strategy diet): 1 = the mage talent triggers "arcane power", "presence of mind", "combustion" and
-# "ice barrier" stay quiet while the mage does not know the spell or it is on cooldown. Same casts: in exactly those
-# states the action ended IMPOSSIBLE (CanCastSpell checks spell id and IsSpellReady; no alternatives). 0 = as before.
-AiPlayerbot.Diet.MageTalentBoostKnown = 0
-# twow-repo#568 (D35, strategy diet; NOT strictly neutral): 1 = the fire mage cc strategy pushes "blast wave" on its own
-# "blast wave" trigger (enemy within 10 yd and the talent known) instead of "enemy ten yards", and the blast wave node
-# loses its frost nova alternative: the cc strategy already tried frost nova -> cone of cold at 90 in the same pass.
-# Difference: a frost nova that a multiplier held back at 90 (waiting for attack, threat) is no longer cast via the
-# blast wave alternative at 40. 0 = as before (default).
-AiPlayerbot.Diet.MageBlastWave = 0
-# twow-repo#568 (D53, strategy diet): 1 = the mage raid strategy no longer registers "invisibility" (alternative "lesser
-# invisibility") on "high threat" and "multiple attackers": Turtle 1.18 mages cannot learn either spell, so both nodes
-# ended IMPOSSIBLE. Same casts. Read at engine (re)build. 0 = nodes as before (default).
-AiPlayerbot.Diet.MageInvisibility = 0
 # twow-repo#568 (diet D63, neutral, "nach Abnahme an"): 1 = Engine::ProcessTriggers skips the Check() call of the
 # event-only triggers (every chat-command trigger, e.g. "stats", "items", "wander", and every world-packet trigger,
 # e.g. "duel requested", "loot roll") while their event flag is unset. Their Check() returns no event in that state,

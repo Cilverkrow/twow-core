@@ -2313,6 +2313,21 @@ add_test(NAME teleport_ack_thread_policy
   COMMAND teleport_ack_thread_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#602 ROT-01 (AiPlayerbot.Rotation.KnownSpellNodes, default 0; owner 04.11.2026): a trigger node whose every handler
+# is an unknown spell without alternatives is not checked; contract in t/contracts.d.
+add_executable(known_spell_nodes_policy_tests
+  "${PB_MODULE_DIR}/t/known_spell_nodes_policy_tests.cpp")
+
+target_include_directories(known_spell_nodes_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(known_spell_nodes_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME known_spell_nodes_policy
+  COMMAND known_spell_nodes_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # twow-repo#601 R01 L1 (AiPlayerbot.ActivityTrace, owner decision D1 19.10.2026): [BotActivity] / [BotActivityMin].
 add_executable(bot_activity_policy_tests
   "${PB_MODULE_DIR}/t/bot_activity_policy_tests.cpp")
@@ -3512,24 +3527,6 @@ add_test(NAME bind_area_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/bind_area_source_contract_tests.cmake")
 
-# twow-repo#601 (AiPlayerbot.QuestFirstProgression.GrindFallbackMinutes): no endless 8.32 grind fallback.
-add_test(NAME grind_fallback_minutes_source_contract
-  COMMAND "${CMAKE_COMMAND}"
-    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
-    -P "${PB_MODULE_DIR}/t/grind_fallback_minutes_source_contract_tests.cmake")
-
-add_executable(grind_fallback_minutes_tests
-  "${PB_MODULE_DIR}/t/grind_fallback_minutes_tests.cpp")
-
-target_include_directories(grind_fallback_minutes_tests PRIVATE
-  "${PB_MODULE_DIR}/src/playerbot")
-
-set_target_properties(grind_fallback_minutes_tests PROPERTIES
-  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
-
-add_test(NAME grind_fallback_minutes
-  COMMAND grind_fallback_minutes_tests
-  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
 # twow-repo#595 P4 S0 + B1 (AiPlayerbot.Shortcut.*): real-player snapshot, ShortcutNear, [Shortcut] counters, group-loop fix.
 add_executable(shortcut_policy_tests
