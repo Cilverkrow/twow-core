@@ -169,9 +169,9 @@ bool FearPvpTrigger::IsActive()
 
 bool ConflagrateTrigger::IsActive()
 {
-    // twow-repo#568 (D24, AiPlayerbot.Diet.WarlockTalentKnown): conflagrate is a talent; without it the node
-    // ended IMPOSSIBLE in every immolate window. Switch off: the old check only.
-    if (sPlayerbotAIConfig.dietWarlockTalentKnown && !AI_VALUE2(uint32, "spell id", "conflagrate"))
+    // twow-repo#568 (D24): conflagrate is a talent; without it the node
+    // ended IMPOSSIBLE in every immolate window.
+    if (!AI_VALUE2(uint32, "spell id", "conflagrate"))
         return false;
 
 	Unit* target = AI_VALUE(Unit*, "current target");

@@ -672,16 +672,6 @@ bool PlayerbotAIConfig::Initialize()
     possibleTargetsSharedSearch = config.GetBoolDefault("AiPlayerbot.PossibleTargetsSharedSearch", false);
     x3bPublishedTargets = config.GetBoolDefault("AiPlayerbot.X3b.PublishedTargets", false);
     x3bPublishedConditions = config.GetBoolDefault("AiPlayerbot.X3b.PublishedConditions", false);
-    dietPriestRacials = config.GetBoolDefault("AiPlayerbot.Diet.PriestRacials", false);
-    dietPriestSelfBuffKnown = config.GetBoolDefault("AiPlayerbot.Diet.PriestSelfBuffKnown", false);
-    dietShadowPriestDeadNodes = config.GetBoolDefault("AiPlayerbot.Diet.ShadowPriestDeadNodes", false);
-    dietWarlockCcKnown = config.GetBoolDefault("AiPlayerbot.Diet.WarlockCcKnown", false);
-    dietWarlockTalentKnown = config.GetBoolDefault("AiPlayerbot.Diet.WarlockTalentKnown", false);
-    dietWarlockAmplifyCurse = config.GetBoolDefault("AiPlayerbot.Diet.WarlockAmplifyCurse", false);
-    dietMageArmorKnown = config.GetBoolDefault("AiPlayerbot.Diet.MageArmorKnown", false);
-    dietMageTalentBoostKnown = config.GetBoolDefault("AiPlayerbot.Diet.MageTalentBoostKnown", false);
-    dietMageBlastWave = config.GetBoolDefault("AiPlayerbot.Diet.MageBlastWave", false);
-    dietMageInvisibility = config.GetBoolDefault("AiPlayerbot.Diet.MageInvisibility", false);
     dietHunterBestSting = config.GetBoolDefault("AiPlayerbot.Diet.HunterBestSting", false);
     dietHunterTalentShotsKnown = config.GetBoolDefault("AiPlayerbot.Diet.HunterTalentShotsKnown", false);
     dietHunterTranqKnown = config.GetBoolDefault("AiPlayerbot.Diet.HunterTranqKnown", false);
