@@ -17,6 +17,7 @@
 #include "playerbot/DangerMapPolicy.h"
 #include "playerbot/CampBlockPolicy.h"         // re-deaths at camps (DestinationDeaths.CampBlock)
 #include "playerbot/LevelGuardPolicy.h"        // twow-repo#601 cand4 lever (ii) (RosterFarMove.LevelGuard)
+#include "playerbot/ZoneKeepPolicy.h"          // twow-repo#601 owner rule R1 (StaleKeepZone, StartZoneMinLevel)
 #include "playerbot/CohortPolicy.h"            // re-deaths at camps (DangerMap.CountAddDeaths mode 2)
 #include "playerbot/QuestTurnInParkPolicy.h"
 #include "playerbot/QuestFailureClassPolicy.h"
@@ -538,7 +539,12 @@ enum class PostActiveDeferral
     ZoneLevel,
     DangerMap,
     LevelGuard,   // twow-repo#601 cand4 lever (ii), RosterFarMove.LevelGuard (LevelGuardPolicy.h)
+    StartZone,       // twow-repo#601 owner rule R1, QuestFirstProgression.StartZoneMinLevel (ZoneKeepPolicy.h)
+    StaleKeepZone,   // twow-repo#601 owner rule R1, QuestFirstProgression.StaleKeepZone (ZoneKeepPolicy.h)
 };
+
+// twow-repo#601 owner rule R1: the manual int that holds a bot's StaleKeepZone window end (unix seconds, 0 = none).
+constexpr char const* StaleKeepZoneUntilValue = "stale keep zone until";
 
 PostActiveDeferral PostActiveDeferralOf(PlayerbotAI* ai, Player* bot, TravelTarget const* target, TravelDestination* destination,
     WorldPosition* position, danger_map::DangerMap::Hit& dangerHit, ai::level_guard::Hit* guardHit = nullptr)
@@ -622,6 +628,38 @@ PostActiveDeferral PostActiveDeferralOf(PlayerbotAI* ai, Player* bot, TravelTarg
             *guardHit = hit;
         if (hit.fired)
             return PostActiveDeferral::LevelGuard;
+    }
+
+    // twow-repo#601 owner rule R1 (ZoneKeepPolicy.h): roster bots on their own, never a forced target or a bot led by a real player.
+    // StartZoneMinLevel: below it no point outside the bot's start zone (any purpose). StaleKeepZone: inside the window after an
+    // empty search with stale skips, no quest point outside the bot's current zone (turn-ins exempt). The area lookup only for the
+    // point IsActive accepted, and only when one of the two applies.
+    if (!target->IsForced() && position && (sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevel || sPlayerbotAIConfig.questFirstProgressionStaleKeepZone) &&
+        sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster())
+    {
+        bool const gated = ai::zone_keep::StartZoneGated(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevel, bot->GetLevel()) &&
+            ai::cohort::Applies(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevelCohort, bot->GetGUIDLow());
+        bool const keepActive = ai::cohort::Applies(sPlayerbotAIConfig.questFirstProgressionStaleKeepZone, bot->GetGUIDLow()) &&
+            dynamic_cast<QuestTravelDestination const*>(destination) &&
+            ai::zone_keep::KeepActive(uint32(std::max(0, ai->GetAiObjectContext()->GetValue<int>("manual int", StaleKeepZoneUntilValue)->Get())),
+                uint32(time(nullptr)));
+        if (gated || keepActive)
+        {
+            AreaTableEntry const* area = position->GetArea();
+            uint32 const targetZone = area ? (area->zone ? area->zone : area->ID) : 0;
+            if (gated)
+            {
+                PlayerInfo const* info = sObjectMgr.GetPlayerInfo(bot->getRace(), bot->getClass());
+                uint32 const createZone = info ? info->areaId : 0;
+                bool const customStarts = sPlayerbotAIConfig.customRaceStartZones;
+                if (ai::zone_keep::StartZoneDefers(true, ai::zone_keep::StartZoneKnown(bot->getRace(), customStarts, createZone),
+                        ai::zone_keep::InStartZone(bot->getRace(), customStarts, createZone, targetZone), targetZone))
+                    return PostActiveDeferral::StartZone;
+            }
+            if (keepActive && ai::zone_keep::KeepZoneDefers(true, (uint32(destination->GetPurpose()) & uint32(TravelDestinationPurpose::QuestTaker)) != 0,
+                    bot->GetZoneId(), targetZone))
+                return PostActiveDeferral::StaleKeepZone;
+        }
     }
 
     return PostActiveDeferral::None;
@@ -998,7 +1036,25 @@ bool ChooseTravelTargetAction::Execute(Event& event)
             // twow-repo#601 S5a (BandLadder): the stage this empty search ran at (read before widening; 0 when the switch is off).
             uint32 const bandSearchedStage = sPlayerbotAIConfig.questFirstProgressionBandLadder ?
                 uint32(std::max(0, AI_VALUE2(int, "manual int", "quest search stage"))) : 0u;
-            WidenQuestSearch(uint32(destinationList.size()));
+            // twow-repo#601 owner rule R1 (ZoneKeepPolicy.h): StaleKeepZone - an empty search that skipped stale objectives keeps the
+            // zone: no widening, no band streak or step, and for StaleKeepZone.Seconds no quest point outside the zone (PostActiveDeferralOf;
+            // turn-ins exempt). The backoff below runs as before (wait, then search again). StartZoneMinLevel: no band step below it.
+            bool const zoneRuleBot = UsesQuestFirstProgression(bot) && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) &&
+                !ai->HasRealPlayerMaster();
+            bool const staleKeepZone = zoneRuleBot &&
+                ai::zone_keep::KeepsZone(ai::cohort::Applies(sPlayerbotAIConfig.questFirstProgressionStaleKeepZone, bot->GetGUIDLow()), lastStaleObjective);
+            bool const startZoneHold = zoneRuleBot &&
+                ai::zone_keep::StartZoneGated(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevel, bot->GetLevel()) &&
+                ai::cohort::Applies(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevelCohort, bot->GetGUIDLow());
+            if (staleKeepZone)
+            {
+                uint32 const until = uint32(time(nullptr)) + sPlayerbotAIConfig.questFirstProgressionStaleKeepZoneSeconds;
+                SET_AI_VALUE2(int, "manual int", StaleKeepZoneUntilValue, int(until));
+                sLog.outBasic("[ZoneKeep] state=stale_keep bot=%u level=%u zone=%u skipped=%u seconds=%u", bot->GetGUIDLow(), bot->GetLevel(),
+                    bot->GetZoneId(), lastStaleObjective, sPlayerbotAIConfig.questFirstProgressionStaleKeepZoneSeconds);
+            }
+            else
+                WidenQuestSearch(uint32(destinationList.size()));
 
             // twow-repo#594 / P3-a (AiPlayerbot.DirectTargets.Enable): a fresh bot (level <= FreshMaxLevel) gets the short
             // backoff below; a Z1b rescue requested in this pass wins over it.
@@ -1079,12 +1135,12 @@ bool ChooseTravelTargetAction::Execute(Event& event)
             // before the 8.1 failure count and backoff (a step counts nothing); a Z1b rescue and P3-a fresh bots win.
             // F1 (BandStepAfterEmptySearches): every failed search counts into the band streak, whatever its class; no park
             // resets it - only a found route (below) or the band step itself. F4 (BandWalkAfterEmptySearches) reads the same streak.
-            if (sPlayerbotAIConfig.questFirstProgressionBandLadder && sPlayerbotAIConfig.BandStreakOn())
+            if (sPlayerbotAIConfig.questFirstProgressionBandLadder && sPlayerbotAIConfig.BandStreakOn() && !staleKeepZone)
                 SET_AI_VALUE2(int, "manual int", ai::quest_band::BandEmptyStreakValue,
                     std::min(int(ai::quest_band::MaxStreakSteps), std::max(0, AI_VALUE2(int, "manual int", ai::quest_band::BandEmptyStreakValue)) + 1));
             // F4: a due walk's rung (no step); started at the end of this branch, once the backoff and the parks are settled.
             ai::quest_band::WalkPlan bandWalk;
-            if (sPlayerbotAIConfig.questFirstProgressionBandLadder &&
+            if (sPlayerbotAIConfig.questFirstProgressionBandLadder && !staleKeepZone && !startZoneHold &&
                 TryBandStep(requester, travelTarget, bandSearchedStage, freshBot, rescueRequested,
                     sPlayerbotAIConfig.questFirstProgressionBandWalkAfterEmptySearches ? &bandWalk : nullptr))
             {
@@ -1935,6 +1991,12 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
                         }
                         continue;
                     }
+                    case PostActiveDeferral::StartZone:   // twow-repo#601 owner rule R1 (StartZoneMinLevel)
+                        ++lastRejects.startZone;
+                        continue;
+                    case PostActiveDeferral::StaleKeepZone:   // twow-repo#601 owner rule R1 (StaleKeepZone)
+                        ++lastRejects.staleKeepZone;
+                        continue;
                     case PostActiveDeferral::None:
                         break;
                 }

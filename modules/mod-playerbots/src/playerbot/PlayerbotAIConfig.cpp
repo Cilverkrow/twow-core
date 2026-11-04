@@ -976,6 +976,29 @@ bool PlayerbotAIConfig::Initialize()
     questFirstProgressionStaleObjectiveBots = std::min<uint32>(8, uint32(std::max<int32>(1, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter.Bots", 3))));
     questFirstProgressionStaleObjectiveWindowSeconds = std::min<uint32>(86400, uint32(std::max<int32>(60, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter.WindowSeconds", 3600))));
     questFirstProgressionStaleObjectiveSeconds = std::min<uint32>(86400, uint32(std::max<int32>(60, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter.Seconds", 3600))));
+    // twow-repo#601 owner rule R1: StaleKeepZone, an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B, 3 cohort A); the
+    // keep time 60 s .. 1 h. StartZoneMinLevel: 0 off, 2..60 (1 would gate nothing).
+    questFirstProgressionStaleKeepZone = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.StaleKeepZone", 0);
+    if (questFirstProgressionStaleKeepZone > 3)
+    {
+        sLog.outError("[ZoneKeep] config key=StaleKeepZone value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", questFirstProgressionStaleKeepZone);
+        questFirstProgressionStaleKeepZone = 0;
+    }
+    questFirstProgressionStaleKeepZoneSeconds = std::min<uint32>(3600, uint32(std::max<int32>(60, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.StaleKeepZone.Seconds", 900))));
+    questFirstProgressionStartZoneMinLevel = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.StartZoneMinLevel", 0)));
+    if (questFirstProgressionStartZoneMinLevel == 1 || questFirstProgressionStartZoneMinLevel > 60)
+    {
+        sLog.outError("[ZoneKeep] config key=StartZoneMinLevel value=%u result=off (0 off, 2..60)", questFirstProgressionStartZoneMinLevel);
+        questFirstProgressionStartZoneMinLevel = 0;
+    }
+    // .Cohort (CohortPolicy.h): 0 nobody, 1 all (default), 2 cohort B, 3 cohort A; an unknown value acts like 1 (the level key alone
+    // switches the gate).
+    questFirstProgressionStartZoneMinLevelCohort = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.StartZoneMinLevel.Cohort", 1);
+    if (questFirstProgressionStartZoneMinLevelCohort > 3)
+    {
+        sLog.outError("[ZoneKeep] config key=StartZoneMinLevel.Cohort value=%u result=1 (1 all, 2 cohort B, 3 cohort A)", questFirstProgressionStartZoneMinLevelCohort);
+        questFirstProgressionStartZoneMinLevelCohort = 1;
+    }
     // twow-repo#601 S5a F4 (OB-00 24.10.2026): the backoff walk toward the next rung, 0 = off, 1..10.
     questFirstProgressionBandWalkAfterEmptySearches = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.BandWalkAfterEmptySearches", 0);
     if (questFirstProgressionBandWalkAfterEmptySearches > 10)
@@ -1902,11 +1925,15 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestFirstProgression.S1Cohort", Value(questFirstProgressionS1Cohort)},
             {"QuestFirstProgression.S3Cohort", Value(questFirstProgressionS3Cohort)},
             {"QuestFirstProgression.SkipSkillLockedObjectives", Value(questFirstProgressionSkipSkillLockedObjectives)},
+            {"QuestFirstProgression.StaleKeepZone", Value(questFirstProgressionStaleKeepZone)},
+            {"QuestFirstProgression.StaleKeepZone.Seconds", Value(questFirstProgressionStaleKeepZoneSeconds)},
             {"QuestFirstProgression.StaleObjectiveFilter", Value(questFirstProgressionStaleObjectiveFilter)},
             {"QuestFirstProgression.StaleObjectiveFilter.Bots", Value(questFirstProgressionStaleObjectiveBots)},
             {"QuestFirstProgression.StaleObjectiveFilter.Failures", Value(questFirstProgressionStaleObjectiveFailures)},
             {"QuestFirstProgression.StaleObjectiveFilter.Seconds", Value(questFirstProgressionStaleObjectiveSeconds)},
             {"QuestFirstProgression.StaleObjectiveFilter.WindowSeconds", Value(questFirstProgressionStaleObjectiveWindowSeconds)},
+            {"QuestFirstProgression.StartZoneMinLevel", Value(questFirstProgressionStartZoneMinLevel)},
+            {"QuestFirstProgression.StartZoneMinLevel.Cohort", Value(questFirstProgressionStartZoneMinLevelCohort)},
             {"QuestFirstProgression.TransientCountsAfter", Value(questFirstProgressionTransientCountsAfter)},
             {"QuestFirstProgression.TurnInParkFailures", Value(questFirstProgressionTurnInParkFailures)},
             {"QuestGroups.Enable", Value(questGroupsEnable)},

@@ -882,6 +882,20 @@ add_test(NAME far_move_policy
   COMMAND far_move_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#601 owner rule R1: StaleKeepZone / StartZoneMinLevel (ZoneKeepPolicy.h); source contract in t/contracts.d.
+add_executable(zone_keep_policy_tests
+  "${PB_MODULE_DIR}/t/zone_keep_policy_tests.cpp")
+
+target_include_directories(zone_keep_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(zone_keep_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME zone_keep_policy
+  COMMAND zone_keep_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 add_test(NAME cost_833_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
