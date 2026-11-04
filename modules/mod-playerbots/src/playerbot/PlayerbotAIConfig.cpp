@@ -24,12 +24,10 @@
 #include "RandomItemMgr.h"
 #include "World/WorldState.h"
 #include "playerbot/PlayerbotHelpMgr.h"
-#include "playerbot/ActionBudgetPolicy.h"
 #include "playerbot/strategy/actions/CheatAction.h"
 
 #include "playerbot/TravelMgr.h"
 #include "playerbot/BotGroupPolicy.h"
-#include "playerbot/PathReusePolicy.h"
 #include "playerbot/StallGuardPolicy.h"
 #include "playerbot/DirectTargetPolicy.h"
 #include "playerbot/ProfessionTravelPolicy.h"   // P1-n ClampNearRadius
@@ -551,12 +549,6 @@ bool PlayerbotAIConfig::Initialize()
     perfBgMasterCacheRef = config.GetBoolDefault("AiPlayerbot.Perf.BgMasterCacheRef", false);
     perfTravelInfoReuse = config.GetBoolDefault("AiPlayerbot.Perf.TravelInfoReuse", false);
     perfLogActionFastPath = config.GetBoolDefault("AiPlayerbot.Perf.LogActionFastPath", false);
-    perfActionBudget = std::min<uint32>(3, uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.Perf.ActionBudget", 0))));
-    LoadListString<std::vector<std::string> >(config.GetStringDefault("AiPlayerbot.Perf.ActionBudgetActions", ""), perfActionBudgetActions);
-    perfActionBudgetStartExempt = config.GetBoolDefault("AiPlayerbot.Perf.ActionBudgetStartExempt", false);
-    perfActionBudgetLimit = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.Perf.ActionBudgetLimit", 0)));
-    if (perfActionBudgetActions.empty())
-        perfActionBudgetActions = ai::action_budget::DefaultExpensiveActions();
     botUpdateTraceTailFix = config.GetBoolDefault("AiPlayerbot.BotUpdateTraceTailFix", false);
     perfTrainableSpellsPrecheck = config.GetBoolDefault("AiPlayerbot.Perf.TrainableSpellsPrecheck", false);
     perfRacialsSkipUnbuildable = config.GetBoolDefault("AiPlayerbot.Perf.RacialsSkipUnbuildable", false);
@@ -693,8 +685,6 @@ bool PlayerbotAIConfig::Initialize()
     perfEventTriggerSkip = config.GetBoolDefault("AiPlayerbot.Perf.EventTriggerSkip", false);
     dietHunterAspectGate = config.GetBoolDefault("AiPlayerbot.Diet.HunterAspectGate", false);
     dietHunterRapidFireGate = config.GetBoolDefault("AiPlayerbot.Diet.HunterRapidFireGate", false);
-    perfPartialPathReuse = config.GetBoolDefault("AiPlayerbot.Perf.PartialPathReuse", false);
-    perfPartialPathReuseMs = ai::path_reuse::ClampMs(config.GetIntDefault("AiPlayerbot.Perf.PartialPathReuseMs", int32(ai::path_reuse::DefaultMs)));
     perfRouteFailCooldownSeconds = ai::stall_guard::ClampRouteFailCooldownSeconds(config.GetIntDefault("AiPlayerbot.Perf.RouteFailCooldownSeconds", 0));
     perfRouteTimeTrace = config.GetBoolDefault("AiPlayerbot.Perf.RouteTimeTrace", false);
     perfDispatchPrecomputedPath = config.GetBoolDefault("AiPlayerbot.Perf.DispatchPrecomputedPath", false);
