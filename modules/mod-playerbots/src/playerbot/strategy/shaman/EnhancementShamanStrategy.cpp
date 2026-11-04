@@ -31,12 +31,12 @@ private:
 
     ACTION_NODE_A(mana_spring_totem, "mana spring totem", "healing stream totem");
 
-    // twow-repo#568 D27 (AiPlayerbot.Diet.FireNovaTotem): in vanilla the continuer would be Fire Nova Totem, which
-    // replaces the Magma Totem just placed (same fire slot), so the switch drops the continuer instead.
+    // twow-repo#568 D27: in vanilla the continuer would be Fire Nova Totem, which
+    // replaces the Magma Totem just placed (same fire slot), so the continuer is dropped instead.
     static bool DietDropMagmaContinuer()
     {
 #ifdef MANGOSBOT_ZERO
-        return sPlayerbotAIConfig.dietFireNovaTotem;
+        return true;
 #else
         return false;
 #endif
@@ -173,10 +173,10 @@ void EnhancementShamanAoeStrategy::InitCombatTriggers(std::list<TriggerNode*>& t
 {
     ShamanAoeStrategy::InitCombatTriggers(triggers);
 
-    // twow-repo#568 D27 (AiPlayerbot.Diet.FireNovaTotem): "fire nova" has no castable spell in vanilla.
+    // twow-repo#568 D27: "fire nova" has no castable spell in vanilla.
     triggers.push_back(new TriggerNode(
         "melee medium aoe",
-        NextAction::array(0, new NextAction(sPlayerbotAIConfig.dietFireNovaTotem ? "fire nova totem" : "fire nova", ACTION_HIGH), NULL)));
+        NextAction::array(0, new NextAction("fire nova totem", ACTION_HIGH), NULL)));
 
     triggers.push_back(new TriggerNode(
         "melee light aoe",

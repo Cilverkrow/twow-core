@@ -423,8 +423,7 @@ public:
         void ClearPersistedPark(uint32 guid);
         void RestoreParkedBots();
         uint32 lastParkRestore = 0;
-        // twow-repo#541 (AiPlayerbot.Park.SleepGrid): core switches and the [ParkSleep] minute line.
-        uint32 parkSleepUnparkWakes = 0;  // world thread: unparked bots that carried the sleep flag
+        // twow-repo#541 P2 D0/D5: core switches and the cell source minute lines (Park.CellSourceStats; the name is from the removed grid sleep).
         void ReportParkSleep();
         void OnParkBindChecked(uint32 guid, bool found, ai::park::Point const& stored);
         // twow-repo#541: [WorldBots] per-minute cost of UpdateAIInternal in the world thread.

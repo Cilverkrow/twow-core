@@ -4,6 +4,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <string>
 #include <vector>
 
 namespace ai::profession_travel
@@ -327,5 +328,57 @@ enum class ReachCache
 inline ReachCache ReachCacheScope(bool hadDestination)
 {
     return hadDestination ? ReachCache::EveryAsker : ReachCache::AskerMap;
+}
+
+// twow-repo#333 P1-aa (AiPlayerbot.ProfessionTraining.TripNoGrind, OB-00 04.11.2026 after M1r run 8: a level-7 skinner on a near
+// tool trip never bought its knife - "attack anything" 5.0 beat "move to travel target" 1.0 and "rpg buy" 1.03 - and the 600 s
+// hold ended 19 min late). A started trip is named by its travel condition (the request's "future travel condition",
+// ChooseTravelTargetAction); every other condition is no profession trip.
+constexpr std::uint8_t kTripKindNone = 0;
+constexpr std::uint8_t kTripKindTrainer = 1;
+constexpr std::uint8_t kTripKindTool = 2;
+
+inline std::uint8_t TripKindOfCondition(std::string const& condition)
+{
+    if (condition == "should travel named::trainer profession hold" || condition == "should travel named::trainer profession near hold")
+        return kTripKindTrainer;
+    if (condition == "should travel named::tool vendor hold" || condition == "should travel named::tool vendor near hold")
+        return kTripKindTool;
+    return kTripKindNone;
+}
+
+// The kind= field of the [ProfTravel] lines.
+inline char const* TripKindName(std::uint8_t kind)
+{
+    return kind == kTripKindTrainer ? "trainer" : kind == kTripKindTool ? "tool" : "none";
+}
+
+// On arrival the trip's NPC becomes the rpg target with this next rpg action (RpgActionMultiplier: every other rpg sub action 0.1).
+inline char const* TripArriveRpgAction(std::uint8_t kind)
+{
+    return kind == kTripKindTrainer ? "rpg train" : kind == kTripKindTool ? "rpg buy" : "";
+}
+
+// The stock arrival is within 5 yd (2D) of the spawn point; a vendor behind a counter or a walk that stops short kept the bot in
+// TRAVEL. An open trip also arrives within kTripArriveYards; "move to rpg target" (WORK) walks the rest to the NPC. The NPC search
+// reaches a little further (an NPC a few yards off its spawn).
+constexpr float kTripArriveYards = 15.0f;
+constexpr float kTripRpgSearchYards = 25.0f;
+
+// The status= field of "[ProfTravel] state=status" (TravelStatus values, TravelMgr.h); own = the bot's travel target is the trip's.
+inline char const* TripStatusName(bool own, std::uint8_t status)
+{
+    if (!own)
+        return "OTHER";
+    switch (status)
+    {
+        case 1: return "PREPARE";
+        case 2: return "READY";
+        case 3: return "TRAVEL";
+        case 4: return "WORK";
+        case 5: return "COOLDOWN";
+        case 6: return "EXPIRED";
+        default: return "NONE";
+    }
 }
 }

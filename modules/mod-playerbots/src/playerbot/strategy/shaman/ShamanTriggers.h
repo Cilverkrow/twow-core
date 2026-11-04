@@ -85,7 +85,7 @@ namespace ai
             }
             else
             {
-                // twow-repo#568 D27 (AiPlayerbot.Diet.FireNovaTotem): a placed Fire Nova Totem counts as the fire
+                // twow-repo#568 D27: a placed Fire Nova Totem counts as the fire
                 // totem until it has exploded, so Searing/Magma Totem do not replace it before it goes off.
                 return !AI_VALUE2(bool, "has totem", "searing totem") &&
                        !AI_VALUE2(bool, "has totem", "magma totem") &&
@@ -93,7 +93,7 @@ namespace ai
                        !AI_VALUE2(bool, "has totem", "flametongue totem") &&
                        !AI_VALUE2(bool, "has totem", "totem of wrath") &&
                        !AI_VALUE2(bool, "has totem", "fire elemental totem") &&
-                       (!sPlayerbotAIConfig.dietFireNovaTotem || !AI_VALUE2(bool, "has totem", "fire nova totem"));
+                       !AI_VALUE2(bool, "has totem", "fire nova totem");
             }
         }
 
@@ -107,7 +107,7 @@ namespace ai
         FireTotemAoeTrigger(PlayerbotAI* ai) : Trigger(ai, "trigger spec appropriate fire totem aoe", 2) {}
         virtual bool IsActive() override
         {
-            // twow-repo#568 D27 (AiPlayerbot.Diet.FireNovaTotem): Magma Totem must not replace a ticking Fire Nova Totem.
+            // twow-repo#568 D27: Magma Totem must not replace a ticking Fire Nova Totem.
             return AI_VALUE(uint8, "attackers count") >= 3 &&
                 !AI_VALUE2(bool, "has totem", "searing totem") &&
                 !AI_VALUE2(bool, "has totem", "magma totem") &&
@@ -115,7 +115,7 @@ namespace ai
                 !AI_VALUE2(bool, "has totem", "flametongue totem") &&
                 !AI_VALUE2(bool, "has totem", "totem of wrath") &&
                 !AI_VALUE2(bool, "has totem", "fire elemental totem") &&
-                (!sPlayerbotAIConfig.dietFireNovaTotem || !AI_VALUE2(bool, "has totem", "fire nova totem"));
+                !AI_VALUE2(bool, "has totem", "fire nova totem");
         }
     };
 

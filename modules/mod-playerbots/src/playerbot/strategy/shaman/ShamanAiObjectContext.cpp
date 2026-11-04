@@ -155,8 +155,8 @@ namespace ai
                 creators["totembar elements"] = [](PlayerbotAI* ai) { return new ShamanTotemBarElementsStrategy(ai); };
                 creators["totembar ancestors"] = [](PlayerbotAI* ai) { return new ShamanTotemBarAncestorsStrategy(ai); };
                 creators["totembar spirits"] = [](PlayerbotAI* ai) { return new ShamanTotemBarSpiritsStrategy(ai); };
-                // twow-repo#568 D27 (AiPlayerbot.Diet.FireNovaTotem): the castable spell is "fire nova totem".
-                creators["totem fire nova"] = [](PlayerbotAI* ai) { return new ShamanManualTotemStrategy(ai, "totem fire nova", "fire totem", sPlayerbotAIConfig.dietFireNovaTotem ? "fire nova totem" : "fire nova"); };
+                // twow-repo#568 D27: the castable spell is "fire nova totem".
+                creators["totem fire nova"] = [](PlayerbotAI* ai) { return new ShamanManualTotemStrategy(ai, "totem fire nova", "fire totem", "fire nova totem"); };
                 creators["totem fire flametongue"] = [](PlayerbotAI* ai) { return new ShamanManualTotemStrategy(ai, "totem fire flametongue", "fire totem", "flametongue totem"); };
                 creators["totem fire resistance"] = [](PlayerbotAI* ai) { return new ShamanManualTotemStrategy(ai, "totem fire resistance", "fire totem", "fire resistance totem"); };
                 creators["totem fire magma"] = [](PlayerbotAI* ai) { return new ShamanManualTotemStrategy(ai, "totem fire magma", "fire totem", "magma totem"); };

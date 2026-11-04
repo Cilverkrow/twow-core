@@ -1,7 +1,7 @@
 cmake_policy(VERSION 3.16)
-# twow-repo#568 strategy diet D69 (AiPlayerbot.Diet.DuelTriggerGate, default 0): the duel strategy pushes "attack duel
-# opponent" from "duel no attackers" (only with a duel) instead of "no attackers". With 0 the node uses "no attackers"
-# as before; the "no attackers" trigger itself stays unchanged.
+# twow-repo#568 strategy diet D69 (AiPlayerbot.Diet.DuelTriggerGate, retired 04.11.2026, switch audit A2 #1): the duel
+# strategy pushes "attack duel opponent" from "duel no attackers" (only with a duel) instead of "no attackers"; the
+# "no attackers" trigger itself stays unchanged.
 if(NOT DEFINED PB_SOURCE_DIR)
   message(FATAL_ERROR "PB_SOURCE_DIR is required")
 endif()
@@ -52,15 +52,15 @@ file(READ "${PB_SOURCE_DIR}/strategy/triggers/TriggerContext.h" trigger_context)
 file(READ "${PB_SOURCE_DIR}/strategy/actions/AttackAction.cpp" attack_action)
 file(READ "${PB_SOURCE_DIR}/strategy/values/DuelTargetValue.cpp" duel_target_value)
 
-# Switch: default 0 in member, loader and dist config.
-require_text("${config_h}" "bool dietDuelTriggerGate = false;" "dietDuelTriggerGate member default false")
-require_text("${config_cpp}" "dietDuelTriggerGate = config.GetBoolDefault(\"AiPlayerbot.Diet.DuelTriggerGate\", false);" "DuelTriggerGate read with default 0")
-require_text("${config_dist}" "\nAiPlayerbot.Diet.DuelTriggerGate = 0\n" "DuelTriggerGate = 0 in the dist config")
+# Retired switch: no member, no reader, no dist key.
+forbid_text("${config_h}" "dietDuelTriggerGate" "dietDuelTriggerGate member (retired)")
+forbid_text("${config_cpp}" "dietDuelTriggerGate" "Diet.DuelTriggerGate reader (retired)")
+forbid_text("${config_dist}" "AiPlayerbot.Diet.DuelTriggerGate" "Diet.DuelTriggerGate in the dist config (retired)")
 
-# Strategy: the node picks its trigger by the switch; action and relevance unchanged; duel requested unchanged.
+# Strategy: the node uses "duel no attackers"; action and relevance unchanged; duel requested unchanged.
 region("${duel_strategy}" "void DuelStrategy::InitNonCombatTriggers" "\n}\n" duel_nc)
 require_text("${duel_strategy}" "#include \"playerbot/PlayerbotAIConfig.h\"" "DuelStrategy.cpp includes the config")
-require_text("${duel_nc}" "sPlayerbotAIConfig.dietDuelTriggerGate ? \"duel no attackers\" : \"no attackers\",\n        NextAction::array(0, new NextAction(\"attack duel opponent\", 70.0f), NULL)" "D69 node trigger chosen by the switch")
+require_text("${duel_nc}" "\"duel no attackers\",\n        NextAction::array(0, new NextAction(\"attack duel opponent\", 70.0f), NULL)" "D69 node on the duel trigger")
 require_text("${duel_nc}" "\"duel requested\",\n        NextAction::array(0, new NextAction(\"accept duel\", relevance), NULL)" "duel requested node unchanged")
 region("${duel_strategy}" "void DuelStrategy::InitCombatTriggers" "\n}" duel_combat)
 require_text("${duel_combat}" "InitNonCombatTriggers(triggers);" "combat engine reuses the non-combat nodes")
