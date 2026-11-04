@@ -5,7 +5,7 @@ cmake_policy(VERSION 3.16)
 #  - the pure policy (no game types, no locks, no config, no area ids; Applies never accepts 0),
 #  - inert at 0: every new entry reads the switch first or a field only the band path writes; the conf ships 0 and "",
 #  - the clock: one SetBandTripEnd site, the end written only in CopyTarget / EndBandTrip / NoteBandTripReplaced, the
-#    SetStatus clamp after the gap clamps, the CheckStatus band block after the travel-once clear and before the rest-gate
+#    SetStatus clamp the CheckStatus band block after the travel-once clear and before the rest-gate
 #    hold, the arrival block before WORK, no failure / retry / extension in the ends (OB-10 Q4: replaced is no failure),
 #  - the guards: no refresh, no group copy of a band hub trip, the idle rescue waits for a running trip, never forced, the
 #    request's condition cleared after the band setNewTarget,
@@ -171,7 +171,7 @@ require_order("${set_target}" "NoteBandTripReplaced();" "    tDestination = tDes
 region("${travel_mgr}" "bool TravelTarget::CopyTarget(TravelTarget* const target) {" "\n}\n" copy_target)
 require_order("${copy_target}" "SetTarget(target->tDestination, target->wPosition);" "bandTripEnd = target->bandTripEnd;" "the choice's end after SetTarget")
 region("${travel_mgr}" "void TravelTarget::SetStatus(TravelStatus status) {" "\n}\n" set_status)
-require_order("${set_status}" "GapCooldownMs(" "    if (bandTripEnd)\n        statusTime = ai::quest_band::TripStatusMs(uint8(m_status), statusTime, bandTripEnd, uint32(time(nullptr)));" "the band clamp after every other status time")
+require_order("${set_status}" "statusTime = tDestination->GetCooldownDelay();" "    if (bandTripEnd)\n        statusTime = ai::quest_band::TripStatusMs(uint8(m_status), statusTime, bandTripEnd, uint32(time(nullptr)));" "the band clamp after every other status time")
 region("${travel_mgr}" "void TravelTarget::CheckStatus()\n{" "\n}\n" check_status)
 set(band_block "    if (bandTripEnd || (tDestination && tDestination->IsBandHub()))\n    {\n        uint8 const verdict = CheckBandTrip();\n        if (verdict != uint8(ai::quest_band::TripVerdict::Running))\n        {\n            EndBandTrip(verdict);\n            return;\n        }\n    }")
 require_text("${check_status}" "${band_block}" "the band block")
