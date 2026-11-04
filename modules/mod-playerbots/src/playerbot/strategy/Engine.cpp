@@ -1,5 +1,6 @@
 
 #include "playerbot/playerbot.h"
+#include <algorithm>
 #include <chrono>
 #include <stdarg.h>
 #include <iomanip>
@@ -14,6 +15,10 @@
 #include "playerbot/ActionTrail.h"
 #include "playerbot/BotUpdateTrace.h"
 #include "playerbot/GroupOps.h"
+#include "playerbot/CohortPolicy.h"
+#include "playerbot/KnownSpellNodesPolicy.h"   // twow-repo#602 (Rotation.KnownSpellNodes)
+#include "playerbot/SpellStampPolicy.h"
+#include "playerbot/strategy/actions/GenericSpellActions.h"
 
 #ifdef BUILD_ELUNA
 #include "LuaEngine/LuaEngine.h"
@@ -910,6 +915,61 @@ Strategy* Engine::GetStrategy(const std::string& name) const
     return nullptr;
 }
 
+bool Engine::KnownSpellNodeSkip(TriggerNode* node)
+{
+    using namespace ai::known_spell_nodes;
+    Player* const bot = ai->GetBot();
+    std::uint64_t const stamp = ai::spellstamp::Make(bot->GetSpellMap().size(), bot->GetLevel(), bot->GetFreeTalentPoints(), 0);
+    std::uint32_t const nowMs = WorldTimer::getMSTime();
+    if (!Recheck(node->knownSpellTaken, node->knownSpellStamp, stamp, nowMs, node->knownSpellTakenMs))
+        return node->knownSpellSkip;
+
+    // After a stamp change the "spell id" value may predate the learn (it is refreshed every few seconds): read it fresh.
+    bool const stampChanged = node->knownSpellTaken && node->knownSpellStamp != stamp;
+    Global().recomputes.fetch_add(1, std::memory_order_relaxed);
+    if (stampChanged)
+        Global().stampChanges.fetch_add(1, std::memory_order_relaxed);
+
+    NextAction** handlers = node->getHandlers();
+    bool skip = handlers && handlers[0];
+    for (int i = 0; skip && handlers[i]; i++)
+    {
+        std::string const name = handlers[i]->getName();
+        Action* const action = aiObjectContext->GetAction(name);
+        CastSpellAction* const cast = dynamic_cast<CastSpellAction*>(action);
+        Handler h;
+        h.spellAction = cast != nullptr;
+        if (cast)
+        {
+            h.keepsUnknown = cast->NodeCheckKeepsUnknownSpell() || cast->NodeCheckSpellName() == "mount";
+            if (!h.keepsUnknown)
+            {
+                Value<uint32>* const idValue = aiObjectContext->GetValue<uint32>("spell id", cast->NodeCheckSpellName());
+                if (idValue && stampChanged)
+                    idValue->Reset();
+                h.spellKnown = !idValue || idValue->Get() != 0;
+            }
+            if (!h.keepsUnknown && !h.spellKnown)
+            {
+                ActionNode* const actionNode = CreateActionNode(name);
+                actionNode->setAction(action);
+                NextAction** alternatives = actionNode->getAlternatives();
+                h.hasAlternatives = alternatives && alternatives[0];
+                NextAction::destroy(alternatives);
+                delete actionNode;
+            }
+        }
+        skip = Dead(h);
+    }
+    NextAction::destroy(handlers);
+
+    node->knownSpellTaken = true;
+    node->knownSpellSkip = skip;
+    node->knownSpellStamp = stamp;
+    node->knownSpellTakenMs = nowMs;
+    return skip;
+}
+
 void Engine::ProcessTriggers(bool minimal)
 {
     // twow-repo#596 D (AiPlayerbot.BotUpdateTraceTriggers): each trigger check timed, the three slowest kept for the
@@ -940,6 +1000,21 @@ void Engine::ProcessTriggers(bool minimal)
         // and handled on this pass as before; the Reset loop below still covers every trigger.
         if (sPlayerbotAIConfig.perfEventTriggerSkip && !testMode && trigger->IsEventOnly() && !trigger->IsAlreadyTriggered())
             continue;
+
+        // twow-repo#602 (AiPlayerbot.Rotation.KnownSpellNodes, default 0): a node whose every handler is a spell the bot does not
+        // know, without alternatives, is not checked: its push could only end IMPOSSIBLE (KnownSpellNodesPolicy.h), also with a
+        // set event flag (the reset loop below clears it). The answer is taken again after a learn, level-up or talent change.
+        if (sPlayerbotAIConfig.rotationKnownSpellNodes && !testMode &&
+            ai::cohort::Applies(sPlayerbotAIConfig.rotationKnownSpellNodes, ai->GetBot()->GetGUIDLow()))
+        {
+            std::uint32_t const cls = std::min<std::uint32_t>(ai->GetBot()->getClass(), ai::known_spell_nodes::MaxClass - 1);
+            if (KnownSpellNodeSkip(node))
+            {
+                ai::known_spell_nodes::Global().skipped[cls].fetch_add(1, std::memory_order_relaxed);
+                continue;
+            }
+            ai::known_spell_nodes::Global().checked[cls].fetch_add(1, std::memory_order_relaxed);
+        }
 
         if (testMode || trigger->IsAlreadyTriggered() || trigger->needCheck())
         {

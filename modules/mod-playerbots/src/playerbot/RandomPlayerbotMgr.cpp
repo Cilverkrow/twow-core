@@ -67,6 +67,7 @@
 #include "playerbot/CastWaitPolicy.h"
 #include "playerbot/GrindNeighbourPolicy.h"   // twow-repo#602 #2 (Grind.NeighbourAware): [GrindNeighbour] minute line
 #include "playerbot/SafePullPolicy.h"   // twow-repo#656 (Grind.SafePull): [SafePull] minute line
+#include "playerbot/KnownSpellNodesPolicy.h"   // twow-repo#602 (Rotation.KnownSpellNodes): [KnownSpellNodes] minute line
 #include "playerbot/HunterMeleeStartPolicy.h"   // twow-repo#602 (Rotation.HunterMeleeStart): [HunterMelee] minute line
 #include "playerbot/MeleeFleeBreakPolicy.h"
 #include "playerbot/FleeAwayPolicy.h"   // twow-repo#602 (c) (Rotation.FleeAway): [FleeAway] minute line
@@ -1402,6 +1403,37 @@ void ReportGrindNeighbour()
     }
 }
 
+// twow-repo#602 (AiPlayerbot.Rotation.KnownSpellNodes): one [KnownSpellNodes] line per minute with the switch on - trigger checks
+// skipped / run by the bots the switch applies to (increments), node answers taken again, and cls=<class>:<skipped>/<checked>.
+void ReportKnownSpellNodes()
+{
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (!sPlayerbotAIConfig.rotationKnownSpellNodes || now < lastReport + 60)
+        return;
+    lastReport = now;
+    using namespace ai::known_spell_nodes;
+    Counters& c = Global();
+    auto take = [](std::atomic<std::uint64_t>& counter) { return (unsigned long long)counter.exchange(0, std::memory_order_relaxed); };
+    unsigned long long skipped = 0, checked = 0;
+    std::string classes;
+    for (uint32 cls = 0; cls < MaxClass; ++cls)
+    {
+        unsigned long long const s = take(c.skipped[cls]);
+        unsigned long long const k = take(c.checked[cls]);
+        skipped += s;
+        checked += k;
+        if (!s && !k)
+            continue;
+        if (!classes.empty())
+            classes += ',';
+        classes += std::to_string(cls) + ':' + std::to_string(s) + '/' + std::to_string(k);
+    }
+    sLog.outBasic("[KnownSpellNodes] mode=%u skipped=%llu checked=%llu recomputes=%llu stamp_changes=%llu cls=%s",
+        sPlayerbotAIConfig.rotationKnownSpellNodes, skipped, checked, take(c.recomputes), take(c.stampChanges),
+        classes.empty() ? "-" : classes.c_str());
+}
+
 // twow-repo#656 (AiPlayerbot.Grind.SafePull): one [SafePull] line per minute and cohort with scored passes - the counters of
 // SafePullPolicy.h as increments, then cls=<class>:<picks>/<would_change>/<changed> for the stratified readout. Nothing is written
 // when off or for a cohort without passes.
@@ -2062,6 +2094,7 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     ReportNeverPossible();  // twow-repo#602: [NeverPossible] once per minute (AiPlayerbot.Rotation.NeverPossibleSkip)
     ReportGrindNeighbour();   // twow-repo#602 #2: [GrindNeighbour] once per minute (AiPlayerbot.Grind.NeighbourAware)
     ReportSafePull();   // twow-repo#656: [SafePull] once per minute (AiPlayerbot.Grind.SafePull)
+    ReportKnownSpellNodes();   // twow-repo#602: [KnownSpellNodes] once per minute (AiPlayerbot.Rotation.KnownSpellNodes)
     ReportOomBackoff();   // twow-repo#602 ROT-01 3c-B: [OomBackoff] once per minute (AiPlayerbot.Rotation.OomBackoff)
     ReportMeleeFleeBreak(); // twow-repo#602: [MeleeFleeBreak] once per minute (AiPlayerbot.Rotation.MeleeFleeBreak)
     ReportFleeAway();       // twow-repo#602 (c): [FleeAway] once per minute (AiPlayerbot.Rotation.FleeAway)

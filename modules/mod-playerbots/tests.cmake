@@ -2313,6 +2313,21 @@ add_test(NAME teleport_ack_thread_policy
   COMMAND teleport_ack_thread_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#602 ROT-01 (AiPlayerbot.Rotation.KnownSpellNodes, default 0; owner 04.11.2026): a trigger node whose every handler
+# is an unknown spell without alternatives is not checked; contract in t/contracts.d.
+add_executable(known_spell_nodes_policy_tests
+  "${PB_MODULE_DIR}/t/known_spell_nodes_policy_tests.cpp")
+
+target_include_directories(known_spell_nodes_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(known_spell_nodes_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME known_spell_nodes_policy
+  COMMAND known_spell_nodes_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # twow-repo#601 R01 L1 (AiPlayerbot.ActivityTrace, owner decision D1 19.10.2026): [BotActivity] / [BotActivityMin].
 add_executable(bot_activity_policy_tests
   "${PB_MODULE_DIR}/t/bot_activity_policy_tests.cpp")

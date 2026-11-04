@@ -5,6 +5,7 @@
 
 class Unit;
 
+#include <cstdint>
 #include <initializer_list>
 
 namespace ai
@@ -108,6 +109,13 @@ namespace ai
     public:
         NextAction** getHandlers();
         float getFirstRelevance();
+
+        // twow-repo#602 (AiPlayerbot.Rotation.KnownSpellNodes, KnownSpellNodesPolicy.h): the engine's cached answer "every
+        // handler is an unknown spell without alternatives", with the known-spell stamp and the time it was taken.
+        bool knownSpellTaken = false;
+        bool knownSpellSkip = false;
+        std::uint64_t knownSpellStamp = 0;
+        std::uint32_t knownSpellTakenMs = 0;
     private:
         std::string name;
         Trigger* trigger;
