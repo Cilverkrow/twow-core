@@ -1129,8 +1129,10 @@ void TravelTarget::SetTarget(TravelDestination* tDestination1, WorldPosition* wP
         NoteBandTripReplaced();
 
     // twow-repo#601 (QuestLoop.InactiveAfterProgress): a new destination takes the objective's count; a refresh of the same one
-    // keeps it (progress since the target was first set). Off: never read.
-    if (sPlayerbotAIConfig.questLoopInactiveAfterProgress && tDestination1 != tDestination)
+    // keeps it (progress since the target was first set). Only read for the bots the switch applies to (mode 2 = cohort B), so only
+    // those pay for it (twow-repo#679, switch audit #10c).
+    // Off: never read.
+    if (ai::cohort::Applies(sPlayerbotAIConfig.questLoopInactiveAfterProgress, bot->GetGUIDLow()) && tDestination1 != tDestination)
         objectiveCountAtStart = ObjectiveCountOf(bot, tDestination1);
 
     // twow-repo#601 (QuestLoop.InactiveReselect): the fallback belongs to the target that ended through an emptied camp only.

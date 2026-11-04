@@ -127,16 +127,31 @@ namespace
         return quota;
     }
 
-    roster_guild_role::Switches RosterGuildSwitches()
+    roster_guild_role::Switches const& RosterGuildSwitches()
     {
-        roster_guild_role::Switches switches;
+        // Owner rules (assignment v3): tank class mix and rare race x class pairs. The two config strings are parsed again only when
+        // they changed (a config reload), not on every call (twow-repo#679, switch audit #10e). thread_local: the callers run on
+        // several map threads, the switches are plain config values. The scalar switches are refreshed on every call.
+        struct Parsed
+        {
+            std::string mix;
+            std::string pairs;
+            bool valid = false;
+            roster_guild_role::Switches switches;
+        };
+        static thread_local Parsed parsed;
+        roster_guild_role::Switches& switches = parsed.switches;
+        if (!parsed.valid || parsed.mix != sPlayerbotAIConfig.rosterGuildTankClassMix || parsed.pairs != sPlayerbotAIConfig.rosterGuildRarePairs)
+        {
+            parsed.mix = sPlayerbotAIConfig.rosterGuildTankClassMix;
+            parsed.pairs = sPlayerbotAIConfig.rosterGuildRarePairs;
+            parsed.valid = true;
+            switches.tankMix = roster_guild_role::ParseTankMix(sPlayerbotAIConfig.rosterGuildTankClassMix);
+            switches.rarePairs = roster_guild_role::ParseRarePairs(sPlayerbotAIConfig.rosterGuildRarePairs);
+        }
         switches.healerClassMin = sPlayerbotAIConfig.rosterGuildHealerClassMin;
         switches.tankClassSpread = sPlayerbotAIConfig.rosterGuildTankClassSpread;
         switches.rareComboSpread = sPlayerbotAIConfig.rosterGuildRareComboSpread;
-        // Owner rules (assignment v3): tank class mix and rare race x class pairs. Parsed from short
-        // config strings on each call (a recount or a charter decision, never per tick).
-        switches.tankMix = roster_guild_role::ParseTankMix(sPlayerbotAIConfig.rosterGuildTankClassMix);
-        switches.rarePairs = roster_guild_role::ParseRarePairs(sPlayerbotAIConfig.rosterGuildRarePairs);
         roster_guild_role::Quota const quota = RosterGuildQuota();
         switches.rarePairCap = switches.rarePairs.empty() ? 0 :
             roster_guild_role::RarePairCapFor(sPlayerbotAIConfig.rosterGuildRarePairMaxShare, quota.tanks + quota.healers + quota.dps);
