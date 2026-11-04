@@ -237,17 +237,6 @@ AiPlayerbot.Equip.KeepWeaponsUnlessUpgrade = 0
 # hands then come off only for a weapon candidate. Equipping binds a BoE item, as for looted gear. Read when the bot logs in
 # (the packet handler is registered only with 1). 0 = as before.
 AiPlayerbot.Equip.AfterRollWon = 0
-# twow-repo#551 (owner 09.10.2026): 1 = a parked bot takes the nearest inn of its faction with a free
-# place (at most 25 bots per inn), whatever level band the inn serves; only when every inn of the
-# faction is full does it go to a capital spot. 0 = inns within 5 levels of the bot first (default).
-# [Park] state=share logs where bots were parked (inn / city / here) once a minute.
-AiPlayerbot.Park.AnyLevelInn = 0
-# twow-repo#541 (grid sleep): 1 = a parked bot (and its pet) does not activate the map cells around it, so
-# the creatures there are not updated unless a real player or an active bot is near. The bot wakes the cells
-# again as soon as it fights, dies, teleports or is unparked. Its grid stays loaded; saving, logout and the
-# roster are unchanged. [ParkSleep] logs sleeping/woken bots and marked cells once a minute (also with
-# AiPlayerbot.BotUpdateTrace = 1 and this switch off, for the A/B). 0 = off (default).
-AiPlayerbot.Park.SleepGrid = 0
 
 # twow-repo#541 P2 D0 (diagnostics, no gameplay change): 1 = count which source keeps the continent cells awake and log
 # [CellSource] once a minute: per continent cell update the cells of real players, the cells only bots add, the cells
@@ -265,7 +254,7 @@ AiPlayerbot.Park.CellSourceKinds = 0
 
 # twow-repo#551 (owner 10.10.2026, test profile 20 / 150): MaxPerInn = parked bots per inn (0 = 25 as before);
 # MaxPerCity = parked bots per capital zone, its inns and city spots together (0 = no limit). A full inn sends
-# the bot to the next inn with room (any level with AnyLevelInn=1, else the level band), a full city to the next
+# the bot to the next inn with room (within the level band), a full city to the next
 # inn outside it. With a cap on, a bot with no spot left is not parked (state=no_spot) and stays active - it never
 # parks in the open world because of a cap. [Park] state=caps logs inn/city occupancy once a minute.
 AiPlayerbot.Park.MaxPerInn = 0
@@ -681,12 +670,18 @@ AiPlayerbot.RosterGuild.AllowPoaching = 0
 # At most one switch per bot within this many seconds (3600-2592000, other values are clamped; in
 # memory, so a server restart clears it).
 AiPlayerbot.RosterGuild.PoachCooldownSeconds = 86400
-# Minimum level for bot guilds (owner 05.10.2026): a persistent roster bot below it founds no
-# charter, signs no bot charter, accepts no bot guild's invitation and is not invited by bot
-# officers, so players can reserve their bots first. A real player's invitation or charter is
+# Minimum level for bot guilds (owner 05.10.2026; since 04.11.2026 every bot on its own, not only roster bots): a bot below
+# it founds no charter (joining, signing and invitations: RosterGuild.JoinMinLevel below). Non-roster bots also stop buying and
+# handing in charters at the guild cap (the faction target with the roster guild system on, or RandomBotGuildCount). Bot
+# officers do not invite a bot below JoinMinLevel, so players can reserve their bots first. A real player's invitation or charter is
 # allowed at any level. [RosterGuild] event=join_deferred reason=min_level (at most hourly per bot).
 # 0 = off (default).
 AiPlayerbot.RosterGuild.MinLevel = 0
+# Owner 04.11.2026 (via OB-00, "beitreten ab lvl 6 d.h. ja auch unterschriften unter urkunden setzen"): joining a bot guild,
+# signing a bot charter, being offered a charter and being invited by bot officers from this level; founding a charter stays on
+# RosterGuild.MinLevel. A real player's invitation or charter is allowed at any level, as above.
+# -1 = the same as RosterGuild.MinLevel (default, nothing changes), 0 = off, otherwise the level.
+AiPlayerbot.RosterGuild.JoinMinLevel = -1
 # Hotfix 9.1 (twow-repo#485): organic founding of roster guilds. 1 = one roster bot per plan guild
 # (per faction without a plan file) travels to the nearest guild master and buys the charter there
 # ([RosterGuild] event=buy_travel / bought); the founder offers it to the online roster bots dealt
@@ -1174,7 +1169,7 @@ AiPlayerbot.ZoneEscape.Enabled = 0
 AiPlayerbot.ZoneEscape.CooldownSeconds = 600
 # After a hearthstone attempt that left the bot in the zone (cast interrupted),
 # try again after RetrySeconds instead of the full cooldown.
-AiPlayerbot.ZoneEscape.RetrySeconds = 60
+AiPlayerbot.ZoneEscape.RetrySeconds = 600
 # Area levels for areas the generated ai_playerbot_zone_level table misses or
 # gets wrong, as a comma list of <area id>:<level> (e.g. Turtle zones).
 AiPlayerbot.AreaLevelOverrides =
@@ -1299,6 +1294,61 @@ AiPlayerbot.BotGroups.AdHoc.ScanBudgetUs = 0
 # is done), its idle clock is the group's freshest progress - and leaves with reason=group_done once nobody is left open.
 # "[BotGroup] kind=adhoc event=help" when a bot starts helping or switches whom it follows. 0 = leave at objective_done.
 AiPlayerbot.BotGroups.AdHoc.HelpUntilDone = 0
+# BOT-12 (twow-repo#677, #628 third finding; OB-00 04.11.2026; cand4G u2: an ad-hoc member followed its leader on another
+# continent for 10 h, ~13 ms per update at a zeppelin dock, and never left): with the mode on for the bot
+# - a leader on another map id for LeaderOtherMapSeconds is the leave reason leader_other_map ([BotGroup] kind=adhoc
+#   event=leave ... reason=leader_other_map), checked before out_of_range, which then counts only the distance on the same
+#   map: a cross-map member decides to leave after LeaderOtherMapSeconds as leader_other_map, no longer after 60 s as
+#   out_of_range. A leader not in the world (far teleport, relog) keeps the clock. Both leave paths (WorldThread 0 and 1);
+# - the leave itself: with OpQueue on for the bot it is queued and really happens on the world thread (see OpQueue below);
+#   with WorldThread = 1 the manager leaves on the world thread as before. With WorldThread = 0 and OpQueue off for the bot it
+#   is today's no-op: the generic "leave" keeps a free (roster) bot in its group, clears its master and resets its AI - no
+#   group change on the map thread (OB-00 04.11.: no map-thread group mutation); a group of two is forgotten as ad-hoc;
+# - "follow" is not useful for a follow target on another map (or another instance of a dungeon, raid or battleground; not
+#   another region of a continent) that is no real player: no cross-map route each update. Bots with a real-player master
+#   and bots following a real player keep following as before. This also holds for bot-only groups that are not ad-hoc
+#   (they stop following a bot on another map but have no leader_other_map leave).
+# No new log lines. Mode (in-realm A/B, cohort parity): 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low
+# guid), 3 = only cohort A (even low guid; crossover unit 2). Any other value acts like 0.
+AiPlayerbot.BotGroups.LeaderOtherMap = 0
+# BOT-12: seconds the leader must be on another map before the leave (LeaderOtherMap on). Default 120, 30..900.
+AiPlayerbot.BotGroups.LeaderOtherMapSeconds = 120
+# BOT-12 (twow-repo#677, #628; OB-00 04.11.2026): the world-thread group queue. ObjectMgr::m_GroupMap (all groups) is an
+# unlocked map and group ids come from a plain counter; the core changes groups only while the maps are idle (player group
+# opcodes run on the world thread), but the ad-hoc action (AdHoc.WorldThread = 0) created and disbanded groups from the bots'
+# map threads while other maps ran. With the mode on for a bot, its ad-hoc leaves (every reason, leader_other_map included)
+# and every ad-hoc join it is part of (as inviter or invitee: a pair is queued when the mode applies to either bot) are queued
+# instead (guids only) and run at the end of the world tick, all maps idle, at most OpQueueOpsPerTick per tick and none in a
+# tick in which the ad-hoc manager or S7 already did group work (a scan slice, an invite, a leave, a dissolution). The world
+# thread runs the core leave/join only; the AI part (strategy reset, accept tail, log lines) always runs on the bot's own
+# thread. An op whose bot or pair changed meanwhile is dropped (logged out, other group, already left, pair gone) and the bot
+# decides again on its next scan; a bot in a loading screen waits up to 30 s (fixed; counted from the first look that found it
+# in transit). The ad-hoc self-leave of a free bot really happens only here (with 0 it stays the no-op above).
+# Scope: only the ad-hoc ACTION path (AdHoc.WorldThread = 0). With AdHoc.WorldThread = 1 the action is off and the manager
+# keeps its own inline world-thread leaves and joins (now marking the tick heavy); OpQueue changes nothing there. A member
+# whose leader is on another map leaves reliably only with LeaderOtherMap on for the same bots: without it, "follow" starves
+# the ad-hoc action (CAUSE defect 3) - kits set both keys. Not covered (PR2/PR3, still off the world thread): leave far away,
+# repop, accepts of other invites, invite nearby / LFG, commands; the minute line counts them.
+# Lines (world thread, with OpQueue on or BotGroups.Diagnostics = 1): "[GroupOps] minute mode= ... enq_leave= exec_leave= ...
+# age_ms_p99= drain_us_max= ... off_create= off_disband= off_map_<path>= off_q_<path>=" once a minute. off_* counts group
+# changes seen OFF the world thread by the calling bot action (adhoc - the ad-hoc action and the accept of its invite -,
+# leave_far, repop, accept, invite_lfg, command, dungeon_clear, other_action, other): off_map_<path> the creates/disbands
+# (m_GroupMap writes) of every bot, off_q_<path> the creates/disbands/adds/removes of bots the mode applies to (off_q_adhoc = 0
+# expected). "[GroupOps] ALERT depth= oldest_age_ms= ..." at most once a minute when an op waits longer than
+# OpQueueAlertAgeSeconds. In queue mode "[BotGroup] kind=adhoc event=invite|leave ... via=queue" means queued (exec_*/stale_*
+# in the minute line count what ran), and the join's register line can come before its membership line (pair them by bot
+# and group, not by order).
+# Mode (in-realm A/B, cohort parity, of the leaver / either bot of a join): 0 = as before (default), 1 = every bot, 2 = only
+# cohort B (odd low guid), 3 = only cohort A (even low guid). Any other value acts like 0 (one error line at load).
+AiPlayerbot.BotGroups.OpQueue = 0
+# BOT-12: ops run per world tick (1..16; default 1). The heavy-tick rule above still applies.
+AiPlayerbot.BotGroups.OpQueueOpsPerTick = 1
+# BOT-12: the most ops the queue holds (16..65536; default 2048). A full queue refuses new ops (dropped_full_leave/join in the
+# minute line): the bot keeps its group, waits one AdHoc.ScanIntervalSeconds and decides again - nothing grows without bound
+# after a reset or with 1000+ bots.
+AiPlayerbot.BotGroups.OpQueueMaxDepth = 2048
+# BOT-12: the "[GroupOps] ALERT" line when the oldest queued op is older than this (5..3600 s; default 60).
+AiPlayerbot.BotGroups.OpQueueAlertAgeSeconds = 60
 
 # #627 S7 help groups (owner 18.10./23.10.2026): roster bots holding the same elite
 # quest (Type 1; with SuggestedPlayers = 1 also SuggestedPlayers >= 2; never
@@ -1534,6 +1584,26 @@ AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter.Failures = 4
 AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter.Bots = 3
 AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter.WindowSeconds = 3600
 AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter.Seconds = 3600
+# twow-repo#601 owner rule R1 (owner 04.11.2026 via OB-00: a bot leaves its start zone at level 5-7, never below 5, and a stale
+# objective is no reason to change zone; CLI-Deep, ZoneKeepPolicy.h, evidence cli-quest-organic/cand4/R1-OFFLINE.md - in cand4G 90 zone
+# changes followed a stale skip within 600 s). StaleKeepZone: a quest search that came back empty while it skipped stale objectives
+# neither widens the search nor counts toward a band step ([ZoneKeep] state=stale_keep bot= zone= skipped=), and for .Seconds the bot
+# takes no quest target outside its current zone (turn-ins exempt; the search line counts stale_keep_zone=). The bot waits the
+# usual backoff, does other quests or grinds in the zone, and searches again. Roster bots on their own only.
+#   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid); other values act
+#   like 0. .Seconds 60..3600 (default 900).
+AiPlayerbot.QuestFirstProgression.StaleKeepZone = 0
+AiPlayerbot.QuestFirstProgression.StaleKeepZone.Seconds = 900
+# twow-repo#601 owner rule R1: below this level a roster bot on its own takes no travel target outside its start zone (any purpose;
+# the search line counts start_zone=), no band step, and no quest rescue out of it - inside the zone there is no rescue, outside it
+# the rescue takes it to its race's start point ([ZoneKeep] state=rescue_gate). Start zone = the playercreateinfo zone of its race,
+# with CustomRaceStartZones the goblin / high-elf start zones. An unknown start zone is not gated. Forced trips too (guild meeting /
+# order, petition, group quest help): a held one writes one [ZoneKeep] state=forced_hold line and is not requested again for 600 s.
+#   0 = off (default), 2..60; other values act like 0. Owner value 5.
+#   .Cohort picks the bots for an in-realm A/B: 0 = none, 1 = every roster bot (default), 2 = only cohort B (odd low guid), 3 = only cohort A
+#   (even low guid); other values act like 1. Without StartZoneMinLevel it does nothing.
+AiPlayerbot.QuestFirstProgression.StartZoneMinLevel = 0
+AiPlayerbot.QuestFirstProgression.StartZoneMinLevel.Cohort = 1
 # twow-repo#601 quest acceptance lever (iv) (OB-00 28.10.2026, BUG FIX behind a switch, cli-quest-organic/quest-acceptance/STEP2.md):
 # the radius quest giver fetch of a quest route request (GiverRadius, the #421 B stages) asked TravelMgr for entry 0, but every
 # quest giver is filed under its quest id - so it never returned a giver. Givers reached the route choice only through the
@@ -1675,6 +1745,15 @@ AiPlayerbot.RosterFarMove.ArriveSafe = 0
 AiPlayerbot.RosterFarMove.LevelGuard = 0
 AiPlayerbot.RosterFarMove.LevelGuard.Margin = 3
 AiPlayerbot.RosterFarMove.LevelGuard.Radius = 50
+# twow-repo#601 A3 step 1 (owner 04.11.2026 via OB-00, A3-BOT-LOGIK.md 1.3): the RPG sequencing of upstream mangosbot - the generic
+# "rpg" action picks ONE sub-action by a weighted random draw (relevance - 1) x 1000, RpgActionMultiplier then gives every other RPG
+# action x0.1, and after each RPG action a 10 % (30 % in a group or with a real master) "rpg cancel" leaves the target - made a
+# hand-in at the quest giver wait behind start quest / sell / train (90 vs 80 vs ... weights, near uniform) or lose it to a cancel.
+# With Rpg.TurnInFirst a possible "rpg end quest" is picked first (no draw), is never multiplied down, and no "rpg cancel" is
+# rolled while the bot can still hand in at its rpg target ([RpgTurnIn] state=cancel_skipped). Variety elsewhere stays as before.
+#   0 = off (default), 1 = every bot on its own, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid); other values
+#   act like 0. A bot led by a real player is never changed.
+AiPlayerbot.Rpg.TurnInFirst = 0
 # twow-repo#595 P4 S0 (OB-00 17.10.2026, shortcuts by player proximity; measurement, no behaviour change): the world
 # thread keeps a snapshot of where the online real players are (map, zone, area, x, y and a camera body that differs;
 # GMs only while visible), built after the map update at most once a second, only while Trace = 1 or NearScope > 0.
@@ -1719,7 +1798,7 @@ AiPlayerbot.Shortcut.GroupLoopFix = 0
 # cooldown / budget / no-node / transport cases. [RouteFailDetail] summary failed= logged= honest= once a minute.
 # LinesPerMinute 0..600 (0 = summary only). 0 = off (default).
 AiPlayerbot.Path.RouteFailDetail = 0
-AiPlayerbot.Path.RouteFailDetail.LinesPerMinute = 30
+AiPlayerbot.Path.RouteFailDetail.LinesPerMinute = 10
 # twow-repo#575 (PATH-01 #3, BEHAVIOUR CHANGE, "nach Abnahme an"): a node route search without a route used to
 # end as the target point alone; farther than react distance that point was cut off and MoveTo reported success
 # with an empty path, so the bot searched again on the next tick (minutes of retries, travel retry counter
@@ -1765,6 +1844,16 @@ AiPlayerbot.Path.PosStuck.Minutes = 10
 AiPlayerbot.Path.PosStuck.Progress = 5
 AiPlayerbot.Path.PosStuck.EpisodeMinutes = 30
 AiPlayerbot.Path.PosStuck.RateMinutes = 30
+# twow-repo#575 / #601 (OB-00 04.11.2026, ws-10/cli-pathfinding/movement-a3/ROOT-HEARTH-FARMOVE.md §4): the clock of the triggers
+# "combat stuck" (5 min -> unstuck -> reset, which clears the travel target) and "combat long stuck" (15 min -> unstuck ->
+# hearthstone or repop). They compared the "time since last change" of the value "combat::self target"; that value notices a
+# change only when it is read, and both triggers read it only in combat - the end of a fight was usually never seen, so a new
+# fight began with a clock from an earlier one (cand4G u2: 390 "combat long stuck" hearthstones, 2 of them in a fight running
+# > 60 s; rot01-tank run T: 1,136 triggers, none in a fight running >= 60 s). With the key the clock is the fight with the
+# current target: from the combat start ("combat start time"), restarted whenever the current target changes; a check more
+# than 30 s after the previous one in combat starts a new fight. The duel rule is unchanged.
+#   0 = off (default), 1 = every bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid); other values act like 0.
+AiPlayerbot.Unstuck.CombatFightClock = 0
 # twow-repo#575 (PATH-01 b, trace, no behaviour change; enable only after OB-30 measurement + owner go - nach Abnahme
 # an): 1 = every bot flight attempt (UseTaxi) is counted by result - ok, noPath (stored TaxiPath id unknown), noNpc (no
 # flight master in reach), tooFar (more than 31.6 yd from the start node of the stored path), failed - and every wait at a
@@ -1980,6 +2069,29 @@ AiPlayerbot.ProfessionTraining.TurnInGateSkipSuppressed = 0
 # when none) and nearest= / nearest_entry= (the nearest trainer / vendor without the radius, at result=not_near; 0 otherwise).
 #   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid); other values act like 0.
 AiPlayerbot.ProfessionTraining.TurnInGateSkipNoRoute = 0
+# twow-repo#333 Berufe P1-aa (OB-00 04.11.2026; M1r run 8: a level-7 skinner on a near tool trip, vendor 66 at 209 yd, never
+# bought its knife - "attack anything" (5.0) beat "move to travel target" (1.0) and "rpg buy" (1.03), the target stayed READY,
+# and the "reason=cap" end of the 600 s hold came 19 min late, from the first travel check after the grinding). TripNoGrind,
+# for a roster bot on its own while a profession trip (trainer or tool, gap or near) is open and its hold has not run out:
+#   - no proactive "attack anything", not even the "attack before being attacked" rule; a creature that attacks the bot, its
+#     pet or its group, or has the bot as its victim, is still fought (self-defence; the combat start is unchanged);
+#   - the trip also arrives within 15 yd of its NPC's spawn (otherwise 5 yd), and on arrival the trip's vendor / trainer
+#     (nearest spawn within 25 yd) becomes the rpg target with "rpg buy" / "rpg train" as the next rpg action;
+#   - a check once a minute, in and out of combat, ends the trip on time: on the trip's own travel target the hold rule runs
+#     at once ("[ProfTravel] state=end ... reason=done|turn_in|cap", the travel target expires); when the travel target is no
+#     longer the trip, "state=end ... reason=lost" comes within 60 s of its hold end (trip_s + seen_after_s <= hold_s of the
+#     request line + 60; seen_after_s counts from the last hold check that held) instead of at the next request of its kind.
+# With ProfessionTraining.Trace and this mode on for the bot, one line per arrival and per trip end:
+#   [ProfTravel] state=status kind=trainer|tool bot= level= cohort= event=arrive|end status= reason= entry= npc= npc_dist=
+#   radius=stock|trip|- rpg=buy|train|none|- trip_s= path=near|gap
+# event=arrive: status=WORK reason=- radius=stock (within 5 yd) or trip (within 15 yd), npc=0 rpg=none when no NPC was found.
+# event=end: reason=done|turn_in|cap|lost|no_target, status = the travel target's status at the end (READY, TRAVEL, WORK,
+# COOLDOWN, EXPIRED; NONE at no_target; OTHER = the travel target is not the trip's, or is prepared or cleared and still
+# carries the old conditions; entry=0 then), npc=0 npc_dist=-1.0 radius=- rpg=-. A lost end that only the next request
+# finds (the minute check did not run in time) writes its line there.
+# Profile value 1 only after an accepted A/B test (strangler rule).
+#   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid); other values act like 0.
+AiPlayerbot.ProfessionTraining.TripNoGrind = 0
 # Profession use (#333), persistent roster bots without a real-player master.
 # GatherDistance: passive gathering radius for such a bot on its own (herbs,
 # ore, skinning); 0 = GatheringDistance. The hostile check stays in force.
@@ -2029,6 +2141,12 @@ AiPlayerbot.Buy.VendorTemplateItems = 1
 # Mode (in-realm A/B, cohort parity): 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other
 # value acts like 0.
 AiPlayerbot.Travel.RpgAreaLevelFromSpawn = 0
+# BOT-12 (twow-repo#677; cand4G u2: a bot at a zeppelin dock node with entry 0 paid ~13 ms per update): 1 = the elevator
+# branch of the transport lookup (UseTransport, dock waits) walks a list per map of the transport-type gameobject spawns
+# (GAMEOBJECT_TYPE_TRANSPORT, GAMEOBJECT_TYPE_MO_TRANSPORT), built once on first use, instead of all gameobject spawn data
+# of every map on every call. Same transports found (only spawns of these types can be one). No log line.
+# 0 = the full walk on every call (default).
+AiPlayerbot.Travel.ElevatorScanCache = 0
 # RealReagents (twow-repo#485): under the item cheat (RndBotCheats "item") every
 # recipe counts as having its reagents, a random one is queued and the core
 # fails the cast silently. 1 = check reagents and tools in the bags and cast
@@ -3025,7 +3143,8 @@ AiPlayerbot.X3c.InboxWrites = 0
 # (crash 02.11.2026: MotionMaster::DirectClean of a DC bot in an instance, driver parked on map 0). Far teleports
 # stay with the holder. With 1 (and AiPlayerbot.WorldBotsTrace) the [WorldBots] line ends in teleport_ack_requested /
 # _bot / _wait (per minute).
-# Any other value acts like 0. 0 = the holder acks every pending teleport as before (default).
+# Any other value acts like 0 - 2 included: this is a plain 0/1 switch, not a cohort mode (CohortPolicy.h). 0 = the holder acks every
+# pending teleport as before (default).
 AiPlayerbot.ThreadSafeTeleportAck = 0
 # twow-repo#541 (owner 11.10.2026): 1 = the core builds and sends no object update packets (SMSG_UPDATE_OBJECT,
 # SMSG_COMPRESSED_UPDATE_OBJECT, SMSG_DESTROY_OBJECT) to bot sessions - a bot has no client and its AI reads object
@@ -3552,40 +3671,6 @@ AiPlayerbot.Perf.PartyTargetMemo = 0
 # within range) and the old filter, so the lists only lose units that came into range after that search (< 1 s
 # later than today). Grouped bots and "nearest adds" (flee range) search as before. 0 = separate searches (default).
 AiPlayerbot.PossibleTargetsSharedSearch = 0
-# twow-repo#568 (diet D03, BEHAVIOUR CHANGE, "nach Abnahme an"): 1 = combat-spec rogues check Adrenaline Rush and
-# Blade Flurry in combat (boost strategy, combat engine) and cast them; 0 = both stay in the non-combat engine, where
-# the boost trigger is never active, so Adrenaline Rush is never cast (today's behaviour, default).
-AiPlayerbot.Diet.RogueCombatBoostInCombat = 0
-# twow-repo#568 (diet D15, BEHAVIOUR CHANGE, "nach Abnahme an"): 1 = assassination rogues (and every rogue below L10)
-# use backstab behind the target (falls back to sinister strike) and sinister strike in front; Mutilate does not exist
-# in Turtle 1.18. 0 = the dead 'mutilate back' / 'mutilate front' nodes as today (default).
-AiPlayerbot.Diet.RogueNoMutilate = 0
-# twow-repo#568 (diet D16, BEHAVIOUR CHANGE, "nach Abnahme an"): 1 = protection warriors skip the non-existent Heroic
-# Throw: 'enemy out of melee' pushes charge only, 'lose aggro' taunt, 'taunt on snare target' taunt on snare target.
-# 0 = heroic throw first, then the alternative, as today (default).
-AiPlayerbot.Diet.WarriorNoHeroicThrow = 0
-# twow-repo#568 (diet D17, BEHAVIOUR CHANGE, "nach Abnahme an"): 1 = arms warriors answer a fleeing snare target with
-# Hamstring directly. 0 = Piercing Howl (Fury talent) -> Mocking Blow (a taunt) -> Hamstring chain as today (default).
-AiPlayerbot.Diet.ArmsSnareHamstring = 0
-# twow-repo#568 (diet D36, BEHAVIOUR CHANGE, "nach Abnahme an"): 1 = protection warriors push Sunder Armor directly on
-# the 'sunder armor' trigger. 0 = Devastate first (unlearnable in Turtle 1.18, always IMPOSSIBLE) as today (default).
-AiPlayerbot.Diet.WarriorNoDevastate = 0
-# twow-repo#568 (diet D37, BEHAVIOUR CHANGE, "nach Abnahme an"): 1 = the warrior 'disarm' trigger fires only when the bot
-# knows Disarm, it is off cooldown and the bot is in Defensive Stance. 0 = target-has-no-Disarm-aura check only (default).
-AiPlayerbot.Diet.WarriorDisarmGate = 0
-# twow-repo#568 (diet D38, BEHAVIOUR CHANGE, "nach Abnahme an"): 1 = the warrior stance rules of the owner (11.10.2026):
-# levels 1-9 Battle Stance, tanks Defensive Stance from 10, fury Berserker Stance from 30 (quest), arms stays in Battle
-# Stance. The 'berserker stance' trigger needs the spell to be known, arms does not register it, protection has no
-# Defensive Tactics swap to Berserker (it ping-ponged with the 'defensive stance' trigger and lost rage on every change),
-# and Berserker Rage no longer pulls a bot into Berserker Stance. 0 = no checks, the old stance nodes (default).
-AiPlayerbot.Diet.WarriorBerserkerStanceGate = 0
-# twow-repo#568 (diet D39, no visible behaviour change): 1 = protection warriors do not register the two 'intercept and
-# rage' nodes, whose sub-trigger "enemy is out of melee" does not exist and never fires. 0 = registered as today (default).
-AiPlayerbot.Diet.WarriorNoInterceptAndRage = 0
-# twow-repo#568 (diet D40, BEHAVIOUR CHANGE, "nach Abnahme an"): 1 = the 'bloodrage' trigger needs a known, ready Bloodrage,
-# and protection drops its duplicate bloodrage (NORMAL+5) and concussion blow (HIGH+4) nodes; the buff strategy (HIGH) and
-# the cc strategy (INTERRUPT) keep theirs. 0 = no cooldown check, duplicates registered as today (default).
-AiPlayerbot.Diet.WarriorDedupBloodrage = 0
 # twow-repo#568 (D20, strategy diet): 1 = priests only register the race spells their race can learn (touch of weakness /
 # devouring plague Undead, shadowguard / hex of weakness Troll, elune's grace / starshards Night Elf, desperate prayer
 # Human+Dwarf), and those four race triggers stay quiet until the spell is known (right race below the learn level).
@@ -3632,46 +3717,6 @@ AiPlayerbot.Diet.MageBlastWave = 0
 # invisibility") on "high threat" and "multiple attackers": Turtle 1.18 mages cannot learn either spell, so both nodes
 # ended IMPOSSIBLE. Same casts. Read at engine (re)build. 0 = nodes as before (default).
 AiPlayerbot.Diet.MageInvisibility = 0
-# twow-repo#568 D04 (BEHAVIOUR CHANGE, strategy diet): 1 = druids below level 10 ("leveling" kit) cast Wrath while
-# the target is outside melee range (node uses the registered trigger "enemy out of melee"). 0 = the node keeps the
-# unregistered name "enemy out of melee range" and never fires; these druids only melee until Moonfire (default).
-AiPlayerbot.Diet.LevelingDruidWrath = 0
-# twow-repo#568 D26 (strategy diet, same actions): 1 = the shaman "shock" trigger stays quiet while the shared shock
-# cooldown (spell category of Earth Shock, 6 s) runs; Earth/Flame Shock could only end IMPOSSIBLE then. 0 = old trigger.
-AiPlayerbot.Diet.ShockCooldownGate = 0
-# twow-repo#568 D27 (BEHAVIOUR CHANGE, strategy diet): 1 = enh AoE, ele PvP and "totem fire nova" cast Fire Nova Totem
-# (L12+, never over Magma; Searing/Magma wait until it went off; no Magma->nova chain). 0 = dead "fire nova" (default).
-AiPlayerbot.Diet.FireNovaTotem = 0
-# twow-repo#568 D28 (strategy diet, same actions): 1 = elemental/restoration shamans no longer push the TBC "wrath of
-# air totem" (no such spell in 1.18; IMPOSSIBLE/USELESS only), neither as air-totem node nor as Windfury alternative.
-AiPlayerbot.Diet.NoWrathOfAirTotem = 0
-# twow-repo#568 D29 (strategy diet, same actions): 1 = vanilla shamans push the real alternative directly instead of
-# TBC/WotLK spells (riptide -> healing wave, totem of wrath -> searing totem, earthliving -> flametongue weapon).
-AiPlayerbot.Diet.ShamanVanillaNames = 0
-# twow-repo#568 D30 (BEHAVIOUR CHANGE, strategy diet): 1 = Innervate (druid L40+) uses the real mana percent (< LowMana)
-# and may target the solo druid itself. 0 = old check: never solo, in a group at the first missing mana point (default).
-AiPlayerbot.Diet.InnervateFix = 0
-# twow-repo#568 D31 (BEHAVIOUR CHANGE, strategy diet): 1 = at critical health a Ret paladin tries Repentance on its target
-# (talent, L40+), Divine Shield as alternative, at relevance 91. 0 = factory key typo, node ends UNKNOWN (default).
-AiPlayerbot.Diet.RetRepentanceKey = 0
-# twow-repo#568 D41 (strategy diet, same actions): 1 = the paladin "exorcism" trigger stays quiet when the current target
-# is not undead/demon (Exorcism's TargetCreatureType, same test as the core); the cast could only end IMPOSSIBLE.
-AiPlayerbot.Diet.ExorcismCreatureType = 0
-# twow-repo#568 D42 (strategy diet, same actions): 1 = a Prot paladin without seal pushes Seal of Righteousness directly
-# (no Seal of Vengeance in 1.18: it only ended IMPOSSIBLE first); the seal trigger skips that dead aura name.
-AiPlayerbot.Diet.ProtSealDirect = 0
-# twow-repo#568 D43 (strategy diet, same actions): 1 = vanilla feral druids push Claw / Maul directly where the kit named
-# Mangle (Cat)/(Bear) (no such spells in 1.18: they only ended IMPOSSIBLE before the same Claw/Maul).
-AiPlayerbot.Diet.FeralNoMangle = 0
-# twow-repo#568 D44 (strategy diet, same actions): 1 = the vanilla DPS-feral AoE strategy no longer registers
-# "swipe (cat)" (no such spell in 1.18, no alternative; it only ended IMPOSSIBLE). 0 = old node (default).
-AiPlayerbot.Diet.FeralNoCatSwipe = 0
-# twow-repo#568 D45 (strategy diet, same actions): 1 = druid Enrage (tank) and Nature's Grasp (balance/resto cc) triggers
-# stay quiet while the spell is unknown or on cooldown (60 s); the push could only end IMPOSSIBLE then. 0 = old triggers.
-AiPlayerbot.Diet.DruidCooldownGates = 0
-# twow-repo#568 D46 (strategy diet, same actions): 1 = the leveling-druid Rejuvenation/Moonfire triggers stay quiet while
-# the druid does not know the spell (levels 1-3); the push could only end IMPOSSIBLE. 0 = old triggers (default).
-AiPlayerbot.Diet.LevelingDruidKnownSpells = 0
 # twow-repo#568 (diet D63, neutral, "nach Abnahme an"): 1 = Engine::ProcessTriggers skips the Check() call of the
 # event-only triggers (every chat-command trigger, e.g. "stats", "items", "wander", and every world-packet trigger,
 # e.g. "duel requested", "loot roll") while their event flag is unset. Their Check() returns no event in that state,
@@ -3681,33 +3726,6 @@ AiPlayerbot.Diet.LevelingDruidKnownSpells = 0
 # call (PLAYERBOT_ELUNA is not defined in this build). Measure: PerfMon T TOTAL count and UpdateAIReaction time
 # A/B. 0 = every trigger polled on every pass (default).
 AiPlayerbot.Perf.EventTriggerSkip = 0
-# twow-repo#568 (diet D67, neutral, "nach Abnahme an"): 1 = the trigger "wander near" ("wander" strategy, action
-# "stop follow" ACTION_IDLE) of a bot without a follow target is active only while the bot's current movement
-# generator is FOLLOW_MOTION_TYPE. Without a follow target the old check was always true and "stop follow" was
-# USELESS unless the bot is on a FOLLOW motion (first check of its isUseful), so the stale-follow cleanup after a
-# group leave stays and nothing else fires. With a follow target (also a leader following itself) as before.
-# "wander far" / "wander medium" are unchanged: their free-move center is a position snapshot cached for up to 5 s,
-# so they can fire today for a moving solo bot. Side effects without play change: the action queue is shorter by these
-# pushes (a little less iterationsPerTick) and the debug tell "try: stop follow ... useless" is gone. Read on every
-# check. 0 = old check (default).
-AiPlayerbot.Diet.WanderSoloGuard = 0
-# twow-repo#568 (diet D68, neutral, "nach Abnahme an"): 1 = three rpg sub-action triggers answer from the first
-# condition of their own IsActive before the shared rpg pre-check (rpg target, distance, next rpg action):
-# "rpg ai chat" returns no event while AiPlayerbot.LLMEnabled = 0 (read on every check, a reload that enables LLM
-# acts at once), "rpg wander" while the bot has no real player master, and "rpg quest use" while the rpg target's
-# entry is not 190767 (its only true case); "rpg quest use" also tests that entry first in IsActive, which the
-# choose-rpg-target candidate loop calls directly. Same results: each short cut is the first false of IsActive, the
-# skipped values have no side effects, and a set event flag still runs the old Check. 0 = old order (default).
-AiPlayerbot.Diet.RpgDeadTriggers = 0
-# twow-repo#568 (diet D69, neutral, "nach Abnahme an"): 1 = the "duel" strategy (combat and non-combat) pushes
-# "attack duel opponent" (70) from the new trigger "duel no attackers" instead of "no attackers": it runs the same
-# check (no current target, my attacker count > 0) only while the bot has a duel (Player::m_duel). Same attacks: the
-# action's isUseful is the "duel target" value, which is null without m_duel. Only difference: up to ~1 s after a duel
-# ends the cached "duel target" can still name the ex-opponent; today the node could then try an attack that
-# IsTargetValid refuses (friendly), with 1 it is not pushed. "duel requested" and the trigger "no attackers" itself
-# (custom strategies) are unchanged. Read at engine (re)build: switch with a restart or relog.
-# 0 = "no attackers" for every bot (default).
-AiPlayerbot.Diet.DuelTriggerGate = 0
 
 
 

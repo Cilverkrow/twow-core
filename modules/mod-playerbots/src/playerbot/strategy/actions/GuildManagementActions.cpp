@@ -133,8 +133,8 @@ bool GuildManageNearbyAction::Execute(Event& event)
             if (RosterGuildPlan::AssignedGuild(player->GetGUIDLow(), player->GetTeam()) != bot->GetGuildId())
                 continue;
 
-            // Owner 05.10.2026: no bot-guild invitation below AiPlayerbot.RosterGuild.MinLevel.
-            if (!roster_guild::JoinAllowed(player->GetLevel(), sPlayerbotAIConfig.rosterGuildMinLevel, true, false))
+            // Owner 05.10.2026: no bot-guild invitation below AiPlayerbot.RosterGuild.JoinMinLevel.
+            if (!roster_guild::JoinAllowed(player->GetLevel(), sPlayerbotAIConfig.rosterGuildJoinMinLevel, true, false))
                 continue;
 
             bool const inGroup = bot->GetGroup() && bot->GetGroup()->IsMember(player->GetObjectGuid());

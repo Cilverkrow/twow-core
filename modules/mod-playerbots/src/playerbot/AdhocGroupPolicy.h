@@ -64,11 +64,51 @@ enum class Leave
     LevelWindow,    // the spread left the window for LevelWindowSeconds
     Idle,           // no objective progress for IdleSeconds
     GroupDone,      // HelpUntilDone: the own objective done and no member left with an open one
+    LeaderOtherMap, // BOT-12 LeaderOtherMap: the leader on another map for LeaderOtherMapSeconds (checked before OutOfRange)
 };
 
 constexpr std::uint32_t OutOfRangeSeconds = 60;
 constexpr std::uint32_t LevelWindowSeconds = 300;
 constexpr std::uint32_t IdleSeconds = 600;
+
+// BOT-12 (AiPlayerbot.BotGroups.LeaderOtherMap, OB-00 04.11.2026; cand4G u2: an ad-hoc member followed its leader on
+// another continent for 10 h, twow-repo#677 / #628). "Another map": another map id, or another instance of a dungeon,
+// raid or battleground map. Not another instance of a continent: with Continents.Instanciate a continent is split into
+// regions that are instances of the same map, and a leader across a region border is still reachable on foot.
+// The dungeon/raid/battleground instance arm matters for follow only: a bot on such a map leaves with Leave::Instance
+// first, and battleground bots are not ad-hoc members; the leave fires on another map id.
+inline bool OnOtherMap(bool otherMapId, bool otherInstanceId, bool instanceableMap)
+{
+    return otherMapId || (otherInstanceId && instanceableMap);
+}
+
+// With the rule on for the bot, a leader on another map runs its own clock (Leave::LeaderOtherMap) and OutOfRange keeps the
+// distance on the same map; otherwise OutOfRange counts both, as before (another map id = out of range after 60 s).
+inline bool OutOfRangeFact(bool otherMap, bool beyondRange, bool leaderOtherMapRule)
+{
+    return leaderOtherMapRule ? (!otherMap && beyondRange) : (otherMap || beyondRange);
+}
+
+// The leader_other_map clock (since, 0 = not running). leaderSeen: the leader is in the world (sObjectMgr.GetPlayer found
+// it); otherMap: it was seen on another map, never true for the bot itself (the callers' `leader != bot`). A leader not in
+// the world (far teleport, loading screen, short relog) is no observation: the clock keeps its value instead of restarting,
+// so a leader that keeps far-teleporting cannot postpone the leave. Reset only on a same-map observation or with the rule off.
+inline std::uint32_t LeaderOtherMapClock(bool ruleOn, bool leaderSeen, bool otherMap, std::uint32_t since, std::uint32_t now)
+{
+    if (!ruleOn)
+        return 0;
+    if (!leaderSeen)
+        return since;
+    return otherMap ? (since ? since : now) : 0;
+}
+
+// Follow (FollowAction::isUseful) with the rule on for the bot: a target on another map cannot be followed - Follow sent the
+// bot into a cross-map route every update and reported OK, so nothing else ran. A bot with a real-player master, or a real
+// player's character as the target, follows as before.
+inline bool FollowUselessAcrossMaps(bool ruleOn, bool otherMap, bool realPlayerMaster, bool targetRealPlayer)
+{
+    return ruleOn && otherMap && !realPlayerMaster && !targetRealPlayer;
+}
 
 struct LeaveFacts
 {
@@ -82,6 +122,10 @@ struct LeaveFacts
     // twow-repo#365 (AiPlayerbot.BotGroups.AdHoc.HelpUntilDone, owner 25.10.2026): whoever is done helps until the group is.
     bool helpUntilDone = false;
     bool groupOpen = false;              // another member still has the objective open
+    // BOT-12 (AiPlayerbot.BotGroups.LeaderOtherMap): the leader on another map since (0 = same map), and after how many
+    // seconds that is a leave (BotGroups.LeaderOtherMapSeconds; 0 = the rule is off for the bot, as before).
+    std::uint32_t leaderOtherMapSince = 0;
+    std::uint32_t leaderOtherMapSeconds = 0;
 };
 
 // The bot stays as a helper: its own objective is done, the switch is on and a member still works on it.
@@ -143,6 +187,8 @@ inline Leave DecideLeave(LeaveFacts const& f)
         return f.helpUntilDone ? Leave::GroupDone : Leave::ObjectiveDone;
     if (f.inInstance)
         return Leave::Instance;
+    if (f.leaderOtherMapSeconds && f.leaderOtherMapSince && f.now - f.leaderOtherMapSince >= f.leaderOtherMapSeconds)
+        return Leave::LeaderOtherMap;
     if (f.outOfRangeSince && f.now - f.outOfRangeSince >= OutOfRangeSeconds)
         return Leave::OutOfRange;
     if (f.levelWindowSince && f.now - f.levelWindowSince >= LevelWindowSeconds)
@@ -164,6 +210,7 @@ inline char const* LeaveName(Leave reason)
         case Leave::LevelWindow:   return "level_window";
         case Leave::Idle:          return "idle";
         case Leave::GroupDone:     return "group_done";
+        case Leave::LeaderOtherMap: return "leader_other_map";
     }
     return "unknown";
 }

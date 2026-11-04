@@ -14,9 +14,10 @@
 #include "playerbot/RandomPlayerbotMgr.h"
 #include "playerbot/RouteDangerPolicy.h"
 #include "playerbot/StartZonePolicy.h"
-#include "playerbot/DangerMapPolicy.h"
+#include "playerbot/DangerMapConfig.h"
 #include "playerbot/CampBlockPolicy.h"         // re-deaths at camps (DestinationDeaths.CampBlock)
 #include "playerbot/LevelGuardPolicy.h"        // twow-repo#601 cand4 lever (ii) (RosterFarMove.LevelGuard)
+#include "playerbot/ZoneKeepPolicy.h"          // twow-repo#601 owner rule R1 (StaleKeepZone, StartZoneMinLevel)
 #include "playerbot/CohortPolicy.h"            // re-deaths at camps (DangerMap.CountAddDeaths mode 2)
 #include "playerbot/QuestTurnInParkPolicy.h"
 #include "playerbot/QuestFailureClassPolicy.h"
@@ -45,25 +46,11 @@ using namespace ai;
 
 namespace
 {
-danger_map::Params DangerMapParams()
-{
-    danger_map::Params params;
-    params.cellSize = sPlayerbotAIConfig.dangerMapCellSize;
-    params.windowSeconds = sPlayerbotAIConfig.dangerMapWindowSeconds;
-    params.minDeaths = sPlayerbotAIConfig.dangerMapMinDeaths;
-    params.levelMargin = sPlayerbotAIConfig.dangerMapLevelMargin;
-    params.lineSamples = sPlayerbotAIConfig.dangerMapLineSamples;
-    return params;
-}
-
 // Re-deaths at camps (AiPlayerbot.DangerMap.CountAddDeaths): the shared map is read with the add-death rule only for bots the
-// switch applies to (mode 2 = cohort B); everything else as above.
+// switch applies to (mode 2 = cohort B); everything else comes from DangerMapConfig.h.
 danger_map::Params DangerMapParams(Player const* bot)
 {
-    danger_map::Params params = DangerMapParams();
-    if (bot && ai::cohort::Applies(sPlayerbotAIConfig.dangerMapCountAddDeaths, bot->GetGUIDLow()))
-        params.addDeathMinAttackers = sPlayerbotAIConfig.dangerMapAddDeathMinAttackers;
-    return params;
+    return danger_map::ConfigParams(bot && ai::cohort::Applies(sPlayerbotAIConfig.dangerMapCountAddDeaths, bot->GetGUIDLow()));
 }
 
 bool UsesQuestFirstProgression(Player const* bot)
@@ -538,7 +525,12 @@ enum class PostActiveDeferral
     ZoneLevel,
     DangerMap,
     LevelGuard,   // twow-repo#601 cand4 lever (ii), RosterFarMove.LevelGuard (LevelGuardPolicy.h)
+    StartZone,       // twow-repo#601 owner rule R1, QuestFirstProgression.StartZoneMinLevel (ZoneKeepPolicy.h)
+    StaleKeepZone,   // twow-repo#601 owner rule R1, QuestFirstProgression.StaleKeepZone (ZoneKeepPolicy.h)
 };
+
+// twow-repo#601 owner rule R1: the manual int that holds a bot's StaleKeepZone window end (unix seconds, 0 = none).
+constexpr char const* StaleKeepZoneUntilValue = "stale keep zone until";
 
 PostActiveDeferral PostActiveDeferralOf(PlayerbotAI* ai, Player* bot, TravelTarget const* target, TravelDestination* destination,
     WorldPosition* position, danger_map::DangerMap::Hit& dangerHit, ai::level_guard::Hit* guardHit = nullptr)
@@ -622,6 +614,30 @@ PostActiveDeferral PostActiveDeferralOf(PlayerbotAI* ai, Player* bot, TravelTarg
             *guardHit = hit;
         if (hit.fired)
             return PostActiveDeferral::LevelGuard;
+    }
+
+    // twow-repo#601 owner rule R1 (ZoneKeepPolicy.h, TravelMgr.cpp ai::zone_keep): roster bots on their own, never a bot led by a real
+    // player. StartZoneMinLevel: below it no point outside the bot's start zone, any purpose and forced targets too ("never below 5",
+    // OB-00 04.11.: guild meeting / order and petition trips; the main loop then holds the forced trip). The area lookup only for the
+    // point IsActive accepted, and only when the key applies to the bot.
+    if (position && sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevel && ai::zone_keep::StartZoneHolds(bot, ai) &&
+        ai::zone_keep::OutsideStartZone(bot, position))
+        return PostActiveDeferral::StartZone;
+
+    // StaleKeepZone: inside the window after an empty search with stale skips, no quest point outside the bot's current zone (turn-ins
+    // exempt); never a forced target.
+    if (!target->IsForced() && position && sPlayerbotAIConfig.questFirstProgressionStaleKeepZone &&
+        sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster() &&
+        ai::cohort::Applies(sPlayerbotAIConfig.questFirstProgressionStaleKeepZone, bot->GetGUIDLow()) &&
+        dynamic_cast<QuestTravelDestination const*>(destination) &&
+        ai::zone_keep::KeepActive(uint32(std::max(0, ai->GetAiObjectContext()->GetValue<int>("manual int", StaleKeepZoneUntilValue)->Get())),
+            uint32(time(nullptr))))
+    {
+        AreaTableEntry const* area = position->GetArea();
+        uint32 const targetZone = area ? (area->zone ? area->zone : area->ID) : 0;
+        if (ai::zone_keep::KeepZoneDefers(true, (uint32(destination->GetPurpose()) & uint32(TravelDestinationPurpose::QuestTaker)) != 0,
+                bot->GetZoneId(), targetZone))
+            return PostActiveDeferral::StaleKeepZone;
     }
 
     return PostActiveDeferral::None;
@@ -998,7 +1014,25 @@ bool ChooseTravelTargetAction::Execute(Event& event)
             // twow-repo#601 S5a (BandLadder): the stage this empty search ran at (read before widening; 0 when the switch is off).
             uint32 const bandSearchedStage = sPlayerbotAIConfig.questFirstProgressionBandLadder ?
                 uint32(std::max(0, AI_VALUE2(int, "manual int", "quest search stage"))) : 0u;
-            WidenQuestSearch(uint32(destinationList.size()));
+            // twow-repo#601 owner rule R1 (ZoneKeepPolicy.h): StaleKeepZone - an empty search that skipped stale objectives keeps the
+            // zone: no widening, no band streak or step, and for StaleKeepZone.Seconds no quest point outside the zone (PostActiveDeferralOf;
+            // turn-ins exempt). The backoff below runs as before (wait, then search again). StartZoneMinLevel: no band step below it.
+            bool const zoneRuleBot = UsesQuestFirstProgression(bot) && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) &&
+                !ai->HasRealPlayerMaster();
+            bool const staleKeepZone = zoneRuleBot &&
+                ai::zone_keep::KeepsZone(ai::cohort::Applies(sPlayerbotAIConfig.questFirstProgressionStaleKeepZone, bot->GetGUIDLow()), lastStaleObjective);
+            bool const startZoneHold = zoneRuleBot &&
+                ai::zone_keep::StartZoneGated(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevel, bot->GetLevel()) &&
+                ai::cohort::Applies(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevelCohort, bot->GetGUIDLow());
+            if (staleKeepZone)
+            {
+                uint32 const until = uint32(time(nullptr)) + sPlayerbotAIConfig.questFirstProgressionStaleKeepZoneSeconds;
+                SET_AI_VALUE2(int, "manual int", StaleKeepZoneUntilValue, int(until));
+                sLog.outBasic("[ZoneKeep] state=stale_keep bot=%u level=%u zone=%u skipped=%u seconds=%u", bot->GetGUIDLow(), bot->GetLevel(),
+                    bot->GetZoneId(), lastStaleObjective, sPlayerbotAIConfig.questFirstProgressionStaleKeepZoneSeconds);
+            }
+            else
+                WidenQuestSearch(uint32(destinationList.size()));
 
             // twow-repo#594 / P3-a (AiPlayerbot.DirectTargets.Enable): a fresh bot (level <= FreshMaxLevel) gets the short
             // backoff below; a Z1b rescue requested in this pass wins over it.
@@ -1079,12 +1113,12 @@ bool ChooseTravelTargetAction::Execute(Event& event)
             // before the 8.1 failure count and backoff (a step counts nothing); a Z1b rescue and P3-a fresh bots win.
             // F1 (BandStepAfterEmptySearches): every failed search counts into the band streak, whatever its class; no park
             // resets it - only a found route (below) or the band step itself. F4 (BandWalkAfterEmptySearches) reads the same streak.
-            if (sPlayerbotAIConfig.questFirstProgressionBandLadder && sPlayerbotAIConfig.BandStreakOn())
+            if (sPlayerbotAIConfig.questFirstProgressionBandLadder && sPlayerbotAIConfig.BandStreakOn() && !staleKeepZone)
                 SET_AI_VALUE2(int, "manual int", ai::quest_band::BandEmptyStreakValue,
                     std::min(int(ai::quest_band::MaxStreakSteps), std::max(0, AI_VALUE2(int, "manual int", ai::quest_band::BandEmptyStreakValue)) + 1));
             // F4: a due walk's rung (no step); started at the end of this branch, once the backoff and the parks are settled.
             ai::quest_band::WalkPlan bandWalk;
-            if (sPlayerbotAIConfig.questFirstProgressionBandLadder &&
+            if (sPlayerbotAIConfig.questFirstProgressionBandLadder && !staleKeepZone && !startZoneHold &&
                 TryBandStep(requester, travelTarget, bandSearchedStage, freshBot, rescueRequested,
                     sPlayerbotAIConfig.questFirstProgressionBandWalkAfterEmptySearches ? &bandWalk : nullptr))
             {
@@ -1138,7 +1172,7 @@ bool ChooseTravelTargetAction::Execute(Event& event)
             // twow-repo#601 no-route gate: the same no-route judgement for the profession trip gate, before #485 below clears the list.
             NoteTurnInRouteResults(context, travelTarget, ai::turnin_park::CountsAsNoRoute(ai::turnin_park::RouteOutcome::NoTarget,
                 chooseBudgetExceeded, lastRejects.crossMap + lastRejects.zoneLevel + lastRejects.dangerMap, lastRejects.turnInSuppressed,
-                lastRejects.movedAway + lastRejects.rangeSkip + lastRejects.resumeSkipped,
+                lastRejects.movedAway + lastRejects.rangeSkip + lastRejects.resumeSkipped + lastRejects.startZone + lastRejects.staleKeepZone,
                 sPlayerbotAIConfig.questFirstProgressionTurnInParkCountsRouteDanger), false);
 
             // twow-repo#485: no way to any offered taker - unless not every taker was judged (a stale
@@ -1150,7 +1184,7 @@ bool ChooseTravelTargetAction::Execute(Event& event)
             // holds the next request back, so that one need not wait out the backoff.
             if (NoteNoRouteTurnIns(context, travelTarget, ai::turnin_park::CountsAsNoRoute(ai::turnin_park::RouteOutcome::NoTarget,
                 chooseBudgetExceeded, lastRejects.crossMap + lastRejects.zoneLevel + lastRejects.dangerMap, lastRejects.turnInSuppressed,
-                lastRejects.movedAway + lastRejects.rangeSkip + lastRejects.resumeSkipped,
+                lastRejects.movedAway + lastRejects.rangeSkip + lastRejects.resumeSkipped + lastRejects.startZone + lastRejects.staleKeepZone,
                 sPlayerbotAIConfig.questFirstProgressionTurnInParkCountsRouteDanger)))
             {
                 SET_AI_VALUE2(bool, "no active travel destinations", futureTravelPurpose, false);
@@ -1251,7 +1285,7 @@ bool ChooseTravelTargetAction::Execute(Event& event)
         NoteTurnInRouteResults(context, travelTarget, ai::turnin_park::CountsAsNoRoute(
             takerFound ? ai::turnin_park::RouteOutcome::Taker : ai::turnin_park::RouteOutcome::Fallback,
             chooseBudgetExceeded, lastRejects.crossMap + lastRejects.zoneLevel + lastRejects.dangerMap, lastRejects.turnInSuppressed,
-            lastRejects.movedAway + lastRejects.rangeSkip + lastRejects.resumeSkipped,
+            lastRejects.movedAway + lastRejects.rangeSkip + lastRejects.resumeSkipped + lastRejects.startZone + lastRejects.staleKeepZone,
             sPlayerbotAIConfig.questFirstProgressionTurnInParkCountsRouteDanger), takerFound);
 
         // twow-repo#485: another target than a taker is the quest giver fallback - the job found
@@ -1260,7 +1294,7 @@ bool ChooseTravelTargetAction::Execute(Event& event)
             newTarget.GetDestination()->GetPurpose() == TravelDestinationPurpose::QuestTaker ?
                 ai::turnin_park::RouteOutcome::Taker : ai::turnin_park::RouteOutcome::Fallback,
             chooseBudgetExceeded, lastRejects.crossMap + lastRejects.zoneLevel + lastRejects.dangerMap, lastRejects.turnInSuppressed,
-            lastRejects.movedAway + lastRejects.rangeSkip + lastRejects.resumeSkipped,
+            lastRejects.movedAway + lastRejects.rangeSkip + lastRejects.resumeSkipped + lastRejects.startZone + lastRejects.staleKeepZone,
             sPlayerbotAIConfig.questFirstProgressionTurnInParkCountsRouteDanger));
     }
     else if (futureTravelPurpose == std::to_string(uint32(TravelDestinationPurpose::Grind)) && UsesQuestFirstProgression(bot))
@@ -1935,6 +1969,16 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
                         }
                         continue;
                     }
+                    case PostActiveDeferral::StartZone:   // twow-repo#601 owner rule R1 (StartZoneMinLevel)
+                        ++lastRejects.startZone;
+                        // a forced trip out of the start zone is held: one line, then no forced trip request for the hold period
+                        if (target->IsForced())
+                            ai::zone_keep::NoteForcedHold(bot, ai, AI_VALUE2(std::string, "manual string", "future travel purpose").c_str(),
+                                ai::zone_keep::OutsideStartZone(bot, position));
+                        continue;
+                    case PostActiveDeferral::StaleKeepZone:   // twow-repo#601 owner rule R1 (StaleKeepZone)
+                        ++lastRejects.staleKeepZone;
+                        continue;
                     case PostActiveDeferral::None:
                         break;
                 }
@@ -2595,6 +2639,12 @@ bool RequestNamedTravelTargetAction::Execute(Event& event)
 
     std::string travelName = getQualifier();
 
+    // twow-repo#601 owner rule R1 (StartZoneMinLevel): while a held forced trip's hold runs, no new forced trip request (no search) -
+    // no retry every tick (OB-00 04.11.).
+    if ((travelName == "guild meeting" || travelName == "guild order" || travelName == "petition") &&
+        ai::zone_keep::StartZoneHolds(bot, ai) && ai::zone_keep::ForcedHoldActive(ai))
+        return false;
+
     WorldPosition center = event.getOwner() ? event.getOwner() : (GetMaster() ? GetMaster() : bot);
 
     ai->TellDebug(ai->GetMaster(), "Getting new destination ranges for travel " + getQualifier(), "debug travel");
@@ -3038,6 +3088,10 @@ bool RequestNamedTravelTargetAction::Execute(Event& event)
                 endedAt - startedAt,
                 ai::profession_travel::HoldOverSeconds(endedAt, uint32(std::max(0, AI_VALUE2(int, "manual int", key + ai::profession_travel::kBackoffEndSuffix)))),
                 now - endedAt, AI_VALUE2(int, "manual int", key + ai::profession_travel::kNearSuffix) ? "near" : "gap");
+            // twow-repo#333 P1-aa (ProfessionTraining.TripNoGrind + Trace): the trip's status at its end (the minute check did not run in time).
+            if (ai::cohort::Applies(sPlayerbotAIConfig.professionTrainingTripNoGrind, bot->GetGUIDLow()) && sPlayerbotAIConfig.professionTrainingTrace)
+                ai::ProfessionTripStatusLine(ai, trainerTrip ? ai::profession_travel::kTripKindTrainer : ai::profession_travel::kTripKindTool,
+                    "end", "lost", nullptr, 0, -1.0f, "-", "-");
         }
         SET_AI_VALUE2(int, "manual int", key + ai::profession_travel::kNearSuffix, nearTrip ? 1 : 0);
         SET_AI_VALUE2(int, "manual int", key, int(now));

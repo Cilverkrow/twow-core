@@ -40,7 +40,7 @@ require_text("${triggers}" "!AI_VALUE2(bool, \"spell ready\", 8690)" "hearthston
 require_text("${actions}" "[ZoneEscape] state=wait reason=%s" "visible waiting")
 require_text("${world_position}" "int32 const parent = sTravelMgr.GetAreaLevel(area->zone);" "parent-zone fallback")
 require_text("${travel_mgr}" "sPlayerbotAIConfig.areaLevelOverrides.find(area_id)" "configured area levels")
-require_text("${config_template}" "AiPlayerbot.ZoneEscape.RetrySeconds = 60" "documented retry")
+require_text("${config_template}" "AiPlayerbot.ZoneEscape.RetrySeconds = 600" "documented retry")
 require_text("${config_template}" "AiPlayerbot.AreaLevelOverrides =" "documented overrides")
 
 # Train 6 follow-up: no hearthstone among mobs, cap at three attempts, and the

@@ -73,57 +73,23 @@ void ProtectionWarriorStrategy::InitCombatTriggers(std::list<TriggerNode*>& trig
         "has greater blessing of salvation",
         NextAction::array(0, new NextAction("remove greater blessing of salvation", ACTION_EMERGENCY), NULL)));
 
-    // twow-repo#568 D16: Heroic Throw does not exist in Turtle 1.18 (0 spell_template rows). On: no heroic
-    // throw step in front of charge / taunt / taunt on snare target; off: today's nodes.
-    const bool noHeroicThrow = sPlayerbotAIConfig.dietWarriorNoHeroicThrow;
+    // twow-repo#568 D16: Heroic Throw does not exist in Turtle 1.18 (0 spell_template rows): no heroic
+    // throw step in front of charge / taunt / taunt on snare target.
+    triggers.push_back(new TriggerNode(
+        "enemy out of melee",
+        NextAction::array(0, new NextAction("charge", ACTION_MOVE + 7), NULL)));
 
-    if (noHeroicThrow)
-    {
-        triggers.push_back(new TriggerNode(
-            "enemy out of melee",
-            NextAction::array(0, new NextAction("charge", ACTION_MOVE + 7), NULL)));
-    }
-    else
-    {
-        triggers.push_back(new TriggerNode(
-            "enemy out of melee",
-            NextAction::array(0, new NextAction("heroic throw", ACTION_MOVE + 8), new NextAction("charge", ACTION_MOVE + 7), NULL)));
-    }
+    // twow-repo#568 D39: the old 'intercept and rage' nodes are gone - their 'intercept and far enemy'
+    // trigger asked for "enemy is out of melee", which has no creator, so they never fired (restoring the
+    // gap-closer is a separate owner decision).
 
-    // twow-repo#568 D39: 'intercept and rage' -> 'intercept and far enemy' asks for the trigger
-    // "enemy is out of melee", which has no creator, so TwoTriggers never fires. On: the two dead
-    // nodes are not registered (restoring the gap-closer is a separate owner decision).
-    if (!sPlayerbotAIConfig.dietWarriorNoInterceptAndRage)
-    {
-        triggers.push_back(new TriggerNode(
-            "intercept and rage",
-            NextAction::array(0, new NextAction("berserker stance", ACTION_MOVE + 6), NULL)));
+    triggers.push_back(new TriggerNode(
+        "lose aggro",
+        NextAction::array(0, new NextAction("taunt", ACTION_MOVE + 4), NULL)));
 
-        triggers.push_back(new TriggerNode(
-            "intercept and rage",
-            NextAction::array(0, new NextAction("intercept", ACTION_MOVE + 5), NULL)));
-    }
-
-    if (noHeroicThrow)
-    {
-        triggers.push_back(new TriggerNode(
-            "lose aggro",
-            NextAction::array(0, new NextAction("taunt", ACTION_MOVE + 4), NULL)));
-
-        triggers.push_back(new TriggerNode(
-            "taunt on snare target",
-            NextAction::array(0, new NextAction("taunt on snare target", ACTION_MOVE), NULL)));
-    }
-    else
-    {
-        triggers.push_back(new TriggerNode(
-            "lose aggro",
-            NextAction::array(0, new NextAction("heroic throw taunt", ACTION_MOVE + 4), NULL)));
-
-        triggers.push_back(new TriggerNode(
-            "taunt on snare target",
-            NextAction::array(0, new NextAction("heroic throw on snare target", ACTION_MOVE), NULL)));
-    }
+    triggers.push_back(new TriggerNode(
+        "taunt on snare target",
+        NextAction::array(0, new NextAction("taunt on snare target", ACTION_MOVE), NULL)));
 
     triggers.push_back(new TriggerNode(
         "demoralizing shout",
@@ -134,19 +100,10 @@ void ProtectionWarriorStrategy::InitCombatTriggers(std::list<TriggerNode*>& trig
         NextAction::array(0, new NextAction("shield block", ACTION_HIGH + 5), NULL)));
 
     // twow-repo#568 D36: Devastate is not learnable in Turtle 1.18 (no Talent.dbc / trainer / skill line
-    // entry), so the devastate node always went IMPOSSIBLE -> sunder armor. On: sunder armor directly.
-    if (sPlayerbotAIConfig.dietWarriorNoDevastate)
-    {
-        triggers.push_back(new TriggerNode(
-            "sunder armor",
-            NextAction::array(0, new NextAction("sunder armor", ACTION_HIGH + 2), NULL)));
-    }
-    else
-    {
-        triggers.push_back(new TriggerNode(
-            "sunder armor",
-            NextAction::array(0, new NextAction("devastate", ACTION_HIGH + 2), NULL)));
-    }
+    // entry), so the devastate node always went IMPOSSIBLE -> sunder armor: sunder armor directly.
+    triggers.push_back(new TriggerNode(
+        "sunder armor",
+        NextAction::array(0, new NextAction("sunder armor", ACTION_HIGH + 2), NULL)));
 
     triggers.push_back(new TriggerNode(
         "revenge",
@@ -177,14 +134,8 @@ void ProtectionWarriorStrategy::InitCombatTriggers(std::list<TriggerNode*>& trig
     // Concussion Blow capstone (Prot 6/1, TalentID 92): 5-sec stun + 100%
     // armor pen + rage gen on cast. Defining caster-interrupt + threat
     // ability. Same priority tier as Shield Slam (HIGH+4).
-    // twow-repo#568 D40: the protection cc strategy registers the same trigger at ACTION_INTERRUPT and
-    // Queue::Push keeps the higher relevance, so this HIGH+4 node never decides. On: not registered.
-    if (!sPlayerbotAIConfig.dietWarriorDedupBloodrage)
-    {
-        triggers.push_back(new TriggerNode(
-            "concussion blow",
-            NextAction::array(0, new NextAction("concussion blow", ACTION_HIGH + 4), NULL)));
-    }
+    // twow-repo#568 D40: not registered here - the protection cc strategy registers the same trigger at
+    // ACTION_INTERRUPT and Queue::Push keeps the higher relevance, so a HIGH+4 node here never decided.
 
     // Improved Overpower stance-dance (Arms 2/1, 2/2): when an enemy dodges
     // our swing, swap to Battle Stance briefly, fire Overpower (near-100%
@@ -202,14 +153,8 @@ void ProtectionWarriorStrategy::InitCombatTriggers(std::list<TriggerNode*>& trig
     // Bloodrage opener: Improved Bloodrage 2/2 gives +50% rage generation.
     // Cast on engage to jump-start the rotation (Shield Slam needs ~15 rage
     // to fire, Bloodrage gives 30+).
-    // twow-repo#568 D40: the warrior buff strategy registers 'bloodrage' at ACTION_HIGH; this NORMAL+5
-    // duplicate never decides. On: not registered.
-    if (!sPlayerbotAIConfig.dietWarriorDedupBloodrage)
-    {
-        triggers.push_back(new TriggerNode(
-            "bloodrage",
-            NextAction::array(0, new NextAction("bloodrage", ACTION_NORMAL + 5), NULL)));
-    }
+    // twow-repo#568 D40: not registered here - the warrior buff strategy registers 'bloodrage' at
+    // ACTION_HIGH; a NORMAL+5 duplicate here never decided.
 
     // Defensive Tactics 3/3 auto-Berserker swap (Prot 5/2, TalentID 91):
     // At max rank, DT keeps 180% of Defiance's +30% threat boost when in
