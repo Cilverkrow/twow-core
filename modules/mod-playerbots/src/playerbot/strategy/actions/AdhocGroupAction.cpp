@@ -31,6 +31,8 @@ void AdhocGroupAction::SendInvite(Player* inviter, Player* invitee) const
 {
     // The existing group path (InviteToGroupAction::Invite): the invitee's AI
     // answers with "accept invitation".
+    // BOT-12 ([GroupOps] off-thread counts): the invitee's accept - the group create - is the ad-hoc path.
+    group_ops::NoteAdhocInvite(GetBotAI(invitee), inviter->GetGUIDLow());
     WorldPacket p;
     uint32 const rolesMask = 0;
     p << invitee->GetName();
@@ -126,9 +128,13 @@ bool AdhocGroupAction::CheckLeave(Group* group, uint32 now)
         return false;
 
     // BOT-12 (twow-repo#677, AiPlayerbot.BotGroups.OpQueue): every decided leave - leader_other_map included - goes to the
-    // world-thread queue; no group change on this map thread.
+    // world-thread queue; no group change on this map thread. Queued or refused (queue full, a pending op, the retry wait): the
+    // leave is decided, so this Execute ends here - a bot that wants to leave does not scan for invites.
     if (group_ops::QueueApplies(sPlayerbotAIConfig.botGroupsOpQueue, bot->GetGUIDLow()))
-        return EnqueueLeave(group, entry, reason, now);
+    {
+        EnqueueLeave(group, entry, reason, now);
+        return true;
+    }
 
     if (sPlayerbotAIConfig.botGroupsDiagnostics)
         sLog.outBasic("[BotGroup] kind=adhoc event=leave bot=%u group=%u quest=%u objective=%u reason=%s members=%u",
@@ -225,9 +231,10 @@ void AdhocGroupAction::Scan(uint32 now)
             continue;
         if (sServerFacade.GetDistance2d(bot, other) > radius || !IsCandidateBot(other))
             continue;
-        // BOT-12 (OpQueue): a neighbour with an op on the world thread is no candidate until it ran (never set with OpQueue 0).
+        // BOT-12 (OpQueue): a neighbour with an op on the world thread is no candidate until it ran (never set with OpQueue 0;
+        // a read only - the neighbour clears its own stale mark).
         if (PlayerbotAI* otherAi = GetBotAI(other))
-            if (group_ops::StillPending(otherAi, other->GetGUIDLow()))
+            if (group_ops::PendingHint(otherAi, other->GetGUIDLow()))
                 continue;
         if (adhoc_group::PairCooldowns().IsBlocked(bot->GetGUIDLow(), other->GetGUIDLow(), now))
             continue;
@@ -262,12 +269,12 @@ void AdhocGroupAction::Scan(uint32 now)
         // An invite, joined or not, puts the pair on the cooldown (design 3.3).
         adhoc_group::PairCooldowns().Block(bot->GetGUIDLow(), other->GetGUIDLow(), now + cooldown, now);
 
-        // BOT-12 (twow-repo#677, AiPlayerbot.BotGroups.OpQueue; the invitee's cohort decides - its accept creates the group): the
-        // invite and the accept run on the world thread. Refused (queue full): the pair keeps its cooldown, the next scan
-        // decides again.
+        // BOT-12 (twow-repo#677, AiPlayerbot.BotGroups.OpQueue; OB-00 04.11.: queued when the mode applies to EITHER bot - the
+        // inviter's invite and the invitee's accept both change groups): the invite and the accept run on the world thread.
+        // Refused (queue full): the pair keeps its cooldown, the next scan decides again.
         Player* const inviter = invite == adhoc_group::Invite::AInvitesB ? bot : other;
         Player* const invitee = invite == adhoc_group::Invite::AInvitesB ? other : bot;
-        if (group_ops::QueueApplies(sPlayerbotAIConfig.botGroupsOpQueue, invitee->GetGUIDLow()))
+        if (group_ops::JoinQueueApplies(sPlayerbotAIConfig.botGroupsOpQueue, inviter->GetGUIDLow(), invitee->GetGUIDLow()))
         {
             if (EnqueueJoin(inviter, invitee, key) && sPlayerbotAIConfig.botGroupsDiagnostics)
                 sLog.outBasic("[BotGroup] kind=adhoc event=invite inviter=%u invitee=%u quest=%u objective=%u joining_group=%u via=queue",

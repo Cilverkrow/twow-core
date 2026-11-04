@@ -24,14 +24,30 @@ Queue& Ops();
 // (PlayerbotAI::GroupOpPending) until the world thread ran or dropped it. otherAi: the inviter's AI (Join), else null.
 Pushed Enqueue(Op& op, PlayerbotAI* botAi, PlayerbotAI* otherAi);
 
-// Any thread: the bot has an op in the queue (queued, or being run). The AI mark is the lock-free fast path (0 for every bot
-// while OpQueue was never on); only a set mark asks the queue, and a mark the queue no longer knows is cleared.
+// The pending mark (PlayerbotAI::groupOpPending) is a HINT: the lock-free fast path (0 for every bot while OpQueue was never
+// on); the queue's own record (Queue::IsPending) is the truth. The mark is set before the push and cleared by seq when the op
+// ran or was dropped. A mark can briefly read set without a queued op (a push in flight, or a refused push being restored) and,
+// in a rare cross-thread race, read clear while an op is queued; the queue's dedup (RefusedPending) keeps both safe - at worst
+// the bot decides once more and the push is refused.
+//
+// The bot's own thread (AdhocGroupAction::Execute): its op waits. A mark the queue no longer knows (its op ran or was dropped
+// while the bot was not found) is cleared - by the seq read here, so a newer mark set meanwhile survives.
 bool StillPending(PlayerbotAI* ai, std::uint32_t guidLow);
+
+// Any thread (a neighbour's scan): the bot has an op waiting. Never clears a mark (that is the owner's job, above).
+bool PendingHint(PlayerbotAI* ai, std::uint32_t guidLow);
+
+// Map thread, the old ad-hoc path (AdhocGroupAction::SendInvite, OpQueue off for both bots): tags the invitee with its inviter
+// so the off-thread observer counts the invitee's accept - the group create - as the ad-hoc path. Only while the observer is
+// on (BotGroups.Diagnostics or OpQueue); one relaxed store.
+void NoteAdhocInvite(PlayerbotAI* inviteeAi, std::uint32_t inviterGuidLow);
 
 // World thread, PlayerbotWorldScript::OnUpdate only.
 void Drain();
 
-// World thread: the ad-hoc manager (AdHoc.WorldThread) or S7 changed a group in this world tick - the drain runs no op in it.
+// World thread: the ad-hoc manager (AdHoc.WorldThread: a scan slice, an invite or a leave) or S7 (a scan slice, a dissolution or
+// a group operation) did group work in this world tick - the drain runs no op in it. Not marked (world-thread group work that
+// can share a tick with one drained op): mod-dungeon-clear DcTestRunJob grouping, LoginFreeBots "create group", RandomizeFirst.
 void MarkHeavyTick();
 
 // The outermost bot action running on this thread (Engine::ListenAndExecute), read by the off-thread observer to attribute a
