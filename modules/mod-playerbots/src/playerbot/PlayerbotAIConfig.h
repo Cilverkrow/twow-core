@@ -929,7 +929,6 @@ public:
     bool questFirstProgressionProgressAwareObjectives = true;
     uint32 questFirstProgressionTurnInMaxDeathsOnRoute = 2;
     uint32 questFirstProgressionGrindFallbackFailures = 0;  // hotfix 8.32 (#544), 0 = off
-    uint32 questFirstProgressionGrindFallbackMinutes = 0;   // twow-repo#601: the 8.32 fallback holds N min after the last empty search, 0 = for good
     // twow-repo#601 S1 "latch semantics" (OB-10 17.10.2026), all false = today's behaviour, restart-only
     // (aiplayerbot.conf.dist.in): failure classes + taker pre-validation + grind yield + pre-loop filters.
     bool questFirstProgressionFailureClasses = false;
@@ -1024,7 +1023,6 @@ public:
     bool directTargetsTraceInactive = false;
     uint32 directTargetsFreshMaxLevel = 5;
     uint32 directTargetsFreshBackoffSeconds = 0;  // 0 = the 8.1 backoff
-    uint32 directTargetsFreshGrindFailures = 0;   // 0 = QuestFirstProgression.GrindFallbackFailures
     // twow-repo#594 / P3-b (direct targets, all default 0, built at boot only, each behind directTargetsEnabled): anvil /
     // forge, cooking fire, fishing-hole shore points, dungeon and raid entrances (DirectTargetPolicy.h)
     bool directTargetsStation = false;

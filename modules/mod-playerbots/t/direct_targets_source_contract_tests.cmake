@@ -53,9 +53,8 @@ file(READ "${PB_SOURCE_DIR}/aiplayerbot.conf.dist.in" config_dist)
 require_text("${config_cpp}" "directTargetsEnabled = config.GetBoolDefault(\"AiPlayerbot.DirectTargets.Enable\", false);" "master default off")
 require_text("${config_cpp}" "directTargetsTraceInactive = config.GetBoolDefault(\"AiPlayerbot.DirectTargets.TraceInactive\", false);" "trace default off")
 require_text("${config_cpp}" "config.GetIntDefault(\"AiPlayerbot.DirectTargets.FreshBackoffSeconds\", 0)" "fresh backoff default 0")
-require_text("${config_cpp}" "config.GetIntDefault(\"AiPlayerbot.DirectTargets.FreshGrindFailures\", 0)" "fresh grind default 0")
 foreach(line "AiPlayerbot.DirectTargets.Enable = 0" "AiPlayerbot.DirectTargets.TraceInactive = 0"
-             "AiPlayerbot.DirectTargets.FreshBackoffSeconds = 0" "AiPlayerbot.DirectTargets.FreshGrindFailures = 0")
+             "AiPlayerbot.DirectTargets.FreshBackoffSeconds = 0")
   require_text("${config_dist}" "\n${line}\n" "dist ${line}")
 endforeach()
 
@@ -96,10 +95,6 @@ region("${choose}" "ai::quest_search::RejectCounts::InactiveReason InactiveReaso
 require_order("${reason_fn}" "relation->IsPossible(info)" "can accept quest npc::" "IsActive order: possible before the mark")
 require_order("${reason_fn}" "can accept quest npc::" "IsHostileTo(bot)" "IsActive order: mark before hostile")
 
-# 8.32 grind fallback: the fresh threshold only for a fresh bot with the value set, before the unchanged 8.32 line.
-require_order("${values}" "if (ai::quest_search::FreshBot(sPlayerbotAIConfig.directTargetsEnabled, bot->GetLevel(), sPlayerbotAIConfig.directTargetsFreshMaxLevel) &&
-                sPlayerbotAIConfig.directTargetsFreshGrindFailures)
-                return ai::quest_search::GrindFallback(true, failures, sPlayerbotAIConfig.directTargetsFreshGrindFailures) &&" "return ai::quest_search::GrindFallback(true, failures, sPlayerbotAIConfig.questFirstProgressionGrindFallbackFailures) &&" "fresh branch before the unchanged 8.32 line")
 
 # Minute line before the PerfMon Init (no return in UpdateAIInternal).
 region("${mgr}" "void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)" "sPerformanceMonitor.Init(0, 0);" upd)
