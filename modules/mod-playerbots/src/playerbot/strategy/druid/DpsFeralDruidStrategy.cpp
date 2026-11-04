@@ -26,11 +26,11 @@ private:
 
     ACTION_NODE_A(feral_charge_cat, "feral charge - cat", "reach melee");
 
-    // twow-repo#568 D43 (AiPlayerbot.Diet.FeralNoMangle): vanilla has no Mangle (Cat); its own alternative is claw.
+    // twow-repo#568 D43: vanilla has no Mangle (Cat); its own alternative is claw.
     static bool DietNoMangle()
     {
 #ifdef MANGOSBOT_ZERO
-        return sPlayerbotAIConfig.dietFeralNoMangle;
+        return true;
 #else
         return false;
 #endif
@@ -73,11 +73,11 @@ public:
 private:
     ACTION_NODE_A(feral_charge_cat, "feral charge - cat", "reach melee");
 
-    // twow-repo#568 D43 (AiPlayerbot.Diet.FeralNoMangle): vanilla has no Mangle (Cat); its own alternative is claw.
+    // twow-repo#568 D43: vanilla has no Mangle (Cat); its own alternative is claw.
     static bool DietNoMangle()
     {
 #ifdef MANGOSBOT_ZERO
-        return sPlayerbotAIConfig.dietFeralNoMangle;
+        return true;
 #else
         return false;
 #endif
@@ -139,10 +139,10 @@ void DpsFeralDruidStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers
         "behind target",
         NextAction::array(0, new NextAction("shred", ACTION_NORMAL + 1), NULL)));
 
-    // twow-repo#568 D43 (AiPlayerbot.Diet.FeralNoMangle): no Mangle (Cat) in vanilla, push its alternative.
+    // twow-repo#568 D43: no Mangle (Cat) in vanilla, push its alternative.
     triggers.push_back(new TriggerNode(
         "not behind target",
-        NextAction::array(0, new NextAction(sPlayerbotAIConfig.dietFeralNoMangle ? "claw" : "mangle (cat)", ACTION_NORMAL), NULL)));
+        NextAction::array(0, new NextAction("claw", ACTION_NORMAL), NULL)));
 }
 
 void DpsFeralDruidStrategy::InitNonCombatTriggers(std::list<TriggerNode*>& triggers)
@@ -280,14 +280,8 @@ void DpsFeralDruidAoeStrategy::InitCombatTriggers(std::list<TriggerNode*>& trigg
 {
     DruidAoeStrategy::InitCombatTriggers(triggers);
 
-    // twow-repo#568 D44 (AiPlayerbot.Diet.FeralNoCatSwipe): Swipe (Cat) does not exist in vanilla and has no
+    // twow-repo#568 D44: Swipe (Cat) does not exist in vanilla and has no
     // alternative; the node could only end IMPOSSIBLE (after a useless "reach melee"). Read at engine init.
-    if (!sPlayerbotAIConfig.dietFeralNoCatSwipe)
-    {
-        triggers.push_back(new TriggerNode(
-            "melee medium aoe",
-            NextAction::array(0, new NextAction("swipe (cat)", ACTION_HIGH), NULL)));
-    }
 }
 
 void DpsFeralDruidAoeStrategy::InitNonCombatTriggers(std::list<TriggerNode*>& triggers)
