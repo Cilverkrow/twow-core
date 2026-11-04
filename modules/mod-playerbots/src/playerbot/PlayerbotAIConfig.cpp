@@ -806,7 +806,7 @@ bool PlayerbotAIConfig::Initialize()
         reviveSpiritHealerFull = 1;   // an unknown mode is the default (0 off = rollback, 1 all, 2 cohort B)
     zoneEscapeEnabled = config.GetBoolDefault("AiPlayerbot.ZoneEscape.Enabled", false);
     zoneEscapeCooldownSeconds = std::max<uint32>(60, config.GetIntDefault("AiPlayerbot.ZoneEscape.CooldownSeconds", 600));
-    zoneEscapeRetrySeconds = std::max<uint32>(15, config.GetIntDefault("AiPlayerbot.ZoneEscape.RetrySeconds", 60));
+    zoneEscapeRetrySeconds = std::max<uint32>(15, config.GetIntDefault("AiPlayerbot.ZoneEscape.RetrySeconds", 600));
     areaLevelOverrides.clear();
     {
         std::vector<std::string> pairs = split(config.GetStringDefault("AiPlayerbot.AreaLevelOverrides", ""), ',');
@@ -1063,7 +1063,7 @@ bool PlayerbotAIConfig::Initialize()
     shortcutTrace = config.GetBoolDefault("AiPlayerbot.Shortcut.Trace", false);
     shortcutGroupLoopFix = config.GetBoolDefault("AiPlayerbot.Shortcut.GroupLoopFix", false);
     pathRouteFailDetail = config.GetBoolDefault("AiPlayerbot.Path.RouteFailDetail", false);
-    pathRouteFailDetailLinesPerMinute = ai::path_fail::ClampLinesPerMinute(config.GetIntDefault("AiPlayerbot.Path.RouteFailDetail.LinesPerMinute", 30));
+    pathRouteFailDetailLinesPerMinute = ai::path_fail::ClampLinesPerMinute(config.GetIntDefault("AiPlayerbot.Path.RouteFailDetail.LinesPerMinute", 10));
     pathHonestRouteFail = config.GetBoolDefault("AiPlayerbot.Path.HonestRouteFail", false);
     pathPartialNoop = config.GetBoolDefault("AiPlayerbot.Path.PartialNoop", false);
     pathPartialNoopReach = std::min(10.0f, std::max(0.5f, config.GetFloatDefault("AiPlayerbot.Path.PartialNoop.Reach", ai::path_fail::PartialNoopDefaultReach)));

@@ -1180,7 +1180,7 @@ AiPlayerbot.ZoneEscape.Enabled = 0
 AiPlayerbot.ZoneEscape.CooldownSeconds = 600
 # After a hearthstone attempt that left the bot in the zone (cast interrupted),
 # try again after RetrySeconds instead of the full cooldown.
-AiPlayerbot.ZoneEscape.RetrySeconds = 60
+AiPlayerbot.ZoneEscape.RetrySeconds = 600
 # Area levels for areas the generated ai_playerbot_zone_level table misses or
 # gets wrong, as a comma list of <area id>:<level> (e.g. Turtle zones).
 AiPlayerbot.AreaLevelOverrides =
@@ -1809,7 +1809,7 @@ AiPlayerbot.Shortcut.GroupLoopFix = 0
 # cooldown / budget / no-node / transport cases. [RouteFailDetail] summary failed= logged= honest= once a minute.
 # LinesPerMinute 0..600 (0 = summary only). 0 = off (default).
 AiPlayerbot.Path.RouteFailDetail = 0
-AiPlayerbot.Path.RouteFailDetail.LinesPerMinute = 30
+AiPlayerbot.Path.RouteFailDetail.LinesPerMinute = 10
 # twow-repo#575 (PATH-01 #3, BEHAVIOUR CHANGE, "nach Abnahme an"): a node route search without a route used to
 # end as the target point alone; farther than react distance that point was cut off and MoveTo reported success
 # with an empty path, so the bot searched again on the next tick (minutes of retries, travel retry counter
