@@ -5,7 +5,7 @@ cmake_policy(VERSION 3.16)
 #  - the pure policy (no game types, no locks, no config, no area ids; Applies never accepts 0),
 #  - inert at 0: every new entry reads the switch first or a field only the band path writes; the conf ships 0 and "",
 #  - the clock: one SetBandTripEnd site, the end written only in CopyTarget / EndBandTrip / NoteBandTripReplaced, the
-#    SetStatus clamp after the gap clamps, the CheckStatus band block after the travel-once clear and before the rest-gate
+#    SetStatus clamp the CheckStatus band block after the travel-once clear and before the rest-gate
 #    hold, the arrival block before WORK, no failure / retry / extension in the ends (OB-10 Q4: replaced is no failure),
 #  - the guards: no refresh, no group copy of a band hub trip, the idle rescue waits for a running trip, never forced, the
 #    request's condition cleared after the band setNewTarget,
@@ -150,7 +150,7 @@ require_text("${band}" "bool ai::quest_band::GiverTripDoneFor(PlayerbotAI* ai, P
 require_text("${band}" "    if (!sPlayerbotAIConfig.questFirstProgressionBandLadder || !Built() || rung >= ladder.rungs.size() || !botAi ||" "the trip scope: the switch first")
 require_text("${mgr}" "void ReportQuestBand()\n{\n    if (!sPlayerbotAIConfig.questFirstProgressionBandLadder)\n        return;" "the minute line: the switch first")
 count_text("${mgr}" "ReportQuestBand();" 1 "one minute line call")
-require_order("${mgr}" "    ReportGrindWindow();  //" "    ReportQuestBand();    //" "next to the gap window line")
+require_order("${mgr}" "    ReportQuestOrder();   //" "    ReportQuestBand();    //" "next to the QuestOrder line")
 require_text("${ai_cpp}" "    if (value && sPlayerbotAIConfig.questFirstProgressionBandLadder)\n    {\n        bandEpisodeResetPending.store(true, std::memory_order_relaxed);\n        bandRescue.store(0, std::memory_order_relaxed);\n    }" "SetParked tail behind the switch")
 require_text("${choose}" "            uint32 const bandSearchedStage = sPlayerbotAIConfig.questFirstProgressionBandLadder ?\n                uint32(std::max(0, AI_VALUE2(int, \"manual int\", \"quest search stage\"))) : 0u;" "E1: the switch first")
 require_text("${choose}" "            if (sPlayerbotAIConfig.questFirstProgressionBandLadder && !staleKeepZone && !startZoneHold &&\n                TryBandStep(requester, travelTarget, bandSearchedStage, freshBot, rescueRequested,\n                    sPlayerbotAIConfig.questFirstProgressionBandWalkAfterEmptySearches ? &bandWalk : nullptr))\n            {" "E2: the switch first (F4: a walk plan only with its key)")
@@ -167,18 +167,17 @@ count_text("${travel_mgr}" "bandTripEnd = " 1 "the end written in TravelMgr.cpp 
 count_text("${band}" "bandTripEnd = " 2 "the end cleared only by EndBandTrip and NoteBandTripReplaced")
 region("${travel_mgr}" "void TravelTarget::SetTarget(TravelDestination* tDestination1, WorldPosition* wPosition1) {" "\n}\n" set_target)
 require_text("${set_target}" "    if (tDestination1 != tDestination && bandTripEnd)\n        NoteBandTripReplaced();" "a replaced trip ends in SetTarget")
-require_order("${set_target}" "    if (tDestination1 != tDestination)\n        gapWindowEnd = 0;" "NoteBandTripReplaced();" "after the gap clear")
 require_order("${set_target}" "NoteBandTripReplaced();" "    tDestination = tDestination1;" "before the destination changes (the line names the hub)")
 region("${travel_mgr}" "bool TravelTarget::CopyTarget(TravelTarget* const target) {" "\n}\n" copy_target)
-require_order("${copy_target}" "gapWindowEnd = target->gapWindowEnd;" "bandTripEnd = target->bandTripEnd;" "the choice's end after SetTarget and the gap end")
+require_order("${copy_target}" "SetTarget(target->tDestination, target->wPosition);" "bandTripEnd = target->bandTripEnd;" "the choice's end after SetTarget")
 region("${travel_mgr}" "void TravelTarget::SetStatus(TravelStatus status) {" "\n}\n" set_status)
-require_order("${set_status}" "GapCooldownMs(" "    if (bandTripEnd)\n        statusTime = ai::quest_band::TripStatusMs(uint8(m_status), statusTime, bandTripEnd, uint32(time(nullptr)));" "the band clamp after every other status time")
+require_order("${set_status}" "statusTime = tDestination->GetCooldownDelay();" "    if (bandTripEnd)\n        statusTime = ai::quest_band::TripStatusMs(uint8(m_status), statusTime, bandTripEnd, uint32(time(nullptr)));" "the band clamp after every other status time")
 region("${travel_mgr}" "void TravelTarget::CheckStatus()\n{" "\n}\n" check_status)
 set(band_block "    if (bandTripEnd || (tDestination && tDestination->IsBandHub()))\n    {\n        uint8 const verdict = CheckBandTrip();\n        if (verdict != uint8(ai::quest_band::TripVerdict::Running))\n        {\n            EndBandTrip(verdict);\n            return;\n        }\n    }")
 require_text("${check_status}" "${band_block}" "the band block")
 count_text("${travel_mgr}" "CheckBandTrip()" 1 "one band block")
 require_order("${check_status}" "    sTravelMgr.SetNullTravelTarget(this);\n        return;\n    }" "${band_block}" "after the travel-once clear")
-require_order("${check_status}" "${band_block}" "if (statusTime != 0 && !IsForced() && !gapWindowEnd && GetTimeLeft() <= 0 && RestGateValue::Resting(ai))" "before the rest-gate hold (no SetExpireIn extends a band trip)")
+require_order("${check_status}" "${band_block}" "if (statusTime != 0 && !IsForced() && GetTimeLeft() <= 0 && RestGateValue::Resting(ai))" "before the rest-gate hold (no SetExpireIn extends a band trip)")
 require_order("${check_status}" "${band_block}" "    if (statusTime != 0 && GetTimeLeft() <= 0 && !IsForced())\n    {" "before the generic expiry")
 set(arrival_block "            if (bandTripEnd)\n            {\n                EndBandTrip(ai::quest_band::EndArrived);\n                return;\n            }")
 require_text("${check_status}" "${arrival_block}" "the arrival block")
@@ -260,7 +259,7 @@ require_text("${step}" "homebind::IsZoneClearlyAboveLevel(" "hubs clearly above 
 count_text("${travel_mgr}" "info.HasBandGiverFilter()" 2 "the snapshot bit read in IsPossible (E) and IsActive (F) only")
 count_text("${travel_mgr}" "bandGiverFilter = " 1 "the bit written only in the snapshot constructor")
 count_text("${travel_mgr}" "QuestBandGiverFilter()" 1 "the scope read once, in the constructor (never in the async job)")
-region("${travel_mgr}" "PlayerTravelInfo::PlayerTravelInfo(Player* player, bool gapGrind)\n{" "\n}\n" info_ctor)
+region("${travel_mgr}" "PlayerTravelInfo::PlayerTravelInfo(Player* player)\n{" "\n}\n" info_ctor)
 require_text("${info_ctor}" "    bandGiverFilter = ai->QuestBandGiverFilter();\n    bandGreyLevel = bandGiverFilter ? MaNGOS::XP::GetGrayLevel(level) : 0;" "the band snapshot on the bot thread")
 require_text("${travel_h}" "bool bandGiverFilter = false;" "no filter by default")
 forbid_text("${travel_h}" "SetBandGiverFilter" "a setter (the snapshot is written only by its constructor)")
@@ -275,7 +274,6 @@ require_order("${giver_active}" "ai->SkipInfeasibleQuest(GetQuestTemplate(), ai:
 region("${travel_mgr}" "        if (destinationInactive || conditionsInactive)\n        {" "            return;\n        }\n    }\n}" inactive)
 set(giver_done_block "            if (destinationInactive && ai::quest_band::GiverTripDoneFor(ai, bot, tDestination))\n            {\n                ai->TellDebug(ai->GetMaster(), \"The quest giver trip ends because its quest was taken.\", \"debug travel\");\n                SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);\n                ai->GetAiObjectContext()->ClearValues(\"no active travel destinations\");\n                return;\n            }")
 require_text("${inactive}" "${giver_done_block}" "giver_done: EXPIRED at once (OB-10 Q1)")
-require_order("${inactive}" "if (gapWindowEnd)\n            {" "${giver_done_block}" "after the gap trip end")
 require_order("${inactive}" "${giver_done_block}" "SetStatus(TravelStatus::TRAVEL_STATUS_COOLDOWN);" "before the COOLDOWN (no 60 s per accepted quest)")
 require_order("${inactive}" "${giver_done_block}" "TraceQuestCommit(tDestination, \"drop\"" "before the quest commit drop trace")
 foreach(banned "COOLDOWN" "NoteQuestObjectiveFailure" "SetExpireIn" "OnWorkTimeout" "NoteTurnInFailure" "IncRetry" "quest route failures")
@@ -440,8 +438,8 @@ require_text("${policy}" "    return walkAfter && f.emptyStreak >= walkAfter && 
 require_text("${policy}" "    return walkEnd > now && walkEnd - now >= MinWalkSeconds;" "F4: no walk without a backoff, none below 30 s")
 require_text("${policy}" "constexpr std::uint32_t MinWalkSeconds = 30;" "F4: 30 s")
 require_text("${policy}" "\"walks\", \"walk_arrived\", \"walk_ended\", \"walk_replaced\", \"walk_no_rung\" };" "F4 minute counts appended")
-# the plan: only behind its key (the caller passes no plan at 0), only when the step is not due, never for GrindMode 1
-require_text("${step}" "    bool const walk = walkPlan && verdict == qb::StepVerdict::NotDue && !ai->IsQuestGapGrind() &&\n        qb::WalkDue(facts, sPlayerbotAIConfig.questFirstProgressionBandWalkAfterEmptySearches);\n    if (verdict == qb::StepVerdict::NotDue && !walk)\n        return false;" "F4: the plan only when no step is due")
+# the plan: only behind its key (the caller passes no plan at 0), only when the step is not due
+require_text("${step}" "    bool const walk = walkPlan && verdict == qb::StepVerdict::NotDue &&\n        qb::WalkDue(facts, sPlayerbotAIConfig.questFirstProgressionBandWalkAfterEmptySearches);\n    if (verdict == qb::StepVerdict::NotDue && !walk)\n        return false;" "F4: the plan only when no step is due")
 region("${step}" "    if (walk)\n    {" "        return false;\n    }" walk_plan)
 require_order("${step}" "    if (walk)\n    {" "    setNewTarget(requester, &band, travelTarget);" "F4: the plan returns before the step's trip")
 foreach(banned "setNewTarget" "OnBandStep" "RequestQuestRouteReset" "NoteBand(" "sLog")

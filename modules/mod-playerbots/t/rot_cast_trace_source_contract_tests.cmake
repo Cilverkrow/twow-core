@@ -6,7 +6,7 @@ cmake_policy(VERSION 3.16)
 #  - every hook behind the switch with the switch-off path unchanged: CastSpellAction / CastPetSpellAction isPossible
 #    (RefreshSpellIdOnLearn() stays the first statement, the off path calls CanCastSpell exactly as before), Execute,
 #    the flush after HandleQueuedBotPackets, SMSG_CAST_RESULT before the handler queue, [RotRole] after the engine
-#    init loop, [RotPull] after the unchanged AttackAnythingAction event, ReportRotCast after ReportQuestIdle,
+#    init loop, [RotPull] after the unchanged AttackAnythingAction event, ReportRotCast after ReportQuestBand,
 #  - bounded output: every [Rot*] line has a budget or is once per minute/hour; no shared_mutex, no logEvent.
 # Reads only named files below modules/mod-playerbots/src/playerbot (never a glob, never src/modules/Eluna).
 
@@ -170,7 +170,7 @@ require_order("${choose_target}" "ai::rot_cast::FormatPullLine(" "if (ai->HasStr
 require_text("${choose_target}" "if (sPlayerbotAIConfig.rotationCastTrace && ai::rot_cast_rt::TakePullBudget(uint32(time(nullptr))))" "pull line behind the switch and its budget")
 
 # 7. World-thread report.
-require_order("${rpm_cpp}" "    ReportQuestIdle();" "    ReportRotCast();" "report after ReportQuestIdle")
+require_order("${rpm_cpp}" "    ReportQuestBand();" "    ReportRotCast();" "report after ReportQuestBand")
 region("${rpm_cpp}" "void ReportRotCast()\n{\n" "\n}\n" report)
 require_text("${report}" "    if (!sPlayerbotAIConfig.rotationCastTrace)\n    {\n        tracing = false;\n        return;" "report off = nothing")
 

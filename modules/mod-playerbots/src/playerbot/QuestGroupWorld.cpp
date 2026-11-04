@@ -213,7 +213,7 @@ SavedTravel SaveTravel(TravelTarget* t)
     SavedTravel s;
     TravelStatus const st = t->GetStatus();
     TravelDestination* d = t->GetDestination();
-    if (d && !dynamic_cast<TemporaryTravelDestination*>(d) && !t->IsGroupCopy() && !t->GetGapWindowEnd() && !t->GetBandTripEnd() &&
+    if (d && !dynamic_cast<TemporaryTravelDestination*>(d) && !t->IsGroupCopy() && !t->GetBandTripEnd() &&
         !d->IsBandHub() &&
         (st == TravelStatus::TRAVEL_STATUS_READY || st == TravelStatus::TRAVEL_STATUS_TRAVEL || st == TravelStatus::TRAVEL_STATUS_WORK))
     {

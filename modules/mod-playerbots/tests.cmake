@@ -254,35 +254,6 @@ add_test(NAME quest_failure_class_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/quest_failure_class_source_contract_tests.cmake")
 
-# twow-repo#601 GrindMode (AiPlayerbot.QuestFirstProgression.GrindMode, default 0; owner 17.10.2026): with 2 no grind as
-# a substitute activity for quest-first roster bots on their own below the max level, [QuestIdle] (policy).
-add_executable(quest_grind_mode_policy_tests
-  "${PB_MODULE_DIR}/t/quest_grind_mode_policy_tests.cpp")
-
-target_include_directories(quest_grind_mode_policy_tests PRIVATE
-  "${PB_MODULE_DIR}/src/playerbot")
-
-set_target_properties(quest_grind_mode_policy_tests PROPERTIES
-  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
-
-add_test(NAME quest_grind_mode_policy
-  COMMAND quest_grind_mode_policy_tests
-  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
-
-add_test(NAME quest_grind_mode_source_contract
-  COMMAND "${CMAKE_COMMAND}"
-    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
-    -P "${PB_MODULE_DIR}/t/quest_grind_mode_source_contract_tests.cmake")
-
-# twow-repo#601 S2 / S4 (GrindMode 1 = gap filler, default 0; OB-10 rev. 2 18.10.2026): grind only inside the quest route
-# backoff (R1, before the S0 lines), the grind trip ends with the backoff and its end counts as no failure (R2). Commit 2:
-# R3 window via the snapshot scope bit, own map, R4, R5, [GrindWindow] minute line. Review fixes: inactive gap trip ends at
-# once (no COOLDOWN), cooldown cap, no refresh / money / group grind copy, window only for the gap grind fetch / choice / trip.
-add_test(NAME grind_gap_window_source_contract
-  COMMAND "${CMAKE_COMMAND}"
-    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
-    -P "${PB_MODULE_DIR}/t/grind_gap_window_source_contract_tests.cmake")
-
 # twow-repo#601 S5a (AiPlayerbot.QuestFirstProgression.BandLadder, default 0 / BandLadderFile ""; OB-00 D9 19.10.2026): the
 # band step to the next quest hub of hub-ladder.tsv with a fixed-end trip, the band giver filter, giver_done, log_full, the
 # second-expiry forward rescue (policy) and the hooks, inert at 0 (source contract).

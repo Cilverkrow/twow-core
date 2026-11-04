@@ -1,6 +1,6 @@
 # twow-repo#601 / #614 (L1 observation 19.10.2026): grey is judged by the mob's level (QuestSearchPolicy.h GreyByLevel), never by
 # MaNGOS::XP::Gain - that one is 0 for every mob nobody has damaged yet (damage-origin share outside dungeons). Diagnostics
-# ([GreyTargets], [GrindPick], [GrindWindow]) always by level; the #421 grey skip by level with AiPlayerbot.Grind.GreyByLevel.
+# ([GreyTargets], [GrindPick]) always by level; the #421 grey skip by level with AiPlayerbot.Grind.GreyByLevel.
 
 # cmake 3.x script mode (Debian trixie builder / CI): policies as in the host cmake 4.x.
 cmake_policy(VERSION 3.16)
@@ -57,12 +57,11 @@ require_text("${config_cpp}" "grindGreyByLevel = config.GetBoolDefault(\"AiPlaye
 require_text("${conf_dist}" "AiPlayerbot.Grind.GreyByLevel = 0" "documented, 0 by default")
 
 set(by_level "ai::quest_search::GreyByLevel(creature->GetLevel(), MaNGOS::XP::GetGrayLevel(bot->GetLevel()))")
-# Diagnostics: [GreyTargets] and the #421 skip in GrindTargetValue, [GrindPick] and [GrindWindow] in ChooseTargetActions - by level.
+# Diagnostics: [GreyTargets] and the #421 skip in GrindTargetValue, [GrindPick] in ChooseTargetActions - by level.
 count_text("${grind_cpp}" "${by_level}" 2 "grey by level in GrindTargetValue ([GreyTargets] + #421 skip)")
-count_text("${choose_cpp}" "${by_level}" 2 "grey by level in ChooseTargetActions ([GrindPick] + [GrindWindow])")
+count_text("${choose_cpp}" "${by_level}" 1 "grey by level in ChooseTargetActions ([GrindPick])")
 require_text("${grind_cpp}" "if (creature && creature->GetObjectGuid() != lastGreyTarget &&\n        ${by_level})" "[GreyTargets] by level")
 require_text("${choose_cpp}" "pickGrey = creature && ${by_level};" "[GrindPick] by level")
-require_text("${choose_cpp}" "gapGrey = creature && ${by_level};" "[GrindWindow] by level")
 # XP::Gain only in the switch-off branch of the #421 skip, nowhere else.
 count_text("${grind_cpp}" "MaNGOS::XP::Gain(" 1 "XP::Gain only in the switch-off branch")
 count_text("${choose_cpp}" "MaNGOS::XP::Gain(" 0 "no XP::Gain grey test in ChooseTargetActions")
