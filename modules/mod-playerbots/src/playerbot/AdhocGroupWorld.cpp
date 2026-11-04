@@ -160,7 +160,7 @@ bool WorldThreadManager::CheckLeave(Player* bot, Group* group, std::uint32_t now
     bool const outOfRange = leader && leader != bot && OutOfRangeFact(otherMap,
         !otherMap && sServerFacade.GetDistance2d(bot, leader) > 2.0f * radius, otherMapRule);
     track.outOfRangeSince = outOfRange ? (track.outOfRangeSince ? track.outOfRangeSince : now) : 0;
-    track.leaderOtherMapSince = otherMapRule && otherMap ? (track.leaderOtherMapSince ? track.leaderOtherMapSince : now) : 0;
+    track.leaderOtherMapSince = LeaderOtherMapClock(otherMapRule, leader != nullptr, otherMap, track.leaderOtherMapSince, now);
 
     std::uint32_t minLevel = bot->GetLevel();
     std::uint32_t maxLevel = bot->GetLevel();

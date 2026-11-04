@@ -1303,12 +1303,17 @@ AiPlayerbot.BotGroups.AdHoc.HelpUntilDone = 0
 # continent for 10 h, ~13 ms per update at a zeppelin dock, and never left): with the mode on for the bot
 # - the ad-hoc leave of the action path (AdHoc.WorldThread = 0) really leaves: a free (roster) bot stayed in its group when the
 #   ad-hoc action asked it to leave, so the decided leave never happened (7,574 decisions, 155 leaves). It now takes the core
-#   leave path every other bot takes;
-# - a leader on another map (or another instance of a dungeon, raid or battleground; not another region of a continent) for
-#   LeaderOtherMapSeconds is the leave reason leader_other_map ([BotGroup] kind=adhoc event=leave ... reason=leader_other_map),
-#   checked before out_of_range, which then counts only the distance on the same map. Both leave paths (WorldThread 0 and 1);
-# - "follow" is not useful for a follow target on another map that is no real player: no cross-map route each update. Bots of
-#   a real player keep following it as before.
+#   leave path every other bot takes. Risk: with WorldThread = 0 that leave runs the core group leave/disband on the bot's
+#   map thread (as for non-free bots today; twow-repo#628 group map not locked), now for every ad-hoc leave - watch Group
+#   crashes (cores in wsl-crashes) in the arms that turn this on; keep 0 in perf windows;
+# - a leader on another map id for LeaderOtherMapSeconds is the leave reason leader_other_map ([BotGroup] kind=adhoc
+#   event=leave ... reason=leader_other_map), checked before out_of_range, which then counts only the distance on the same
+#   map: a cross-map member leaves after LeaderOtherMapSeconds as leader_other_map, no longer after 60 s as out_of_range. A
+#   leader not in the world (far teleport, relog) keeps the clock. Both leave paths (WorldThread 0 and 1);
+# - "follow" is not useful for a follow target on another map (or another instance of a dungeon, raid or battleground; not
+#   another region of a continent) that is no real player: no cross-map route each update. Bots with a real-player master
+#   and bots following a real player keep following as before. This also holds for bot-only groups that are not ad-hoc
+#   (they stop following a bot on another map but have no leader_other_map leave).
 # No new log lines. Mode (in-realm A/B, cohort parity): 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low
 # guid), 3 = only cohort A (even low guid; crossover unit 2). Any other value acts like 0.
 AiPlayerbot.BotGroups.LeaderOtherMap = 0

@@ -100,7 +100,7 @@ bool AdhocGroupAction::CheckLeave(Group* group, uint32 now)
     bool const outOfRange = leader && leader != bot && adhoc_group::OutOfRangeFact(otherMap,
         !otherMap && sServerFacade.GetDistance2d(bot, leader) > 2.0f * radius, otherMapRule);
     outOfRangeSince = outOfRange ? (outOfRangeSince ? outOfRangeSince : now) : 0;
-    leaderOtherMapSince = otherMapRule && otherMap ? (leaderOtherMapSince ? leaderOtherMapSince : now) : 0;
+    leaderOtherMapSince = adhoc_group::LeaderOtherMapClock(otherMapRule, leader != nullptr, otherMap, leaderOtherMapSince, now);
 
     uint32 minLevel = bot->GetLevel();
     uint32 maxLevel = bot->GetLevel();
