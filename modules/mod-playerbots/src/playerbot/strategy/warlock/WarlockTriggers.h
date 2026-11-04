@@ -37,17 +37,17 @@ namespace ai
     };
 
     DEBUFF_TRIGGER_A(CorruptionTrigger, "corruption");
-    // twow-repo#568 (D24, AiPlayerbot.Diet.WarlockTalentKnown): siphon life, dark pact, shadowburn and
+    // twow-repo#568 (D24): siphon life, dark pact, shadowburn and
     // conflagrate are talents (no trainer row for rank 1). Without the talent their nodes ran PREREQ, a reach
-    // spell push and IMPOSSIBLE (spell id 0, no alternative). With the switch these triggers wait for a known
-    // spell; switch off: the old checks / the old generic trigger names in the strategies.
+    // spell push and IMPOSSIBLE (spell id 0, no alternative). These triggers wait for a known
+    // spell.
     class SiphonLifeTrigger : public DebuffTrigger
     {
     public:
         SiphonLifeTrigger(PlayerbotAI* ai) : DebuffTrigger(ai, "siphon life") {}
         virtual bool IsActive() override
         {
-            if (sPlayerbotAIConfig.dietWarlockTalentKnown && !AI_VALUE2(uint32, "spell id", spell))
+            if (!AI_VALUE2(uint32, "spell id", spell))
                 return false;
             return DebuffTrigger::IsActive();
         }
@@ -58,22 +58,22 @@ namespace ai
     INTERRUPT_TRIGGER(DeathCoilInterruptTrigger, "death coil");
     INTERRUPT_HEALER_TRIGGER(DeathCoilInterruptTHealerTrigger, "death coil");
 
-    // twow-repo#568 (D23, AiPlayerbot.Diet.WarlockCcKnown): death coil is learned at 42; before that the snare
-    // node (ACTION_INTERRUPT + 3) ended IMPOSSIBLE (spell id 0, no alternative). Switch off: the old check only.
+    // twow-repo#568 (D23): death coil is learned at 42; before that the snare
+    // node (ACTION_INTERRUPT + 3) ended IMPOSSIBLE (spell id 0, no alternative).
     class DeathCoilSnareTrigger : public SnareTargetTrigger
     {
     public:
         DeathCoilSnareTrigger(PlayerbotAI* ai) : SnareTargetTrigger(ai, "death coil") {}
         virtual bool IsActive() override
         {
-            if (sPlayerbotAIConfig.dietWarlockCcKnown && !AI_VALUE2(uint32, "spell id", spell))
+            if (!AI_VALUE2(uint32, "spell id", spell))
                 return false;
             return SnareTargetTrigger::IsActive();
         }
     };
 
     // twow-repo#568 (D23): "enemy ten yards" for howl of terror (learned at 40), registered as "howl of terror"
-    // and used by the warlock cc strategy only with AiPlayerbot.Diet.WarlockCcKnown = 1.
+    // and used by the warlock cc strategy.
     class HowlOfTerrorTrigger : public EnemyInRangeTrigger
     {
     public:
@@ -161,17 +161,17 @@ namespace ai
     {
     public:
         SiphonLifeOnAttackerTrigger(PlayerbotAI* ai) : DebuffOnAttackerTrigger(ai, "siphon life") {}
-        // twow-repo#568 (D24): no attacker scan while siphon life is unknown (switch on).
+        // twow-repo#568 (D24): no attacker scan while siphon life is unknown.
         virtual bool IsActive() override
         {
-            if (sPlayerbotAIConfig.dietWarlockTalentKnown && !AI_VALUE2(uint32, "spell id", spell))
+            if (!AI_VALUE2(uint32, "spell id", spell))
                 return false;
             return DebuffOnAttackerTrigger::IsActive();
         }
     };
 
     // twow-repo#568 (D24): "target critical health" for shadowburn, registered as "shadowburn" and used by the
-    // warlock strategy only with AiPlayerbot.Diet.WarlockTalentKnown = 1.
+    // warlock strategy.
     class ShadowburnTrigger : public TargetCriticalHealthTrigger
     {
     public:
