@@ -86,7 +86,6 @@ foreach(name Station Cooking Fishing Dungeon Raid)
   require_text("${config_dist}" "\nAiPlayerbot.DirectTargets.${name} = 0\n" "dist ${name} = 0")
   require_order("${config_cpp}" "config.GetBoolDefault(\"AiPlayerbot.DirectTargets.${name}\", false);" "sTravelMgr.LoadQuestTravelTable();" "${name} read before the boot build")
 endforeach()
-require_text("${config_dist}" "# Profile rule (OB-00 + CLI-Deep): QuestFirstProgression.GrindMode 2 => DirectTargets.Dungeon = DirectTargets.Raid = 0." "GrindMode 2 profile rule (a comment, no code gate)")
 require_text("${config_cpp}" "bool PlayerbotAIConfig::Initialize()\n{\n    // twow-repo#594 / P3-b: the direct targets are built on the first call only (the boot); a reload calls this again.\n    ai::direct_targets::NoteInitialize();" "Initialize counted first")
 require_text("${policy}" "inline std::uint32_t SwitchMask(bool master, bool station, bool cooking, bool fishing, bool dungeon, bool raid)\n{\n    if (!master)\n        return 0;" "nothing without the master switch")
 
@@ -120,7 +119,7 @@ foreach(file DirectTargetLoader.cpp DirectTargetSnap.cpp DirectTargetDestination
     forbid_text("${text}" "${token}" "${token} in ${file}")
   endforeach()
 endforeach()
-# CLI-Deep's pinned token counts: no new GrindMode / QuestIdle / park tokens anywhere in P3-b.
+# CLI-Deep's pinned token counts: no new grind-mode / QuestIdle / park tokens anywhere in P3-b.
 foreach(file DirectTargetLoader.cpp DirectTargetSnap.cpp DirectTargetDestinations.cpp DirectTargetPolicy.h DirectTargetSnap.h
              DirectTargetDestinations.h strategy/triggers/StationCraftTrigger.cpp strategy/triggers/StationCraftTrigger.h)
   read_source("${PB_SOURCE_DIR}/${file}" text)
@@ -129,11 +128,9 @@ foreach(file DirectTargetLoader.cpp DirectTargetSnap.cpp DirectTargetDestination
   endforeach()
 endforeach()
 
-# PlayerTravelInfo, GetPartitions: untouched by P3-b. twow-repo#601 S2 R3 (review C-F2) gave the constructor a second parameter
-# (bool gapGrind: the GrindMode 1 window snapshot only for a gap grind fetch / choice / trip) - the region starts at the new
-# signature, the region and its forbidden tokens stay the same.
+# PlayerTravelInfo, GetPartitions: untouched by P3-b.
 region("${travel_h}" "class PlayerTravelInfo" "//A destination for a bot to travel to and do something." travel_info)
-region("${travel_mgr}" "PlayerTravelInfo::PlayerTravelInfo(Player* player, bool gapGrind)" "std::string EntryTravelDestination::GetShortName() const" travel_info_ctor)
+region("${travel_mgr}" "PlayerTravelInfo::PlayerTravelInfo(Player* player)" "std::string EntryTravelDestination::GetShortName() const" travel_info_ctor)
 region("${travel_mgr}" "PartitionedTravelList TravelMgr::GetPartitions(" "void TravelMgr::ShuffleTravelPoints(" partitions)
 foreach(token DirectTarget direct_targets Station Entrance ShoreFish)
   forbid_text("${travel_info}" "${token}" "${token} in PlayerTravelInfo")

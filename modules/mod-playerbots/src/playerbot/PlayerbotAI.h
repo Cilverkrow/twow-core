@@ -1186,18 +1186,11 @@ public:
     uint32 GetQuestIdleSeconds(uint32 now) const { return questProgress.IdleSeconds(now); }
     // #416: time of one executed action (ms > 0), for the top-3 of this update.
     void RecordActionTime(std::string const& name, uint32 ms) { updateActions.Add(name, ms); }
-    // twow-repo#601 GrindMode (AiPlayerbot.QuestFirstProgression.GrindMode = 2, QuestGrindModePolicy.h): this bot is a
-    // quest-first roster bot on its own below the max level and must not grind as a substitute activity. Always false
-    // with GrindMode 0 or 1 (the config is read first).
-    bool IsQuestNoGrind();
-    // twow-repo#601 S2 / S4 (GrindMode = 1, OB-10 rev. 2): the same population, under the gap filler (grind only inside
-    // the quest route backoff). Always false with GrindMode 0 or 2 (the config is read first).
-    bool IsQuestGapGrind();
     // twow-repo#601 decision order (AiPlayerbot.Grind.QuestFirstOrder, owner 20.10.2026): a quest-first roster bot on its own
     // below the max level whose "attack anything" target must be a quest objective or block its way (QuestFirstOrderPolicy.h).
     // Always false with the switch 0 (the config is read first).
     bool IsQuestFirstOrder();
-    // GrindMode 2 or QuestFirstOrder: no kill trip the grind target filter would refuse (grind / boss / skinning / forced).
+    // QuestFirstOrder: no kill trip the grind target filter would refuse (grind / boss / skinning / forced).
     bool IsQuestNoGrindTrip();
     // QuestFirstOrder: adds 1 to one minute counter (ai::quest_first_order::Event as uint8; any thread, relaxed).
     static void NoteQuestOrder(uint8 event);
@@ -1208,12 +1201,6 @@ public:
     // seconds="). Nothing logged before the first no_quest / grind_refused of the bot.
     void NoteQuestOrderEpisode(uint8 event);
     void EndQuestOrderEpisode();
-    // twow-repo#601 S2 / S4 [GrindWindow] (GrindMode 1, OB-10 rev. 2): adds n to one minute counter
-    // (ai::quest_grind_mode::WindowEvent as uint8; any thread, relaxed). Called only on GrindMode 1 paths.
-    static void NoteGrindWindow(uint8 event, uint32 n = 1);
-    // GrindMode 1, world thread: "[GrindWindow] minute ..." with the counts since the last call (counters reset); empty when
-    // every count is 0 (no line).
-    static std::string TakeGrindWindowMinuteLine();
     // twow-repo#601 S5a (AiPlayerbot.QuestFirstProgression.BandLadder, QuestBand.cpp): the band step. Every member reads the switch
     // first or touches only state the band path writes; nothing with BandLadder 0.
     // The band episode of this bot (bot thread only): the last two zones it left by a band step and the band it left them in,
@@ -1254,16 +1241,6 @@ public:
     // Minute counters (ai::quest_band::Event as uint8; any thread, relaxed) and the world thread's minute lines.
     static void NoteBand(uint8 event, bool cohortB);
     static std::vector<std::string> TakeQuestBandMinuteLines();
-    // GrindMode 2, the bot's own thread: counts a blocked grind decision (ai::quest_grind_mode::Reason as uint8) for the
-    // minute line and writes one [QuestIdle] line per reason and idle episode (at most 4). Nothing without GrindMode 2.
-    void NoteQuestIdle(uint8 reason, std::string const& target);
-    // GrindMode 2: a quest target was found - the idle episode ends, every reason may log once again.
-    void ClearQuestIdle() { questIdleLogged = 0; questIdleClass = 0; }
-    // GrindMode 2: the S1 class (ai::quest_failure_class::FailureClass as uint8) of the bot's latest classified quest
-    // route rejection - shown as class= on its [QuestIdle] lines until the idle episode ends.
-    void NoteQuestIdleClass(uint8 failureClass) { questIdleClass = failureClass; }
-    // GrindMode 2, world thread: "[QuestIdle] minute ..." with the counts since the last call (counters reset).
-    static std::string TakeQuestIdleMinuteLine();
     // twow-repo#601 S3a (AiPlayerbot.QuestFeasibility.Enable, QuestFeasibilityPolicy.h), bot's own thread: why this bot
     // must not take the quest (roster bot on its own; class quests exempt from the solo group rule only); None with
     // Enable 0, before anything else.
@@ -1277,10 +1254,6 @@ public:
     static std::string TakeQuestFeasibilityMinuteLine();
 
 protected:
-    // twow-repo#601 GrindMode: the reasons this bot already logged in its idle episode (bit mask of
-    // ai::quest_grind_mode::ReasonBit, 0 = none; bot's own thread only).
-    uint8 questIdleLogged = 0;
-    uint8 questIdleClass = 0;   // GrindMode 2: last S1 rejection class of the idle episode (0 = none; bot's own thread)
     uint8 questOrderLogged = 0;    // twow-repo#601 QuestFirstOrder: kinds logged in the episode (EpisodeBit; bot's own thread)
     uint32 questOrderSince = 0;    // QuestFirstOrder: episode start (epoch s, 0 = none)
     BandEpisode bandEpisode;     // twow-repo#601 S5a: the band episode (bot's own thread only)

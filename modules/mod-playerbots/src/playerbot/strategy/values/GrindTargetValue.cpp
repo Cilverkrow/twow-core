@@ -10,7 +10,6 @@
 #include "playerbot/strategy/values/FreeMoveValues.h"
 #include "Formulas.h"
 #include "playerbot/GrindCapPolicy.h"
-#include "playerbot/QuestGrindModePolicy.h"
 #include "playerbot/QuestFirstOrderPolicy.h"   // twow-repo#601 decision order (Grind.QuestFirstOrder)
 #include "playerbot/GrindNeighbourPolicy.h"   // twow-repo#602 #2 (Grind.NeighbourAware)
 #include "playerbot/SafePullPolicy.h"   // twow-repo#656 (Grind.SafePull)
@@ -33,21 +32,9 @@ Unit* GrindTargetValue::Calculate()
 
     Unit* target = NULL;
     uint32 assistCount = 0;
-    // twow-repo#601 S2 R4: round 0's R4 skips; stays 0 when round 0 returns early (an attacker, no candidate at all).
-    uint32 round0GapSkipped = 0;
     while (!target && assistCount < memberCount)
     {
-        target = FindTargetForGrinding(assistCount++, round0GapSkipped);
-    }
-
-    // twow-repo#601 S2 R4 [GrindWindow], once per value pass after every assist round: r4_skips= round 0's skips in one relaxed
-    // add (first assist round only, as before); r4_empty= (OB-10 18.10.2026, recheck: per value pass) one more when R4
-    // skipped a candidate in round 0 and no round of the pass returned a target - a later round's target is no empty pass.
-    if (round0GapSkipped)
-    {
-        PlayerbotAI::NoteGrindWindow(uint8(ai::quest_grind_mode::WindowEvent::R4Skips), round0GapSkipped);
-        if (ai::quest_grind_mode::GapR4EmptyPass(round0GapSkipped, target != nullptr))
-            PlayerbotAI::NoteGrindWindow(uint8(ai::quest_grind_mode::WindowEvent::R4Empty));
+        target = FindTargetForGrinding(assistCount++);
     }
 
     // #421 measuring point: grey targets engaged per bot and hour.
@@ -70,7 +57,7 @@ Unit* GrindTargetValue::Calculate()
     return target;
 }
 
-Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0GapSkipped)
+Unit* GrindTargetValue::FindTargetForGrinding(int assistCount)
 {
     uint32 memberCount = 1;
     Group* group = bot->GetGroup();
@@ -127,15 +114,8 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
     Unit* result = NULL;
 
     bool travelTargetWorking = AI_VALUE(bool, "travel target working");
-    bool travelTargetTraveling = AI_VALUE(bool, "travel target traveling");
     TravelTarget* travelTarget = AI_VALUE(TravelTarget*, "travel target");
     bool isGrindTravelDest = travelTarget && typeid(travelTarget->GetDestination()) == typeid(GrindTravelDestination);
-    // twow-repo#601 S2 R5 (GrindMode 1 only, OB-10 rev. 2): the typeid above compares a TravelDestination pointer with the class
-    // and is always false, so the 20 % "not needed for active quest" skip below also fires at a grind destination. Fixed for
-    // the gap filler's population only (profile 1 after the A2 measurement); GrindMode 0 / 2 keep the old test.
-    bool const gapGrind = ai->IsQuestGapGrind();
-    if (gapGrind)
-        isGrindTravelDest = travelTarget && dynamic_cast<GrindTravelDestination*>(travelTarget->GetDestination()) != nullptr;
 
     struct MemberInfo {
         Player* player;
@@ -169,22 +149,11 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
         grind_cap::MaxLevelsAbove(rosterOnItsOwn, bot->GetLevel(),
             sPlayerbotAIConfig.grindCapLowLevelBelow, sPlayerbotAIConfig.grindCapLowLevelMargin));
     time_t const now = time(nullptr);
-    // twow-repo#601 GrindMode 2 (owner 17.10.2026): a quest-first roster bot on its own picks no "attack anything" target
-    // that is neither attacking it or its group (the attackers above stay) nor needed for an active quest.
-    bool const noGrind = ai->IsQuestNoGrind();
-    uint32 noGrindSkipped = 0;
-    uint32 noGrindEntry = 0;
     // twow-repo#601 decision order (AiPlayerbot.Grind.QuestFirstOrder, owner 20.10.2026): the same population picks only a
     // quest objective or a creature in its way (attackers above stay), so "attack anything" no longer wins over the quest work.
-    // GrindMode 2 keeps its own, stricter rule (no path blockers) and GrindMode 1 its gap window (CLI-Deep review: the R4
-    // window comes after this skip, so it must not run for the gap filler). Off: false, nothing else read.
-    bool const questOrder = !noGrind && !gapGrind && ai->IsQuestFirstOrder();
+    // Off: false, nothing else read.
+    bool const questOrder = ai->IsQuestFirstOrder();
     uint32 questOrderSkipped = 0;
-    // twow-repo#601 S2 R4 (GrindMode 1, OB-10 rev. 2): the creature level window [max(gray + 1, L - 5), L + 1] of the gap
-    // filler's population, once per pass (0 / 0 otherwise), and its skips for [GrindWindow] r4_skips=.
-    uint32 const gapLow = gapGrind ? ai::quest_grind_mode::GapWindowLowLevel(bot->GetLevel(), MaNGOS::XP::GetGrayLevel(bot->GetLevel())) : 0;
-    uint32 const gapHigh = gapGrind ? ai::quest_grind_mode::GapWindowHighLevel(bot->GetLevel()) : 0;
-    uint32 gapSkipped = 0;
     // twow-repo#602 #2 (AiPlayerbot.Grind.NeighbourAware, adds analysis 25.10.): the candidates of the solo replace decision below, kept
     // for the neighbour score after the loop (GrindNeighbourPolicy.h). Solo free bots out of a battleground without a real master, round
     // 0 only (a grouped bot overwrites newdistance with each member's distance). Off: nothing is built.
@@ -343,16 +312,6 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
             }
         }
 
-        // twow-repo#601 GrindMode 2: only quest objectives stay (players and other creatures are skipped; a creature
-        // that attacks is taken by the attacker loop above). Off: TargetAllowed(false, ...) is true, nothing changes.
-        if (!ai::quest_grind_mode::TargetAllowed(noGrind, false, needForQuest))
-        {
-            if (!noGrindSkipped++)
-                noGrindEntry = entry;
-            logGrind(unit, "ignored (GrindMode 2: not needed for a quest).");
-            continue;
-        }
-
         // twow-repo#601 decision order (QuestFirstOrder): a quest objective or a creature in the bot's way (the "attack before
         // being attacked" rule of AttackAnythingAction) stays; the way test only for a candidate without quest need. Off:
         // questOrder is false, nothing is tested.
@@ -372,15 +331,6 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
             if (ai::quest_loop::RelationWorkGrindSkipped(relationWorkOpen, needForQuest))
             {
                 logGrind(unit, "ignored (QuestLoop.RelationWorkNoGrind: the hand-in / accept at the NPC first).");
-                continue;
-            }
-            // twow-repo#601 S2 R4 (GrindMode 1, OB-10 rev. 2): a plain grind candidate of the gap filler's population (no quest
-            // need, not on the bot) needs its level inside the window; attackers (loop above), creatures on the bot and quest
-            // mobs - grey ones too - stay. Before any urand of the candidate. GrindMode 0 / 2: gapGrind is false.
-            if (gapGrind && ai::quest_grind_mode::GapTargetSkipped(true, false, unit->GetVictim() == bot, gapLow, gapHigh, unit->GetLevel()))
-            {
-                ++gapSkipped;
-                logGrind(unit, "ignored (GrindMode 1: level outside the window).");
                 continue;
             }
             // Was < 99 (99% skip chance for anything not tied to an active quest
@@ -493,15 +443,6 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
         ai->TellPlayer(GetMaster(), "No grind target found.");
     }
 
-    // twow-repo#601 GrindMode 2: nothing left after the skips above - the bot stands idle, [QuestIdle] (once per pass:
-    // only the first assist round counts). At the destination = opportunistic, without a travel target the grind
-    // strategy's "no target" kill. A bot still on its way is not counted (review fix): AttackAnythingAction asks for this
-    // value before its "traveling -> no attack" test, so that bot is questing, not idle.
-    if (!result && noGrindSkipped && !assistCount &&
-        ai::quest_grind_mode::TargetNoteDue(travelTargetWorking, travelTargetTraveling))
-        ai->NoteQuestIdle(uint8(ai::quest_grind_mode::TargetReason(travelTargetWorking)),
-            ai::quest_grind_mode::TargetText("grind_target", noGrindEntry));
-
     // twow-repo#601 decision order (QuestFirstOrder): a pass left empty by the skips (round 0 only) - with a travel target the
     // bot goes on with its quest work; without one it has no quest work at all (a quest search defect, no_quest=).
     if (!result && questOrderSkipped && !assistCount)
@@ -512,11 +453,6 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
         if (empty == ai::quest_first_order::Event::NoQuest)
             ai->NoteQuestOrderEpisode(uint8(empty));
     }
-
-    // twow-repo#601 S2 R4: round 0's skips go to the caller, which counts r4_skips= / r4_empty= once per value pass after its
-    // assist rounds (recheck: a later round may still return a target). Nothing counted here.
-    if (!assistCount)
-        round0GapSkipped = gapSkipped;
 
     return result;
 }

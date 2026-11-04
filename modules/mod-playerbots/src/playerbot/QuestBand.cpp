@@ -557,8 +557,7 @@ bool ChooseTravelTargetAction::TryBandStep(Player* requester, TravelTarget* trav
     qb::StepVerdict const verdict = qb::BandStepDue(facts);
     // F4 (BandWalkAfterEmptySearches): no step yet, but a walk is due - the same rung choice below, no step; the caller starts
     // the walk once the backoff is set (StartBandWalk).
-    // GrindMode 1 fills the backoff with its gap grind trip: no walk there.
-    bool const walk = walkPlan && verdict == qb::StepVerdict::NotDue && !ai->IsQuestGapGrind() &&
+    bool const walk = walkPlan && verdict == qb::StepVerdict::NotDue &&
         qb::WalkDue(facts, sPlayerbotAIConfig.questFirstProgressionBandWalkAfterEmptySearches);
     if (verdict == qb::StepVerdict::NotDue && !walk)
         return false;

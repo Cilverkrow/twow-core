@@ -1,6 +1,6 @@
 # twow-repo#601 decision order (AiPlayerbot.Grind.QuestFirstOrder, owner 20.10.2026 via OB-00): "attack anything" of quest-first
 # roster bots on their own takes only quest objectives, attackers and creatures in the way, so it no longer wins over the walk
-# to the quest giver, quest travel and turn-ins. Switch first, GrindMode 2 keeps precedence, the way test checks the distance
+# to the quest giver, quest travel and turn-ins. Switch first, the way test checks the distance
 # itself (the core's isInFront ignores it), [QuestOrder] minute line, ConfigEcho.
 
 # cmake 3.x script mode (Debian trixie builder / CI): policies as in the host cmake 4.x.
@@ -77,17 +77,16 @@ require_text("${policy}" "return !isPlayer && inFront && withinAggro && attacksO
 require_text("${policy}" "return !applies || neededForQuest || blocksPath;" "target rule")
 forbid_text("${policy}" "#include \"" "game headers in the pure policy")
 
-# Population: the config first, then the quest-first roster population (as IsQuestNoGrind).
+# Population: the config first, then the quest-first roster population (as IsQuestFirstOrder).
 require_text("${ai_cpp}" "bool PlayerbotAI::IsQuestFirstOrder()\n{\n    if (!sPlayerbotAIConfig.grindQuestFirstOrder || !bot)\n        return false;" "switch read first")
 require_text("${ai_cpp}" "sPlayerbotAIConfig.questFirstProgressionEnabled && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()),\n        HasRealPlayerMaster(), bot->GetLevel(), sWorld.getConfig(CONFIG_UINT32_MAX_PLAYER_LEVEL));" "quest-first roster population")
 
-# GrindTargetValue: GrindMode 2 first, attackers untouched (loop before), the skip after the GrindMode 2 skip.
-require_text("${grind_cpp}" "bool const questOrder = !noGrind && !gapGrind && ai->IsQuestFirstOrder();" "GrindMode 2 and GrindMode 1 keep precedence")
+# GrindTargetValue: attackers untouched (loop before), the skip gated by the switch.
+require_text("${grind_cpp}" "bool const questOrder = ai->IsQuestFirstOrder();" "population read once per pass")
 count_text("${grind_cpp}" "ai->IsQuestFirstOrder()" 1 "one population read per pass")
 require_text("${grind_cpp}" "if (questOrder && !ai::quest_first_order::TargetAllowed(true, needForQuest, !needForQuest &&" "skip gated by the switch, way test only without quest need")
 require_text("${grind_cpp}" "bot->GetDistance(unit) <= unit->GetAttackDistance(bot) * 1.5f" "the distance itself (isInFront ignores it)")
 require_order("${grind_cpp}" "\"(hostile) selected.\"" "bool const questOrder" "attacker loop before the rule")
-require_order("${grind_cpp}" "ignored (GrindMode 2: not needed for a quest)." "ignored (QuestFirstOrder: not needed for a quest, not in the way)." "after the GrindMode 2 skip")
 require_order("${grind_cpp}" "ignored (QuestFirstOrder: not needed for a quest, not in the way)." "ignored (not needed for active quest)." "before the old random skips")
 require_text("${grind_cpp}" "if (!result && questOrderSkipped && !assistCount)\n    {\n        ai::quest_first_order::Event const empty = ai::quest_first_order::EmptyEvent(AI_VALUE(bool, \"travel target active\"));\n        PlayerbotAI::NoteQuestOrder(uint8(empty));" "empty pass: quest work or no quest")
 require_text("${grind_cpp}" "        if (empty == ai::quest_first_order::Event::NoQuest)\n            ai->NoteQuestOrderEpisode(uint8(empty));" "no_quest episode line only without quest work")
@@ -101,13 +100,13 @@ require_text("${mgr_cpp}" "void ReportQuestOrder()\n{\n    if (!sPlayerbotAIConf
 require_text("${mgr_cpp}" "    ReportQuestOrder();" "minute line called")
 require_text("${ai_cpp}" "return ai::quest_first_order::FormatMinuteLine(counts);" "minute line format")
 
-# CLI-Deep review (grind fallback): no kill trip the filter would refuse. GrindMode 1 / 2 first in the population itself; the
-# GrindMode 2 trip points take QuestFirstOrder too (IsQuestNoGrindTrip); the grind request and a fetch under way are refused.
+# CLI-Deep review (grind fallback): no kill trip the filter would refuse. The trip
+# points take QuestFirstOrder (IsQuestNoGrindTrip); the grind request and a fetch under way are refused.
 read_source("strategy/actions/ChooseTravelTargetAction.cpp" travel_cpp)
 read_source("strategy/values/TravelValues.cpp" travel_values_cpp)
 read_source("TravelMgr.cpp" travel_mgr_cpp)
-require_text("${ai_cpp}" "    if (!sPlayerbotAIConfig.grindQuestFirstOrder || !bot)\n        return false;\n\n    // GrindMode 1 (gap filler) and 2 (no grind) keep their own rules for the same population (CLI-Deep review).\n    if (IsQuestNoGrind() || IsQuestGapGrind())\n        return false;" "switch first, then GrindMode 1 / 2 first in IsQuestFirstOrder")
-require_text("${ai_cpp}" "bool PlayerbotAI::IsQuestNoGrindTrip()\n{\n    return IsQuestNoGrind() || IsQuestFirstOrder();\n}" "no grind trip = GrindMode 2 or QuestFirstOrder")
+require_text("${ai_cpp}" "    if (!sPlayerbotAIConfig.grindQuestFirstOrder || !bot)\n        return false;\n\n    return ai::quest_first_order::Applies(" "switch first")
+require_text("${ai_cpp}" "bool PlayerbotAI::IsQuestNoGrindTrip()\n{\n    return IsQuestFirstOrder();\n}" "no grind trip = QuestFirstOrder")
 require_text("${travel_values_cpp}" "if (purpose == TravelDestinationPurpose::GatherSkinning && ai->IsQuestNoGrindTrip())" "no skinning kill trip")
 count_text("${travel_values_cpp}" "ai->IsQuestNoGrindTrip()" 2 "skinning + boss trip")
 require_text("${travel_mgr_cpp}" "    if (ai->IsQuestNoGrindTrip())   // + QuestFirstOrder (#601 review)\n    {\n        std::vector<int32> const& needed" "no pure grind destination")

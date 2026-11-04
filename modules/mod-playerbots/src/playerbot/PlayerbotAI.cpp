@@ -4,7 +4,6 @@
 #include "playerbot/ParkPolicy.h"
 #include "playerbot/StartZonePolicy.h"
 #include "playerbot/QuestFailureClassPolicy.h"
-#include "playerbot/QuestGrindModePolicy.h"
 #include "playerbot/QuestFirstOrderPolicy.h"   // twow-repo#601 decision order (Grind.QuestFirstOrder)
 #include "playerbot/AiJitterPolicy.h"
 #include "playerbot/CombatIdlePolicy.h"
@@ -1054,37 +1053,6 @@ void PlayerbotAI::ApplyQuestRouteReset(uint32 events)
         backoffUntil > 0 && uint32(backoffUntil) > now ? uint32(backoffUntil) - now : 0u);
 }
 
-// twow-repo#601 GrindMode (AiPlayerbot.QuestFirstProgression.GrindMode, owner 17.10.2026): blocked grind decisions per
-// reason since the last minute line; counted on the map threads, taken by the world thread (atomics, no lock).
-namespace
-{
-std::atomic<uint32> questIdleCounts[ai::quest_grind_mode::ReasonCount] = {};
-}
-
-// GrindMode 2 only: the same population as QuestFirstProgression (Enabled + persistent roster member), on its own, below
-// the max player level. The config is read first, so GrindMode 0 / 1 return before any other test.
-bool PlayerbotAI::IsQuestNoGrind()
-{
-    if (!ai::quest_grind_mode::NoGrind(sPlayerbotAIConfig.questFirstProgressionGrindMode) || !bot)
-        return false;
-
-    return ai::quest_grind_mode::Applies(sPlayerbotAIConfig.questFirstProgressionGrindMode,
-        sPlayerbotAIConfig.questFirstProgressionEnabled && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()),
-        HasRealPlayerMaster(), bot->GetLevel(), sWorld.getConfig(CONFIG_UINT32_MAX_PLAYER_LEVEL));
-}
-
-// twow-repo#601 S2 / S4 (GrindMode 1, OB-10 rev. 2): the same population as IsQuestNoGrind. The config is read first, so
-// GrindMode 0 / 2 return before any other test.
-bool PlayerbotAI::IsQuestGapGrind()
-{
-    if (!ai::quest_grind_mode::GapFiller(sPlayerbotAIConfig.questFirstProgressionGrindMode) || !bot)
-        return false;
-
-    return ai::quest_grind_mode::GapFillerApplies(sPlayerbotAIConfig.questFirstProgressionGrindMode,
-        sPlayerbotAIConfig.questFirstProgressionEnabled && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()),
-        HasRealPlayerMaster(), bot->GetLevel(), sWorld.getConfig(CONFIG_UINT32_MAX_PLAYER_LEVEL));
-}
-
 // twow-repo#601 decision order (AiPlayerbot.Grind.QuestFirstOrder, owner 20.10.2026 via OB-00): the same population as
 // QuestFirstProgression (Enabled + persistent roster member), on its own, below the max player level. The config is read
 // first, so with 0 nothing else is tested. Mode 2 (OB-00 20.10.: in-realm A/B): only cohort B (odd low guid, CohortPolicy.h).
@@ -1093,21 +1061,17 @@ bool PlayerbotAI::IsQuestFirstOrder()
     if (!sPlayerbotAIConfig.grindQuestFirstOrder || !bot)
         return false;
 
-    // GrindMode 1 (gap filler) and 2 (no grind) keep their own rules for the same population (CLI-Deep review).
-    if (IsQuestNoGrind() || IsQuestGapGrind())
-        return false;
-
     return ai::quest_first_order::Applies(ai::cohort::Applies(sPlayerbotAIConfig.grindQuestFirstOrder, bot->GetGUIDLow()),
         sPlayerbotAIConfig.questFirstProgressionEnabled && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()),
         HasRealPlayerMaster(), bot->GetLevel(), sWorld.getConfig(CONFIG_UINT32_MAX_PLAYER_LEVEL));
 }
 
-// twow-repo#601 (CLI-Deep review of QuestFirstOrder): no grind as a substitute trip - GrindMode 2 or QuestFirstOrder. The kill
-// trips the grind target filter of both would refuse (pure grind destination, boss, skinning, forced guild kill trip) are not
+// twow-repo#601 (CLI-Deep review of QuestFirstOrder): no grind as a substitute trip. The kill
+// trips the grind target filter of QuestFirstOrder would refuse (pure grind destination, boss, skinning, forced guild kill trip) are not
 // taken, so the bot never travels to a spot where it may not fight.
 bool PlayerbotAI::IsQuestNoGrindTrip()
 {
-    return IsQuestNoGrind() || IsQuestFirstOrder();
+    return IsQuestFirstOrder();
 }
 
 // QuestFirstOrder: skipped candidates, picks (objective / blocker) and passes left empty (quest work / no quest) since the
@@ -1155,54 +1119,6 @@ void PlayerbotAI::EndQuestOrderEpisode()
         now > questOrderSince ? now - questOrderSince : 0u, questOrderLogged).c_str());
     questOrderLogged = 0;
     questOrderSince = 0;
-}
-
-// twow-repo#601 S2 / S4 [GrindWindow] (GrindMode 1, OB-10 rev. 2): window starts, window ends, plain grind engagements (grey
-// ones), empty windows, R4 skips and passes left empty by R4 since the last minute line; counted on the map threads,
-// taken by the world thread (relaxed atomics, no lock).
-namespace
-{
-std::atomic<uint32> grindWindowCounts[ai::quest_grind_mode::WindowEventCount] = {};
-}
-
-void PlayerbotAI::NoteGrindWindow(uint8 event, uint32 n)
-{
-    if (event < ai::quest_grind_mode::WindowEventCount && n)
-        grindWindowCounts[event].fetch_add(n, std::memory_order_relaxed);
-}
-
-std::string PlayerbotAI::TakeGrindWindowMinuteLine()
-{
-    std::array<std::uint32_t, ai::quest_grind_mode::WindowEventCount> counts = {};
-    for (std::size_t event = 0; event < ai::quest_grind_mode::WindowEventCount; ++event)
-        counts[event] = grindWindowCounts[event].exchange(0, std::memory_order_relaxed);
-    return ai::quest_grind_mode::FormatWindowMinuteLine(counts);
-}
-
-// GrindMode 2, the bot's own thread: one count per blocked grind decision, one [QuestIdle] line per reason and idle
-// episode (at most 4 per episode however the reasons alternate).
-void PlayerbotAI::NoteQuestIdle(uint8 reason, std::string const& target)
-{
-    if (!ai::quest_grind_mode::NoGrind(sPlayerbotAIConfig.questFirstProgressionGrindMode) || !bot ||
-        reason >= ai::quest_grind_mode::ReasonCount)
-        return;
-
-    questIdleCounts[reason].fetch_add(1, std::memory_order_relaxed);
-    ai::quest_grind_mode::Reason const why = ai::quest_grind_mode::Reason(reason);
-    if (!ai::quest_grind_mode::LogDue(questIdleLogged, why))
-        return;
-
-    questIdleLogged = ai::quest_grind_mode::MarkLogged(questIdleLogged, why);
-    sLog.outBasic("%s", ai::quest_grind_mode::FormatIdleLine(why, bot->GetGUIDLow(), bot->GetLevel(), bot->GetZoneId(),
-        target, ai::quest_failure_class::ClassName(ai::quest_failure_class::FailureClass(questIdleClass))).c_str());
-}
-
-std::string PlayerbotAI::TakeQuestIdleMinuteLine()
-{
-    std::array<std::uint32_t, ai::quest_grind_mode::ReasonCount> counts = {};
-    for (std::size_t reason = 0; reason < ai::quest_grind_mode::ReasonCount; ++reason)
-        counts[reason] = questIdleCounts[reason].exchange(0, std::memory_order_relaxed);
-    return ai::quest_grind_mode::FormatMinuteLine(counts);
 }
 
 // twow-repo#601 S3a (AiPlayerbot.QuestFeasibility.*, OB-10 / OB-00 18.10.2026): accept / item skips, infeasible drops and

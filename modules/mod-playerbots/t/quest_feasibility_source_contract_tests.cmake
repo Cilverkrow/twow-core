@@ -148,7 +148,7 @@ require_text("${conf}" "\nAiPlayerbot.QuestFeasibility.SoloSkipGroupQuests = 0\n
 forbid_text("${conf}" "AiPlayerbot.QuestFeasibility.Enable = 1" "Enable shipped as 1")
 forbid_text("${conf}" "AiPlayerbot.QuestFeasibility.SoloSkipGroupQuests = 1" "SoloSkipGroupQuests shipped as 1")
 count_text("${conf}" "\nAiPlayerbot.QuestFeasibility." 4 "exactly the four S3a keys, once each")
-require_order("${conf}" "AiPlayerbot.QuestFirstProgression.GrindMode = 0" "AiPlayerbot.QuestFeasibility.Enable = 0" "documented next to the S1 / GrindMode keys")
+require_order("${conf}" "AiPlayerbot.QuestFirstProgression.HubPreloopSameFilters = 0" "AiPlayerbot.QuestFeasibility.Enable = 0" "documented next to the S1 keys")
 
 # ---- 3. The game-side helper: Enable first, the S3a scope, atomics, bounded line ------------------------
 region("${ai_cpp}" "ai::quest_feasibility::Reason PlayerbotAI::QuestFeasibilityReason(Quest const* quest)" "\n}\n" reason_fn)
@@ -238,7 +238,7 @@ require_order("${report_fn}" "if (!sPlayerbotAIConfig.questFeasibilityEnable)\n 
 require_text("${report_fn}" "if (now < lastReport + 60)\n        return;" "once a minute")
 require_text("${report_fn}" "sLog.outBasic(\"%s\", PlayerbotAI::TakeQuestFeasibilityMinuteLine().c_str());" "the minute line")
 region("${mgr}" "void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)" "\n}\n" upd)
-require_order("${upd}" "\n    ReportQuestIdle();" "\n    ReportQuestFeasibility();" "minute line on the world thread, next to the other minute lines")
+require_order("${upd}" "\n    ReportQuestBand();" "\n    ReportQuestFeasibility();" "minute line on the world thread, next to the other minute lines")
 count_text("${mgr}" "ReportQuestFeasibility();" 1 "one call")
 
 message(STATUS "quest_feasibility_source_contract: all pins hold")
