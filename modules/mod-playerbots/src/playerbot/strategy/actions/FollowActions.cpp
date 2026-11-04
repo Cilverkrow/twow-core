@@ -34,7 +34,7 @@ bool IsGatherTravelTarget(TravelTarget const* target)
         purpose == TravelDestinationPurpose::GatherFishing;
 }
 
-// BOT-09: a real player's character, or a bot a real player plays (PlayerbotAI::HasRealPlayerMaster's rule).
+// BOT-12: a real player's character, or a bot a real player plays (PlayerbotAI::HasRealPlayerMaster's rule).
 bool IsRealPlayerTarget(Unit* target)
 {
     if (!target->IsPlayer())
@@ -85,7 +85,7 @@ bool FollowAction::isUseful()
     float distance = 0;
     Unit* followTarget = AI_VALUE(Unit*, "follow target");
 
-    // BOT-09 (AiPlayerbot.BotGroups.LeaderOtherMap): a follow target on another map (or dungeon instance) that is no real
+    // BOT-12 (AiPlayerbot.BotGroups.LeaderOtherMap): a follow target on another map (or dungeon instance) that is no real
     // player cannot be followed. Follow sent the bot into MoveTo2's cross-map route every update (zeppelin dock, transport
     // wait, getTransports(0)) and reported OK, which starved the ad-hoc leave (cand4G u2: 10 h, ~13 ms per update). Map ids
     // first; no distance, no path. Bots of a real player (master or follow target) keep following as before; the cohort and

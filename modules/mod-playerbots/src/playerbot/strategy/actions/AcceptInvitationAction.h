@@ -75,6 +75,13 @@ namespace ai
 
             if (worldManager)
             {
+                // BOT-12 (twow-repo#677, BotGroups.OpQueue): an op of the world-thread group queue - the tail always on the
+                // bot's own thread (no config brings the 7-10 ms joins of retest A back onto the world thread).
+                if (group_ai_refresh::AlwaysDeferTail(event.getSource()))
+                {
+                    ai->RequestJoinTail(inviter->GetGUIDLow());   // JoinReset + JoinTail, the inviter before the bits
+                    return true;
+                }
                 // s7r (BotGroups.WorldThreadDefer): with the reset the rest of this action goes to the bot's own thread too - the
                 // world thread keeps the core join (s7r: accept 1-2.4 ms with logs, chat, update gear on the world thread).
                 if (sPlayerbotAIConfig.botGroupsWorldThreadDefer)

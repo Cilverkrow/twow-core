@@ -11,6 +11,7 @@
 #include "playerbot/TravelMgr.h"
 #include "playerbot/ServerFacade.h"
 #include "playerbot/CohortPolicy.h"
+#include "playerbot/GroupOps.h"        // BOT-12: the heavy-tick mark of the group queue
 #include "Group/Group.h"
 
 #include <algorithm>
@@ -153,7 +154,7 @@ bool WorldThreadManager::CheckLeave(Player* bot, Group* group, std::uint32_t now
 
     Player* leader = sObjectMgr.GetPlayer(group->GetLeaderGuid());
     float const radius = sPlayerbotAIConfig.botGroupsAdhocRadius;
-    // BOT-09 (AiPlayerbot.BotGroups.LeaderOtherMap): the same rule as AdhocGroupAction::CheckLeave, in this existing pass.
+    // BOT-12 (AiPlayerbot.BotGroups.LeaderOtherMap): the same rule as AdhocGroupAction::CheckLeave, in this existing pass.
     bool const otherMapRule = ai::cohort::Applies(sPlayerbotAIConfig.botGroupsLeaderOtherMap, bot->GetGUIDLow());
     bool const otherMap = leader && leader != bot && OnOtherMap(leader->GetMapId() != bot->GetMapId(),
         otherMapRule && leader->GetInstanceId() != bot->GetInstanceId(), bot->GetMap()->Instanceable());
@@ -414,6 +415,9 @@ void WorldThreadManager::Update(std::map<std::uint32_t, Player*> const& bots, st
             pass.guids.push_back(guid);
         minute.bots = std::max(minute.bots, std::uint32_t(bots.size()));
     }
+    // BOT-12 (twow-repo#677, BotGroups.OpQueue): an invite or a leave in this update is the world tick's heavy group step - the
+    // group queue runs no op in the same tick.
+    std::uint32_t const groupOpsBefore = minute.invites + minute.leaves;
     auto const passStart = std::chrono::steady_clock::now();
     std::uint64_t const cpuStart = thread_cpu::NowUs();   // s7r: stall control (ThreadCpuClock.h)
     passLeaveUs = 0;
@@ -440,6 +444,8 @@ void WorldThreadManager::Update(std::map<std::uint32_t, Player*> const& bots, st
     std::uint32_t const wallUs = UsSince(passStart);
     minute.passUsMax = std::max(minute.passUsMax, wallUs);
     minute.stallUsMax = std::max(minute.stallUsMax, thread_cpu::StallUs(wallUs, cpuStart, thread_cpu::NowUs()));
+    if (minute.invites + minute.leaves != groupOpsBefore)
+        group_ops::MarkHeavyTick();
 }
 
 // Stages 1 and 2 for the bots pass.guids[pass.next, end): first the leave rules of all of them, then their candidates - with

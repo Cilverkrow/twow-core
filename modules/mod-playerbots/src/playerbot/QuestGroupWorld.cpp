@@ -8,6 +8,7 @@
 #include "playerbot/ScanSlicePolicy.h"
 #include "playerbot/GuidPosition.h"
 #include "playerbot/BotSlots.h"
+#include "playerbot/GroupOps.h"        // BOT-12: the heavy-tick mark of the group queue
 #include "playerbot/PlayerbotAI.h"
 #include "playerbot/strategy/AiObjectContext.h"
 #include "playerbot/PlayerbotAIConfig.h"
@@ -1077,6 +1078,10 @@ void WorldThreadManager::Update(std::map<std::uint32_t, Player*> const& bots, st
     std::uint32_t const wallUs = UsSince(start);
     minute.scanUsMax = std::max(minute.scanUsMax, wallUs);
     minute.stallUsMax = std::max(minute.stallUsMax, thread_cpu::StallUs(wallUs, cpuStart, thread_cpu::NowUs()));
+    // BOT-12 (twow-repo#677, BotGroups.OpQueue): a dissolution or a group operation is this world tick's heavy group step - the
+    // group queue runs no op in the same tick.
+    if (heavy)
+        group_ops::MarkHeavyTick();
 }
 
 WorldThreadManager& WorldManager()

@@ -56,8 +56,9 @@ read_source("AdhocGroupWorld.cpp" adhoc)
 read_source("QuestGroupWorld.cpp" s7)
 read_source("strategy/actions/AcceptInvitationAction.h" accept)
 
-# The two manager sources, and nothing else, take the deferred accept.
-require_text("${policy}" "return source == \"adhoc group\" || source == \"quest group\";" "manager sources")
+# The two manager sources and the BOT-12 group queue (GroupOpSource, twow-repo#677), and nothing else, take the deferred accept.
+require_text("${policy}" "return source == \"adhoc group\" || source == \"quest group\" || source == GroupOpSource;" "manager sources")
+require_text("${policy}" "inline constexpr char const* GroupOpSource = \"group op\";" "the group queue source")
 require_text("${adhoc}" "inviteeAi->DoSpecificAction(\"accept invitation\", Event(\"adhoc group\", \"\", inviter), true);" "ad-hoc accept source")
 require_text("${s7}" "memberAi->DoSpecificAction(\"accept invitation\", Event(\"quest group\", \"\", leader), true);" "S7 accept source")
 

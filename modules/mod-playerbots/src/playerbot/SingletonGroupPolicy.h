@@ -17,14 +17,4 @@ inline bool ShouldStayInGroup(bool freeBot, bool inGroup, bool requestedByBotIts
 {
     return freeBot && inGroup && requestedByBotItself && !selfLedSingleton;
 }
-
-// BOT-09 (AiPlayerbot.BotGroups.LeaderOtherMap, twow-repo#628 third finding): the ad-hoc group action
-// (AdHoc.WorldThread = 0) carries out a leave its rules decided by asking the bot itself to leave, and the
-// rule above kept every free bot - roster bots are free bots - so that leave never happened. adhocLeave =
-// such a request with the switch on for the bot: it leaves through the same core path as any other bot.
-// adhocLeave false = the rule above, unchanged.
-inline bool ShouldStayInGroup(bool freeBot, bool inGroup, bool requestedByBotItself, bool selfLedSingleton, bool adhocLeave)
-{
-    return !adhocLeave && ShouldStayInGroup(freeBot, inGroup, requestedByBotItself, selfLedSingleton);
-}
 }

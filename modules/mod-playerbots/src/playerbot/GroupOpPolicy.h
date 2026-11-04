@@ -1,0 +1,272 @@
+#pragma once
+
+#include "CohortPolicy.h"
+
+#include <cstddef>
+#include <cstdint>
+#include <string>
+
+// BOT-12 (twow-repo#677, #628; OB-00 04.11.2026; AiPlayerbot.BotGroups.OpQueue, default 0): the group changes of free bots run
+// on the world thread. ObjectMgr::m_GroupMap is an unlocked std::unordered_map and group ids come from a plain m_nextGuid++;
+// the core keeps "the group map changes only while the maps are idle" (player group opcodes are PACKET_PROCESS_WORLD), and the
+// bot actions broke it by calling the group handlers on their own map thread. With OpQueue on for a bot, its ad-hoc leaves and
+// joins are queued as plain ops (guids, no pointers: GroupOpQueue.h) and run in PlayerbotWorldScript::OnUpdate, after
+// sMapMgr.Update, with all maps idle (GroupOps.cpp). Pure rules here, no game types, no config reads, no locks.
+namespace ai::group_ops
+{
+enum class OpKind : std::uint8_t
+{
+    Leave = 0,
+    Join = 1,
+};
+constexpr std::size_t kKinds = 2;
+
+inline char const* KindName(OpKind kind)
+{
+    return kind == OpKind::Leave ? "leave" : "join";
+}
+
+// Who queued the op (PR1: only the ad-hoc action; the other paths are PR2/PR3 candidates).
+enum class OpSource : std::uint8_t
+{
+    AdhocAction = 0,
+};
+
+// ---- the switch -----------------------------------------------------------------------------------------------------------
+// AiPlayerbot.BotGroups.OpQueue: 0 off (today, default), 1 all bots, 2 cohort B (odd low guid), 3 cohort A (even low guid).
+// Any other value is 0 (the loader writes one error line). The mode applies to the bot whose group changes: the leaver, the
+// invitee of a join (the accept creates the group).
+inline bool ValidMode(std::uint32_t mode)
+{
+    return mode <= cohort::ModeOnlyA;
+}
+
+inline std::uint32_t SanitizeMode(std::uint32_t mode)
+{
+    return ValidMode(mode) ? mode : cohort::ModeOff;
+}
+
+inline bool QueueApplies(std::uint32_t mode, std::uint32_t guidLow)
+{
+    return cohort::Applies(SanitizeMode(mode), guidLow);
+}
+
+// ---- limits (OB-00 04.11. addition a) -------------------------------------------------------------------------------------
+constexpr std::uint32_t kOpsPerTickMin = 1;
+constexpr std::uint32_t kOpsPerTickMax = 16;
+constexpr std::uint32_t kMaxDepthMin = 16;
+constexpr std::uint32_t kMaxDepthMax = 65536;
+constexpr std::uint32_t kAlertAgeMin = 5;
+constexpr std::uint32_t kAlertAgeMax = 3600;
+// An op of a bot in a loading screen / teleport waits for it this long, then it is dropped (stale_transit).
+constexpr std::uint32_t kTransitMaxAgeMs = 30000;
+// The drain looks at no more than this many entries per tick beyond the ops it executes (superseded, dropped, retried):
+// a burst of dead entries is cleared in steps, never in one tick.
+constexpr std::uint32_t kExtraLooksPerTick = 32;
+// One ALERT line at most this often.
+constexpr std::uint32_t kAlertIntervalMs = 60000;
+
+inline std::uint32_t ClampOpsPerTick(std::int64_t v)
+{
+    return v < kOpsPerTickMin ? kOpsPerTickMin : (v > kOpsPerTickMax ? kOpsPerTickMax : std::uint32_t(v));
+}
+
+inline std::uint32_t ClampMaxDepth(std::int64_t v)
+{
+    return v < kMaxDepthMin ? kMaxDepthMin : (v > kMaxDepthMax ? kMaxDepthMax : std::uint32_t(v));
+}
+
+inline std::uint32_t ClampAlertAgeSeconds(std::int64_t v)
+{
+    return v < kAlertAgeMin ? kAlertAgeMin : (v > kAlertAgeMax ? kAlertAgeMax : std::uint32_t(v));
+}
+
+// ---- the tick gate ----------------------------------------------------------------------------------------------------------
+// Ops this world tick may execute: OpsPerTick, none in a tick in which the ad-hoc manager (AdHoc.WorldThread) or S7 already
+// changed a group (MarkHeavyTick) - the #736 OneHeavyStep rule widened to all group work of one world tick.
+inline std::uint32_t OpsThisTick(std::uint32_t opsPerTick, bool heavyTaken)
+{
+    return heavyTaken ? 0u : ClampOpsPerTick(opsPerTick);
+}
+
+// Entries the drain may take off the queue this tick (executed ops included).
+inline std::uint32_t LooksThisTick(std::uint32_t opsThisTick)
+{
+    return opsThisTick ? opsThisTick + kExtraLooksPerTick : 0u;
+}
+
+// ---- the ALERT line -----------------------------------------------------------------------------------------------------------
+inline bool AlertDue(bool hasOldest, std::uint32_t oldestAgeMs, std::uint32_t alertAgeSeconds, bool alerted,
+    std::uint32_t nowMs, std::uint32_t lastAlertMs)
+{
+    if (!hasOldest || oldestAgeMs <= alertAgeSeconds * 1000u)
+        return false;
+    return !alerted || nowMs - lastAlertMs >= kAlertIntervalMs;
+}
+
+// ---- staleness (design section 3.4), decided on the world thread with the maps idle ------------------------------------------
+enum class Verdict : std::uint8_t
+{
+    Execute = 0,
+    Retry,             // in a loading screen / teleport: back into the queue, next tick
+    DropLoggedOut,     // the bot (or the inviter) is gone or has no session
+    DropTransit,       // still in transit after kTransitMaxAgeMs
+    DropNotFree,       // a real player is its master now (PR1 is free bots only)
+    DropBg,            // in a battleground (HandleGroupDisbandOpcode returns early there)
+    DropAlreadyLeft,   // Leave: no group any more
+    DropGroupChanged,  // Leave: in another group than the one it decided to leave
+    DropStalePair,     // Join: the pair or the joining group changed since the decision
+};
+constexpr std::size_t kVerdicts = 9;
+
+inline char const* VerdictName(Verdict v)
+{
+    switch (v)
+    {
+        case Verdict::Execute:          return "execute";
+        case Verdict::Retry:            return "retry_transit";
+        case Verdict::DropLoggedOut:    return "drop_logged_out";
+        case Verdict::DropTransit:      return "drop_transit";
+        case Verdict::DropNotFree:      return "drop_not_free";
+        case Verdict::DropBg:           return "drop_bg";
+        case Verdict::DropAlreadyLeft:  return "drop_already_left";
+        case Verdict::DropGroupChanged: return "drop_group_changed";
+        case Verdict::DropStalePair:    return "drop_stale_pair";
+    }
+    return "unknown";
+}
+
+inline bool IsDrop(Verdict v)
+{
+    return v != Verdict::Execute && v != Verdict::Retry;
+}
+
+struct LeaveOpFacts
+{
+    bool found = false;            // in the world's player map with a session and an AI
+    bool inWorld = false;
+    bool teleporting = false;
+    bool realMaster = false;
+    bool inBattleground = false;
+    std::uint32_t groupId = 0;     // its group now (0 = none)
+    std::uint32_t opGroupId = 0;   // the group it decided to leave
+    std::uint32_t ageMs = 0;
+};
+
+inline Verdict DecideLeaveOp(LeaveOpFacts const& f)
+{
+    if (!f.found)
+        return Verdict::DropLoggedOut;
+    if (!f.inWorld || f.teleporting)
+        return f.ageMs >= kTransitMaxAgeMs ? Verdict::DropTransit : Verdict::Retry;
+    if (f.realMaster)
+        return Verdict::DropNotFree;
+    if (f.inBattleground)
+        return Verdict::DropBg;
+    if (!f.groupId)
+        return Verdict::DropAlreadyLeft;
+    if (f.groupId != f.opGroupId)
+        return Verdict::DropGroupChanged;
+    return Verdict::Execute;
+}
+
+struct JoinOpFacts
+{
+    bool found = false;               // invitee and inviter, both
+    bool inWorld = false;             // both
+    bool teleporting = false;         // either
+    bool realMaster = false;          // either
+    bool inBattleground = false;      // either
+    bool inviteeGrouped = false;
+    bool inviteeInvited = false;      // a pending invite of anyone
+    std::uint32_t inviterGroupId = 0; // the inviter's group now (0 = none)
+    bool inviterLeads = false;
+    std::uint32_t inviterMembers = 0;
+    std::uint32_t maxMembers = 0;     // BotGroups.MaxBots
+    std::uint32_t opGroupId = 0;      // the joining group at the decision (0 = a new group)
+    bool sameMap = false;
+    bool inRange = false;             // within 2 x AdHoc.Radius
+    std::uint32_t ageMs = 0;
+};
+
+inline Verdict DecideJoinOp(JoinOpFacts const& f)
+{
+    if (!f.found)
+        return Verdict::DropLoggedOut;
+    if (!f.inWorld || f.teleporting)
+        return f.ageMs >= kTransitMaxAgeMs ? Verdict::DropTransit : Verdict::Retry;
+    if (f.realMaster)
+        return Verdict::DropNotFree;
+    if (f.inBattleground)
+        return Verdict::DropBg;
+    if (f.inviteeGrouped || f.inviteeInvited)
+        return Verdict::DropStalePair;
+    if (f.opGroupId ? (f.inviterGroupId != f.opGroupId || !f.inviterLeads || f.inviterMembers >= f.maxMembers)
+                    : f.inviterGroupId != 0)
+        return Verdict::DropStalePair;
+    if (!f.sameMap || !f.inRange)
+        return Verdict::DropStalePair;
+    return Verdict::Execute;
+}
+
+// ---- the off-thread observer (OB-00 04.11. addition b) ---------------------------------------------------------------------
+// Group creates and disbands (the m_GroupMap writes: ObjectMgr::AddGroup / RemoveGroup) seen OFF the world thread, by the
+// calling path: the outermost bot action running on that thread (Engine::ListenAndExecute), so the run shows what is left.
+enum class OffSource : std::uint8_t
+{
+    Adhoc = 0,       // "ad-hoc group" (PR1)
+    LeaveFar,        // "leave far away" (PR2)
+    Repop,           // "repop", "release", "auto release" (PR2; repop's raw RemoveMember)
+    Accept,          // "accept invitation" (PR2 bot invites, PR3 a real player's invite)
+    InviteLfg,       // "invite nearby", "invite guild", "invite", "join", "lfg*" (PR2)
+    Command,         // "leave", "uninvite", "party command", "leader", "give leader" (PR3)
+    DungeonClear,    // "dungeon clear *", "dc *" (mod-dungeon-clear actions)
+    OtherAction,     // any other bot action
+    Other,           // no bot action on this thread (core, command, other module)
+};
+constexpr std::size_t kOffSources = 9;
+
+inline char const* OffSourceName(OffSource s)
+{
+    switch (s)
+    {
+        case OffSource::Adhoc:        return "adhoc";
+        case OffSource::LeaveFar:     return "leave_far";
+        case OffSource::Repop:        return "repop";
+        case OffSource::Accept:       return "accept";
+        case OffSource::InviteLfg:    return "invite_lfg";
+        case OffSource::Command:      return "command";
+        case OffSource::DungeonClear: return "dungeon_clear";
+        case OffSource::OtherAction:  return "other_action";
+        case OffSource::Other:        return "other";
+    }
+    return "other";
+}
+
+inline bool StartsWith(std::string const& s, char const* prefix)
+{
+    return s.compare(0, std::char_traits<char>::length(prefix), prefix) == 0;
+}
+
+// hasAction false: no bot action runs on this thread.
+inline OffSource OffSourceOf(bool hasAction, std::string const& action)
+{
+    if (!hasAction)
+        return OffSource::Other;
+    if (action == "ad-hoc group")
+        return OffSource::Adhoc;
+    if (action == "leave far away")
+        return OffSource::LeaveFar;
+    if (action == "repop" || action == "release" || action == "auto release")
+        return OffSource::Repop;
+    if (action == "accept invitation")
+        return OffSource::Accept;
+    if (action == "invite nearby" || action == "invite guild" || action == "invite" || action == "join" || StartsWith(action, "lfg"))
+        return OffSource::InviteLfg;
+    if (action == "leave" || action == "uninvite" || action == "party command" || action == "leader" || action == "give leader")
+        return OffSource::Command;
+    if (StartsWith(action, "dungeon clear") || StartsWith(action, "dc "))
+        return OffSource::DungeonClear;
+    return OffSource::OtherAction;
+}
+}

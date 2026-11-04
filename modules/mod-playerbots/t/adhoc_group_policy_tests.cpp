@@ -91,7 +91,7 @@ int main()
     helperTurnedIn.questInProgress = false;
     Require(DecideLeave(helperTurnedIn) == Leave::QuestTurnedIn, "turned in: leave (no helper without the quest)");
 
-    // BOT-09 (AiPlayerbot.BotGroups.LeaderOtherMap, twow-repo#672): the leader on another map for LeaderOtherMapSeconds.
+    // BOT-12 (AiPlayerbot.BotGroups.LeaderOtherMap, twow-repo#677): the leader on another map for LeaderOtherMapSeconds.
     {
         std::uint32_t const n = 120;
         LeaveFacts other = f;

@@ -5,7 +5,6 @@
 #include "playerbot/BotGroupDiagnostics.h"
 #include "playerbot/AdhocGroupPolicy.h"
 #include "playerbot/QuestGroupWorld.h"
-#include "playerbot/CohortPolicy.h"
 
 namespace ai
 {
@@ -40,19 +39,10 @@ namespace ai
             }
         }
 
-        // BOT-09 (AiPlayerbot.BotGroups.LeaderOtherMap): the ad-hoc group action carries out a leave its rules decided by
-        // asking the bot itself (AdhocGroupAction::CheckLeave). With the switch on for the bot, that request is not kept.
-        bool const adhocLeave = master == bot && event.getSource() == "adhoc group" &&
-            ai::cohort::Applies(sPlayerbotAIConfig.botGroupsLeaderOtherMap, bot->GetGUIDLow());
-        return LeaveGroup(master, adhocLeave);
+        return Leave(master);
     }
 
-    bool LeaveGroupAction::Leave(Player* player)
-    {
-        return LeaveGroup(player, false);
-    }
-
-    bool LeaveGroupAction::LeaveGroup(Player* player, bool adhocLeave)
+	bool LeaveGroupAction::Leave(Player* player)
     {
         if (!player)
             return false;
@@ -77,7 +67,7 @@ namespace ai
             sLog.outBasic("[RosterGroup] state=singleton_disband bot=%u issuer=%u group=%u",
                 bot->GetGUIDLow(), player->GetGUIDLow(), group->GetId());
 
-        bool shouldStay = singleton_group::ShouldStayInGroup(freeBot, bot->GetGroup() != nullptr, player == bot, selfLedSingleton, adhocLeave);
+        bool shouldStay = singleton_group::ShouldStayInGroup(freeBot, bot->GetGroup() != nullptr, player == bot, selfLedSingleton);
 
         if (!shouldStay)
         {
