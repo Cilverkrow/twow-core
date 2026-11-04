@@ -501,8 +501,6 @@ bool PlayerbotAIConfig::Initialize()
     lootFeralFixedSpec = config.GetBoolDefault("AiPlayerbot.Loot.FeralFixedSpec", true);
     equipKeepWeaponsUnlessUpgrade = config.GetBoolDefault("AiPlayerbot.Equip.KeepWeaponsUnlessUpgrade", false);
     equipAfterRollWon = config.GetBoolDefault("AiPlayerbot.Equip.AfterRollWon", false);   // twow-repo#341 (owner repro 25.10.)
-    parkAnyLevelInn = config.GetBoolDefault("AiPlayerbot.Park.AnyLevelInn", false);
-    parkSleepGrid = config.GetBoolDefault("AiPlayerbot.Park.SleepGrid", false);
     parkCellSourceStats = config.GetBoolDefault("AiPlayerbot.Park.CellSourceStats", false);
     parkCellSourceKinds = config.GetBoolDefault("AiPlayerbot.Park.CellSourceKinds", false);
     parkMaxPerInn = config.GetIntDefault("AiPlayerbot.Park.MaxPerInn", 0);
