@@ -1438,11 +1438,6 @@ AiPlayerbot.QuestFirstProgression.TurnInMaxDeathsOnRoute = 2
 # times in a row (route backoff 2, 4, 8, 10 min) may choose a grind spot as travel target instead of
 # idling ("no destination"). [QuestSearch] state=grind_fallback. 0 = off (old behaviour).
 AiPlayerbot.QuestFirstProgression.GrindFallbackFailures = 0
-# twow-repo#601 (soak 17.10.2026): GrindFallbackMinutes = N > 0: the grind fallback above holds only N minutes after the
-# last empty quest route search; then the bot asks for a quest route again (behind the route backoff). The fallback grind
-# (6.35) outranks the generic quest request (6.3) and the failure count only resets on a found route, so with 0 (default,
-# as before) a bot that fell into it grinds for good - L10+ roster bots stopped questing within about 2 hours.
-AiPlayerbot.QuestFirstProgression.GrindFallbackMinutes = 0
 # twow-repo#601 S1 "latch semantics" (OB-00 / OB-10 17.10.2026). Three separate switches so an A/B can isolate
 # them (arm A1 sets all three to 1); all 0 = today's behaviour. Restart-only. Quest-first roster bots on their
 # own only.
@@ -1509,7 +1504,7 @@ AiPlayerbot.QuestFirstProgression.HubPreloopSameFilters = 0
 #   0 = today's behaviour (default).
 #   1 = gap filler (twow-repo#601 S2/S4, OB-10 rev. 2): the bots of 2 (below) grind only while their quest route
 #       backoff runs (the last quest search found nothing, any FailureClasses class, a transient one too), never through
-#       GrindFallbackFailures, GrindFallbackMinutes, DirectTargets.FreshGrindFailures, a travel refresh or a group
+#       GrindFallbackFailures, a travel refresh or a group
 #       member's grind trip (the money grind too only inside that window); the grind trip ends with the backoff
 #       (remaining backoff, at most 10 min, + 30 s) and its end counts as no failure. [QuestSearch]
 #       state=grind_window bot= level= backoff_s= window=<min>-<max> map= once per window (window= the S2 creature
@@ -1688,15 +1683,13 @@ AiPlayerbot.QuestFeasibility.SoloSkipGroupQuests = 0
 # twow-repo#594 / P3 (owner 15.10.2026, direct travel targets). Enable = master switch (0 = off, default); the fresh-bot
 # rules below act only with it. A fresh bot is a quest-first roster bot at or below FreshMaxLevel (live 14.10.: L1-3 bots
 # stood a median 10 min after a rejected first quest route). FreshBackoffSeconds = N > 0: such a bot asks for a quest
-# route again after N s instead of the 8.1 backoff (2, 4, 8, 10 min); the failure count still grows. FreshGrindFailures
-# = N > 0: such a bot may choose a grind spot after N empty searches instead of GrindFallbackFailures. TraceInactive = 1
+# route again after N s instead of the 8.1 backoff (2, 4, 8, 10 min); the failure count still grows. TraceInactive = 1
 # (works without Enable): the [QuestFirstRoute] rejected line splits not_active by reason (not_active_reasons=impossible,
 # map, no_mark, low_level_no_reward, no_turnin, hostile, other). [DirectTarget] state=summary once a minute.
 AiPlayerbot.DirectTargets.Enable = 0
 AiPlayerbot.DirectTargets.TraceInactive = 0
 AiPlayerbot.DirectTargets.FreshMaxLevel = 5
 AiPlayerbot.DirectTargets.FreshBackoffSeconds = 0
-AiPlayerbot.DirectTargets.FreshGrindFailures = 0
 # twow-repo#594 / P3-b (direct targets, design rev. 2, 18.10.2026): each class needs the master Enable = 1 and is built
 # once at boot (a reload switches a built class off and on, never builds one: [DirectTarget] state=reload_ignored).
 # Station = 1: anvils and forges as travel targets (6.505, above gathering, yields to open turn-ins, 10 min cooldown,

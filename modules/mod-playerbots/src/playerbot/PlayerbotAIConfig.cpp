@@ -935,7 +935,6 @@ bool PlayerbotAIConfig::Initialize()
     questFirstProgressionProgressAwareObjectives = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.ProgressAwareObjectives", true);
     questFirstProgressionTurnInMaxDeathsOnRoute = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInMaxDeathsOnRoute", 2);
     questFirstProgressionGrindFallbackFailures = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.GrindFallbackFailures", 0)));
-    questFirstProgressionGrindFallbackMinutes = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.GrindFallbackMinutes", 0)));
     questFirstProgressionFailureClasses = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.FailureClasses", false);
     questFirstProgressionFailureClassesGroupNeeded = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.FailureClasses.GroupNeeded", false);   // twow-repo#627 S7 hook
     questFirstProgressionResetOnProgressEvents = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.ResetOnProgressEvents", false);
@@ -1051,7 +1050,6 @@ bool PlayerbotAIConfig::Initialize()
     directTargetsTraceInactive = config.GetBoolDefault("AiPlayerbot.DirectTargets.TraceInactive", false);
     directTargetsFreshMaxLevel = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.DirectTargets.FreshMaxLevel", 5)));
     directTargetsFreshBackoffSeconds = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.DirectTargets.FreshBackoffSeconds", 0)));
-    directTargetsFreshGrindFailures = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.DirectTargets.FreshGrindFailures", 0)));
     // twow-repo#594 / P3-b: read before LoadQuestTravelTable (the boot builds what is on); a reload changes only the gates and
     // names a class it switches on that was not built at boot.
     directTargetsStation = config.GetBoolDefault("AiPlayerbot.DirectTargets.Station", false);
@@ -1903,7 +1901,6 @@ bool PlayerbotAIConfig::Initialize()
             {"DestinationDeaths.CampBlock", Value(destinationDeathsCampBlock)},
             {"DirectTargets.Enable", Value(directTargetsEnabled)},
             {"DirectTargets.FreshBackoffSeconds", Value(directTargetsFreshBackoffSeconds)},
-            {"DirectTargets.FreshGrindFailures", Value(directTargetsFreshGrindFailures)},
             {"EnableActionLog", Value(enableActionLog)},
             {"Equip.AfterRollWon", Value(equipAfterRollWon)},
             {"Gather.FishingSkillCheck", Value(gatherFishingSkillCheck)},
@@ -1949,7 +1946,6 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestFirstProgression.FailureClasses.GroupNeeded", Value(questFirstProgressionFailureClassesGroupNeeded)},
             {"QuestFirstProgression.GiverFetchAnyQuest", Value(questFirstProgressionGiverFetchAnyQuest)},
             {"QuestFirstProgression.GrindFallbackFailures", Value(questFirstProgressionGrindFallbackFailures)},
-            {"QuestFirstProgression.GrindFallbackMinutes", Value(questFirstProgressionGrindFallbackMinutes)},
             {"QuestFirstProgression.GrindMode", Value(questFirstProgressionGrindMode)},
             {"QuestFirstProgression.HubPreloopSameFilters", Value(questFirstProgressionHubPreloopSameFilters)},
             {"QuestFirstProgression.MinLevelForCrossMapQuestRoute", Value(questFirstProgressionMinLevelForCrossMapQuestRoute)},

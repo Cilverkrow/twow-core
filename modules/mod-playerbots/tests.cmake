@@ -3511,24 +3511,6 @@ add_test(NAME bind_area_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/bind_area_source_contract_tests.cmake")
 
-# twow-repo#601 (AiPlayerbot.QuestFirstProgression.GrindFallbackMinutes): no endless 8.32 grind fallback.
-add_test(NAME grind_fallback_minutes_source_contract
-  COMMAND "${CMAKE_COMMAND}"
-    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
-    -P "${PB_MODULE_DIR}/t/grind_fallback_minutes_source_contract_tests.cmake")
-
-add_executable(grind_fallback_minutes_tests
-  "${PB_MODULE_DIR}/t/grind_fallback_minutes_tests.cpp")
-
-target_include_directories(grind_fallback_minutes_tests PRIVATE
-  "${PB_MODULE_DIR}/src/playerbot")
-
-set_target_properties(grind_fallback_minutes_tests PROPERTIES
-  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
-
-add_test(NAME grind_fallback_minutes
-  COMMAND grind_fallback_minutes_tests
-  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
 # twow-repo#595 P4 S0 + B1 (AiPlayerbot.Shortcut.*): real-player snapshot, ShortcutNear, [Shortcut] counters, group-loop fix.
 add_executable(shortcut_policy_tests
