@@ -401,6 +401,9 @@ public:
     bool rosterGuildAllowPoaching;
     uint32 rosterGuildPoachCooldownSeconds;
     uint32 rosterGuildMinLevel;  // owner 05.10.2026: bot guilds only from this level, 0 = off
+    // owner 04.11.2026 (via OB-00): joining a bot guild and signing a bot charter from this level (founding stays on MinLevel);
+    // not set = MinLevel, so nothing changes without a profile value. 0 = off.
+    uint32 rosterGuildJoinMinLevel = 0;
     bool rosterGuildFoundTravel;  // hotfix 9.1 (#485): founding trip to a guild master + charter offered to online plan members
     // twow-repo#485 (owner decision 9): roster bots on their own use bandages, healing and mana
     // potions from their bags (ConsumablesPolicy.h). UseReal 0 = off (default, legacy: cast

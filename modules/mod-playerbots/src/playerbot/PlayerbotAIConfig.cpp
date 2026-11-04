@@ -1497,6 +1497,11 @@ bool PlayerbotAIConfig::Initialize()
     rosterGuildAllowPoaching = config.GetBoolDefault("AiPlayerbot.RosterGuild.AllowPoaching", false);
     rosterGuildPoachCooldownSeconds = config.GetIntDefault("AiPlayerbot.RosterGuild.PoachCooldownSeconds", 86400);
     rosterGuildMinLevel = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.RosterGuild.MinLevel", 0)));
+    // owner 04.11.2026: JoinMinLevel (join, sign, be offered a charter or invited by bot officers); not set (or negative) = MinLevel.
+    {
+        int32 const joinMinLevel = config.GetIntDefault("AiPlayerbot.RosterGuild.JoinMinLevel", -1);
+        rosterGuildJoinMinLevel = joinMinLevel < 0 ? rosterGuildMinLevel : uint32(joinMinLevel);
+    }
     rosterGuildFoundTravel = config.GetBoolDefault("AiPlayerbot.RosterGuild.FoundTravel", false);
     // twow-repo#485: bandages and potions of roster bots from the bags. 0 / 100 / 2 = legacy.
     rosterConsumablesUseReal = config.GetBoolDefault("AiPlayerbot.RosterConsumables.UseReal", false);
