@@ -12,6 +12,7 @@
 
 #include "Ai/Dungeon/DungeonClear/Util/DcRezDecision.h"
 
+class Map;
 class Player;
 
 // Engine glue for post-combat party resurrection (see DcRezDecision.h for the
@@ -68,12 +69,28 @@ namespace DcRezRecovery
     // Chat-path relaxation (`dc on` / resume with corpses): true when the
     // feature is on and at least one LIVING same-map member's class can rez —
     // enabling is allowed and the recovery flow takes it from there.
+    // With DungeonClear.RezCapableOnly: whose CanRezNow passes (the election's rule).
     bool CanRecover(Player* bot);
+
+    // The stock playerbots out-of-combat rez action per class (each subclasses ResurrectPartyMemberAction); its name is
+    // also the spell name the rez rung casts. nullptr for a class without one.
+    char const* RezActionNameFor(uint8 playerClass);
+
+    // DungeonClear.RezCapableOnly (CLI-GRP 04.11.2026, g1/CAUSE-DC-REVIVE-PFAD-20261104): can this LIVING member
+    // resurrect out of combat now - the rank of RezActionNameFor its own spell resolution picks ("spell id", as the
+    // rung's CastSpell resolves it), known by the member itself (not the pet), off cooldown, within its mana POOL (it
+    // may drink first). capableOnly = false, a member off a dungeon map, or a member on another map OBJECT than
+    // callerMap (the caller's own FindMap(); another instance copy = another thread, OB-10 #861) is the class rule.
+    // Pure verdict: DcRezDecision::CanRezNow. Cost: only while someone is dead, but then on every EvaluateImpl (each
+    // follower rung tick of a living rez class) and every veto ask, per living rez-class member - a value lookup
+    // ("spell id" itself is cached, recomputed every 5 s), HasSpell, the spell entry and its cost.
+    bool CanRezNow(Player* member, bool capableOnly, Map const* callerMap);
 
     // DungeonClear.StayDeadInRun (g1n 26.10.2026): true while a LIVING rez-class member of `bot`'s group stands on
     // the same map object (this instance copy) - someone is left who can raise the corpse. Read-only, called on the
     // dead bot's own thread; same-map members share it. Ignores PostCombatRez (its per-run override would be read
-    // cross-bot); the wait is capped by DungeonClear.StayDeadMaxSecs anyway.
+    // cross-bot); the wait is capped by DungeonClear.StayDeadMaxSecs anyway. With DungeonClear.RezCapableOnly (server-
+    // only) the member must also pass CanRezNow - a living druid alone no longer holds the corpse (CAUSE F3).
     bool LivingRezzerOnMap(Player* bot);
 
     // "Is THIS bot the one that has to walk to a corpse right now" — the

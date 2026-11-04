@@ -287,10 +287,10 @@ void FireMageCcStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
 {
     MageCcStrategy::InitCombatTriggers(triggers);
 
-    // twow-repo#568 (D35, AiPlayerbot.Diet.MageBlastWave): with the switch the node uses the "blast wave" trigger
-    // (same 10 yd check, only while the blast wave talent is known). Switch off: "enemy ten yards".
+    // twow-repo#568 (D35): the node uses the "blast wave" trigger
+    // (same 10 yd check, only while the blast wave talent is known).
     triggers.push_back(new TriggerNode(
-        sPlayerbotAIConfig.dietMageBlastWave ? "blast wave" : "enemy ten yards",
+        "blast wave",
         NextAction::array(0, new NextAction("blast wave", ACTION_INTERRUPT), NULL)));
 }
 

@@ -1,6 +1,6 @@
 cmake_policy(VERSION 3.16)
-# twow-repo#568 strategy diet, group g2 (priest, mage, warlock). Every fix sits behind its own switch
-# AiPlayerbot.Diet.<Key>, default 0; with 0 the old trigger/strategy path runs unchanged.
+# twow-repo#568 strategy diet, group g2 (priest, mage, warlock). The ten AiPlayerbot.Diet.* switches were accepted (profile 1)
+# and retired (switch audit A2 #1, owner 04.11.2026 "alter code löschen"): the fixed path is the only path.
 if(NOT DEFINED PB_SOURCE_DIR)
   message(FATAL_ERROR "PB_SOURCE_DIR is required")
 endif()
@@ -47,16 +47,16 @@ endfunction()
 # A node registered only under a strategy-level gate (4-space body, 8-space push), and never ungated.
 function(require_gated_node text gate trigger action relevance description)
   set(gated "    if (${gate})\n    {\n        triggers.push_back(new TriggerNode(\n            \"${trigger}\",\n            NextAction::array(0, new NextAction(\"${action}\", ${relevance}), NULL)));\n    }")
-  require_text("${text}" "${gated}" "${description}: gated node (switch off keeps it)")
+  require_text("${text}" "${gated}" "${description}: race-gated node")
   set(ungated "\n    triggers.push_back(new TriggerNode(\n        \"${trigger}\",\n        NextAction::array(0, new NextAction(\"${action}\"")
   forbid_text("${text}" "${ungated}" "${description}: ungated node")
 endfunction()
 
-# A trigger class whose IsActive first asks the switch, then runs the old base IsActive unchanged.
+# A trigger class whose IsActive first asks for a known spell, then runs the base IsActive.
 function(require_switch_first_trigger text clazz base spell switch_member description)
   region("${text}" "class ${clazz} : public ${base}" "};" body)
   require_text("${body}" "${clazz}(PlayerbotAI* ai) : ${base}(ai, \"${spell}\")" "${description}: same spell name")
-  require_text("${body}" "if (sPlayerbotAIConfig.${switch_member} && !AI_VALUE2(uint32, \"spell id\", spell))\n                return false;\n            return ${base}::IsActive();" "${description}: switch + spell id gate, then the old IsActive")
+  require_text("${body}" "if (!AI_VALUE2(uint32, \"spell id\", spell))\n                return false;\n            return ${base}::IsActive();" "${description}: spell id gate, then the base IsActive")
 endfunction()
 
 file(READ "${PB_SOURCE_DIR}/PlayerbotAIConfig.h" config_h)
@@ -65,7 +65,7 @@ file(READ "${PB_SOURCE_DIR}/aiplayerbot.conf.dist.in" config_dist)
 file(READ "${CORE_SOURCE_DIR}/src/game/SharedDefines.h" shared_defines)
 file(READ "${PB_SOURCE_DIR}/strategy/triggers/TriggerContext.h" trigger_context)
 
-# Every switch defaults to 0.
+# Every switch is retired: no member, no reader, no dist key.
 foreach(pair
     "dietPriestRacials|PriestRacials"
     "dietPriestSelfBuffKnown|PriestSelfBuffKnown"
@@ -80,9 +80,9 @@ foreach(pair
   string(REPLACE "|" ";" parts "${pair}")
   list(GET parts 0 member)
   list(GET parts 1 key)
-  require_text("${config_h}" "bool ${member} = false;" "${member} member default false")
-  require_text("${config_cpp}" "${member} = config.GetBoolDefault(\"AiPlayerbot.Diet.${key}\", false);" "${key} read with default 0")
-  require_text("${config_dist}" "\nAiPlayerbot.Diet.${key} = 0\n" "${key} = 0 in the dist config")
+  forbid_text("${config_h}" "${member}" "${member} member (retired)")
+  forbid_text("${config_cpp}" "${member}" "${key} reader (retired)")
+  forbid_text("${config_dist}" "AiPlayerbot.Diet.${key}" "${key} in the dist config (retired)")
 endforeach()
 
 # ---------------------------------------------------------------------------------------------------------
@@ -108,7 +108,7 @@ require_text("${priest_strategy_h}" "constexpr uint32 RaceMaskNightElf = 8;" "D2
 require_text("${priest_strategy_h}" "constexpr uint32 RaceMaskHumanDwarf = 5;" "D20 Human+Dwarf mask")
 
 region("${priest_strategy}" "bool ai::dietpriest::RaceMayLearn(PlayerbotAI* ai, uint32 raceMask)" "\n}" race_gate)
-require_order("${race_gate}" "if (!sPlayerbotAIConfig.dietPriestRacials)\n        return true;" "bot->getRaceMask()" "D20 switch off registers every node before any race read")
+forbid_text("${race_gate}" "sPlayerbotAIConfig" "D20 a switch in the race gate (retired)")
 require_text("${race_gate}" "return (bot->getRaceMask() & raceMask) != 0;" "D20 race mask test")
 
 region("${priest_strategy}" "#ifdef MANGOSBOT_ZERO" "#ifdef MANGOSBOT_ONE" priest_zero)
@@ -137,11 +137,11 @@ forbid_text("${priest_triggers_h}" "DEBUFF_TRIGGER(DevouringPlagueTrigger" "D20 
 # D22 (AiPlayerbot.Diet.PriestSelfBuffKnown): inner fire / shadowform / inner focus wait for a known spell.
 file(READ "${PB_SOURCE_DIR}/strategy/priest/PriestTriggers.cpp" priest_triggers_cpp)
 region("${priest_triggers_cpp}" "bool InnerFireTrigger::IsActive()" "\n}" inner_fire)
-require_order("${inner_fire}" "if (sPlayerbotAIConfig.dietPriestSelfBuffKnown && !AI_VALUE2(uint32, \"spell id\", spell))\n        return false;" "return SpellTrigger::IsActive() && !ai->HasAura(spell, target);" "D22 inner fire gate before the old check")
+require_order("${inner_fire}" "if (!AI_VALUE2(uint32, \"spell id\", spell))\n        return false;" "return SpellTrigger::IsActive() && !ai->HasAura(spell, target);" "D22 inner fire gate before the old check")
 region("${priest_triggers_cpp}" "bool ShadowformTrigger::IsActive()" "\n}" shadowform)
-require_order("${shadowform}" "if (sPlayerbotAIConfig.dietPriestSelfBuffKnown && !AI_VALUE2(uint32, \"spell id\", \"shadowform\"))\n        return false;" "return !ai->HasAura(\"shadowform\", bot);" "D22 shadowform gate before the old check")
+require_order("${shadowform}" "if (!AI_VALUE2(uint32, \"spell id\", \"shadowform\"))\n        return false;" "return !ai->HasAura(\"shadowform\", bot);" "D22 shadowform gate before the old check")
 region("${priest_triggers_cpp}" "bool InnerFocusTrigger::IsActive()" "\n}\n" inner_focus)
-require_text("${inner_focus}" "if (sPlayerbotAIConfig.dietPriestSelfBuffKnown)\n    {\n        const uint32 spellId = AI_VALUE2(uint32, \"spell id\", spell);\n        if (!spellId || !bot->IsSpellReady(spellId))\n            return false;\n    }\n\n    return BuffTrigger::IsActive();" "D22 inner focus known+ready gate, then the old BuffTrigger check")
+require_text("${inner_focus}" "    const uint32 spellId = AI_VALUE2(uint32, \"spell id\", spell);\n    if (!spellId || !bot->IsSpellReady(spellId))\n        return false;\n\n    return BuffTrigger::IsActive();" "D22 inner focus known+ready gate, then the BuffTrigger check")
 require_text("${priest_triggers_h}" "BUFF_TRIGGER_A(InnerFocusTrigger, \"inner focus\");" "D22 inner focus trigger declares IsActive")
 forbid_text("${priest_triggers_h}" "BUFF_TRIGGER(InnerFocusTrigger" "D22 old inner focus macro")
 # The nodes themselves stay as they were.
@@ -153,9 +153,8 @@ require_text("${shadow_zero}" "\"shadowform\",\n        NextAction::array(0, new
 # ---------------------------------------------------------------------------------------------------------
 # D32 (AiPlayerbot.Diet.ShadowPriestDeadNodes): passive vampiric touch and the missing shadowfiend are not registered.
 region("${shadow_strategy}" "void ShadowPriestStrategy::InitCombatTriggers(" "\n}\n" shadow_combat)
-require_text("${shadow_combat}" "const bool dropDeadNodes = sPlayerbotAIConfig.dietShadowPriestDeadNodes;" "D32 switch read once")
-require_text("${shadow_combat}" "    if (!dropDeadNodes)\n    {\n        triggers.push_back(new TriggerNode(\n            \"vampiric touch\",\n            NextAction::array(0, new NextAction(\"vampiric touch\", ACTION_NORMAL + 3), NULL)));\n    }" "D32 vampiric touch kept with the switch off")
-require_text("${shadow_combat}" "    if (!dropDeadNodes)\n    {\n        triggers.push_back(new TriggerNode(\n            \"shadowfiend\",\n            NextAction::array(0, new NextAction(\"shadowfiend\", ACTION_HIGH + 5), NULL)));\n    }" "D32 shadowfiend kept with the switch off")
+forbid_text("${shadow_combat}" "NextAction(\"vampiric touch\"" "D32 the dead vampiric touch node")
+forbid_text("${shadow_combat}" "NextAction(\"shadowfiend\"" "D32 the dead shadowfiend node")
 forbid_text("${shadow_combat}" "\n    triggers.push_back(new TriggerNode(\n        \"vampiric touch\"," "D32 ungated vampiric touch")
 forbid_text("${shadow_combat}" "\n    triggers.push_back(new TriggerNode(\n        \"shadowfiend\"," "D32 ungated shadowfiend")
 # Vampiric embrace (the castable half) stays ungated.
@@ -175,7 +174,7 @@ region("${warlock_triggers_h}" "class HowlOfTerrorTrigger : public EnemyInRangeT
 require_text("${howl_trigger}" "HowlOfTerrorTrigger(PlayerbotAI* ai) : EnemyInRangeTrigger(ai, \"howl of terror\", 10.0f) {}" "D23 howl trigger = the 10 yd check of enemy ten yards")
 require_text("${howl_trigger}" "return AI_VALUE2(uint32, \"spell id\", \"howl of terror\") && EnemyInRangeTrigger::IsActive();" "D23 howl trigger known gate")
 require_text("${warlock_context}" "creators[\"howl of terror\"] = [](PlayerbotAI* ai) { return new HowlOfTerrorTrigger(ai); };" "D23 howl trigger registered")
-require_text("${warlock_zero}" "    triggers.push_back(new TriggerNode(\n        sPlayerbotAIConfig.dietWarlockCcKnown ? \"howl of terror\" : \"enemy ten yards\",\n        NextAction::array(0, new NextAction(\"howl of terror\", ACTION_INTERRUPT), NULL)));" "D23 howl node: old trigger with the switch off")
+require_text("${warlock_zero}" "    triggers.push_back(new TriggerNode(\n        \"howl of terror\",\n        NextAction::array(0, new NextAction(\"howl of terror\", ACTION_INTERRUPT), NULL)));" "D23 howl node")
 require_text("${warlock_zero}" "\"death coil on snare target\",\n        NextAction::array(0, new NextAction(\"death coil on snare target\", ACTION_INTERRUPT + 3), NULL)));" "D23 death coil snare node kept")
 require_text("${trigger_context}" "creators[\"enemy ten yards\"] = [](PlayerbotAI* ai) { return new EnemyInRangeTrigger(ai, \"enemy ten yards\", 10.0f); };" "D23 generic enemy ten yards = EnemyInRangeTrigger 10 yd (HowlOfTerrorTrigger mirrors it)")
 
@@ -188,7 +187,7 @@ require_switch_first_trigger("${warlock_triggers_h}" "SiphonLifeTrigger" "Debuff
 forbid_text("${warlock_triggers_h}" "DEBUFF_TRIGGER(SiphonLifeTrigger" "D24 old siphon life macro")
 require_switch_first_trigger("${warlock_triggers_h}" "SiphonLifeOnAttackerTrigger" "DebuffOnAttackerTrigger" "siphon life" "dietWarlockTalentKnown" "D24 siphon life on attacker trigger")
 region("${warlock_triggers_cpp}" "bool ConflagrateTrigger::IsActive()" "\n}" conflagrate)
-require_order("${conflagrate}" "if (sPlayerbotAIConfig.dietWarlockTalentKnown && !AI_VALUE2(uint32, \"spell id\", \"conflagrate\"))\n        return false;" "Aura* aura = ai->GetAura(\"immolate\", target, true);" "D24 conflagrate gate before the old immolate check")
+require_order("${conflagrate}" "if (!AI_VALUE2(uint32, \"spell id\", \"conflagrate\"))\n        return false;" "Aura* aura = ai->GetAura(\"immolate\", target, true);" "D24 conflagrate gate before the old immolate check")
 region("${warlock_triggers_h}" "class ShadowburnTrigger : public TargetCriticalHealthTrigger" "};" shadowburn_trigger)
 require_text("${shadowburn_trigger}" "return AI_VALUE2(uint32, \"spell id\", \"shadowburn\") && TargetCriticalHealthTrigger::IsActive();" "D24 shadowburn = target critical health + known")
 region("${warlock_triggers_h}" "class ShadowburnPvpTrigger : public TimeTrigger" "};" shadowburn_pvp_trigger)
@@ -205,9 +204,9 @@ foreach(reg "shadowburn|ShadowburnTrigger" "shadowburn pvp|ShadowburnPvpTrigger"
   list(GET parts 1 reg_class)
   require_text("${warlock_context}" "creators[\"${reg_name}\"] = [](PlayerbotAI* ai) { return new ${reg_class}(ai); };" "D24 ${reg_name} trigger registered")
 endforeach()
-require_text("${warlock_zero}" "        sPlayerbotAIConfig.dietWarlockTalentKnown ? \"shadowburn\" : \"target critical health\",  // twow-repo#568 (D24)\n        NextAction::array(0, new NextAction(\"shadowburn\", ACTION_HIGH), NULL)));" "D24 shadowburn node: old trigger with the switch off")
-require_text("${warlock_zero}" "        sPlayerbotAIConfig.dietWarlockTalentKnown ? \"shadowburn pvp\" : \"very often\",  // twow-repo#568 (D24)\n        NextAction::array(0, new NextAction(\"shadowburn\", ACTION_HIGH), NULL)));" "D24 pvp shadowburn node: old trigger with the switch off")
-require_text("${affliction_zero}" "        sPlayerbotAIConfig.dietWarlockTalentKnown ? \"dark pact\" : \"low mana\",  // twow-repo#568 (D24)\n        NextAction::array(0, new NextAction(\"dark pact\", ACTION_HIGH + 2), NULL)));" "D24 dark pact node: old trigger with the switch off")
+require_text("${warlock_zero}" "        \"shadowburn\",  // twow-repo#568 (D24)\n        NextAction::array(0, new NextAction(\"shadowburn\", ACTION_HIGH), NULL)));" "D24 shadowburn node")
+require_text("${warlock_zero}" "        \"shadowburn pvp\",  // twow-repo#568 (D24)\n        NextAction::array(0, new NextAction(\"shadowburn\", ACTION_HIGH), NULL)));" "D24 pvp shadowburn node")
+require_text("${affliction_zero}" "        \"dark pact\",  // twow-repo#568 (D24)\n        NextAction::array(0, new NextAction(\"dark pact\", ACTION_HIGH + 2), NULL)));" "D24 dark pact node")
 forbid_text("${warlock_zero}" "\"target critical health\",\n        NextAction::array(0, new NextAction(\"shadowburn\"" "D24 ungated shadowburn")
 forbid_text("${affliction_zero}" "\"low mana\",\n        NextAction::array(0, new NextAction(\"dark pact\"" "D24 ungated dark pact")
 
@@ -215,7 +214,7 @@ forbid_text("${affliction_zero}" "\"low mana\",\n        NextAction::array(0, ne
 # ---------------------------------------------------------------------------------------------------------
 # D25 (AiPlayerbot.Diet.WarlockAmplifyCurse): the deprecated amplify curse node is not registered.
 region("${warlock_zero}" "void WarlockBoostStrategy::InitCombatTriggers(" "\n}\n" warlock_boost)
-require_gated_node("${warlock_boost}" "!sPlayerbotAIConfig.dietWarlockAmplifyCurse" "amplify curse" "amplify curse" "ACTION_HIGH" "D25 amplify curse")
+forbid_text("${warlock_boost}" "NextAction(\"amplify curse\"" "D25 the dead amplify curse node")
 require_text("${warlock_boost}" "\n    triggers.push_back(new TriggerNode(\n        \"inferno\"," "D25 inferno stays")
 
 
@@ -224,7 +223,7 @@ require_text("${warlock_boost}" "\n    triggers.push_back(new TriggerNode(\n    
 file(READ "${PB_SOURCE_DIR}/strategy/mage/MageTriggers.cpp" mage_triggers_cpp)
 file(READ "${PB_SOURCE_DIR}/strategy/mage/MageStrategy.cpp" mage_strategy)
 region("${mage_triggers_cpp}" "bool MageArmorTrigger::IsActive()" "\n}" mage_armor)
-require_text("${mage_armor}" "    if (sPlayerbotAIConfig.dietMageArmorKnown && !AI_VALUE2(uint32, \"spell id\", \"mage armor\"))\n    {\n        if (AI_VALUE2(uint32, \"spell id\", \"ice armor\"))\n            return !ai->HasAura(\"ice armor\", target);\n\n        return !ai->HasAura(\"frost armor\", target);\n    }\n\n    return !ai->HasAura(\"mage armor\", target);" "D33 best-known armor check; switch off = old mage armor check")
+require_text("${mage_armor}" "    if (!AI_VALUE2(uint32, \"spell id\", \"mage armor\"))\n    {\n        if (AI_VALUE2(uint32, \"spell id\", \"ice armor\"))\n            return !ai->HasAura(\"ice armor\", target);\n\n        return !ai->HasAura(\"frost armor\", target);\n    }\n\n    return !ai->HasAura(\"mage armor\", target);" "D33 best-known armor check")
 # The alternative chain that casts the armor stays untouched.
 require_text("${mage_strategy}" "ACTION_NODE_A(mage_armor, \"mage armor\", \"ice armor\");" "D33 mage armor -> ice armor chain kept")
 require_text("${mage_strategy}" "ACTION_NODE_A(ice_armor, \"ice armor\", \"frost armor\");" "D33 ice armor -> frost armor chain kept")
@@ -240,7 +239,7 @@ foreach(boost "CombustionTrigger|BoostTrigger|combustion" "ArcanePowerTrigger|Bu
   list(GET parts 2 boost_spell)
   region("${mage_triggers_h}" "class ${boost_class} : public ${boost_base}" "};" boost_body)
   require_text("${boost_body}" "${boost_class}(PlayerbotAI* ai) : ${boost_base}(ai, \"${boost_spell}\"" "D34 ${boost_class} same spell")
-  require_text("${boost_body}" "            if (sPlayerbotAIConfig.dietMageTalentBoostKnown)\n            {\n                const uint32 spellId = AI_VALUE2(uint32, \"spell id\", spell);\n                if (!spellId || !bot->IsSpellReady(spellId))\n                    return false;\n            }\n            return ${boost_base}::IsActive();" "D34 ${boost_class} known+ready gate, then the old check")
+  require_text("${boost_body}" "            const uint32 spellId = AI_VALUE2(uint32, \"spell id\", spell);\n            if (!spellId || !bot->IsSpellReady(spellId))\n                return false;\n            return ${boost_base}::IsActive();" "D34 ${boost_class} known+ready gate, then the base check")
 endforeach()
 # The boost nodes stay registered as before.
 file(READ "${PB_SOURCE_DIR}/strategy/mage/ArcaneMageStrategy.cpp" arcane_strategy)
@@ -261,12 +260,12 @@ require_text("${blast_wave_trigger}" "return AI_VALUE2(uint32, \"spell id\", \"b
 require_text("${mage_context}" "creators[\"blast wave\"] = [](PlayerbotAI* ai) { return new BlastWaveTrigger(ai); };" "D35 blast wave trigger registered")
 region("${fire_strategy}" "#ifdef MANGOSBOT_ZERO" "#ifdef MANGOSBOT_ONE" fire_zero)
 region("${fire_zero}" "void FireMageCcStrategy::InitCombatTriggers(" "\n}\n" fire_cc)
-require_order("${fire_cc}" "MageCcStrategy::InitCombatTriggers(triggers);" "sPlayerbotAIConfig.dietMageBlastWave ? \"blast wave\" : \"enemy ten yards\",\n        NextAction::array(0, new NextAction(\"blast wave\", ACTION_INTERRUPT), NULL)));" "D35 fire cc: frost nova pass first, blast wave on the old trigger with the switch off")
+require_order("${fire_cc}" "MageCcStrategy::InitCombatTriggers(triggers);" "\"blast wave\",\n        NextAction::array(0, new NextAction(\"blast wave\", ACTION_INTERRUPT), NULL)));" "D35 fire cc: frost nova pass first, then blast wave")
 region("${mage_strategy}" "bool DietBlastWaveDropsFrostNova()" "\n    }\n" blast_wave_gate)
-require_text("${blast_wave_gate}" "#ifdef MANGOSBOT_ZERO\n        return sPlayerbotAIConfig.dietMageBlastWave;\n#else\n        return false;\n#endif" "D35 alternative drop only in the vanilla build")
+require_text("${blast_wave_gate}" "#ifdef MANGOSBOT_ZERO\n        return true;\n#else\n        return false;\n#endif" "D35 alternative drop only in the vanilla build")
 region("${mage_strategy}" "static ActionNode* blast_wave(PlayerbotAI* ai)" "\n    }\n" blast_wave_node)
 require_text("${blast_wave_node}" "static ActionNode* blast_wave(PlayerbotAI* ai)\n    {\n        return new ActionNode(\"blast wave\"," "D35 creator still starts with return new ActionNode (A08)")
-require_text("${blast_wave_node}" "/*A*/ DietBlastWaveDropsFrostNova() ? nullptr : NextAction::array(0, new NextAction(\"frost nova\"), NULL)," "D35 frost nova alternative kept with the switch off")
+require_text("${blast_wave_node}" "/*A*/ DietBlastWaveDropsFrostNova() ? nullptr : NextAction::array(0, new NextAction(\"frost nova\"), NULL)," "D35 frost nova alternative dropped only in the vanilla build")
 require_text("${blast_wave_node}" "/*C*/ NextAction::array(0, new NextAction(\"flamestrike\", 71.0f), NULL));" "D35 flamestrike continuer kept")
 # The frost nova pass at ACTION_EMERGENCY that makes the alternative redundant.
 region("${mage_strategy}" "void MageCcStrategy::InitCombatTriggers(" "\n}\n" mage_cc)
@@ -278,7 +277,7 @@ require_text("${mage_strategy}" "ACTION_NODE_A(frost_nova, \"frost nova\", \"con
 # D53 (AiPlayerbot.Diet.MageInvisibility): the unlearnable raid invisibility nodes are not registered.
 region("${mage_strategy}" "#ifdef MANGOSBOT_ZERO" "#ifdef MANGOSBOT_ONE" mage_zero)
 region("${mage_zero}" "void MageRaidStrategy::InitCombatTriggers(" "\n}\n" mage_raid)
-require_text("${mage_raid}" "    if (!sPlayerbotAIConfig.dietMageInvisibility)\n    {\n        triggers.push_back(new TriggerNode(\n            \"high threat\",\n            NextAction::array(0, new NextAction(\"invisibility\", ACTION_INTERRUPT), NULL)));\n\n        triggers.push_back(new TriggerNode(\n            \"multiple attackers\",\n            NextAction::array(0, new NextAction(\"invisibility\", ACTION_INTERRUPT), NULL)));\n    }" "D53 both invisibility nodes kept with the switch off")
+forbid_text("${mage_raid}" "NextAction(\"invisibility\"" "D53 the dead invisibility nodes")
 forbid_text("${mage_raid}" "\n    triggers.push_back(new TriggerNode(\n        \"high threat\"," "D53 ungated invisibility")
 require_text("${mage_raid}" "\n    triggers.push_back(new TriggerNode(\n        \"has aggro\",\n        NextAction::array(0, new NextAction(\"shoot\", ACTION_HIGH + 9), NULL)));" "D53 has aggro -> shoot stays")
 

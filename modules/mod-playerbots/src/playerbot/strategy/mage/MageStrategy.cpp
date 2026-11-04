@@ -8,14 +8,14 @@ using namespace ai;
 
 namespace
 {
-    // twow-repo#568 (D35, AiPlayerbot.Diet.MageBlastWave): in the vanilla build "blast wave" is only pushed by the
+    // twow-repo#568 (D35): in the vanilla build "blast wave" is only pushed by the
     // fire cc strategy on "enemy ten yards", after the cc strategy already tried frost nova (-> cone of cold) at
     // ACTION_EMERGENCY in the same pass; the blast wave node's frost nova alternative only repeated that chain.
     // TBC/WotLK (dragon's breath -> blast wave) keep it.
     bool DietBlastWaveDropsFrostNova()
     {
 #ifdef MANGOSBOT_ZERO
-        return sPlayerbotAIConfig.dietMageBlastWave;
+        return true;
 #else
         return false;
 #endif
@@ -62,7 +62,7 @@ private:
             /*C*/ NextAction::array(0, new NextAction("flamestrike", 71.0f), NULL));
     }
 
-    // twow-repo#568 (D35): the frost nova alternative is dropped with AiPlayerbot.Diet.MageBlastWave (vanilla build
+    // twow-repo#568 (D35): the frost nova alternative is dropped (vanilla build
     // only), see DietBlastWaveDropsFrostNova. The creator still always returns a new node (A08 invariant).
     static ActionNode* blast_wave(PlayerbotAI* ai)
     {
@@ -200,19 +200,9 @@ void MageRaidStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
 {
     ClassRaidStrategy::InitCombatTriggers(triggers);
 
-    // twow-repo#568 (D53, AiPlayerbot.Diet.MageInvisibility): Turtle 1.18 mages cannot learn Invisibility or Lesser
+    // twow-repo#568 (D53): Turtle 1.18 mages cannot learn Invisibility or Lesser
     // Invisibility (885/66 have placeholder level 99; their teach spells 886/515 are in no trainer table), so both
-    // nodes at ACTION_INTERRUPT could only end IMPOSSIBLE. With the switch they are not registered.
-    if (!sPlayerbotAIConfig.dietMageInvisibility)
-    {
-        triggers.push_back(new TriggerNode(
-            "high threat",
-            NextAction::array(0, new NextAction("invisibility", ACTION_INTERRUPT), NULL)));
-
-        triggers.push_back(new TriggerNode(
-            "multiple attackers",
-            NextAction::array(0, new NextAction("invisibility", ACTION_INTERRUPT), NULL)));
-    }
+    // nodes at ACTION_INTERRUPT could only end IMPOSSIBLE. Not registered.
 
     triggers.push_back(new TriggerNode(
         "has aggro",

@@ -171,12 +171,11 @@ require_text("${choose}" "bool UsesQuestFirstProgression(Player const* bot)\n{\n
 # ---- 3. Path 1: the 8.32 fallback (NeedTravelPurposeValue Grind) -> fallback -----------------------
 region("${values}" "    case TravelDestinationPurpose::Grind:\n    {" "        uint32 rpgPhase = ai->GetFixedBotNumber" grind_case)
 require_order("${grind_case}" "if (UsesQuestFirstProgression(bot))" "if (ai->IsQuestNoGrind())" "inside the quest-first branch")
-require_order("${grind_case}" "if (ai->IsQuestNoGrind())" "if (ai::quest_search::FreshBot(sPlayerbotAIConfig.directTargetsEnabled, bot->GetLevel(), sPlayerbotAIConfig.directTargetsFreshMaxLevel) &&" "before the fresh threshold")
 require_order("${grind_case}" "if (ai->IsQuestNoGrind())" "return ai::quest_search::GrindFallback(true, failures, sPlayerbotAIConfig.questFirstProgressionGrindFallbackFailures) &&" "before the unchanged 8.32 line")
-region("${grind_case}" "if (ai->IsQuestNoGrind())" "            // twow-repo#594 / P3-a" fallback_block)
+region("${grind_case}" "if (ai->IsQuestNoGrind())" "            return ai::quest_search::GrindFallback(" fallback_block)
 require_text("${fallback_block}" "ai->NoteQuestIdle(uint8(ai::quest_grind_mode::Reason::Fallback)," "reason fallback")
-require_text("${fallback_block}" "if (ai::quest_search::GrindFallback(true, failures, minFailures) && !AI_VALUE2(bool, \"manual bool\", \"is travel refresh\"))" "logged only when the 8.32 rule would have let it grind")
-require_text("${fallback_block}" "sPlayerbotAIConfig.directTargetsFreshGrindFailures : sPlayerbotAIConfig.questFirstProgressionGrindFallbackFailures;" "same threshold as the 8.32 rule (fresh included)")
+require_text("${fallback_block}" "if (ai::quest_search::GrindFallback(true, failures, sPlayerbotAIConfig.questFirstProgressionGrindFallbackFailures) &&
+                    !AI_VALUE2(bool, \"manual bool\", \"is travel refresh\"))" "logged only when the 8.32 rule would have let it grind")
 require_text("${fallback_block}" "                return false;\n            }" "no grind fallback with GrindMode 2")
 # Review fix (F5): skinning and boss trips are kill trips the grind target filter then refuses (dead trips with a
 # misleading "opportunistic"), so with GrindMode 2 those two purposes are off. Mining, herbalism, fishing, GenericRpg and

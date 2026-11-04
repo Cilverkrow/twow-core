@@ -45,7 +45,7 @@ read_source("strategy/actions/ReachTargetActions.h" reach_h)
 require_text("${dist}" "\nAiPlayerbot.Rotation.LosCacheMs = 500\n" "dist key, default 500")
 require_text("${config_h}" "uint32 rotationLosCacheMs = 500;" "config member, default 500")
 require_text("${config_cpp}" "rotationLosCacheMs = config.GetIntDefault(\"AiPlayerbot.Rotation.LosCacheMs\", 500);   // twow-repo#602 REF-next v2 tick\n    if (rotationLosCacheMs > ai::los_cache::MaxMs)\n        rotationLosCacheMs = ai::los_cache::DefaultMs;" "config read, > 5000 = the default")
-require_text("${config_cpp}" "            {\"Rotation.InvalidTargetQuiet\", Value(rotationInvalidTargetQuiet)},\n            {\"Rotation.LosCacheMs\", Value(rotationLosCacheMs)},\n            {\"Rotation.MeleeFleeBreak\", Value(rotationMeleeFleeBreak)},\n" "parsed value in [ConfigEcho], sorted (owner rule #615, #710)")
+require_text("${config_cpp}" "            {\"Rotation.InvalidTargetQuiet\", Value(rotationInvalidTargetQuiet)},\n            {\"Rotation.KnownSpellNodes\", Value(rotationKnownSpellNodes)},\n            {\"Rotation.LosCacheMs\", Value(rotationLosCacheMs)},\n            {\"Rotation.MeleeFleeBreak\", Value(rotationMeleeFleeBreak)},\n" "parsed value in [ConfigEcho], sorted (owner rule #615, #710)")
 
 # 2. Pure policy (std only) and its rules.
 string(REGEX MATCHALL "#include [<\"][^>\"]+[>\"]" incs "${policy}")

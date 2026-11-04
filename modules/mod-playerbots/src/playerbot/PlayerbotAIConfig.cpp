@@ -635,6 +635,9 @@ bool PlayerbotAIConfig::Initialize()
     rotationNeverPossibleSkip = config.GetIntDefault("AiPlayerbot.Rotation.NeverPossibleSkip", 1);   // twow-repo#602 failure census v3
     if (rotationNeverPossibleSkip > 2)
         rotationNeverPossibleSkip = 1;   // an unknown mode is the default (0 off = rollback, 1 all, 2 cohort B)
+    rotationKnownSpellNodes = config.GetIntDefault("AiPlayerbot.Rotation.KnownSpellNodes", 0);   // twow-repo#602 known-spell nodes
+    if (rotationKnownSpellNodes > 3)
+        rotationKnownSpellNodes = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B, 3 cohort A)
     rotationFleeAway = config.GetIntDefault("AiPlayerbot.Rotation.FleeAway", 0);   // twow-repo#602 (c)
     if (rotationFleeAway > 2)
         rotationFleeAway = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
@@ -669,16 +672,6 @@ bool PlayerbotAIConfig::Initialize()
     possibleTargetsSharedSearch = config.GetBoolDefault("AiPlayerbot.PossibleTargetsSharedSearch", false);
     x3bPublishedTargets = config.GetBoolDefault("AiPlayerbot.X3b.PublishedTargets", false);
     x3bPublishedConditions = config.GetBoolDefault("AiPlayerbot.X3b.PublishedConditions", false);
-    dietPriestRacials = config.GetBoolDefault("AiPlayerbot.Diet.PriestRacials", false);
-    dietPriestSelfBuffKnown = config.GetBoolDefault("AiPlayerbot.Diet.PriestSelfBuffKnown", false);
-    dietShadowPriestDeadNodes = config.GetBoolDefault("AiPlayerbot.Diet.ShadowPriestDeadNodes", false);
-    dietWarlockCcKnown = config.GetBoolDefault("AiPlayerbot.Diet.WarlockCcKnown", false);
-    dietWarlockTalentKnown = config.GetBoolDefault("AiPlayerbot.Diet.WarlockTalentKnown", false);
-    dietWarlockAmplifyCurse = config.GetBoolDefault("AiPlayerbot.Diet.WarlockAmplifyCurse", false);
-    dietMageArmorKnown = config.GetBoolDefault("AiPlayerbot.Diet.MageArmorKnown", false);
-    dietMageTalentBoostKnown = config.GetBoolDefault("AiPlayerbot.Diet.MageTalentBoostKnown", false);
-    dietMageBlastWave = config.GetBoolDefault("AiPlayerbot.Diet.MageBlastWave", false);
-    dietMageInvisibility = config.GetBoolDefault("AiPlayerbot.Diet.MageInvisibility", false);
     perfEventTriggerSkip = config.GetBoolDefault("AiPlayerbot.Perf.EventTriggerSkip", false);
     perfPartialPathReuse = config.GetBoolDefault("AiPlayerbot.Perf.PartialPathReuse", false);
     perfPartialPathReuseMs = ai::path_reuse::ClampMs(config.GetIntDefault("AiPlayerbot.Perf.PartialPathReuseMs", int32(ai::path_reuse::DefaultMs)));
@@ -897,7 +890,6 @@ bool PlayerbotAIConfig::Initialize()
     questFirstProgressionProgressAwareObjectives = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.ProgressAwareObjectives", true);
     questFirstProgressionTurnInMaxDeathsOnRoute = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInMaxDeathsOnRoute", 2);
     questFirstProgressionGrindFallbackFailures = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.GrindFallbackFailures", 0)));
-    questFirstProgressionGrindFallbackMinutes = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.GrindFallbackMinutes", 0)));
     questFirstProgressionFailureClasses = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.FailureClasses", false);
     questFirstProgressionFailureClassesGroupNeeded = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.FailureClasses.GroupNeeded", false);   // twow-repo#627 S7 hook
     questFirstProgressionResetOnProgressEvents = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.ResetOnProgressEvents", false);
@@ -1013,7 +1005,6 @@ bool PlayerbotAIConfig::Initialize()
     directTargetsTraceInactive = config.GetBoolDefault("AiPlayerbot.DirectTargets.TraceInactive", false);
     directTargetsFreshMaxLevel = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.DirectTargets.FreshMaxLevel", 5)));
     directTargetsFreshBackoffSeconds = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.DirectTargets.FreshBackoffSeconds", 0)));
-    directTargetsFreshGrindFailures = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.DirectTargets.FreshGrindFailures", 0)));
     // twow-repo#594 / P3-b: read before LoadQuestTravelTable (the boot builds what is on); a reload changes only the gates and
     // names a class it switches on that was not built at boot.
     directTargetsStation = config.GetBoolDefault("AiPlayerbot.DirectTargets.Station", false);
@@ -1877,7 +1868,6 @@ bool PlayerbotAIConfig::Initialize()
             {"DestinationDeaths.CampBlock", Value(destinationDeathsCampBlock)},
             {"DirectTargets.Enable", Value(directTargetsEnabled)},
             {"DirectTargets.FreshBackoffSeconds", Value(directTargetsFreshBackoffSeconds)},
-            {"DirectTargets.FreshGrindFailures", Value(directTargetsFreshGrindFailures)},
             {"EnableActionLog", Value(enableActionLog)},
             {"Equip.AfterRollWon", Value(equipAfterRollWon)},
             {"Gather.FishingSkillCheck", Value(gatherFishingSkillCheck)},
@@ -1924,7 +1914,6 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestFirstProgression.FailureClasses.GroupNeeded", Value(questFirstProgressionFailureClassesGroupNeeded)},
             {"QuestFirstProgression.GiverFetchAnyQuest", Value(questFirstProgressionGiverFetchAnyQuest)},
             {"QuestFirstProgression.GrindFallbackFailures", Value(questFirstProgressionGrindFallbackFailures)},
-            {"QuestFirstProgression.GrindFallbackMinutes", Value(questFirstProgressionGrindFallbackMinutes)},
             {"QuestFirstProgression.GrindMode", Value(questFirstProgressionGrindMode)},
             {"QuestFirstProgression.HubPreloopSameFilters", Value(questFirstProgressionHubPreloopSameFilters)},
             {"QuestFirstProgression.MinLevelForCrossMapQuestRoute", Value(questFirstProgressionMinLevelForCrossMapQuestRoute)},
@@ -1971,6 +1960,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Rotation.FollowUnstealth", Value(rotationFollowUnstealth)},
             {"Rotation.HunterMeleeStart", Value(rotationHunterMeleeStart)},
             {"Rotation.InvalidTargetQuiet", Value(rotationInvalidTargetQuiet)},
+            {"Rotation.KnownSpellNodes", Value(rotationKnownSpellNodes)},
             {"Rotation.LosCacheMs", Value(rotationLosCacheMs)},
             {"Rotation.MeleeFleeBreak", Value(rotationMeleeFleeBreak)},
             {"Rotation.MeleeFleeBreak.Ranged", Value(rotationMeleeFleeBreakRanged)},
