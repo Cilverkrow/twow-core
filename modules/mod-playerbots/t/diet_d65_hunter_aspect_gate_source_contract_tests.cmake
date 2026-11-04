@@ -1,7 +1,7 @@
 cmake_policy(VERSION 3.16)
-# twow-repo#568 strategy diet D65 (AiPlayerbot.Diet.HunterAspectGate, default 0): the vanilla "aspect of the hawk"
-# trigger asks for the known spell first. With 0 the trigger is the plain BuffTrigger as before. Gate only: no
-# monkey fallback, the node keeps no alternative.
+# twow-repo#568 strategy diet D65 (AiPlayerbot.Diet.HunterAspectGate, retired 04.11.2026, switch audit A2 #1): the vanilla
+# "aspect of the hawk" trigger asks for the known spell first. Gate only: no monkey fallback, the node keeps no
+# alternative.
 if(NOT DEFINED PB_SOURCE_DIR)
   message(FATAL_ERROR "PB_SOURCE_DIR is required")
 endif()
@@ -49,18 +49,18 @@ file(READ "${PB_SOURCE_DIR}/strategy/hunter/HunterTriggers.h" hunter_triggers_h)
 file(READ "${PB_SOURCE_DIR}/strategy/hunter/HunterStrategy.cpp" hunter_strategy)
 file(READ "${PB_SOURCE_DIR}/PlayerbotAI.cpp" playerbot_ai_cpp)
 
-# Switch: default 0 in member, loader and dist config.
-require_text("${config_h}" "bool dietHunterAspectGate = false;" "dietHunterAspectGate member default false")
-require_text("${config_cpp}" "dietHunterAspectGate = config.GetBoolDefault(\"AiPlayerbot.Diet.HunterAspectGate\", false);" "HunterAspectGate read with default 0")
-require_text("${config_dist}" "\nAiPlayerbot.Diet.HunterAspectGate = 0\n" "HunterAspectGate = 0 in the dist config")
+# Retired switch: no member, no reader, no dist key.
+forbid_text("${config_h}" "dietHunterAspectGate" "dietHunterAspectGate member (retired)")
+forbid_text("${config_cpp}" "dietHunterAspectGate" "Diet.HunterAspectGate reader (retired)")
+forbid_text("${config_dist}" "AiPlayerbot.Diet.HunterAspectGate" "Diet.HunterAspectGate in the dist config (retired)")
 
-# Trigger: vanilla-only override, spell check first behind the switch, then the old BuffTrigger answer.
+# Trigger: vanilla-only override, spell check first, then the BuffTrigger answer.
 region("${hunter_triggers_h}" "class AspectOfTheHawkTrigger : public BuffTrigger" "\n    };" hawk_trigger)
 require_text("${hawk_trigger}" "AspectOfTheHawkTrigger(PlayerbotAI* ai) : BuffTrigger(ai, \"aspect of the hawk\") {}" "Hawk trigger constructor unchanged")
 require_text("${hawk_trigger}" "#ifdef MANGOSBOT_ZERO" "D65 override only in the vanilla build")
-require_text("${hawk_trigger}" "if (sPlayerbotAIConfig.dietHunterAspectGate && !AI_VALUE2(uint32, \"spell id\", spell))\n                return false;" "D65 known-spell gate behind the switch")
+require_text("${hawk_trigger}" "if (!AI_VALUE2(uint32, \"spell id\", spell))\n                return false;" "D65 known-spell gate")
 require_text("${hawk_trigger}" "return BuffTrigger::IsActive();" "D65 falls through to the old BuffTrigger check")
-require_order("${hawk_trigger}" "dietHunterAspectGate" "return BuffTrigger::IsActive();" "D65 gate before the aura check")
+require_order("${hawk_trigger}" "if (!AI_VALUE2(uint32, \"spell id\", spell))" "return BuffTrigger::IsActive();" "D65 gate before the aura check")
 require_order("${hawk_trigger}" "#ifdef MANGOSBOT_ZERO" "virtual bool IsActive() override" "D65 override inside the vanilla block")
 require_order("${hawk_trigger}" "virtual bool IsActive() override" "#endif" "D65 override closed by #endif")
 forbid_text("${hawk_trigger}" "monkey" "D65 adds no monkey fallback")
