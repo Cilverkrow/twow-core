@@ -675,15 +675,6 @@ bool PlayerbotAIConfig::Initialize()
     possibleTargetsSharedSearch = config.GetBoolDefault("AiPlayerbot.PossibleTargetsSharedSearch", false);
     x3bPublishedTargets = config.GetBoolDefault("AiPlayerbot.X3b.PublishedTargets", false);
     x3bPublishedConditions = config.GetBoolDefault("AiPlayerbot.X3b.PublishedConditions", false);
-    dietRogueCombatBoostInCombat = config.GetBoolDefault("AiPlayerbot.Diet.RogueCombatBoostInCombat", false);
-    dietRogueNoMutilate = config.GetBoolDefault("AiPlayerbot.Diet.RogueNoMutilate", false);
-    dietWarriorNoHeroicThrow = config.GetBoolDefault("AiPlayerbot.Diet.WarriorNoHeroicThrow", false);
-    dietArmsSnareHamstring = config.GetBoolDefault("AiPlayerbot.Diet.ArmsSnareHamstring", false);
-    dietWarriorNoDevastate = config.GetBoolDefault("AiPlayerbot.Diet.WarriorNoDevastate", false);
-    dietWarriorDisarmGate = config.GetBoolDefault("AiPlayerbot.Diet.WarriorDisarmGate", false);
-    dietWarriorBerserkerStanceGate = config.GetBoolDefault("AiPlayerbot.Diet.WarriorBerserkerStanceGate", false);
-    dietWarriorNoInterceptAndRage = config.GetBoolDefault("AiPlayerbot.Diet.WarriorNoInterceptAndRage", false);
-    dietWarriorDedupBloodrage = config.GetBoolDefault("AiPlayerbot.Diet.WarriorDedupBloodrage", false);
     dietPriestRacials = config.GetBoolDefault("AiPlayerbot.Diet.PriestRacials", false);
     dietPriestSelfBuffKnown = config.GetBoolDefault("AiPlayerbot.Diet.PriestSelfBuffKnown", false);
     dietShadowPriestDeadNodes = config.GetBoolDefault("AiPlayerbot.Diet.ShadowPriestDeadNodes", false);
