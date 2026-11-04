@@ -3051,7 +3051,8 @@ AiPlayerbot.X3c.InboxWrites = 0
 # (crash 02.11.2026: MotionMaster::DirectClean of a DC bot in an instance, driver parked on map 0). Far teleports
 # stay with the holder. With 1 (and AiPlayerbot.WorldBotsTrace) the [WorldBots] line ends in teleport_ack_requested /
 # _bot / _wait (per minute).
-# Any other value acts like 0. 0 = the holder acks every pending teleport as before (default).
+# Any other value acts like 0 - 2 included: this is a plain 0/1 switch, not a cohort mode (CohortPolicy.h). 0 = the holder acks every
+# pending teleport as before (default).
 AiPlayerbot.ThreadSafeTeleportAck = 0
 # twow-repo#541 (owner 11.10.2026): 1 = the core builds and sends no object update packets (SMSG_UPDATE_OBJECT,
 # SMSG_COMPRESSED_UPDATE_OBJECT, SMSG_DESTROY_OBJECT) to bot sessions - a bot has no client and its AI reads object

@@ -14,7 +14,7 @@
 #include "playerbot/RandomPlayerbotMgr.h"
 #include "playerbot/RouteDangerPolicy.h"
 #include "playerbot/StartZonePolicy.h"
-#include "playerbot/DangerMapPolicy.h"
+#include "playerbot/DangerMapConfig.h"
 #include "playerbot/CampBlockPolicy.h"         // re-deaths at camps (DestinationDeaths.CampBlock)
 #include "playerbot/LevelGuardPolicy.h"        // twow-repo#601 cand4 lever (ii) (RosterFarMove.LevelGuard)
 #include "playerbot/ZoneKeepPolicy.h"          // twow-repo#601 owner rule R1 (StaleKeepZone, StartZoneMinLevel)
@@ -46,25 +46,11 @@ using namespace ai;
 
 namespace
 {
-danger_map::Params DangerMapParams()
-{
-    danger_map::Params params;
-    params.cellSize = sPlayerbotAIConfig.dangerMapCellSize;
-    params.windowSeconds = sPlayerbotAIConfig.dangerMapWindowSeconds;
-    params.minDeaths = sPlayerbotAIConfig.dangerMapMinDeaths;
-    params.levelMargin = sPlayerbotAIConfig.dangerMapLevelMargin;
-    params.lineSamples = sPlayerbotAIConfig.dangerMapLineSamples;
-    return params;
-}
-
 // Re-deaths at camps (AiPlayerbot.DangerMap.CountAddDeaths): the shared map is read with the add-death rule only for bots the
-// switch applies to (mode 2 = cohort B); everything else as above.
+// switch applies to (mode 2 = cohort B); everything else comes from DangerMapConfig.h.
 danger_map::Params DangerMapParams(Player const* bot)
 {
-    danger_map::Params params = DangerMapParams();
-    if (bot && ai::cohort::Applies(sPlayerbotAIConfig.dangerMapCountAddDeaths, bot->GetGUIDLow()))
-        params.addDeathMinAttackers = sPlayerbotAIConfig.dangerMapAddDeathMinAttackers;
-    return params;
+    return danger_map::ConfigParams(bot && ai::cohort::Applies(sPlayerbotAIConfig.dangerMapCountAddDeaths, bot->GetGUIDLow()));
 }
 
 bool UsesQuestFirstProgression(Player const* bot)
