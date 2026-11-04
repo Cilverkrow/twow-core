@@ -550,6 +550,7 @@ public:
     // vendor template items (creature_template.vendor_id), as the player's buy, the by-name buy and the vendor map already do.
     uint32 buyVendorTemplateItems = 1;
     uint32 travelRpgAreaLevelFromSpawn = 0;  // twow-repo#333 P1-v: RpgTravelDestination::IsPossible reads the area level at the spawn nearest to the bot, not at the map origin (RpgAreaLevelPolicy.h); 0 off, 1 all, 2 cohort B (odd guid)
+    bool travelElevatorScanCache = false;  // BOT-12 (twow-repo#677): WorldPosition::getTransports' elevator branch walks a per-map list of the transport-type gameobject spawns, built once, instead of all gameobject spawn data on every call
     uint32 gatherQuestHerbFilter = 0;  // twow-repo#333 P1-f: a quest herb (lock 259) is picked only with its quest active (modes 0/1/2)
     // #333: roster bots use their professions while levelling.
     float professionUseGatherDistance = 0.0f;     // 0 = GatheringDistance
@@ -903,6 +904,17 @@ public:
     uint32 botGroupsAdhocScanSlices = 0;
     uint32 botGroupsAdhocScanBudgetUs = 0;   // s7r: a slice ends once it took this many us (at least one bot; 0 = by count only)
     bool botGroupsAdhocHelpUntilDone = false;  // twow-repo#365 (owner 25.10.): whoever is done follows a member with the objective open until the group is done
+    // BOT-12 (twow-repo#677, #628 third finding; OB-00 04.11.2026): a leader on another map is the ad-hoc leave reason
+    // leader_other_map after LeaderOtherMapSeconds, and follow is not useful for a target on another map that is no real player.
+    // The leave itself really happens only with OpQueue on for the bot (world thread). 0 off, 1 all, 2 cohort B, 3 cohort A.
+    uint32 botGroupsLeaderOtherMap = 0;
+    uint32 botGroupsLeaderOtherMapSeconds = 120;   // 30..900
+    // BOT-12 (twow-repo#677, #628; OB-00 04.11.2026): the ad-hoc leaves and joins of a free bot are queued and run on the world
+    // thread (GroupOps.cpp; ObjectMgr::m_GroupMap is not locked). 0 off, 1 all, 2 cohort B, 3 cohort A; other = 0 + error line.
+    uint32 botGroupsOpQueue = 0;
+    uint32 botGroupsOpQueueOpsPerTick = 1;          // ops per world tick, 1..16 (none in a tick with a manager group step)
+    uint32 botGroupsOpQueueMaxDepth = 2048;         // 16..65536; a full queue refuses new ops (dropped_full)
+    uint32 botGroupsOpQueueAlertAgeSeconds = 60;    // 5..3600; "[GroupOps] ALERT" when the oldest op is older
     // twow-repo#627 S7 help groups (QuestGroupPolicy.h, QuestGroupWorld.cpp); Enable: 0 off, 1 all, 2 cohort B, 3 cohort A.
     uint32 questGroupsEnable = 0;
     uint32 questGroupsScanSeconds = 60;
