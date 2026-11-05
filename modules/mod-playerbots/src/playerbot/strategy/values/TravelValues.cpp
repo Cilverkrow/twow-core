@@ -765,6 +765,41 @@ char const* ProfessionTripValue(uint8 kind)
     return kind == ai::profession_travel::kTripKindTrainer ? ai::profession_travel::kTrainerTripValue : ai::profession_travel::kToolTripValue;
 }
 
+// twow-repo#333 P1-ab (AiPlayerbot.ProfessionTraining.TripDoneAtTarget, OB-00 05.11.2026 after M1r run 9).
+bool TripDoneAtTargetApplies(PlayerbotAI* ai)
+{
+    return ai::cohort::Applies(sPlayerbotAIConfig.professionTrainingTripDoneAtTarget, ai->GetBot()->GetGUIDLow());
+}
+
+// P1-ab: the trainer hold reason scoped to the trip's own trainer (ProfessionTravelPolicy.h TrainerTripReasonLasts). The own target is
+// the bot's travel target in READY / TRAVEL / WORK / COOLDOWN with a trainer trip condition; a prepared or cleared target still carries
+// the old conditions, so the old rule counts then. The open trip this ends writes one "[ProfTravel] state=done_at_target" line; its
+// "state=end ... reason=done" line follows in ProfessionTripHolds (the caller's next step), which clears " open".
+bool TrainerTripReasonLastsAtTarget(PlayerbotAI* ai, bool onlyUnlearned)
+{
+    AiObjectContext* context = ai->GetAiObjectContext();
+    Player* bot = ai->GetBot();
+    std::vector<int32> const trainers = ai::PhaseOneProfessionTrainers(ai, onlyUnlearned);
+    TravelTarget* travelTarget = AI_VALUE(TravelTarget*, "travel target");
+    TravelStatus const status = travelTarget ? travelTarget->GetStatus() : TravelStatus::TRAVEL_STATUS_NONE;
+    bool const own = travelTarget && (status == TravelStatus::TRAVEL_STATUS_READY || status == TravelStatus::TRAVEL_STATUS_TRAVEL ||
+        status == TravelStatus::TRAVEL_STATUS_WORK || status == TravelStatus::TRAVEL_STATUS_COOLDOWN) &&
+        ai::ProfessionTripKindOf(travelTarget) == ai::profession_travel::kTripKindTrainer;
+    int32 const entry = own ? travelTarget->GetEntry() : 0;
+    bool const lasts = ai::profession_travel::TrainerTripReasonLasts(!trainers.empty(), entry,
+        entry != 0 && std::find(trainers.begin(), trainers.end(), entry) != trainers.end());
+    std::string const key(ai::profession_travel::kTrainerTripValue);
+    if (!lasts && !trainers.empty() && AI_VALUE2(int, "manual int", key + ai::profession_travel::kOpenSuffix))
+    {
+        uint32 const now = uint32(time(nullptr));
+        uint32 const startedAt = std::min(now, uint32(std::max(0, AI_VALUE2(int, "manual int", key))));
+        sLog.outBasic("[ProfTravel] state=done_at_target kind=trainer bot=%u level=%u cohort=%c entry=%d left=%u trip_s=%u path=%s",
+            bot->GetGUIDLow(), bot->GetLevel(), ai::cohort::Letter(bot->GetGUIDLow()), entry, uint32(trainers.size()), now - startedAt,
+            AI_VALUE2(int, "manual int", key + ai::profession_travel::kNearSuffix) ? "near" : "gap");
+    }
+    return lasts;
+}
+
 // P1-aa: the reason rule of the kind's "... hold" condition (ShouldTravelNamedValue): the tool still missing; a trainer of an unlearned
 // skill (near trip) or of any GREEN phase-one rank (gap trip).
 bool ProfessionTripReasonLasts(PlayerbotAI* ai, uint8 kind)
@@ -773,6 +808,9 @@ bool ProfessionTripReasonLasts(PlayerbotAI* ai, uint8 kind)
         return ai::MissingGatherTool(ai) != 0;
     AiObjectContext* context = ai->GetAiObjectContext();
     std::string const key(ai::profession_travel::kTrainerTripValue);
+    // P1-ab: scoped to the trip's own trainer; the rule below is the old path (removed with the switch).
+    if (TripDoneAtTargetApplies(ai))
+        return TrainerTripReasonLastsAtTarget(ai, AI_VALUE2(int, "manual int", key + ai::profession_travel::kNearSuffix) != 0);
     return !ai::PhaseOneProfessionTrainers(ai, AI_VALUE2(int, "manual int", key + ai::profession_travel::kNearSuffix) != 0).empty();
 }
 
@@ -1431,8 +1469,14 @@ bool ShouldTravelNamedValue::Calculate()
     {
         uint32 const mode = sPlayerbotAIConfig.professionTrainingTravel;
         if (name == "trainer profession hold")
-            return ai::cohort::Applies(mode, bot->GetGUIDLow()) &&
-                ProfessionTripHolds(ai, ai::profession_travel::kTrainerTripValue, "trainer", !PhaseOneProfessionTrainers(ai).empty());
+        {
+            if (!ai::cohort::Applies(mode, bot->GetGUIDLow()))
+                return false;
+            // P1-ab (ProfessionTraining.TripDoneAtTarget): done once the trip's own trainer teaches nothing more; else the old rule.
+            if (TripDoneAtTargetApplies(ai))
+                return ProfessionTripHolds(ai, ai::profession_travel::kTrainerTripValue, "trainer", TrainerTripReasonLastsAtTarget(ai, false));
+            return ProfessionTripHolds(ai, ai::profession_travel::kTrainerTripValue, "trainer", !PhaseOneProfessionTrainers(ai).empty());
+        }
 
         if (!ProfessionTripStartable(ai, mode, ai::profession_travel::kTrainerTripValue))
             return false;
@@ -1450,8 +1494,14 @@ bool ShouldTravelNamedValue::Calculate()
     else if (name == "trainer profession near" || name == "trainer profession near hold")
     {
         if (name == "trainer profession near hold")
-            return ai::cohort::Applies(sPlayerbotAIConfig.professionTrainingTravel, bot->GetGUIDLow()) &&
-                ProfessionTripHolds(ai, ai::profession_travel::kTrainerTripValue, "trainer", !PhaseOneProfessionTrainers(ai, true).empty());
+        {
+            if (!ai::cohort::Applies(sPlayerbotAIConfig.professionTrainingTravel, bot->GetGUIDLow()))
+                return false;
+            // P1-ab (ProfessionTraining.TripDoneAtTarget): done once the trip's own trainer teaches nothing more; else the old rule.
+            if (TripDoneAtTargetApplies(ai))
+                return ProfessionTripHolds(ai, ai::profession_travel::kTrainerTripValue, "trainer", TrainerTripReasonLastsAtTarget(ai, true));
+            return ProfessionTripHolds(ai, ai::profession_travel::kTrainerTripValue, "trainer", !PhaseOneProfessionTrainers(ai, true).empty());
+        }
 
         return ProfessionNearTripStartable(ai);
     }
