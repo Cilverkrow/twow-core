@@ -90,7 +90,8 @@ require_text("${dist}" "\nAiPlayerbot.ProfessionTraining.TripNoGrind = 0\n" "dis
 require_text("${dist}" "[ProfTravel] state=status kind=trainer|tool bot= level= cohort= event=arrive|end status=" "dist: the status line")
 require_text("${config_h}" "uint32 professionTrainingTripNoGrind = 0;" "config member, default 0")
 require_text("${config_cpp}" "professionTrainingTripNoGrind = config.GetIntDefault(\"AiPlayerbot.ProfessionTraining.TripNoGrind\", 0);\n    if (professionTrainingTripNoGrind > 3)\n    {\n        sLog.outError(\"[ProfTravel] config key=TripNoGrind value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)\", professionTrainingTripNoGrind);\n        professionTrainingTripNoGrind = 0;\n    }" "config read, > 3 = off")
-require_text("${config_cpp}" "            {\"ProfessionTraining.Travel\", Value(professionTrainingTravel)},\n            {\"ProfessionTraining.TripNoGrind\", Value(professionTrainingTripNoGrind)},\n            {\"ProfessionTraining.TurnInGateSkipNoRoute\"" "parsed mode in [ConfigEcho], sorted")
+# P1-ab (#333) put ProfessionTraining.TripDoneAtTarget between Travel and TripNoGrind (sorted).
+require_text("${config_cpp}" "            {\"ProfessionTraining.Travel\", Value(professionTrainingTravel)},\n            {\"ProfessionTraining.TripDoneAtTarget\", Value(professionTrainingTripDoneAtTarget)},\n            {\"ProfessionTraining.TripNoGrind\", Value(professionTrainingTripNoGrind)},\n            {\"ProfessionTraining.TurnInGateSkipNoRoute\"" "parsed mode in [ConfigEcho], sorted")
 require_text("${cohort}" "return mode == ModeAll || (mode == ModeOnlyB && InB(guidLow)) || (mode == ModeOnlyA && !InB(guidLow));" "the cohort rule with mode 3")
 
 # The trip kinds name exactly the request's hold conditions.
