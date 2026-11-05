@@ -2306,6 +2306,8 @@ add_executable(teleport_ack_thread_policy_tests
 target_include_directories(teleport_ack_thread_policy_tests PRIVATE
   "${PB_MODULE_DIR}/src/playerbot")
 
+target_link_libraries(teleport_ack_thread_policy_tests PRIVATE Threads::Threads)
+
 set_target_properties(teleport_ack_thread_policy_tests PROPERTIES
   RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 

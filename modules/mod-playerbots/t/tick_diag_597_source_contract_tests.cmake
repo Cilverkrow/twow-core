@@ -59,7 +59,8 @@ string(FIND "${scripts}" "void OnUpdate(uint32 diff) override" hook_at)
 if(hook_at EQUAL -1)
   message(FATAL_ERROR "#597: PlayerbotWorldScript::OnUpdate not found")
 endif()
-string(SUBSTRING "${scripts}" ${hook_at} 2600 hook)
+# twow-repo#676: 2600 -> 3400, the far-ack drain at the top of OnUpdate moved the hook parts down.
+string(SUBSTRING "${scripts}" ${hook_at} 3400 hook)
 # BOT-12 (twow-repo#677): the world-thread group queue drains right after the managers in both paths (inside hook_ms).
 require_order("${hook}" "if (!sPlayerbotAIConfig.worldBotsHookTrace || !sPlayerbotAIConfig.worldBotsTrace)\n            {\n                sRandomPlayerbotMgr.RunQueuedRemoteCommands();\n\n                sRandomPlayerbotMgr.UpdateAI(diff);\n                ai::group_ops::Drain();   // BOT-12: the world-thread group queue\n                auctionbot.Update();\n                return;\n            }" "uint64 const hookStartUs = ai::bot_update::NowUs();" "off path first, untimed")
 require_text("${hook}" "sRandomPlayerbotMgr.AddWorldBotsHook(hookEndUs - hookStartUs, remoteEndUs - hookStartUs, hookEndUs - ahbotStartUs);" "hook parts recorded")
