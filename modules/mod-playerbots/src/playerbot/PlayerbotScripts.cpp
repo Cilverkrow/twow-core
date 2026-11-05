@@ -97,6 +97,11 @@ class PlayerbotWorldScript : public WorldScript
         // Was World::UpdatePlayerbotsTick(diff).
         void OnUpdate(uint32 diff) override
         {
+            // twow-repo#676 (BOT-HOLDER-FARACK-01): the far-teleport acks the master holders queued during sMapMgr.Update run
+            // here, with all maps idle (WORLDHOOK_ON_UPDATE comes after sMapMgr.Update; see GroupOps.cpp for the chain). Before
+            // the enabled check, so a queued bot is never left mid-teleport; an empty queue is one atomic load.
+            PlayerbotHolder::DrainFarTeleportAcks();
+
             if (!sPlayerbotAIConfig.enabled)
                 return;
 
