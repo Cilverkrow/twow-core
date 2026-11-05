@@ -224,6 +224,17 @@ int main()
         Require(kTripArriveYards > 5.0f && kTripRpgSearchYards > kTripArriveYards, "trip arrival wider than IsIn, the NPC search wider still");
     }
 
+    // P1-ab (ProfessionTraining.TripDoneAtTarget, M1r run 9): the trainer trip's reason scoped to its own trainer.
+    {
+        Require(!TrainerTripReasonLasts(false, 0, false) && !TrainerTripReasonLasts(false, 5759, true), "no trainer left anywhere: done, as before");
+        Require(TrainerTripReasonLasts(true, 5759, true), "the own trainer still teaches a rank: holds");
+        Require(!TrainerTripReasonLasts(true, 5759, false), "learned at the own trainer, others elsewhere: done (run 9: held to cap / lost)");
+        Require(TrainerTripReasonLasts(true, 0, false), "no own target (prepared / cleared / another target): the old rule");
+        Require(std::strcmp(EndReason(TrainerTripReasonLasts(true, 2329, false), false, true), "done") == 0 &&
+            std::strcmp(EndReason(TrainerTripReasonLasts(true, 2329, false), true, false), "done") == 0,
+            "the scoped reason ends as done, ahead of turn_in and cap");
+    }
+
     std::cout << "profession_travel_policy_tests: OK\n";
     return 0;
 }

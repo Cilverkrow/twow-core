@@ -93,6 +93,17 @@ inline char const* EndReason(bool reasonLasts, bool turnInWaiting, bool holds)
     return nullptr;
 }
 
+// twow-repo#333 P1-ab (AiPlayerbot.ProfessionTraining.TripDoneAtTarget, OB-00 05.11.2026 after M1r run 9: 12 of 14 failed trainer
+// trips learned a rank 1-14 s after the arrival and still held 198-634 s to cap / lost - the reason was "any phase-one trainer in
+// the world", while a trip goes to one trainer). The reason of a trainer trip: none left = done (as before); on the trip's own
+// target (targetEntry != 0) only while that trainer still teaches the bot a phase-one rank; without a known target the old rule.
+inline bool TrainerTripReasonLasts(bool anyLeft, std::int32_t targetEntry, bool targetStillTeaches)
+{
+    if (!anyLeft)
+        return false;
+    return targetEntry == 0 || targetStillTeaches;
+}
+
 // "manual int" suffixes of a trip kind, appended to kTrainerTripValue / kToolTripValue.
 constexpr char const* kHoldUntilSuffix = " hold until";
 constexpr char const* kBackoffEndSuffix = " backoff end";

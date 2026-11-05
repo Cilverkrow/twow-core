@@ -2085,6 +2085,18 @@ AiPlayerbot.ProfessionTraining.TurnInGateSkipNoRoute = 0
 # Profile value 1 only after an accepted A/B test (strangler rule).
 #   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid); other values act like 0.
 AiPlayerbot.ProfessionTraining.TripNoGrind = 0
+# twow-repo#333 Berufe P1-ab (OB-00 05.11.2026; M1r run 9: 12 of 14 failed trainer trips learned a rank - mostly Apprentice First
+# Aid at the village physician - 1-14 s after the arrival and still held 198-634 s to "reason=cap" / "reason=lost": a trainer
+# trip held while ANY trainer in the world still taught the bot a phase-one rank, but a trip goes to one trainer). TripDoneAtTarget,
+# for a roster bot on its own: on the trip's own travel target (READY, TRAVEL, WORK or COOLDOWN) a trainer trip (gap or near) holds
+# only while that trainer still teaches the bot a phase-one rank (near: of a skill not learned yet); none left anywhere is done as
+# before; without the own target (prepared, cleared, another target) the old rule. The trip it ends writes one line
+#   [ProfTravel] state=done_at_target kind=trainer bot= level= cohort= entry= left= trip_s= path=near|gap
+# (left = trainers that still teach the bot a rank elsewhere), then the usual "state=end kind=trainer ... reason=done" line: with
+# ProfessionTraining.TripNoGrind on the bot within 60 s of the learn (the minute check), else at the next hold check of the travel
+# action. The next skill comes from the next trip after the hourly cooldown or from the local trainer path (#306).
+#   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid); other values act like 0.
+AiPlayerbot.ProfessionTraining.TripDoneAtTarget = 0
 # Profession use (#333), persistent roster bots without a real-player master.
 # GatherDistance: passive gathering radius for such a bot on its own (herbs,
 # ore, skinning); 0 = GatheringDistance. The hostile check stays in force.
