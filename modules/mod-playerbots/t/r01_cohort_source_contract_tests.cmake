@@ -101,7 +101,9 @@ foreach(gated
 endforeach()
 count_text("${choose_cpp}" "sPlayerbotAIConfig.questFirstProgressionFailureClasses &&" 4 "every '&&' read of FailureClasses in ChooseTravelTargetAction is one of the gated four")
 require_text("${values_cpp}" "if (sPlayerbotAIConfig.questFirstProgressionFailureClasses && sPlayerbotAIConfig.S1For(bot->GetGUIDLow()) &&\n                !ai->HasRealPlayerMaster())" "grind yield per bot")
-count_text("${values_cpp}" "sPlayerbotAIConfig.questFirstProgressionFailureClasses" 1 "one FailureClasses read in TravelValues")
+# #333 P1-ae (CLI-Berufe 06.11.2026): the read-only profession gate state ProfessionTripGrindFallback excludes the S1 cohort.
+count_text("${values_cpp}" "sPlayerbotAIConfig.questFirstProgressionFailureClasses" 2 "FailureClasses reads in TravelValues: the grind yield and the P1-ae gate state")
+require_text("${values_cpp}" "        sPlayerbotAIConfig.questFirstProgressionFailureClasses && sPlayerbotAIConfig.S1For(bot->GetGUIDLow()),\n        uint32(std::max(0, AI_VALUE2(int, \"manual int\", \"quest route failures\")))," "the P1-ae read: per bot, S1 cohort")
 #    AbandonStructuralParked: the abandon mark is set in one place only, for the S1 cohort; the other sites read the mark.
 require_text("${choose_cpp}" "AbandonParkedTurnIn(sPlayerbotAIConfig.questFirstProgressionAbandonStructuralParked &&\n            sPlayerbotAIConfig.S1For(ai->GetBot()->GetGUIDLow()), abandonDue," "abandon mark for the S1 cohort only")
 count_text("${choose_cpp}" "NoteStructuralAbandon(" 1 "one place sets the abandon mark")

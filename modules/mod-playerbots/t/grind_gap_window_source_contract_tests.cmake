@@ -153,7 +153,8 @@ region("${grind_case}" "if (ai->IsQuestGapGrind())" "            // Hotfix 8.32"
 foreach(banned "quest route failures" "quest route failed at" "GrindFallback" "FreshBot" "CountsTowardGrind" "failureClass" "Transient" "NoteQuestIdle" "SET_AI_VALUE")
   forbid_text("${r1_block}" "${banned}" "R1 reads only the backoff (OP4) and writes nothing")
 endforeach()
-count_text("${values}" "ai->IsQuestGapGrind()" 1 "one R1 site")
+# #333 P1-ae: plus the read-only profession gate state ProfessionTripGrindFallback (it excludes mode 1, no window).
+count_text("${values}" "ai->IsQuestGapGrind()" 2 "one R1 site and the P1-ae gate state")
 
 # ---- 4. No money grind for the population ------------------------------------------------------------
 require_text("${travel_strategy}" "{\"val::should get money\", TravelDestinationPurpose::Grind, 6.77f}," "the money trigger itself unchanged (other bots)")

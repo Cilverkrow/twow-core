@@ -145,7 +145,9 @@ endforeach()
 # same way ReportQuestIdle is gated by NoGrind() - one GapFiller(config) read in the manager, nowhere else.
 count_text("${mgr}" "ai::quest_grind_mode::GapFiller(sPlayerbotAIConfig.questFirstProgressionGrindMode)" 1 "mode 1 read once in the manager ([GrindWindow] minute gate)")
 count_text("${mgr}" "GapFiller(" 1 "no other mode-1 test in the manager")
-count_text("${values}" "ai->IsQuestGapGrind()" 1 "mode-1 sites in TravelValues: R1 (Grind purpose)")
+# #333 P1-ae (TurnInGateSkipGrindFallback, CLI-Berufe 06.11.2026): the read-only gate state ProfessionTripGrindFallback asks the
+# grind modes to exclude them (no grind decision; pinned in contracts.d/turnin_gate_skip_grind_fallback_source_contract_tests.cmake).
+count_text("${values}" "ai->IsQuestGapGrind()" 2 "mode-1 sites in TravelValues: R1 (Grind purpose) and the P1-ae gate state")
 count_text("${choose}" "ai->IsQuestGapGrind()" 6 "mode-1 sites in the choose file: the grind branch (R2, window line), the grind request (no money grind); S2 commit 2: no_dest; review fixes: the gap grind choice flag (own map in CandidateSkipOf reads it), no group grind copy, the gap request (R1 as the trip condition, recheck)")
 count_text("${travel_mgr}" "ai->IsQuestGapGrind()" 1 "mode-1 sites in TravelMgr: S2 commit 2 the R3 scope bit (PlayerTravelInfo, bot thread)")
 count_text("${grind_target}" "ai->IsQuestGapGrind()" 1 "mode-1 sites in GrindTargetValue: S2 commit 2 R4 / R5, once per pass")

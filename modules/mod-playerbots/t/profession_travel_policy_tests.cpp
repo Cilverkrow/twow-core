@@ -235,6 +235,19 @@ int main()
             "the scoped reason ends as done, ahead of turn_in and cap");
     }
 
+    // P1-ae (ProfessionTraining.TurnInGateSkipGrindFallback, M1r run 10): the 8.32 grind fallback as RequestTravelTargetAction grinds.
+    {
+        Require(InGrindFallback(true, false, false, 2, 2) && InGrindFallback(true, false, false, 5, 2),
+            "quest-first, GrindMode 0, failures at or above the threshold: in the fallback (run 10 bot 1697: failures=2 of 2)");
+        Require(!InGrindFallback(true, false, false, 1, 2), "below the threshold: the quest request still runs, the turn-in waits");
+        Require(!InGrindFallback(true, false, false, 9, 0), "GrindFallbackFailures 0: the fallback is off");
+        Require(!InGrindFallback(false, false, false, 9, 2), "not a quest-first bot: the turn-in rule as before");
+        Require(!InGrindFallback(true, true, false, 9, 2), "gap filler, no-grind mode or QuestFirstOrder: their own rules, the turn-in waits");
+        Require(!InGrindFallback(true, false, true, 9, 2), "S1 turn-in yield for the bot: grinding yields to the turn-in, so it waits");
+        Require(std::strcmp(kGrindFallbackTraceValue, kNearTraceValue) != 0 && kGrindFallbackTraceSeconds == 3600,
+            "own trace value, one line per bot and hour");
+    }
+
     std::cout << "profession_travel_policy_tests: OK\n";
     return 0;
 }

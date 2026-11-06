@@ -109,7 +109,9 @@ read_source("TravelMgr.cpp" travel_mgr_cpp)
 require_text("${ai_cpp}" "    if (!sPlayerbotAIConfig.grindQuestFirstOrder || !bot)\n        return false;\n\n    // GrindMode 1 (gap filler) and 2 (no grind) keep their own rules for the same population (CLI-Deep review).\n    if (IsQuestNoGrind() || IsQuestGapGrind())\n        return false;" "switch first, then GrindMode 1 / 2 first in IsQuestFirstOrder")
 require_text("${ai_cpp}" "bool PlayerbotAI::IsQuestNoGrindTrip()\n{\n    return IsQuestNoGrind() || IsQuestFirstOrder();\n}" "no grind trip = GrindMode 2 or QuestFirstOrder")
 require_text("${travel_values_cpp}" "if (purpose == TravelDestinationPurpose::GatherSkinning && ai->IsQuestNoGrindTrip())" "no skinning kill trip")
-count_text("${travel_values_cpp}" "ai->IsQuestNoGrindTrip()" 2 "skinning + boss trip")
+# #333 P1-ae (CLI-Berufe 06.11.2026): plus the read-only profession gate state ProfessionTripGrindFallback (excludes GrindMode 2 and
+# QuestFirstOrder; pinned in contracts.d/turnin_gate_skip_grind_fallback_source_contract_tests.cmake).
+count_text("${travel_values_cpp}" "ai->IsQuestNoGrindTrip()" 3 "skinning + boss trip, and the P1-ae gate state")
 require_text("${travel_mgr_cpp}" "    if (ai->IsQuestNoGrindTrip())   // + QuestFirstOrder (#601 review)\n    {\n        std::vector<int32> const& needed" "no pure grind destination")
 require_text("${travel_cpp}" "bool const forcedNoGrind = target->IsForced() && ai->IsQuestNoGrindTrip();" "no forced kill trip to a non-quest creature")
 require_text("${travel_cpp}" "if (ai->IsQuestFirstOrder() && getQualifier() == std::to_string(uint32(TravelDestinationPurpose::Grind)))\n    {\n        PlayerbotAI::NoteQuestOrder(uint8(ai::quest_first_order::Event::GrindRefused));\n        ai->NoteQuestOrderEpisode(uint8(ai::quest_first_order::Event::GrindRefused));\n        return false;\n    }" "grind request refused")
