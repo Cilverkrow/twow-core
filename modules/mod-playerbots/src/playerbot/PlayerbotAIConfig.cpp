@@ -2,6 +2,7 @@
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/playerbot.h"
 #include "playerbot/PathFailPolicy.h"
+#include "playerbot/IslandGuardPolicy.h"   // twow-repo#575 A3 step 4 M-c: Path.IslandGuard loader clamps
 #include "playerbot/PosStuckPolicy.h"
 #include "playerbot/RoutePrecheckPolicy.h"
 #include "playerbot/AreaTeamPolicy.h"
@@ -1066,6 +1067,11 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("AiPlayerbot.Path.TransportBoardFix is built for TransportTeleportType 1 / 2; walking onto transports (0) is not supported");
     pathTaxiCancelForm = config.GetBoolDefault("AiPlayerbot.Path.TaxiCancelForm", false);
     pathRescueSkipCustomStarts = config.GetBoolDefault("AiPlayerbot.Path.RescueSkipCustomStarts", false);
+    // twow-repo#575 A3 step 4 M-c (Path.IslandGuard): an unknown mode is off (CohortPolicy.h); the others clamped (IslandGuardPolicy.h).
+    pathIslandGuard = ai::island::ClampMode(config.GetIntDefault("AiPlayerbot.Path.IslandGuard", 0));
+    pathIslandMaxPolys = ai::island::ClampMaxPolys(config.GetIntDefault("AiPlayerbot.Path.IslandMaxPolys", int(ai::island::DefaultMaxPolys)));
+    pathIslandSnapDz = ai::island::ClampSnapDz(config.GetFloatDefault("AiPlayerbot.Path.IslandSnapDz", ai::island::DefaultSnapDz));
+    pathIslandStepOffYards = ai::island::ClampStepOffYards(config.GetFloatDefault("AiPlayerbot.Path.IslandStepOffYards", ai::island::DefaultStepOffYards));
     customRaceStartZones = config.GetBoolDefault("AiPlayerbot.CustomRaceStartZones", false);
     revivePreferCorpseRun = config.GetBoolDefault("AiPlayerbot.Revive.PreferCorpseRun", false);
     questFirstProgressionTurnInDeathRouteCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInDeathRouteCooldownSeconds", 3600));
@@ -1901,6 +1907,10 @@ bool PlayerbotAIConfig::Initialize()
             {"Grind.SafePull.ReadyMana", Value(grindSafePullReadyMana)},
             {"LogInGroupOnly", Value(logInGroupOnly)},
             {"Loot.RoleWeights", Value(lootRoleWeights)},
+            {"Path.IslandGuard", Value(pathIslandGuard)},
+            {"Path.IslandMaxPolys", Value(pathIslandMaxPolys)},
+            {"Path.IslandSnapDz", Value(pathIslandSnapDz)},
+            {"Path.IslandStepOffYards", Value(pathIslandStepOffYards)},
             {"Path.PartialNoop", Value(pathPartialNoop)},
             {"Path.PosStuck", Value(pathPosStuck)},
             {"Path.PosStuck.Minutes", Value(pathPosStuckMinutes)},
