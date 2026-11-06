@@ -3,6 +3,7 @@
 #include "SellAction.h"
 #include "playerbot/strategy/ItemVisitors.h"
 #include "playerbot/strategy/values/ItemUsageValue.h"
+#include "playerbot/ProfessionUsePolicy.h"   // twow-repo#333 M2-T: the [ProfCount] sold line
 
 using namespace ai;
 
@@ -101,9 +102,19 @@ bool SellAction::Sell(Player* requester, Item* item)
 
         sPlayerbotAIConfig.logEvent(ai, "SellAction", item->GetProto()->Name1, std::to_string(item->GetProto()->ItemId));
 
+        uint32 const soldItemId = item->GetProto()->ItemId;   // twow-repo#333 M2-T: read before the sale (the item may be gone after it)
+
         WorldPacket p;
         p << vendorguid << itemguid << count;
         bot->GetSession()->HandleSellItemOpcode(p);
+
+        // twow-repo#333 M2-T (AiPlayerbot.ProfessionUse.Trace): the copper of this sale, before the gold cheat resets the money.
+        if (sPlayerbotAIConfig.professionUseTrace)
+        {
+            if (uint32 const copper = ai::profession_use::SoldCopper(botMoney, bot->GetMoney()))
+                sLog.outBasic("[ProfCount] event=sold bot=%u level=%u item=%u count=%u copper=%u", bot->GetGUIDLow(), bot->GetLevel(),
+                    soldItemId, count, copper);
+        }
 
         if (ai->HasCheat(BotCheatMask::gold))
         {
