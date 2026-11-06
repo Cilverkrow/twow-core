@@ -69,7 +69,9 @@ require_text("${duel_combat}" "InitNonCombatTriggers(triggers);" "combat engine 
 region("${generic_triggers_h}" "class DuelNoAttackersTrigger : public NoAttackersTrigger" "\n    };" duel_trigger_h)
 require_text("${duel_trigger_h}" "DuelNoAttackersTrigger(PlayerbotAI* ai) : NoAttackersTrigger(ai, \"duel no attackers\") {}" "D69 trigger name")
 region("${generic_triggers_cpp}" "bool DuelNoAttackersTrigger::IsActive()" "\n}\n" duel_trigger_cpp)
-require_text("${duel_trigger_cpp}" "return bot->m_duel && NoAttackersTrigger::IsActive();" "D69 duel check before the no attackers check")
+# twow-repo#602 W24 duel hang (Rotation.DuelRule, 06.11.2026): the body now returns early without m_duel, keeps the old check as
+# the first result and adds the engage of a running duel after it (pinned in contracts.d/duel_rule_source_contract_tests.cmake).
+require_text("${duel_trigger_cpp}" "    if (!bot->m_duel)\n        return false;\n\n    if (NoAttackersTrigger::IsActive())\n        return true;\n" "D69 duel check before the no attackers check")
 region("${generic_triggers_cpp}" "bool NoAttackersTrigger::IsActive()" "\n}\n" no_attackers_cpp)
 require_text("${no_attackers_cpp}" "return !AI_VALUE(Unit*, \"current target\") && AI_VALUE(uint8, \"my attacker count\") > 0;" "no attackers trigger unchanged")
 forbid_text("${no_attackers_cpp}" "m_duel" "D69 must not change the no attackers trigger")

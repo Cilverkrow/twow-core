@@ -79,6 +79,7 @@
 #include "playerbot/CastWhileMovingPolicy.h"   // twow-repo#602 (Rotation.CastStopFirst): [CastStopFirst] minute line
 #include "playerbot/MeleeSkipPolicy.h"   // twow-repo#602 (Rotation.MeleeSkipAttacking): [MeleeSkip] minute line
 #include "playerbot/InvalidTargetPolicy.h"   // twow-repo#602 (Rotation.InvalidTargetQuiet): [InvalidTarget] minute line
+#include "playerbot/DuelRulePolicy.h"   // twow-repo#602 W24 (Rotation.DuelRule): [DuelRule] minute line
 #include "playerbot/TankKitPolicy.h"   // twow-repo#602 (Rotation.TankKitFromLevel): [TankKit] minute line
 #include "playerbot/PathReusePolicy.h"
 #include "playerbot/NeverPossiblePolicy.h"   // twow-repo#602 (Rotation.NeverPossibleSkip): [NeverPossible] minute line
@@ -1325,6 +1326,24 @@ void ReportMeleeSkip()
         (unsigned long long)ai::melee_skip::skipped.exchange(0, std::memory_order_relaxed));
 }
 
+// twow-repo#602 W24 duel hang (AiPlayerbot.Rotation.DuelRule): one [DuelRule] line per minute - "rpg duel" not offered to a group member
+// (skipped_group), "accept duel" skipped as the initiator (skipped_accept), "duel no attackers" fired for a running duel without an
+// attacker (engaged), bot-vs-bot duels cancelled without a fight (cancelled). Nothing is written when off.
+void ReportDuelRule()
+{
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (!sPlayerbotAIConfig.rotationDuelRule || now < lastReport + 60)
+        return;
+    lastReport = now;
+    sLog.outBasic("[DuelRule] mode=%u cancel_s=%u skipped_group=%llu skipped_accept=%llu engaged=%llu cancelled=%llu", sPlayerbotAIConfig.rotationDuelRule,
+        sPlayerbotAIConfig.rotationDuelRuleCancelSeconds,
+        (unsigned long long)ai::duel_rule::skippedGroup.exchange(0, std::memory_order_relaxed),
+        (unsigned long long)ai::duel_rule::skippedAccept.exchange(0, std::memory_order_relaxed),
+        (unsigned long long)ai::duel_rule::engaged.exchange(0, std::memory_order_relaxed),
+        (unsigned long long)ai::duel_rule::cancelled.exchange(0, std::memory_order_relaxed));
+}
+
 // twow-repo#602 (AiPlayerbot.Rotation.InvalidTargetQuiet): one [InvalidTarget] line per minute - "invalid target" checks kept quiet (quiet),
 // and the trace for the follow-up (b): "select new target" dropped a live current target (dropped_live), while casting (interrupted_live).
 // Nothing is written when off.
@@ -2087,6 +2106,7 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     ReportCastStopFirst();  // twow-repo#602: [CastStopFirst] once per minute (AiPlayerbot.Rotation.CastStopFirst)
     ReportMeleeSkip();      // twow-repo#602: [MeleeSkip] once per minute (AiPlayerbot.Rotation.MeleeSkipAttacking)
     ReportInvalidTarget();  // twow-repo#602: [InvalidTarget] once per minute (AiPlayerbot.Rotation.InvalidTargetQuiet)
+    ReportDuelRule();       // twow-repo#602 W24: [DuelRule] once per minute (AiPlayerbot.Rotation.DuelRule)
     ReportTankKit();        // twow-repo#602: [TankKit] once per minute (AiPlayerbot.Rotation.TankKitFromLevel)
     ReportParkSleep();    // twow-repo#541: core switches + cell source lines once per minute (AiPlayerbot.Park.CellSourceStats)
     ReportCombatIdle();   // twow-repo#541 (audit A17): [CombatIdle] once per minute (AiPlayerbot.Perf.CombatIdleYield)
