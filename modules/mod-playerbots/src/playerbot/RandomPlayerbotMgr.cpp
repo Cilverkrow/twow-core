@@ -1169,6 +1169,7 @@ void ReportBotUpdate()
     uint32 const now = uint32(time(nullptr));
     if (!tracing)
     {
+        ai::bot_update::Cohort().Take();   // A3 step 0 (e): the cohort recorder is drained on the same edge
         // Switched on (start or config reload): what an earlier period left is dropped, the first line comes after a
         // full minute (same pattern as ReportShortcut; twow-repo#601 review 18.10.).
         tracing = true;
@@ -1176,7 +1177,6 @@ void ReportBotUpdate()
         ai::bot_update::Global().Take();
         ai::bot_update::Prevalidate().Take();
         ai::grind_pick::Global().Take();
-        ai::bot_update::Cohort().Take();
         return;
     }
     if (now < lastReport + 60)
