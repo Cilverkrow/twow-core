@@ -14,6 +14,7 @@
 #include "playerbot/EmergencyLadderPolicy.h"
 #include "playerbot/RestGatePolicy.h"
 #include "playerbot/GroupOpPolicy.h"   // BOT-12: BotGroups.OpQueue clamps
+#include "playerbot/GroupManagerPolicy.h"   // A3 step 6: BotGroups.Manager mode
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
@@ -864,6 +865,13 @@ bool PlayerbotAIConfig::Initialize()
     botGroupsOpQueueOpsPerTick = ai::group_ops::ClampOpsPerTick(config.GetIntDefault("AiPlayerbot.BotGroups.OpQueueOpsPerTick", 1));
     botGroupsOpQueueMaxDepth = ai::group_ops::ClampMaxDepth(config.GetIntDefault("AiPlayerbot.BotGroups.OpQueueMaxDepth", 2048));
     botGroupsOpQueueAlertAgeSeconds = ai::group_ops::ClampAlertAgeSeconds(config.GetIntDefault("AiPlayerbot.BotGroups.OpQueueAlertAgeSeconds", 60));
+    // A3 step 6 (ADR-0041): the group manager (GroupManagerPolicy.h); an unknown mode is off.
+    botGroupsManager = uint32(config.GetIntDefault("AiPlayerbot.BotGroups.Manager", 0));
+    if (!ai::group_mgr::ValidMode(botGroupsManager))
+    {
+        sLog.outError("[GroupMgr] config key=Manager value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", botGroupsManager);
+        botGroupsManager = 0;
+    }
     questGroupsEnable = (uint32)config.GetIntDefault("AiPlayerbot.QuestGroups.Enable", 0);
     questGroupsScanSeconds = std::max<uint32>(10, config.GetIntDefault("AiPlayerbot.QuestGroups.ScanSeconds", 60));
     questGroupsScanSlices = std::min<uint32>(64, (uint32)config.GetIntDefault("AiPlayerbot.QuestGroups.ScanSlices", 0));
@@ -1870,6 +1878,7 @@ bool PlayerbotAIConfig::Initialize()
             {"BotGroups.Enabled", Value(botGroupsEnabled)},
             {"BotGroups.LeaderOtherMap", Value(botGroupsLeaderOtherMap)},
             {"BotGroups.LeaderOtherMapSeconds", Value(botGroupsLeaderOtherMapSeconds)},
+            {"BotGroups.Manager", Value(botGroupsManager)},
             {"BotGroups.OpQueue", Value(botGroupsOpQueue)},
             {"BotGroups.OpQueueAlertAgeSeconds", Value(botGroupsOpQueueAlertAgeSeconds)},
             {"BotGroups.OpQueueMaxDepth", Value(botGroupsOpQueueMaxDepth)},
