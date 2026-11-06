@@ -21,6 +21,7 @@
 #include "playerbot/FarMovePolicy.h"
 #include "playerbot/LevelGuardPolicy.h"   // twow-repo#601 cand4 lever (ii): the guard counts in the [FarMove] line
 #include "playerbot/PathFailPolicy.h"
+#include "playerbot/IslandGuard.h"   // twow-repo#575 A3 step 4 M-c: Path.IslandGuard arrival snap / step-off
 #include "playerbot/StartZonePolicy.h"
 #include "playerbot/DangerMapConfig.h"
 #include "playerbot/CohortPolicy.h"
