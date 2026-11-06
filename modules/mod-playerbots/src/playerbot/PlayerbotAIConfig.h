@@ -1071,6 +1071,14 @@ public:
     bool pathTransportBoardFix = false;  // twow-repo#342 (S3b-1): bots board ships / zeppelins (deck hit, stop gate, dock-hop entry, ride record, exit at the arrival dock, lost-ride recovery), 0 = off
     bool pathTaxiCancelForm = false;  // twow-repo#575 (PATH-01 b): cancel a disallowed mount form (travel form, Ghost Wolf) before a flight, 0 = off
     bool pathRescueSkipCustomStarts = false;  // twow-repo#575 (PATH-01 E6): the quest rescue sends only goblins / high elves to their start zones, 0 = off
+    // twow-repo#575 A3 step 4 M-c (OB-00 06.11.2026, IslandGuardPolicy.h): no far-move arrival on a navmesh micro-island (the
+    // arrival point moves to the nearest main ground), and a bot already on one steps off it. 0 off (default), 1 all, 2 cohort B,
+    // 3 cohort A; any other value acts like 0. The other three keys: island threshold (polys), vertical window of the arrival
+    // snap (yd), step-off reach (yd, 0 = no step-off).
+    uint32 pathIslandGuard = 0;
+    uint32 pathIslandMaxPolys = 200;
+    float pathIslandSnapDz = 10.0f;
+    float pathIslandStepOffYards = 7.0f;
     bool customRaceStartZones = false;  // twow-repo#575 (PATH-01 wave 0): goblins / high elves quest in their real start zones (StartZonePolicy.h), 0 = off
     bool revivePreferCorpseRun = false;  // hotfix 8.34 (#544): corpse run before the spirit-healer shortcuts
     uint32 questFirstProgressionTurnInDeathRouteCooldownSeconds = 3600;
