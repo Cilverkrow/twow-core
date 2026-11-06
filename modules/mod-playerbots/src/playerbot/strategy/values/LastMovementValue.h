@@ -39,6 +39,10 @@ namespace ai
             farMoveArriveSet = other.farMoveArriveSet;
             farMoveDeclinedSet = other.farMoveDeclinedSet;
             farMoveArrivedAt = other.farMoveArrivedAt;
+            farMoveIslandSnap = other.farMoveIslandSnap;
+            farMoveIslandSnapDistance = other.farMoveIslandSnapDistance;
+            farMoveIslandPolys = other.farMoveIslandPolys;
+            islandCheckAt = other.islandCheckAt;
             transportWaitMs = other.transportWaitMs;
             farMoveDeclinedUntil = other.farMoveDeclinedUntil;
             fleeCount = other.fleeCount;
@@ -142,6 +146,14 @@ namespace ai
         bool farMoveArriveSet = false;
         bool farMoveDeclinedSet = false;
         time_t farMoveArrivedAt = 0;  // hotfix 8.36: last far-move arrival (arrive_deaths)
+        // twow-repo#575 A3 step 4 M-c (AiPlayerbot.Path.IslandGuard): the island check of farMoveArrive (ai::island::ArrivalSnap,
+        // 0 = unchecked), its snap distance and island size, for the snap= field of [FarMoveArrive]; reset when that line is
+        // due. islandCheckAt: the bot's last step-off check (at most one per StepOffIntervalSeconds). Written and read by the
+        // bot's own movement only; clear() leaves them alone.
+        uint8 farMoveIslandSnap = 0;
+        float farMoveIslandSnapDistance = 0.0f;
+        uint32 farMoveIslandPolys = 0;
+        time_t islandCheckAt = 0;
         // twow-repo#342 ABBA-1 §6 (PosStuckPolicy.h DockWaitPaused): getMSTime of the last wait for a ship or zeppelin at its
         // dock (HandleSpecialMovement, the transport not used yet and the bot not aboard), 0 = none. Written and read by the bot's
         // own movement and travel target (bot thread). clear() leaves it alone: the pause lapses by itself.

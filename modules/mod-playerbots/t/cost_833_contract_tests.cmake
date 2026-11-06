@@ -65,7 +65,7 @@ endif()
 foreach (needle
     "bool FarMoveRouteWatched(WorldPosition const& from, WorldPosition const& to)"
     "!(sPlayerbotAIConfig.rosterFarMoveWatchRoute && FarMoveRouteWatched(farStart, endPos))"
-    "bool found = FarMoveArrivalPoint(bot, farStart, endPos, sPlayerbotAIConfig.rosterFarMoveArriveBackYards, arrive);"
+    "bool found = FarMoveArrivalPoint(bot, farStart, endPos, sPlayerbotAIConfig.rosterFarMoveArriveBackYards, arrive, &islandCheck);"
     "WorldPosition const arrive = lastMove.farMoveArriveSet ? lastMove.farMoveArrive : endPos;"
     "if (!point.ClosestCorrectPoint(20.0f, 50.0f, bot->GetInstanceId()))"
     "lastMove.farMoveArrivedAt = now;")
