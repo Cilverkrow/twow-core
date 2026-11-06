@@ -887,6 +887,9 @@ public:
     uint32 botGroupsOpQueueOpsPerTick = 1;          // ops per world tick, 1..16 (none in a tick with a manager group step)
     uint32 botGroupsOpQueueMaxDepth = 2048;         // 16..65536; a full queue refuses new ops (dropped_full)
     uint32 botGroupsOpQueueAlertAgeSeconds = 60;    // 5..3600; "[GroupOps] ALERT" when the oldest op is older
+    // A3 step 6 (ADR-0041, OB-00 06.11.2026): the group manager of roster bots on the world thread (GroupManagerPolicy.h,
+    // GroupManager.cpp). Scaffold: no decision yet. 0 off, 1 all, 2 cohort B, 3 cohort A; other = 0 + error line.
+    uint32 botGroupsManager = 0;
     // twow-repo#627 S7 help groups (QuestGroupPolicy.h, QuestGroupWorld.cpp); Enable: 0 off, 1 all, 2 cohort B, 3 cohort A.
     uint32 questGroupsEnable = 0;
     uint32 questGroupsScanSeconds = 60;

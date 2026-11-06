@@ -1349,6 +1349,12 @@ AiPlayerbot.BotGroups.OpQueueOpsPerTick = 1
 AiPlayerbot.BotGroups.OpQueueMaxDepth = 2048
 # BOT-12: the "[GroupOps] ALERT" line when the oldest queued op is older than this (5..3600 s; default 60).
 AiPlayerbot.BotGroups.OpQueueAlertAgeSeconds = 60
+# A3 step 6 (ADR-0041, OB-00 06.11.2026): the group manager - one owner of the groups of roster bots (ad-hoc, quest and later
+# dungeon groups) on the world thread, with one role resolver, one dungeon level fit at the strongest boss and one meeting-point
+# rule. SCAFFOLD: the manager runs its world-thread pass and decides nothing yet, so every value behaves like 0 today.
+# Mode (in-realm A/B, cohort parity): 0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid), 3 = only
+# cohort A (even low guid). Any other value acts like 0 (one error line at load).
+AiPlayerbot.BotGroups.Manager = 0
 
 # #627 S7 help groups (owner 18.10./23.10.2026): roster bots holding the same elite
 # quest (Type 1; with SuggestedPlayers = 1 also SuggestedPlayers >= 2; never
