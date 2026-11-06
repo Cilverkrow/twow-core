@@ -3,6 +3,7 @@
 #include "playerbot/ValueEvictPolicy.h"
 #include "playerbot/BotPacketInbox.h"
 #include "playerbot/X3bSnapshotPolicy.h"
+#include "playerbot/CheatItemPolicy.h"   // twow-repo#333 M2 shadow counter: the [CheatItem] window
 #include "PlayerbotAIBase.h"
 #include "strategy/AiObjectContext.h"
 #include "strategy/ReactionEngine.h"
@@ -802,6 +803,11 @@ public:
     BotCheatMask GetCheat() { return cheatMask; }
     void SetCheat(BotCheatMask mask) { cheatMask = mask; }
 
+    // twow-repo#333 M2 shadow counter (AiPlayerbot.CheatItem.Trace, default 0; log only): the item cheat stood in for an item
+    // at <site> (amount = casts or units). Summed per bot; FlushCheatItem writes one [CheatItem] line per window.
+    void NoteCheatItem(ai::cheat_item::Site site, uint32 amount = 1);
+    void FlushCheatItem();
+
     // Cache master's GUID alongside the raw pointer so we can revalidate
     // the pointer each tick against ObjectAccessor — if the master Player
     // was destroyed (logout / disconnect) since SetMaster() was called,
@@ -914,6 +920,8 @@ public:
 #endif
 
 private:
+    ai::cheat_item::Counts cheatItemCounts;   // twow-repo#333 M2 shadow counter: the open window
+    uint64 cheatItemWindowStart = 0;
     bool UpdateAIReaction(uint32 elapsed, bool minimal, bool isStunned);
     void UpdateFaceTarget(uint32 elapsed, bool minimal);
 

@@ -831,6 +831,20 @@ add_test(NAME profession_use_policy
   COMMAND profession_use_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# #333 M2 shadow counter: how often the item cheat stood in for an item ([CheatItem], CheatItem.Trace).
+add_executable(cheat_item_policy_tests
+  "${PB_MODULE_DIR}/t/cheat_item_policy_tests.cpp")
+
+target_include_directories(cheat_item_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(cheat_item_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME cheat_item_policy
+  COMMAND cheat_item_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # Hotfix 8.29: Blackstone Island flying machine.
 add_test(NAME goblin_island_contract
   COMMAND "${CMAKE_COMMAND}"

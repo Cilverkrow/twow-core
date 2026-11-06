@@ -739,6 +739,8 @@ namespace ai
                     return false;
                 }
                 castFailed = false;
+                if (cast)   // twow-repo#333 M2 shadow counter (CheatItem.Trace, log only): the cheat drink
+                    ai->NoteCheatItem(ai::cheat_item::Site::Drink);
                 SetDuration(drinkDuration);
                 bot->RemoveSpellCooldown(*pSpellInfo);
 
@@ -750,6 +752,7 @@ namespace ai
                     if (pSpellInfo2)
                     {
                         ai->AddAura(bot, 24005);
+                        ai->NoteCheatItem(ai::cheat_item::Site::Food);   // twow-repo#333 M2 shadow counter
                         bot->RemoveSpellCooldown(*pSpellInfo2);
                     }
                 }
@@ -841,6 +844,8 @@ namespace ai
                     return false;
                 }
                 castFailed = false;
+                if (cast)   // twow-repo#333 M2 shadow counter (CheatItem.Trace, log only): the cheat food
+                    ai->NoteCheatItem(ai::cheat_item::Site::Food);
                 SetDuration(eatDuration);
                 bot->RemoveSpellCooldown(*pSpellInfo);
 
@@ -851,6 +856,7 @@ namespace ai
                     if (pSpellInfo2)
                     {
                         ai->AddAura(bot, 24355);
+                        ai->NoteCheatItem(ai::cheat_item::Site::Drink);   // twow-repo#333 M2 shadow counter
                         bot->RemoveSpellCooldown(*pSpellInfo2);
                     }
                 }
