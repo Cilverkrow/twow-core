@@ -80,6 +80,9 @@ read_source("PlayerbotAIConfig.cpp" config_cpp)
 read_source("aiplayerbot.conf.dist.in" conf_dist)
 read_source("WorldPosition.cpp" world_position)
 
+# 0. The movement TU includes the guard header (CI run 42279661623: without it ai::island is undeclared; host contracts read text only).
+require_text("${movement}" "#include \"playerbot/IslandGuard.h\"" "MovementActions.cpp includes IslandGuard.h")
+
 # 1. Defaults: off, threshold 200, dz 10, step-off 7 - in the member, the loader and the .dist.
 require_text("${config_h}" "uint32 pathIslandGuard = 0;" "switch member default 0")
 require_text("${config_h}" "uint32 pathIslandMaxPolys = 200;" "threshold member default")
