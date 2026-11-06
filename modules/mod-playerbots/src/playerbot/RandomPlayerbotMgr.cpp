@@ -1176,6 +1176,7 @@ void ReportBotUpdate()
         ai::bot_update::Global().Take();
         ai::bot_update::Prevalidate().Take();
         ai::grind_pick::Global().Take();
+        ai::bot_update::Cohort().Take();
         return;
     }
     if (now < lastReport + 60)
@@ -1185,6 +1186,9 @@ void ReportBotUpdate()
     ai::bot_update::Snapshot const s = ai::bot_update::Global().Take();
     ai::bot_update::CountedSnapshot const pv = ai::bot_update::Prevalidate().Take();
     ai::grind_pick::Snapshot const gp = ai::grind_pick::Global().Take();
+    // A3 step 0 (e): the cohort window is taken with the [BotUpdate] one; the two lines (A, then B) follow it, always both,
+    // also with calls=0 (a missing line means an outage, not zero). Only with AiPlayerbot.BotUpdateTraceCohort.
+    ai::bot_update::CohortSnapshot const cohorts = ai::bot_update::Cohort().Take();
 
     // twow-repo#601 S1 (OB-10 18.10.): every PreValidateTurnIns call of the minute - its time and its work (open turn-ins
     // checked) and result (validated). Only with AiPlayerbot.QuestFirstProgression.FailureClasses (the only caller).
@@ -1207,6 +1211,15 @@ void ReportBotUpdate()
         (unsigned long long)ai::bot_update::PercentileUs(s, 0.99), (unsigned long long)ai::bot_update::PercentileUs(s, 0.999),
         (unsigned long long)s.maxUs,
         (unsigned long long)ai::bot_update::CallsAtLeastUs(s, 10000), (unsigned long long)ai::bot_update::CallsAtLeastUs(s, 20000));
+    if (sPlayerbotAIConfig.botUpdateTraceCohort)
+        for (std::size_t c = 0; c < ai::bot_update::CohortCount; ++c)
+        {
+            ai::bot_update::Snapshot const& cs = cohorts.cohort[c];
+            sLog.outBasic("[BotUpdateCohort] cohort=%c calls=%llu sum_us=%llu max_us=%llu over10ms=%llu over20ms=%llu p99_us=%llu",
+                c == 0 ? 'A' : 'B', (unsigned long long)cs.calls, (unsigned long long)cs.totalUs, (unsigned long long)cs.maxUs,
+                (unsigned long long)cohorts.over10[c], (unsigned long long)cohorts.over20[c],
+                (unsigned long long)ai::bot_update::PercentileUs(cs, 0.99));
+        }
     for (ai::bot_update::Slow const& slow : s.slowest)
         sLog.outBasic("[BotUpdateSlow] us=%llu %s", (unsigned long long)slow.us, slow.who.c_str());
 }

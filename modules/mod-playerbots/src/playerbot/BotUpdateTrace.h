@@ -9,6 +9,8 @@
 #include <string>
 #include <vector>
 
+#include "CohortPolicy.h"
+
 namespace ai::bot_update
 {
 // twow-repo#541 (deep dive: spikes per region update, owner approval for measurement counters):
@@ -211,6 +213,86 @@ private:
 inline CountedRecorder& Prevalidate()
 {
     static CountedRecorder recorder;
+    return recorder;
+}
+
+// A3 step 0 (e), AiPlayerbot.BotUpdateTraceCohort (with BotUpdateTrace): the volume of bot updates per cohort (A = even
+// low guid, B = odd, ai::cohort::Letter). [BotUpdateSlow] is only the five slowest calls of the world, [BotUpdate] only
+// the realm sum, so a per-cohort ratio needs its own counters. over10/over20 are exact counts (us >= 10000 / 20000),
+// not bucket lower bounds like the [BotUpdate] over10ms / over20ms fields. Atomics only, no slow list, no lock.
+constexpr std::size_t CohortCount = 2;      // 0 = A, 1 = B
+
+struct CohortSnapshot
+{
+    std::array<Snapshot, CohortCount> cohort;                // calls, totalUs, maxUs, buckets (slowest stays empty)
+    std::array<std::uint64_t, CohortCount> over10{};         // calls with us >= 10000
+    std::array<std::uint64_t, CohortCount> over20{};         // calls with us >= 20000
+};
+
+class CohortRecorder
+{
+public:
+    static constexpr std::uint64_t Over10Us = 10000;
+    static constexpr std::uint64_t Over20Us = 20000;
+
+    static std::size_t IndexOf(std::uint32_t guidLow)
+    {
+        return ai::cohort::InB(guidLow) ? 1 : 0;
+    }
+
+    // Any thread.
+    void Add(std::uint32_t guidLow, std::uint64_t us)
+    {
+        Slot& slot = slots[IndexOf(guidLow)];
+        slot.totalUs.fetch_add(us, std::memory_order_relaxed);
+        slot.buckets[BucketOf(us)].fetch_add(1, std::memory_order_relaxed);
+        if (us >= Over10Us)
+            slot.over10.fetch_add(1, std::memory_order_relaxed);
+        if (us >= Over20Us)
+            slot.over20.fetch_add(1, std::memory_order_relaxed);
+        std::uint64_t seen = slot.maxUs.load(std::memory_order_relaxed);
+        while (us > seen && !slot.maxUs.compare_exchange_weak(seen, us, std::memory_order_relaxed))
+        {
+        }
+    }
+
+    // Reads and resets everything (the reader is the per-minute line). calls is the sum of the drained buckets, like
+    // CountedRecorder::Take, so p99 never sees a call without its bucket.
+    CohortSnapshot Take()
+    {
+        CohortSnapshot s;
+        for (std::size_t c = 0; c < CohortCount; ++c)
+        {
+            Slot& slot = slots[c];
+            Snapshot& out = s.cohort[c];
+            out.totalUs = slot.totalUs.exchange(0, std::memory_order_relaxed);
+            out.maxUs = slot.maxUs.exchange(0, std::memory_order_relaxed);
+            for (std::size_t b = 0; b < Buckets; ++b)
+            {
+                out.buckets[b] = slot.buckets[b].exchange(0, std::memory_order_relaxed);
+                out.calls += out.buckets[b];
+            }
+            s.over10[c] = slot.over10.exchange(0, std::memory_order_relaxed);
+            s.over20[c] = slot.over20.exchange(0, std::memory_order_relaxed);
+        }
+        return s;
+    }
+
+private:
+    struct Slot
+    {
+        std::atomic<std::uint64_t> totalUs{0};
+        std::atomic<std::uint64_t> maxUs{0};
+        std::atomic<std::uint64_t> over10{0};
+        std::atomic<std::uint64_t> over20{0};
+        std::array<std::atomic<std::uint64_t>, Buckets> buckets{};
+    };
+    std::array<Slot, CohortCount> slots;
+};
+
+inline CohortRecorder& Cohort()
+{
+    static CohortRecorder recorder;
     return recorder;
 }
 }

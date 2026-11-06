@@ -109,6 +109,75 @@ int main()
     Require(&Prevalidate() == &Prevalidate(), "one prevalidate instance");
     Require(static_cast<void*>(&Prevalidate()) != static_cast<void*>(&Global()), "own instance, not the update recorder");
 
+    // A3 step 0 (e): per-cohort volume counter. A = even low guid, B = odd.
+    Require(CohortRecorder::IndexOf(2) == 0 && CohortRecorder::IndexOf(3) == 1, "guid 2 -> A, 3 -> B");
+    Require(CohortRecorder::IndexOf(0) == 0 && CohortRecorder::IndexOf(4294967295u) == 1, "parity at the guid edges");
+    CohortRecorder cohortRec;
+    cohortRec.Add(2, 9999);       // A: below 10 ms
+    cohortRec.Add(4, 10000);      // A: exactly 10 ms
+    cohortRec.Add(6, 19999);      // A: only over10
+    cohortRec.Add(8, 20000);      // A: both
+    cohortRec.Add(3, 5);          // B
+    CohortSnapshot const cs = cohortRec.Take();
+    Require(cs.cohort[0].calls == 4 && cs.cohort[1].calls == 1, "calls per cohort");
+    Require(cs.over10[0] == 3 && cs.over20[0] == 1, "thresholds exact: 9999 -> none, 10000 / 19999 -> over10, 20000 -> both");
+    Require(cs.over10[1] == 0 && cs.over20[1] == 0, "cohort B has no slow call");
+    Require(cs.cohort[0].totalUs == 9999ull + 10000 + 19999 + 20000 && cs.cohort[0].maxUs == 20000, "A sum and max");
+    Require(cs.cohort[1].totalUs == 5 && cs.cohort[1].maxUs == 5, "B sum and max");
+    for (std::size_t c = 0; c < CohortCount; ++c)
+    {
+        std::uint64_t sum = 0;
+        for (std::uint64_t b : cs.cohort[c].buckets)
+            sum += b;
+        Require(sum == cs.cohort[c].calls, "calls == sum of buckets");
+    }
+    Require(PercentileUs(cs.cohort[0], 0.99) == BucketUpperUs(BucketOf(20000)), "A p99 in the 20 ms bucket");
+    CohortSnapshot const cohortEmpty = cohortRec.Take();
+    for (std::size_t c = 0; c < CohortCount; ++c)
+    {
+        std::uint64_t sum = 0;
+        for (std::uint64_t b : cohortEmpty.cohort[c].buckets)
+            sum += b;
+        Require(cohortEmpty.cohort[c].calls == 0 && cohortEmpty.cohort[c].totalUs == 0 && cohortEmpty.cohort[c].maxUs == 0 &&
+            cohortEmpty.over10[c] == 0 && cohortEmpty.over20[c] == 0 && sum == 0, "second Take is all zeros");
+    }
+
+    std::uint64_t rng = 88172645463325252ull;
+    std::uint64_t expectOver10[2] = { 0, 0 };
+    std::uint64_t expectCalls[2] = { 0, 0 };
+    for (int i = 0; i < 20000; ++i)
+    {
+        rng ^= rng << 13;
+        rng ^= rng >> 7;
+        rng ^= rng << 17;
+        std::uint32_t const guid = std::uint32_t(rng >> 40);
+        std::uint64_t const us = (rng >> 8) % 40000;
+        cohortRec.Add(guid, us);
+        ++expectCalls[guid & 1u];
+        if (us >= 10000)
+            ++expectOver10[guid & 1u];
+    }
+    CohortSnapshot const cohortRand = cohortRec.Take();
+    for (std::size_t c = 0; c < CohortCount; ++c)
+    {
+        Require(cohortRand.over20[c] <= cohortRand.over10[c] && cohortRand.over10[c] <= cohortRand.cohort[c].calls, "over20 <= over10 <= calls");
+        Require(cohortRand.cohort[c].calls == expectCalls[c] && cohortRand.over10[c] == expectOver10[c], "random run matches the reference count");
+    }
+
+    std::vector<std::thread> cohortThreads;
+    for (int t = 0; t < 8; ++t)
+        cohortThreads.emplace_back([&cohortRec, t]()
+        {
+            for (int i = 0; i < 10000; ++i)
+                cohortRec.Add(std::uint32_t(t), std::uint64_t(i % 500));
+        });
+    for (std::thread& th : cohortThreads)
+        th.join();
+    CohortSnapshot const cohortMany = cohortRec.Take();
+    Require(cohortMany.cohort[0].calls == 40000 && cohortMany.cohort[1].calls == 40000, "cohort counts across threads");
+    Require(&Cohort() == &Cohort(), "one cohort instance");
+    Require(static_cast<void*>(&Cohort()) != static_cast<void*>(&Global()), "own instance, not the update recorder");
+
     std::cout << "bot_update_trace_tests passed\n";
     return 0;
 }

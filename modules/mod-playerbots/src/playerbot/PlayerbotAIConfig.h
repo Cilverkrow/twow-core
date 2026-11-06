@@ -636,6 +636,7 @@ public:
     bool activityTraceIdleDetail = false;  // twow-repo#601: AiPlayerbot.ActivityTrace.IdleDetail - [IdleDetail] per idle episode (start, end)
     bool botUpdateTrace = false;  // twow-repo#541: [BotUpdate] per-minute distribution of PlayerbotAI::UpdateAI wall time
     bool botUpdateTraceTick = false;  // twow-repo#597 (TICK-01): [BotUpdateSlow] ends with " tick=<world loop> region=<map>.<inst>"
+    bool botUpdateTraceCohort = false;  // A3 step 0 (e), twow-repo#601: with BotUpdateTrace, two [BotUpdateCohort] lines (A, B) per minute
     bool worldBotsHookTrace = false;  // twow-repo#597 (TICK-01): [WorldBots] ends with hook_ms= remote_ms= ahbot_ms= dungeonclear_ms=
     bool botUpdateTraceTriggers = false;  // twow-repo#596 D: with BotUpdateTrace, the TIME entry names the 3 slowest trigger checks of a pass >= 20 ms
     bool perfBindAreaFromHomebind = false;  // twow-repo#596 D: home-bind area from the core stored bind area, no terrain lookup at a far position
