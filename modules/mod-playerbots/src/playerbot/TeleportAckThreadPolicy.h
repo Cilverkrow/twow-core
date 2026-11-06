@@ -9,7 +9,8 @@
 
 namespace ai::teleport_ack
 {
-// twow-repo#563 X5 (CLI-ROT 02.11.2026, OB-00; AiPlayerbot.ThreadSafeTeleportAck, default 0). PlayerbotHolder::UpdateSessions
+// twow-repo#563 X5 (CLI-ROT 02.11.2026, OB-00; AiPlayerbot.ThreadSafeTeleportAck, default 1 since #676 crash B, 06.11.2026;
+// 0 = rollback). PlayerbotHolder::UpdateSessions
 // acks a held bot's pending teleport (HandleTeleportAck -> StopMoving -> MotionMaster::DirectClean, near: HandleMoveTeleportAck).
 // For a master's holder (PlayerbotMgr) that runs inside the MASTER's Map::Update - on the master's map thread - while the bot
 // may be in world on another map that a different thread updates at the same time. Crash of 02.11.2026 15:19:28Z (track B,

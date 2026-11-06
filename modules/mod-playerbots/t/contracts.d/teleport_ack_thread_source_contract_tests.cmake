@@ -1,7 +1,7 @@
-# twow-repo#563 X5 (CLI-ROT 02.11.2026, OB-00): AiPlayerbot.ThreadSafeTeleportAck (default 0). A master's bot holder
+# twow-repo#563 X5 (CLI-ROT 02.11.2026, OB-00): AiPlayerbot.ThreadSafeTeleportAck (default 1 since 06.11.2026). A master's bot holder
 # (PlayerbotMgr, run inside the master's Map::Update) no longer acks the near teleport of a bot in world - that bot may be on
 # another map, updated by another thread (crash 02.11.2026: MotionMaster::DirectClean from HandleTeleportAck -> StopMoving). The
-# bot's own UpdateAI acks it. Pins: switch default 0, only 1 = on, in [ConfigEcho]; pure policy; the holder switch with the old
+# bot's own UpdateAI acks it. Pins: switch default 1 (OB-00 06.11.2026, #676 crash B), only 0 = off, in [ConfigEcho]; pure policy; the holder switch with the old
 # ack as the Holder case; only PlayerbotMgr is a master holder; the bot-thread ack at the start of UpdateAI (before the park
 # check), guarded by the request flag and the near-teleport check; the [WorldBots] suffix only when on.
 # twow-repo#676 (CLI-ROT 05.11.2026, BOT-HOLDER-FARACK-01, no switch): no HandleTeleportAck / HandleMoveWorldportAckOpcode of a
@@ -80,10 +80,11 @@ endfunction()
 function(check policy mgr_cpp mgr_h ai_cpp ai_h config_h config_cpp dist rnd_cpp scripts_cpp out_var)
   set(errors "")
 
-  # 1. Switch: default 0 in the dist and the member, only 1 = on, [ConfigEcho] in sorted place.
-  need("${dist}" "\nAiPlayerbot.ThreadSafeTeleportAck = 0\n" "dist key, default 0")
-  need("${config_h}" "bool threadSafeTeleportAck = false;" "config member, default off")
-  need("${config_cpp}" "threadSafeTeleportAck = config.GetIntDefault(\"AiPlayerbot.ThreadSafeTeleportAck\", 0) == 1;" "config read, only 1 = on")
+  # 1. Switch: default 1 in the dist, the member and the read (OB-00 06.11.2026), only 0 = off (rollback), [ConfigEcho] in sorted place.
+  need("${dist}" "\nAiPlayerbot.ThreadSafeTeleportAck = 1\n" "dist key, default 1")
+  need("${dist}" "BEHAVIOUR CHANGE, ON by default, 0 = rollback" "dist text, owner default-1 rule (#740)")
+  need("${config_h}" "bool threadSafeTeleportAck = true;" "config member, default on")
+  need("${config_cpp}" "threadSafeTeleportAck = config.GetIntDefault(\"AiPlayerbot.ThreadSafeTeleportAck\", 1) != 0;" "config read, default 1, only 0 = off")
   need("${config_cpp}" "            {\"Rpg.TurnInFirst\", Value(rpgTurnInFirst)},\n            {\"ThreadSafeTeleportAck\", Value(threadSafeTeleportAck)},\n            {\"ThrownUsageFix\"" "[ConfigEcho], sorted (owner rule #615, #710)")
   # #676 has no switch of its own (OB-00 05.11.2026: default on, a switch only for an A/B).
   ban("${dist}" "FarTeleportAck" "a #676 switch in the dist")
@@ -201,8 +202,11 @@ function(probe label var from to)
   set(probes "${probes}" PARENT_SCOPE)
 endfunction()
 # X5
-probe("default on" dist "\nAiPlayerbot.ThreadSafeTeleportAck = 0\n" "\nAiPlayerbot.ThreadSafeTeleportAck = 1\n")
-probe("unknown = on" config_cpp "config.GetIntDefault(\"AiPlayerbot.ThreadSafeTeleportAck\", 0) == 1;" "config.GetIntDefault(\"AiPlayerbot.ThreadSafeTeleportAck\", 0) != 0;")
+probe("default off" dist "\nAiPlayerbot.ThreadSafeTeleportAck = 1\n" "\nAiPlayerbot.ThreadSafeTeleportAck = 0\n")
+probe("member off" config_h "bool threadSafeTeleportAck = true;" "bool threadSafeTeleportAck = false;")
+probe("read default off" config_cpp "config.GetIntDefault(\"AiPlayerbot.ThreadSafeTeleportAck\", 1) != 0;" "config.GetIntDefault(\"AiPlayerbot.ThreadSafeTeleportAck\", 0) != 0;")
+probe("dist text missing" dist "BEHAVIOUR CHANGE, ON by default, 0 = rollback" "ON by default")
+probe("unknown = off" config_cpp "config.GetIntDefault(\"AiPlayerbot.ThreadSafeTeleportAck\", 1) != 0;" "config.GetIntDefault(\"AiPlayerbot.ThreadSafeTeleportAck\", 1) == 1;")
 probe("echo missing" config_cpp "            {\"ThreadSafeTeleportAck\", Value(threadSafeTeleportAck)},\n" "")
 probe("off defers near" policy "    if (on && inWorld && nearTeleport)" "    if (inWorld && nearTeleport)")
 probe("random holder defers" policy "    if (!masterHolder)\n        return Acker::Holder;\n" "")
@@ -233,6 +237,6 @@ probe("drain from the bot update" ai_cpp "    HandleQueuedBotPackets();" "    Ha
 probe("drain never called" scripts_cpp "            PlayerbotHolder::DrainFarTeleportAcks();\n" "")
 probe("drain after the enabled check" scripts_cpp "            PlayerbotHolder::DrainFarTeleportAcks();\n\n            if (!sPlayerbotAIConfig.enabled)\n                return;" "            if (!sPlayerbotAIConfig.enabled)\n                return;\n            PlayerbotHolder::DrainFarTeleportAcks();")
 probe("far counts missing" rnd_cpp "            tpAck += \" far_ack_queued=\"" "            tpAck = \" far_ack_queued=\"")
-probe("a #676 switch" dist "\nAiPlayerbot.ThreadSafeTeleportAck = 0\n" "\nAiPlayerbot.ThreadSafeTeleportAck = 0\nAiPlayerbot.FarTeleportAckWorldThread = 1\n")
+probe("a #676 switch" dist "\nAiPlayerbot.ThreadSafeTeleportAck = 1\n" "\nAiPlayerbot.ThreadSafeTeleportAck = 1\nAiPlayerbot.FarTeleportAckWorldThread = 1\n")
 
 message(STATUS "teleport_ack_thread source contract passed (${probes} negative probes)")
