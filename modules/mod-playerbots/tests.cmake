@@ -3681,6 +3681,20 @@ add_test(NAME invalid_target_policy
   COMMAND invalid_target_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#602 W24 pattern B (AiPlayerbot.Rotation.RetargetEmptyTrace, log only): the first failing filter of "possible attack targets".
+add_executable(retarget_empty_policy_tests
+  "${PB_MODULE_DIR}/t/retarget_empty_policy_tests.cpp")
+
+target_include_directories(retarget_empty_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(retarget_empty_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME retarget_empty_policy
+  COMMAND retarget_empty_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # twow-repo#602 (spell-name audit): the names that resolve in the image's spell data, the warlock stone ranks.
 add_executable(spell_name_policy_tests
   "${PB_MODULE_DIR}/t/spell_name_policy_tests.cpp")
