@@ -8,6 +8,7 @@
 #include "UnequipAction.h"
 #include "playerbot/KeepWeaponsPolicy.h"
 #include "playerbot/EquipAfterRollPolicy.h"   // twow-repo#341 (Equip.AfterRollWon)
+#include "playerbot/ProfessionUsePolicy.h"   // twow-repo#333 M2-T: the [ProfCount] equipped_selfmade line
 
 using namespace ai;
 
@@ -24,6 +25,20 @@ bool HandCandidateInBags(PlayerbotAI* ai, Player* bot)
         if (ai::keep_weapons::IsHandItem(item->GetProto()->InventoryType))
             return true;
     return false;
+}
+
+// twow-repo#333 M2-T (AiPlayerbot.ProfessionUse.Trace): equipped gear the bot crafted itself (the item's creator is the bot;
+// ProfessionUsePolicy.h). Log only, one line per real equip.
+void TraceSelfMadeEquip(Player* bot, Item* item)
+{
+    if (!sPlayerbotAIConfig.professionUseTrace || !bot || !item)
+        return;
+    if (!ai::profession_use::SelfMadeEquipped(item->GetGuidValue(ITEM_FIELD_CREATOR).GetRawValue(), bot->GetObjectGuid().GetRawValue(),
+            item->IsEquipped()))
+        return;
+    ItemPrototype const* proto = item->GetProto();
+    sLog.outBasic("[ProfCount] event=equipped_selfmade bot=%u level=%u item=%u quality=%u class=%u subclass=%u", bot->GetGUIDLow(),
+        bot->GetLevel(), proto->ItemId, proto->Quality, proto->Class, proto->SubClass);
 }
 }
 
@@ -215,6 +230,7 @@ void EquipAction::EquipItemToSlot(Player* requester, Item* item, uint8 targetSlo
         RESET_AI_VALUE2(ItemUsage, "item usage", ItemQualifier(oldOffhand).GetQualifier());
 
     sPlayerbotAIConfig.logEvent(ai, "EquipAction", item->GetProto()->Name1, std::to_string(item->GetProto()->ItemId));
+    TraceSelfMadeEquip(bot, item);
 
     std::map<std::string, std::string> args;
     args["%item"] = chat->formatItem(item);
@@ -301,6 +317,8 @@ void EquipAction::EquipItem(PlayerbotAI* ai, Player* requester, Item* item, bool
     // twow-repo#308 EQUIP-FLIP-01 (always on): only a real change is an EquipAction event.
     if (!sameItemBack)
         sPlayerbotAIConfig.logEvent(ai, "EquipAction", item->GetProto()->Name1, std::to_string(item->GetProto()->ItemId));
+    if (!sameItemBack)   // twow-repo#333 M2-T: the same real change only
+        TraceSelfMadeEquip(bot, item);
 
     if (!silent)
     {
