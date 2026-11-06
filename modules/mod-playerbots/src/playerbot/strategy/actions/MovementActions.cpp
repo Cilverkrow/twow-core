@@ -21,6 +21,7 @@
 #include "playerbot/FarMovePolicy.h"
 #include "playerbot/LevelGuardPolicy.h"   // twow-repo#601 cand4 lever (ii): the guard counts in the [FarMove] line
 #include "playerbot/PathFailPolicy.h"
+#include "playerbot/IslandGuard.h"   // twow-repo#575 A3 step 4 M-c: Path.IslandGuard arrival snap / step-off
 #include "playerbot/StartZonePolicy.h"
 #include "playerbot/DangerMapConfig.h"
 #include "playerbot/CohortPolicy.h"
@@ -61,12 +62,30 @@ bool FarMoveRouteWatched(WorldPosition const& from, WorldPosition const& to)
 
 // Hotfix 8.36: the arrival point backYards before the target, on the navmesh and outside a
 // danger-map cell; false = no safe point there.
-bool FarMoveArrivalPoint(Player* bot, WorldPosition const& from, WorldPosition const& to, float backYards, WorldPosition& out)
+// twow-repo#575 A3 step 4 M-c (AiPlayerbot.Path.IslandGuard, IslandGuardPolicy.h): ClosestCorrectPoint takes the nearest poly
+// with no component check, and offline it put 858 of 907 linkable island starts onto a navmesh micro-island. With the switch
+// on for the bot, a point on an island moves to the nearest main ground (SnapXY / IslandSnapDz); none there = no arrival point
+// (the caller tries ArriveAltYards, then walks). islandCheck (optional) receives what the check did.
+bool FarMoveArrivalPoint(Player* bot, WorldPosition const& from, WorldPosition const& to, float backYards, WorldPosition& out,
+    ai::island::ArrivalCheck* islandCheck = nullptr)
 {
     far_move::Point2 const p = far_move::ArrivalPoint({ from.getX(), from.getY() }, { to.getX(), to.getY() }, backYards);
     WorldPosition point(to.getMapId(), p.x, p.y, to.getZ(), 0.0f);
     if (!point.ClosestCorrectPoint(20.0f, 50.0f, bot->GetInstanceId()))
         return false;
+
+    if (ai::cohort::Applies(sPlayerbotAIConfig.pathIslandGuard, bot->GetGUIDLow()))
+    {
+        float x = point.getX(), y = point.getY(), z = point.getZ();
+        ai::island::ArrivalCheck const check = ai::island::CheckArrival(point.getMapId(), x, y, z, sPlayerbotAIConfig.pathIslandMaxPolys,
+            sPlayerbotAIConfig.pathIslandSnapDz);
+        if (islandCheck)
+            *islandCheck = check;
+        if (check.snap == ai::island::ArrivalSnap::IslandNoMain)
+            return false;
+        if (check.snap == ai::island::ArrivalSnap::IslandToMain)
+            point = WorldPosition(point.getMapId(), x, y, z, 0.0f);
+    }
 
     if (sPlayerbotAIConfig.dangerMapEnabled)
     {
@@ -2248,10 +2267,14 @@ bool MovementAction::MoveTo2(const WorldPosition& endPos, bool idle, bool react,
                 // danger-map cell); else a second point further back; else the bot walks.
                 WorldPosition arrive = endPos;
                 bool useArrive = true;
+                // twow-repo#575 M-c (Path.IslandGuard): what the island check did for the point that is used (the snap= field at the arrival)
+                ai::island::ArrivalCheck islandCheck;
                 if (sPlayerbotAIConfig.rosterFarMoveArriveBackYards > 0.0f)
                 {
-                    bool found = FarMoveArrivalPoint(bot, farStart, endPos, sPlayerbotAIConfig.rosterFarMoveArriveBackYards, arrive);
-                    if (!found && FarMoveArrivalPoint(bot, farStart, endPos, far_move::ArriveAltYards, arrive))
+                    bool found = FarMoveArrivalPoint(bot, farStart, endPos, sPlayerbotAIConfig.rosterFarMoveArriveBackYards, arrive, &islandCheck);
+                    if (!found)
+                        islandCheck = ai::island::ArrivalCheck();
+                    if (!found && FarMoveArrivalPoint(bot, farStart, endPos, far_move::ArriveAltYards, arrive, &islandCheck))
                     {
                         found = true;
                         counters.arriveAlt.fetch_add(1, std::memory_order_relaxed);
@@ -2278,6 +2301,9 @@ bool MovementAction::MoveTo2(const WorldPosition& endPos, bool idle, bool react,
                     lastMove.farMoveTarget = endPos;
                     lastMove.farMoveArrive = arrive;
                     lastMove.farMoveArriveSet = true;
+                    lastMove.farMoveIslandSnap = uint8(islandCheck.snap);
+                    lastMove.farMoveIslandSnapDistance = islandCheck.distance;
+                    lastMove.farMoveIslandPolys = islandCheck.polys;
                     lastMove.farMoveAt = now + far_move::WaitSeconds(farStart.distance(arrive), bot->GetSpeed(MOVE_RUN));
                     if (mover == bot)
                         ai->StopMoving();
@@ -2299,6 +2325,15 @@ bool MovementAction::MoveTo2(const WorldPosition& endPos, bool idle, bool react,
                 if (lastMove.farMoveArriveSet && ai::cohort::Applies(sPlayerbotAIConfig.rosterFarMoveArriveSafe, bot->GetGUIDLow()))
                     lastMove.farMoveArrive = SafeFarMoveArrival(bot, farStart, endPos, lastMove.farMoveArrive, walkRest);
                 WorldPosition const arrive = lastMove.farMoveArriveSet ? lastMove.farMoveArrive : endPos;
+                // twow-repo#575 M-c (Path.IslandGuard): the island check of the point chosen at the start; an ArriveSafe shift above
+                // keeps it (the shifted point went through FarMoveArrivalPoint too, but is not described here). Read once, then reset.
+                ai::island::ArrivalSnap const islandSnap = lastMove.farMoveArriveSet ?
+                    ai::island::ArrivalSnap(lastMove.farMoveIslandSnap) : ai::island::ArrivalSnap::Unchecked;
+                float const islandSnapDistance = lastMove.farMoveIslandSnapDistance;
+                uint32 const islandPolys = lastMove.farMoveIslandPolys;
+                lastMove.farMoveIslandSnap = uint8(ai::island::ArrivalSnap::Unchecked);
+                lastMove.farMoveIslandSnapDistance = 0.0f;
+                lastMove.farMoveIslandPolys = 0;
                 lastMove.farMoveArriveSet = false;
                 lastMove.clear();
                 lastMove.farMoveAt = 0;
@@ -2324,11 +2359,17 @@ bool MovementAction::MoveTo2(const WorldPosition& endPos, bool idle, bool react,
                     bool const fromTravel = travelPos && travelDest && travelPos->getMapId() == endPos.getMapId() &&
                         travelPos->distance(endPos) <= far_move::ArriveTraceTravelYards;
                     QuestTravelDestination const* questDest = fromTravel ? dynamic_cast<QuestTravelDestination const*>(travelDest) : nullptr;
-                    sLog.outBasic("[FarMoveArrive] bot=%u level=%u cohort=%c purpose=%u quest=%u entry=%d map=%u tx=%.0f ty=%.0f ax=%.0f ay=%.0f far_dist=%.0f origin=%s",
+                    // twow-repo#575 M-c (Path.IslandGuard): " snap=none|island>main|island>none snap_d= comp=" only when the switch
+                    // checked this bot's point; otherwise the line is unchanged.
+                    char islandField[96] = "";
+                    if (islandSnap != ai::island::ArrivalSnap::Unchecked)
+                        snprintf(islandField, sizeof(islandField), " snap=%s snap_d=%.1f comp=%u", ai::island::SnapName(islandSnap),
+                            islandSnapDistance, islandPolys);
+                    sLog.outBasic("[FarMoveArrive] bot=%u level=%u cohort=%c purpose=%u quest=%u entry=%d map=%u tx=%.0f ty=%.0f ax=%.0f ay=%.0f far_dist=%.0f origin=%s%s",
                         bot->GetGUIDLow(), bot->GetLevel(), ai::cohort::Letter(bot->GetGUIDLow()),
                         fromTravel ? uint32(travelDest->GetPurpose()) : 0u, questDest ? questDest->GetQuestId() : 0u,
                         fromTravel ? travelDest->GetEntry() : 0, endPos.getMapId(), endPos.getX(), endPos.getY(), arrive.getX(),
-                        arrive.getY(), farStart.distance(arrive), fromTravel ? "travel" : "other");
+                        arrive.getY(), farStart.distance(arrive), fromTravel ? "travel" : "other", islandField);
                 }
                 lastMove.farMoveArrivedAt = now;
                 // twow-repo#595 P4 S0 (AiPlayerbot.Shortcut.Trace): counted only, the teleport below is unchanged.
@@ -2366,7 +2407,58 @@ bool MovementAction::MoveTo2(const WorldPosition& endPos, bool idle, bool react,
     if (FlyDirect(startPos, endPos, flyMovePosition, lastMove.lastPath))
         return true;
 
-    
+    // twow-repo#575 A3 step 4 M-c (AiPlayerbot.Path.IslandGuard, IslandGuardPolicy.h): the fallback for a bot that already stands
+    // on a navmesh micro-island - every path out of it ends partial (q959 bot 2062: 8,100 s). Before the route is built, at most
+    // once per StepOffIntervalSeconds per bot: on an island with main ground within IslandStepOffYards (|dz| <= 3) in line of
+    // sight, the bot moves straight onto it (no path search - there is no path from the island). Not on a transport, in water,
+    // flying or with a far move pending (its arrival is snapped in FarMoveArrivalPoint). [IslandGuard] summary once a minute.
+    if (sPlayerbotAIConfig.pathIslandGuard)
+    {
+        ai::island::Counters& islandCounters = ai::island::SharedCounters();
+        time_t const islandNow = time(nullptr);
+        if (islandCounters.LogDue(uint64(islandNow)))
+        {
+            uint32 const checked = islandCounters.checked.exchange(0, std::memory_order_relaxed);
+            uint32 const island = islandCounters.island.exchange(0, std::memory_order_relaxed);
+            uint32 const snapped = islandCounters.snapped.exchange(0, std::memory_order_relaxed);
+            uint32 const noMain = islandCounters.noMain.exchange(0, std::memory_order_relaxed);
+            uint32 const stepOff = islandCounters.stepOff.exchange(0, std::memory_order_relaxed);
+            uint32 const across = islandCounters.across.exchange(0, std::memory_order_relaxed);
+            uint32 const labelTiles = islandCounters.labelTiles.exchange(0, std::memory_order_relaxed);
+            uint64 const labelUs = islandCounters.labelUs.exchange(0, std::memory_order_relaxed);
+            islandCounters.stepOffLines.store(0, std::memory_order_relaxed);
+            if (checked || stepOff || labelTiles)
+                sLog.outBasic("[IslandGuard] checked=%u island=%u snapped=%u no_main=%u stepoff=%u across=%u label_tiles=%u label_us=%llu tiles=%u label_bytes=%llu",
+                    checked, island, snapped, noMain, stepOff, across, labelTiles, (unsigned long long)labelUs, ai::island::LabelledTiles(),
+                    (unsigned long long)islandCounters.labelBytes.load(std::memory_order_relaxed));
+        }
+
+        if (mover == bot && ai::cohort::Applies(sPlayerbotAIConfig.pathIslandGuard, bot->GetGUIDLow()) &&
+            sPlayerbotAIConfig.pathIslandStepOffYards > 0.0f &&
+            ai::island::StepOffAllowed(bot->GetTransport() != nullptr, bot->IsInWater() || bot->HasMovementFlag(MOVEFLAG_SWIMMING),
+                bot->IsFlying(), lastMove.farMoveAt != 0, uint64(islandNow), uint64(lastMove.islandCheckAt)))
+        {
+            lastMove.islandCheckAt = islandNow;
+            ai::island::StepOff const off = ai::island::FindStepOff(bot->GetMapId(), startPos.getX(), startPos.getY(), startPos.getZ(),
+                sPlayerbotAIConfig.pathIslandMaxPolys, sPlayerbotAIConfig.pathIslandStepOffYards);
+            if (off.found && bot->IsWithinLOS(off.x, off.y, off.z))
+            {
+                islandCounters.stepOff.fetch_add(1, std::memory_order_relaxed);
+                if (islandCounters.StepOffLineAllowed())
+                    sLog.outBasic("[IslandStepOff] bot=%u level=%u cohort=%c map=%u x=%.1f y=%.1f z=%.1f to_x=%.1f to_y=%.1f to_z=%.1f comp=%u d=%.1f dz=%.1f",
+                        bot->GetGUIDLow(), bot->GetLevel(), ai::cohort::Letter(bot->GetGUIDLow()), bot->GetMapId(), startPos.getX(),
+                        startPos.getY(), startPos.getZ(), off.x, off.y, off.z, off.polys, off.distance, off.dz);
+                lastMove.clear();
+                MotionMaster& mm = *bot->GetMotionMaster();
+                mm.Clear();
+                mm.MovePoint(bot->GetMapId(), off.x, off.y, off.z, FORCED_MOVEMENT_RUN, false);
+                float const speed = std::max(1.0f, bot->GetSpeed(MOVE_RUN));
+                SetDuration(std::max<uint32>(500, uint32(off.distance / speed * IN_MILLISECONDS) + 200));
+                return true;
+            }
+        }
+    }
+
     bool isWalking = false;
 
     bool noRoute = false;

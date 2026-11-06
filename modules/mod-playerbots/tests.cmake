@@ -3210,6 +3210,26 @@ add_test(NAME combat_stuck_clock_policy
   COMMAND combat_stuck_clock_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#575 A3 step 4 M-c (AiPlayerbot.Path.IslandGuard, OB-00 06.11.2026): no far-move arrival on a navmesh micro-island,
+# step-off as the fallback (IslandGuardPolicy.h rules + the PublishOnceCache thread model under 8 threads); source contract in
+# t/contracts.d.
+find_package(Threads REQUIRED)
+
+add_executable(island_guard_policy_tests
+  "${PB_MODULE_DIR}/t/island_guard_policy_tests.cpp")
+
+target_include_directories(island_guard_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+target_link_libraries(island_guard_policy_tests PRIVATE Threads::Threads)
+
+set_target_properties(island_guard_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME island_guard_policy
+  COMMAND island_guard_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # twow-repo#591 (PERF-AB-01): budget exemption for bots without a travel target, configurable limit.
 add_test(NAME budget_start_source_contract
   COMMAND "${CMAKE_COMMAND}"

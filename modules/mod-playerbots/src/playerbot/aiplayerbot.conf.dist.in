@@ -1896,6 +1896,29 @@ AiPlayerbot.Path.TaxiCancelForm = 0
 # high-elf start (Thalassian Highlands) and rebinds the hearthstone at the target. 1 = those two starts are rescue
 # targets only for goblins / high elves. 0 = any start of the faction (default).
 AiPlayerbot.Path.RescueSkipCustomStarts = 0
+# twow-repo#575 A3 step 4 M-c (BEHAVIOUR CHANGE, OB-00 06.11.2026; ws-10/cli-pathfinding/a3-step4-route/count-mc-ma/
+# RESULT-COUNT-MC-MA-20261106.md): no far-move arrival on a navmesh micro-island. The far-move arrival point is snapped by
+# ClosestCorrectPoint (nearest poly within 20 / 50 / 20 yd, no component check); offline it put 858 of 907 linkable island
+# starts onto the island (control: 3 of 723), and island starts were 3,141 of 9,033 failed node routes (CFC / A3 / m1r 8-10),
+# against 212 of the node-budget class (q12). With the switch, a point on an island moves to the nearest main ground within
+# 20 yd and IslandSnapDz; none there = no arrival point (ArriveAltYards, else the bot walks). A bot that already stands on an
+# island and is about to build a route steps straight onto main ground within IslandStepOffYards (|dz| <= 3, line of sight;
+# at most one check per bot every 10 s; not on transports, in water, flying or during a far move). [FarMoveArrive] gets
+# " snap=none|island>main|island>none snap_d= comp=" (only for bots the switch checks), plus [IslandStepOff] lines (30 a minute)
+# and an [IslandGuard] summary a minute (checked / island / snapped / no_main / stepoff / across / label tiles, time, bytes).
+# Components are labelled once per navmesh tile on its first use and cached (about 21 MB and < 1 s CPU for every continent
+# tile; shared by all map threads, publish-once); a component small inside its tile but touching the tile edge is decided by
+# a link search across the edge capped at IslandMaxPolys polys.
+#   0 = off (default), 1 = every bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid); other values act like 0.
+AiPlayerbot.Path.IslandGuard = 0
+# Island = a link component below this many polys (20-1000, default 200). Why 200: with < 200 polys the server logged "all start
+# legs failed" ([RouteFailDetail] bad_start = start_nodes) for 70 % of the route starts, on the main mesh for 7.5 %.
+AiPlayerbot.Path.IslandMaxPolys = 200
+# Vertical window (yd) of the arrival snap to main ground, 3-30, default 10. Offline: 10 finds main ground for 68 % of island
+# arrivals, 50 for 91 % - but 316 of those lie more than 10 yd above or below (another floor, a cave).
+AiPlayerbot.Path.IslandSnapDz = 10
+# Step-off reach (yd), 0-15, default 7; 0 = no step-off. 1,275 of the 3,141 island starts lie within 7 yd of the main mesh.
+AiPlayerbot.Path.IslandStepOffYards = 7
 # twow-repo#575 (PATH-01 wave 0, BEHAVIOUR CHANGE, "nach Abnahme an"; needs the wave-0 travel nodes of train 10, read at
 # boot, so a change needs a restart): 1 = goblins quest on Blackstone Island and high elves in the Thalassian Highlands /
 # Alah'Thalas. New bots keep the real start position; repop up to level 10 at the real start; random teleports into
