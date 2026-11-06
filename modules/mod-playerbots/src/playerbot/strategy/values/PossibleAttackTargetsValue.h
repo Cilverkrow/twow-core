@@ -15,6 +15,9 @@ namespace ai
         static bool IsPossibleTarget(Unit* target, Player* player, float range, bool ignoreCC);
         static bool HasBreakableCC(Unit* target, Player* player);
         static bool HasUnBreakableCC(Unit* target, Player* player);
+        // twow-repo#602 W24 pattern B (Rotation.RetargetEmptyTrace, log only): the first filter of IsValid(range, ignoreCC, no attacker
+        // check) the target fails, as ai::retarget_empty::Reason (RetargetEmptyPolicy.h); Ok = it passes.
+        static uint32 FirstFailingFilter(Unit* target, Player* player, float range);
         virtual std::string Format() override;
 
 #ifdef GenerateBotHelp
