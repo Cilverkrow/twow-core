@@ -3952,6 +3952,22 @@ AiPlayerbot.BotCheats = repair,breath
 # Cheats for randombots
 AiPlayerbot.RndBotCheats = repair,breath,item
 
+# twow-repo#333 Berufe M2 shadow counter (OB-00 06.11.2026; log only, no behaviour change): with CheatItem.Trace on, every bot
+# sums how often the item cheat stood in for an item and writes one line per 10-minute window with something counted:
+#   [CheatItem] bot= level= class= seconds= use= use_had= cast_item= cast_item_had= food= drink= poison= ammo_refill= ammo_init= refresh= cheat_cd_set= self_blocked=
+# use/cast_item = an item spell cast (UseItemAction / CastItemTargetAction) with no such item in the bags, *_had = the same
+# cast while the bags held it; food/drink = the cheat food/drink spell; poison = a rogue poison the cheat applied (no item used);
+# ammo_refill = ammo units the top-up added; ammo_init = ammo units in the bags after InitAmmo from an empty slot (upper
+# bound); refresh = PlayerbotFactory::Refresh calls (ammo, food, potions, reagents, consumables). Counts are increments
+# since the last line; a bot logging out loses its open window.
+# use/cast_item/poison count starts the cheat path got SPELL_CAST_OK for (ForceSpellStart): an instant item spell can still
+# fail one tick later on the cooldown that path set itself (CLI-ROT CHAR-CHEAT-ITEM-COOLDOWN-20261106: oil 1458 OK, 0 cast),
+# so read them with the cast outcome ([CastTrace]) - they are attempts, not effects. That loop itself: cheat_cd_set = passes
+# through the cooldown the cheat path of UseItemAction / CastItemTargetAction sets after the start; self_blocked = those
+# while the spell was still preparing, i.e. the cooldown came before the cast (expected ~cheat_cd_set for oil, potions,
+# healthstones).
+AiPlayerbot.CheatItem.Trace = 0
+
 # Self bot turns your current character into a bot with the command ".bot self"
 # !!DISCLAMER!! Selfbots will work and act like randombots based on their enabled strategies. Your epic mount will be sold to a vendor!
 # Self bot level. Values: 0 (disabled), 1 (Game masters only), 2 (Any player), 3 (Allow .bot always command for all players), 4 (Enabled on login), 4 (Enabled even when offline)

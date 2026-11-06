@@ -898,9 +898,20 @@ bool CastItemTargetAction::Execute(Event& event)
         {
             if (!HasSpellCooldown(itemId))
             {
+                // twow-repo#333 M2 shadow counter, CLI-ROT oil loop (OB-00 06.11.: counter only): see UseItemAction.
+                if (sPlayerbotAIConfig.cheatItemTrace)
+                {
+                    ai->NoteCheatItem(ai::cheat_item::Site::CheatCdSet);
+                    if (spell->getState() == SPELL_STATE_PREPARING)
+                        ai->NoteCheatItem(ai::cheat_item::Site::SelfBlocked);
+                }
                 bot->RemoveSpellCooldown(*spellInfo, false);
                 bot->AddCooldown(*spellInfo, proto, false);
             }
+
+            // twow-repo#333 M2 shadow counter (CheatItem.Trace, log only): cast without the item, once per use.
+            if (sPlayerbotAIConfig.cheatItemTrace && !count && !item)
+                ai->NoteCheatItem(ai::cheat_item::CastItemSite(bot->GetItemCount(itemId)));
         }
 
         ++count;
