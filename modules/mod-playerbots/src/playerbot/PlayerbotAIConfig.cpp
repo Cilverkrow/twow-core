@@ -1281,6 +1281,7 @@ bool PlayerbotAIConfig::Initialize()
     botCheatMask = uint32(CheatAction::GetCheatMask(config.GetStringDefault("AiPlayerbot.BotCheats", "taxi,item,breath")));
 
     rndBotCheatMask = uint32(CheatAction::GetCheatMask(config.GetStringDefault("AiPlayerbot.RndBotCheats", "taxi,item,breath")));    
+    cheatItemTrace = config.GetBoolDefault("AiPlayerbot.CheatItem.Trace", false);   // twow-repo#333 M2 shadow counter
 
     LoadListString<std::list<std::string>>(config.GetStringDefault("AiPlayerbot.AllowedLogFiles", ""), allowedLogFiles);
     LoadListString<std::list<std::string>>(config.GetStringDefault("AiPlayerbot.DebugFilter", "add gathering loot,check values,emote,check mount state,jump"), debugFilter);
@@ -1897,6 +1898,7 @@ bool PlayerbotAIConfig::Initialize()
             {"BotUpdateTrace", Value(botUpdateTrace)},
             {"Buy.VendorTemplateItems", Value(buyVendorTemplateItems)},
             {"CastWait.Preparing", Value(castWaitPreparing)},
+            {"CheatItem.Trace", Value(cheatItemTrace)},
             {"CustomRaceStartZones", Value(customRaceStartZones)},
             {"DangerMap.CountAddDeaths", Value(dangerMapCountAddDeaths)},
             {"DeathLoop.Escape", Value(deathLoopEscape)},
@@ -1910,6 +1912,7 @@ bool PlayerbotAIConfig::Initialize()
             {"DirectTargets.FreshBackoffSeconds", Value(directTargetsFreshBackoffSeconds)},
             {"EnableActionLog", Value(enableActionLog)},
             {"Equip.AfterRollWon", Value(equipAfterRollWon)},
+            {"EquipDiagnostics.Trace", Value(equipDiagnosticsTrace)},
             {"Gather.FishingSkillCheck", Value(gatherFishingSkillCheck)},
             {"Gather.QuestHerbFilter", Value(gatherQuestHerbFilter)},
             {"Grind.GreyByLevel", Value(grindGreyByLevel)},
@@ -1944,6 +1947,7 @@ bool PlayerbotAIConfig::Initialize()
             {"ProfessionTraining.TurnInGateSkipNoRoute", Value(professionTrainingTurnInGateSkipNoRoute)},
             {"ProfessionTraining.TurnInGateSkipSuppressed", Value(professionTrainingTurnInGateSkipSuppressed)},
             {"ProfessionUse.ToolBuy", Value(professionUseToolBuy)},
+            {"ProfessionUse.Trace", Value(professionUseTrace)},
             {"QuestFeasibility.Blocklist.count", Value(uint32(questFeasibilityBlocklist.size()))},
             {"QuestFeasibility.BlocklistWhileNoCustomStarts.count", Value(uint32(questFeasibilityBlocklistWhileNoCustomStarts.size()))},
             {"QuestFeasibility.Enable", Value(questFeasibilityEnable)},

@@ -2086,7 +2086,9 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
                     if (bot->getClass() == CLASS_HUNTER && item->GetProto()->SubClass == ITEM_SUBCLASS_WEAPON_THROWN) //Do not replenish thrown weapons for hunters.
                         break;
 
+                    uint32 const ammoBefore = item->GetCount();   // twow-repo#333 M2 shadow counter
                     item->SetCount(item->GetProto()->GetMaxStackSize());
+                    NoteCheatItem(ai::cheat_item::Site::AmmoRefill, ai::cheat_item::RefillAmount(ammoBefore, item->GetCount()));
                     break;
                 }
             }
@@ -2100,9 +2102,19 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
 #else
                 PlayerbotFactory(bot, bot->GetLevel(), 0).InitAmmo();
 #endif
+                // twow-repo#333 M2 shadow counter: the ammo in the bags after InitAmmo from an empty slot (an upper bound:
+                // ammo the bags already held counts too). Nothing while the slot stays empty, so at most once per refill.
+                if (sPlayerbotAIConfig.cheatItemTrace)
+                {
+                    if (uint32 const ammoAfter = bot->GetUInt32Value(PLAYER_AMMO_ID))
+                        NoteCheatItem(ai::cheat_item::Site::AmmoInit, bot->GetItemCount(ammoAfter));
+                }
             }
         }
     }
+
+    // twow-repo#333 M2 shadow counter: one [CheatItem] line per bot and window (AiPlayerbot.CheatItem.Trace).
+    FlushCheatItem();
 
     // Alt level sync - level up non-random bots to match master level
     if (sPlayerbotAIConfig.syncAltLevelToMaster && bot->IsAlive() && master && !sRandomPlayerbotMgr.IsRandomBot(bot)
@@ -8687,6 +8699,40 @@ bool PlayerbotAI::AllowActivity(ActivityType activityType, bool checkNow)
     allowActive[activityType] = allowed;
     allowActiveCheckTimer[activityType] = time(NULL);
     return allowed;
+}
+
+// twow-repo#333 M2 shadow counter (OB-00 06.11.2026; log only): the item cheat stood in for an item. Nothing without the Trace key.
+void PlayerbotAI::NoteCheatItem(ai::cheat_item::Site site, uint32 amount)
+{
+    if (!sPlayerbotAIConfig.cheatItemTrace || !amount)
+        return;
+
+    cheatItemCounts.Add(site, amount);
+}
+
+// One "[CheatItem]" line per bot and kFlushSeconds window with the window's increments (all sites, fixed columns); a window
+// with nothing counted writes no line. The first call only starts the window.
+void PlayerbotAI::FlushCheatItem()
+{
+    if (!sPlayerbotAIConfig.cheatItemTrace || !bot)
+        return;
+
+    uint64 const now = uint64(time(nullptr));
+    if (!cheatItemWindowStart)
+    {
+        cheatItemWindowStart = now;
+        return;
+    }
+
+    if (!ai::cheat_item::ShouldFlush(now, cheatItemWindowStart))
+        return;
+
+    if (cheatItemCounts.Any())
+        sLog.outBasic("[CheatItem] bot=%u level=%u class=%u seconds=%u %s", bot->GetGUIDLow(), bot->GetLevel(), bot->getClass(),
+            uint32(now - cheatItemWindowStart), ai::cheat_item::Format(cheatItemCounts).c_str());
+
+    cheatItemCounts.Reset();
+    cheatItemWindowStart = now;
 }
 
 bool PlayerbotAI::HasCheat(BotCheatMask mask) const

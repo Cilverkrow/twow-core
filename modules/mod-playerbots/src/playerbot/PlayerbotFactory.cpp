@@ -417,6 +417,7 @@ void PlayerbotFactory::Refresh()
     if (!ai->HasCheat(BotCheatMask::item))
         return;
 
+    ai->NoteCheatItem(ai::cheat_item::Site::Refresh);   // twow-repo#333 M2 shadow counter (CheatItem.Trace, log only)
     InitAmmo();
     InitFood();
     InitPotions();

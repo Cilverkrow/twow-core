@@ -785,6 +785,14 @@ bool UseAction::UseItemInternal(Player* requester, uint32 itemId, Unit* unit, Ga
                 {
                     if (!HasItemCooldown(itemId))
                     {
+                        // twow-repo#333 M2 shadow counter, CLI-ROT oil loop (OB-00 06.11.: counter only): the cooldown set
+                        // here while the spell is still preparing (an instant is only queued) blocks that very cast.
+                        if (sPlayerbotAIConfig.cheatItemTrace)
+                        {
+                            ai->NoteCheatItem(ai::cheat_item::Site::CheatCdSet);
+                            if (spell->getState() == SPELL_STATE_PREPARING)
+                                ai->NoteCheatItem(ai::cheat_item::Site::SelfBlocked);
+                        }
                         bot->RemoveSpellCooldown(*spellInfo, false);
                         bot->AddCooldown(*spellInfo, proto, false);
                     }
@@ -814,6 +822,11 @@ bool UseAction::UseItemInternal(Player* requester, uint32 itemId, Unit* unit, Ga
     {
         TraceRealConsumable(ai, proto);
     }
+
+    // twow-repo#333 M2 shadow counter (CheatItem.Trace, log only): the item cheat cast the item's spell without the item;
+    // "use" when the bags held none, "use_had" when they held one the cheat kept.
+    if (sPlayerbotAIConfig.cheatItemTrace && successCasts > 0 && !itemUsed && ai->HasCheat(BotCheatMask::item))
+        ai->NoteCheatItem(ai::cheat_item::UseSite(bot->GetItemCount(proto->ItemId)));
 
     if (successCasts > 0)
     {
