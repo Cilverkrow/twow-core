@@ -104,6 +104,16 @@ inline bool TrainerTripReasonLasts(bool anyLeft, std::int32_t targetEntry, bool 
     return targetEntry == 0 || targetStillTeaches;
 }
 
+// twow-repo#333 P1-ae (AiPlayerbot.ProfessionTraining.TurnInGateSkipGrindFallback, OB-00 06.11.2026 after M1r run 10: a skinner's tool
+// gate said turn_in for 49 min while the bot was in the 8.32 grind fallback and made no quest request). The bot is in the grind
+// fallback the way RequestTravelTargetAction grinds (QuestSearchPolicy.h GrindFallback): a quest-first bot, GrindMode 0 (no gap
+// filler, no no-grind mode), no QuestFirstOrder and no S1 turn-in yield for the bot, and at least minFailures empty quest route
+// searches in a row (minFailures 0 = the fallback is off). Then no quest request routes a finished quest, so none holds a trip.
+inline bool InGrindFallback(bool questFirst, bool otherGrindMode, bool s1TurnInYield, std::uint32_t routeFailures, std::uint32_t minFailures)
+{
+    return questFirst && !otherGrindMode && !s1TurnInYield && minFailures && routeFailures >= minFailures;
+}
+
 // "manual int" suffixes of a trip kind, appended to kTrainerTripValue / kToolTripValue.
 constexpr char const* kHoldUntilSuffix = " hold until";
 constexpr char const* kBackoffEndSuffix = " backoff end";
@@ -159,6 +169,9 @@ constexpr char const* kNearCheckValue = "profession near check at";
 constexpr char const* kNearTraceValue = "profession near trace at";
 // The result of the last destination walk (1 = a trainer within the radius), counted until the next walk.
 constexpr char const* kNearResultValue = "profession near found";
+// P1-ae: the time of the last "state=turnin_grind_fallback" line (0 = never); at most one line per bot and kGrindFallbackTraceSeconds.
+constexpr char const* kGrindFallbackTraceValue = "profession turnin grind fallback trace at";
+constexpr std::uint32_t kGrindFallbackTraceSeconds = 3600;
 // Appended to kTrainerTripValue: 1 = the open trip is a near trip (path=near on its request and end lines).
 constexpr char const* kNearSuffix = " near";
 

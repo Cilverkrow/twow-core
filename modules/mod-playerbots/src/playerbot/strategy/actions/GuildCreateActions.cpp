@@ -2,6 +2,8 @@
 #include "playerbot/playerbot.h"
 #include "GuildCreateActions.h"
 #include "GuildAcceptAction.h"
+#include "playerbot/strategy/values/TravelValues.h"   // twow-repo#333 P1-ad: ProfessionTripOpenKind
+#include "playerbot/CohortPolicy.h"
 #include "playerbot/RandomPlayerbotFactory.h"
 #include "playerbot/LootObjectStack.h"
 #ifndef MANGOSBOT_ZERO
@@ -1434,6 +1436,23 @@ bool RosterGuildFoundTripAction::isUseful()
     TravelTarget* target = AI_VALUE(TravelTarget*, "travel target");
     if (target->GetStatus() == TravelStatus::TRAVEL_STATUS_PREPARE)
         return false;
+
+    // twow-repo#333 Berufe P1-ad (AiPlayerbot.ProfessionTraining.TripNoGuildTrip, OB-00 06.11.2026 after M1r run 10: Execute expired a
+    // skinner's open near tool trip 117 s after its start, 89 yd from the vendor - reason=lost, an hour of cooldown, no knife): an open
+    // profession trip (trainer or tool, ai::ProfessionTripOpenKind - roster bot on its own) is not replaced; the founding trip comes at
+    // the next check after it. Buying at a guild master (above) stays. Switch 0 or another cohort: nothing is read.
+    // Deletion target (ADR-0041 rule 4): goes with A3 step 3, when the supervisor owns the travel target.
+    // One line per bot and hour: [RosterGuild] event=buy_travel_deferred reason=profession_trip kind=1 (trainer) | 2 (tool).
+    if (ai::cohort::Applies(sPlayerbotAIConfig.professionTrainingTripNoGuildTrip, bot->GetGUIDLow()))
+    {
+        if (uint8 const tripKind = ai::ProfessionTripOpenKind(ai))
+        {
+            if (RosterGuildPlan::IsDue(ai, "roster guild trip deferred trace", HOUR))
+                sLog.outBasic("[RosterGuild] event=buy_travel_deferred reason=profession_trip bot=%u level=%u kind=%u", bot->GetGUIDLow(),
+                    bot->GetLevel(), uint32(tripKind));
+            return false;
+        }
+    }
 
     // Already on the way to a guild master.
     EntryTravelDestination* destination = dynamic_cast<EntryTravelDestination*>(target->GetDestination());
