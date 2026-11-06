@@ -615,6 +615,10 @@ bool PlayerbotAIConfig::Initialize()
     rotationCastStopFirst = config.GetIntDefault("AiPlayerbot.Rotation.CastStopFirst", 1);   // twow-repo#602 cast-abort loop
     if (rotationCastStopFirst > 2)
         rotationCastStopFirst = 1;   // an unknown mode is the default (0 off = rollback, 1 all, 2 cohort B)
+    rotationDuelRule = config.GetIntDefault("AiPlayerbot.Rotation.DuelRule", 1);   // twow-repo#602 W24 duel hang
+    if (rotationDuelRule > 2)
+        rotationDuelRule = 1;   // an unknown mode is the default (0 off = rollback, 1 all, 2 cohort B)
+    rotationDuelRuleCancelSeconds = config.GetIntDefault("AiPlayerbot.Rotation.DuelRule.CancelSeconds", 60);
     rotationInvalidTargetQuiet = config.GetIntDefault("AiPlayerbot.Rotation.InvalidTargetQuiet", 1);   // twow-repo#602 failure census
     if (rotationInvalidTargetQuiet > 2)
         rotationInvalidTargetQuiet = 1;   // an unknown mode is the default (0 off = rollback, 1 all, 2 cohort B)
@@ -1978,6 +1982,8 @@ bool PlayerbotAIConfig::Initialize()
             {"Rotation.CastLosGate", Value(rotationCastLosGate)},
             {"Rotation.CastStopFirst", Value(rotationCastStopFirst)},
             {"Rotation.DarkRuneGate", Value(rotationDarkRuneGate)},
+            {"Rotation.DuelRule", Value(rotationDuelRule)},
+            {"Rotation.DuelRule.CancelSeconds", Value(rotationDuelRuleCancelSeconds)},
             {"Rotation.EmergencyLadder", Value(rotationEmergencyLadder)},
             {"Rotation.FleeAway", Value(rotationFleeAway)},
             {"Rotation.FleeAway.Scope", Value(rotationFleeAwayScope)},

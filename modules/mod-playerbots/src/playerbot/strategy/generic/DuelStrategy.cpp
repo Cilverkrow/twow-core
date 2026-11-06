@@ -17,6 +17,12 @@ void DuelStrategy::InitNonCombatTriggers(std::list<TriggerNode*> &triggers)
     triggers.push_back(new TriggerNode(
         "duel no attackers",
         NextAction::array(0, new NextAction("attack duel opponent", 70.0f), NULL)));
+
+    // twow-repo#602 W24 duel hang (AiPlayerbot.Rotation.DuelRule, DuelRulePolicy.h): a bot-vs-bot duel without a fight for
+    // Rotation.DuelRule.CancelSeconds is cancelled; above "select new target" (90), which failed on every tick in the hang.
+    triggers.push_back(new TriggerNode(
+        "duel stalled",
+        NextAction::array(0, new NextAction("cancel duel", 95.0f), NULL)));
 }
 
 void DuelStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)

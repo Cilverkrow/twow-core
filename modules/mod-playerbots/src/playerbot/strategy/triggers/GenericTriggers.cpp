@@ -11,6 +11,7 @@
 #include "playerbot/EmergencyLadderTrace.h"
 #include "playerbot/MeleeFleeBreakPolicy.h"
 #include "playerbot/InvalidTargetPolicy.h"
+#include "playerbot/DuelRulePolicy.h"
 #include "playerbot/strategy/values/LastMovementValue.h"
 
 #include <regex>
@@ -507,7 +508,35 @@ bool NoAttackersTrigger::IsActive()
 // twow-repo#568 (D69): "duel target" (the only thing "attack duel opponent" isUseful asks) is null without m_duel.
 bool DuelNoAttackersTrigger::IsActive()
 {
-    return bot->m_duel && NoAttackersTrigger::IsActive();
+    if (!bot->m_duel)
+        return false;
+
+    if (NoAttackersTrigger::IsActive())
+        return true;
+
+    // twow-repo#602 W24 duel hang (AiPlayerbot.Rotation.DuelRule, DuelRulePolicy.h): between two bots nobody hit first, so
+    // "my attacker count" stayed 0 and the duel never began. A running duel takes the opponent as the target without that.
+    Unit* const opponent = AI_VALUE(Unit*, "duel target");
+    Unit* const current = AI_VALUE(Unit*, "current target");
+    if (opponent && ai::duel_rule::EngageOpponent(ai::duel_rule::Applies(sPlayerbotAIConfig.rotationDuelRule, bot->GetGUIDLow()),
+            bot->m_duel->startTime != 0, bot->m_duel->finished, current == opponent))
+    {
+        ai::duel_rule::engaged.fetch_add(1, std::memory_order_relaxed);
+        return true;
+    }
+
+    return false;
+}
+
+// twow-repo#602 W24 duel hang (AiPlayerbot.Rotation.DuelRule, DuelRulePolicy.h): the core never ends a duel by time. A bot-vs-bot duel
+// (requested or running) in which neither side fights for Rotation.DuelRule.CancelSeconds is cancelled ("cancel duel").
+bool DuelStalledTrigger::IsActive()
+{
+    bool const applies = ai::duel_rule::Applies(sPlayerbotAIConfig.rotationDuelRule, bot->GetGUIDLow());
+    Unit* const opponent = (applies && bot->m_duel && !bot->m_duel->finished) ? ObjectAccessor::GetUnit(*bot, bot->m_duel->opponent) : nullptr;   // same map, as "duel target"
+    uint64 const now = uint64(time(nullptr));
+    quietSince = ai::duel_rule::NextQuietSince(quietSince, opponent != nullptr, opponent && (bot->IsInCombat() || opponent->IsInCombat()), now);
+    return opponent && ai::duel_rule::CancelDue(applies, opponent->IsPlayer() && GetBotAI(static_cast<Player*>(opponent)) != nullptr, quietSince, now, sPlayerbotAIConfig.rotationDuelRuleCancelSeconds);
 }
 
 bool InvalidTargetTrigger::IsActive()
