@@ -1577,6 +1577,20 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[ProfTravel] config key=TripDoneAtTarget value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", professionTrainingTripDoneAtTarget);
         professionTrainingTripDoneAtTarget = 0;
     }
+    // twow-repo#333 Berufe P1-ad (OB-00 06.11.2026): an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B, 3 cohort A).
+    professionTrainingTripNoGuildTrip = config.GetIntDefault("AiPlayerbot.ProfessionTraining.TripNoGuildTrip", 0);
+    if (professionTrainingTripNoGuildTrip > 3)
+    {
+        sLog.outError("[ProfTravel] config key=TripNoGuildTrip value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", professionTrainingTripNoGuildTrip);
+        professionTrainingTripNoGuildTrip = 0;
+    }
+    // twow-repo#333 Berufe P1-ae (OB-00 06.11.2026): an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B, 3 cohort A).
+    professionTrainingTurnInGateSkipGrindFallback = config.GetIntDefault("AiPlayerbot.ProfessionTraining.TurnInGateSkipGrindFallback", 0);
+    if (professionTrainingTurnInGateSkipGrindFallback > 3)
+    {
+        sLog.outError("[ProfTravel] config key=TurnInGateSkipGrindFallback value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", professionTrainingTurnInGateSkipGrindFallback);
+        professionTrainingTurnInGateSkipGrindFallback = 0;
+    }
     professionUseToolBuy = config.GetIntDefault("AiPlayerbot.ProfessionUse.ToolBuy", 0);
     if (professionUseToolBuy > 2)
         professionUseToolBuy = 0;
@@ -1902,6 +1916,8 @@ bool PlayerbotAIConfig::Initialize()
             {"ProfessionTraining.Travel", Value(professionTrainingTravel)},
             {"ProfessionTraining.TripDoneAtTarget", Value(professionTrainingTripDoneAtTarget)},
             {"ProfessionTraining.TripNoGrind", Value(professionTrainingTripNoGrind)},
+            {"ProfessionTraining.TripNoGuildTrip", Value(professionTrainingTripNoGuildTrip)},
+            {"ProfessionTraining.TurnInGateSkipGrindFallback", Value(professionTrainingTurnInGateSkipGrindFallback)},
             {"ProfessionTraining.TurnInGateSkipNoRoute", Value(professionTrainingTurnInGateSkipNoRoute)},
             {"ProfessionTraining.TurnInGateSkipSuppressed", Value(professionTrainingTurnInGateSkipSuppressed)},
             {"ProfessionUse.ToolBuy", Value(professionUseToolBuy)},

@@ -553,6 +553,12 @@ public:
     // phase-one rank any more, not only when no trainer in the world does; 0 off (default), 1 all, 2 cohort B (odd guid), 3 cohort A
     // (even guid).
     uint32 professionTrainingTripDoneAtTarget = 0;
+    // twow-repo#333 Berufe P1-ad (OB-00 06.11.2026 after M1r run 10): the roster guild founding trip (RosterGuild.FoundTravel) does not
+    // replace an open profession trip; 0 off (default), 1 all, 2 cohort B (odd guid), 3 cohort A (even guid).
+    uint32 professionTrainingTripNoGuildTrip = 0;
+    // twow-repo#333 Berufe P1-ae (OB-00 06.11.2026 after M1r run 10): a finished quest does not hold the profession trips while the bot
+    // is in the 8.32 grind fallback (no quest request routes it); 0 off (default), 1 all, 2 cohort B (odd guid), 3 cohort A (even guid).
+    uint32 professionTrainingTurnInGateSkipGrindFallback = 0;
     uint32 professionUseToolBuy = 0;
     // twow-repo#333 P1-z (OB-00 31.10.2026, bug fix: code default 1, 0 = rollback, 2 cohort B): BuyAction "vendor" also reads the
     // vendor template items (creature_template.vendor_id), as the player's buy, the by-name buy and the vendor map already do.
