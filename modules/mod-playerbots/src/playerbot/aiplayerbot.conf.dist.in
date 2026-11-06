@@ -2128,6 +2128,13 @@ AiPlayerbot.ProfessionTraining.TurnInGateSkipGrindFallback = 0
 # Craft: craft a recipe without spell focus that still gives a skill-up, when
 # its reagents are in the bags, at most once per CraftIntervalSeconds.
 # Trace: throttled [ProfessionUse] lines at BASIC level.
+# twow-repo#333 M2-T (OB-00 06.11.2026, measurement base of M2 "use professions"; log only, every bot): with Trace on, also one
+# unthrottled countable line per event
+#   [ProfCount] event=created bot= level= item= count= quality= class= subclass= conjured= signature=
+#     (an item the bot created: the created flag of SMSG_ITEM_PUSH_RESULT - crafts and conjured items; signature=1 = gear)
+#   [ProfCount] event=sold bot= level= item= count= copper=        (a sale at a vendor with its copper)
+#   [ProfCount] event=equipped_selfmade bot= level= item= quality= class= subclass=
+#     (equipped gear whose creator is the bot itself; the core writes the creator only on gear, not on consumables or bags)
 AiPlayerbot.ProfessionUse.GatherDistance = 0
 AiPlayerbot.ProfessionUse.Craft = 0
 AiPlayerbot.ProfessionUse.CraftIntervalSeconds = 300

@@ -184,4 +184,33 @@ inline bool KeepCraftStacks(float stacks, std::uint32_t keepStacks)
 {
     return stacks < float(keepStacks) + 1.0f;
 }
+
+// twow-repo#333 M2-T (OB-00 06.11.2026, measurement base of M2 "use professions"; log only, with ProfessionUse.Trace): countable
+// "[ProfCount]" lines for a created item, a sale and equipped self-made gear - one line per event, not throttled.
+// SMSG_ITEM_PUSH_RESULT as Player::SendNewItem writes it (classic): guid u64 @0, received u32 @8, created u32 @12, showInChat
+// u32 @16, bag slot u8 @20, slot u32 @21, item id u32 @25, suffix factor u32 @29, random property u32 @33, count u32 @37.
+constexpr std::size_t kPushCreatedOffset = 12;
+constexpr std::size_t kPushItemOffset = 25;
+constexpr std::size_t kPushCountOffset = 37;
+constexpr std::size_t kPushSize = 41;
+
+// A pushed item counts as created (a spell's DoCreateItem - crafts and conjured items - or an aura's item) only with the
+// created flag set in a complete packet for the bot itself.
+inline bool PushCreated(std::size_t size, bool forBot, std::uint32_t created)
+{
+    return size >= kPushSize && forBot && created != 0;
+}
+
+// The copper of one sale: the money after the sale minus before; nothing when the sale did not go through.
+inline std::uint32_t SoldCopper(std::uint32_t before, std::uint32_t after)
+{
+    return after > before ? after - before : 0;
+}
+
+// Self-made gear: the core writes the creator only on gear (Item::HasSignature: stack 1, no consumable), so an equipped item
+// whose creator is the bot itself was crafted by it.
+inline bool SelfMadeEquipped(std::uint64_t creator, std::uint64_t botGuid, bool equipped)
+{
+    return equipped && creator != 0 && creator == botGuid;
+}
 }
