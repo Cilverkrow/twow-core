@@ -105,6 +105,24 @@ bool UsesFreePersistentRosterProfessionTraining(Player const* bot)
         static_cast<profession::Pair>(pair));
 }
 
+// twow-repo#333 Berufe P1-ae (AiPlayerbot.ProfessionTraining.TurnInGateSkipGrindFallback, OB-00 06.11.2026 after M1r run 10): the bot is
+// in the 8.32 grind fallback (ProfessionTravelPolicy.h InGrindFallback) - no quest request routes its finished quests, so none holds a
+// profession trip. Switch 0, another cohort, a real master: false, nothing read.
+bool ProfessionTripGrindFallback(Player* bot)
+{
+    if (!ai::cohort::Applies(sPlayerbotAIConfig.professionTrainingTurnInGateSkipGrindFallback, bot->GetGUIDLow()))
+        return false;
+    PlayerbotAI* ai = GetBotAI(bot);
+    if (!ai || ai->HasRealPlayerMaster())
+        return false;
+    AiObjectContext* context = ai->GetAiObjectContext();
+    return ai::profession_travel::InGrindFallback(UsesQuestFirstProgression(bot),
+        ai->IsQuestNoGrindTrip() || ai->IsQuestGapGrind(),
+        sPlayerbotAIConfig.questFirstProgressionFailureClasses && sPlayerbotAIConfig.S1For(bot->GetGUIDLow()),
+        uint32(std::max(0, AI_VALUE2(int, "manual int", "quest route failures"))),
+        sPlayerbotAIConfig.questFirstProgressionGrindFallbackFailures);
+}
+
 // twow-repo#333 Berufe P1-a / P1-b: an open turn-in (the 8.5 rule of the gather purposes; with turn-in parking only an
 // open, not parked one).
 bool ProfessionTripTurnInWaiting(Player* bot, TravelTarget const* travelTarget)
@@ -126,6 +144,20 @@ bool ProfessionTripTurnInWaiting(Player* bot, TravelTarget const* travelTarget)
             (!noRoute || !noRoute->IsTurnInNoRoute(questId)) &&
             (!suppressed || !suppressed->IsTurnInRouteSuppressedForQuest(questId)))
             ++finished;
+    // P1-ae: in the grind fallback the finished quests do not wait; one line per bot and hour when the rule lets one pass.
+    if (finished && ProfessionTripGrindFallback(bot))
+    {
+        AiObjectContext* context = GetBotAI(bot)->GetAiObjectContext();
+        uint32 const now = uint32(time(nullptr));
+        uint32 const tracedAt = uint32(std::max(0, AI_VALUE2(int, "manual int", ai::profession_travel::kGrindFallbackTraceValue)));
+        if (tracedAt == 0 || now >= tracedAt + ai::profession_travel::kGrindFallbackTraceSeconds)
+        {
+            SET_AI_VALUE2(int, "manual int", ai::profession_travel::kGrindFallbackTraceValue, int(now));
+            sLog.outBasic("[ProfTravel] state=turnin_grind_fallback bot=%u level=%u quests=%u failures=%d", bot->GetGUIDLow(),
+                bot->GetLevel(), finished, AI_VALUE2(int, "manual int", "quest route failures"));
+        }
+        return false;
+    }
     return ai::quest_search::GatherYieldsToTurnIn(true, finished);
 }
 

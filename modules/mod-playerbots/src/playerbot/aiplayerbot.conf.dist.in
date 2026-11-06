@@ -2097,6 +2097,25 @@ AiPlayerbot.ProfessionTraining.TripNoGrind = 0
 # action. The next skill comes from the next trip after the hourly cooldown or from the local trainer path (#306).
 #   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid); other values act like 0.
 AiPlayerbot.ProfessionTraining.TripDoneAtTarget = 0
+# twow-repo#333 Berufe P1-ad (OB-00 06.11.2026; M1r run 10: a skinner's near tool trip to a vendor 89 yd away was replaced after
+# 117 s by the roster guild founding trip - "[RosterGuild] event=buy_travel" expires the travel target - and ended "reason=lost",
+# then the hourly cooldown: no knife). TripNoGuildTrip, for a roster bot on its own: while a profession trip (trainer or tool) is
+# open, the founding trip of AiPlayerbot.RosterGuild.FoundTravel does not start (no buy_travel line); at a guild master the bot still
+# buys. The founding trip comes at the next check after the trip ended. Read only with RosterGuild.FoundTravel on.
+# Deletion target (ADR-0041 rule 4): goes with A3 step 3, when the supervisor owns the travel target.
+#   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid); other values act like 0.
+AiPlayerbot.ProfessionTraining.TripNoGuildTrip = 0
+# twow-repo#333 Berufe P1-ae (OB-00 06.11.2026; M1r run 10: a skinner learned at 11:48 and its tool gate said "turn_in" for the
+# remaining 49 min - finished quests waited, but the bot was in the 8.32 grind fallback since 10:35, made no quest request, so no
+# turn-in came and the no-route mark of TurnInGateSkipNoRoute never came either). TurnInGateSkipGrindFallback, for a roster bot on
+# its own: while the bot is in the grind fallback ("quest route failures" >= QuestFirstProgression.GrindFallbackFailures, GrindMode
+# 0, no Grind.QuestFirstOrder, FailureClasses (S1) not on for the bot) a finished quest does not hold the profession trips (the
+# turn_in gate of the gap and near trips and the turn_in end of a started trip). A finished quest it lets pass writes at most one
+# line per bot and hour
+#   [ProfTravel] state=turnin_grind_fallback bot= level= quests= failures=
+# Off or outside the fallback: the turn_in rule as before. Deletion target (ADR-0041 rule 4): goes with A3 step 3.
+#   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid); other values act like 0.
+AiPlayerbot.ProfessionTraining.TurnInGateSkipGrindFallback = 0
 # Profession use (#333), persistent roster bots without a real-player master.
 # GatherDistance: passive gathering radius for such a bot on its own (herbs,
 # ore, skinning); 0 = GatheringDistance. The hostile check stays in force.
