@@ -20,6 +20,7 @@
 #include "playerbot/RotCastPolicy.h"
 #include "playerbot/RotCastTrace.h"     // twow-repo#602 ROT-01 D0 (AiPlayerbot.Rotation.CastTrace)
 #include "playerbot/CastWhileMovingPolicy.h"   // twow-repo#333 P1-w: a loot cast after StopMoving; #602 Rotation.CastStopFirst
+#include "playerbot/ProfessionUsePolicy.h"   // twow-repo#333 M2-T: the [ProfCount] created line
 #include "playerbot/TeleportAckThreadPolicy.h"   // twow-repo#563 X5 (ThreadSafeTeleportAck)
 #include "Maps/PathFinder.h"
 #include <stdarg.h>
@@ -3862,6 +3863,23 @@ void PlayerbotAI::HandleBotOutgoingPacket(const WorldPacket& packet)
 			uint8 const result = size >= 6 ? packet.read<uint8>(5) : 0;
 			ai::rot_cast_rt::RecordServer(bot->getClass(), ai::cohort::InB(bot->GetGUIDLow()), spellId,
 				ai::rot_cast::ServerCode(size, status, result));
+		}
+		// twow-repo#333 M2-T (AiPlayerbot.ProfessionUse.Trace): an item the bot created (crafted or conjured) - the created flag of
+		// SMSG_ITEM_PUSH_RESULT (ProfessionUsePolicy.h). Log only; the packet still goes to its handler.
+		if (sPlayerbotAIConfig.professionUseTrace && packet.GetOpcode() == SMSG_ITEM_PUSH_RESULT && bot)
+		{
+			std::size_t const size = packet.size();
+			bool const forBot = size >= ai::profession_use::kPushSize && packet.read<uint64>(0) == bot->GetObjectGuid().GetRawValue();
+			uint32 const created = forBot ? packet.read<uint32>(ai::profession_use::kPushCreatedOffset) : 0;
+			if (ai::profession_use::PushCreated(size, forBot, created))
+			{
+				uint32 const itemId = packet.read<uint32>(ai::profession_use::kPushItemOffset);
+				uint32 const count = packet.read<uint32>(ai::profession_use::kPushCountOffset);
+				ItemPrototype const* proto = sObjectMgr.GetItemPrototype(itemId);
+				sLog.outBasic("[ProfCount] event=created bot=%u level=%u item=%u count=%u quality=%u class=%u subclass=%u conjured=%u signature=%u",
+					bot->GetGUIDLow(), bot->GetLevel(), itemId, count, proto ? proto->Quality : 0, proto ? proto->Class : 0,
+					proto ? proto->SubClass : 0, proto && proto->IsConjuredConsumable() ? 1 : 0, proto && proto->HasSignature() ? 1 : 0);
+			}
 		}
 		botOutgoingPacketHandlers.AddPacket(packet);
 	}

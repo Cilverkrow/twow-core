@@ -213,6 +213,23 @@ int main()
     Require(!CanBeDisenchanted(true, 3, 0, false), "no disenchant loot: no");
     Require(!CanBeDisenchanted(true, 2, 21, true), "hotfix 8.30: ITEM_FLAG_NO_DISENCHANT (Lesser Magic Wand): no");
 
+    // twow-repo#333 M2-T: the countable lines.
+    {
+        using namespace ai::profession_use;
+        Require(kPushSize == 41 && kPushCreatedOffset == 12 && kPushItemOffset == 25 && kPushCountOffset == 37,
+            "SMSG_ITEM_PUSH_RESULT layout of Player::SendNewItem (8 + 4 + 4 + 4 + 1 + 4 + 4 + 4 + 4 + 4)");
+        Require(PushCreated(41, true, 1), "created item of the bot: counted");
+        Require(!PushCreated(41, true, 0), "looted / bought / quest reward (created 0): not counted");
+        Require(!PushCreated(41, false, 1), "a push for another player (group broadcast): not counted");
+        Require(!PushCreated(40, true, 1), "short packet: not read");
+        Require(SoldCopper(100, 125) == 25, "sale: the money delta");
+        Require(SoldCopper(100, 100) == 0 && SoldCopper(100, 90) == 0, "no sale or less money: 0");
+        Require(SelfMadeEquipped(7, 7, true), "own creator, equipped: self-made");
+        Require(!SelfMadeEquipped(7, 7, false), "own creator, not equipped (equip failed): no");
+        Require(!SelfMadeEquipped(8, 7, true), "someone else's craft: no");
+        Require(!SelfMadeEquipped(0, 0, true), "no creator (loot, vendor): no");
+    }
+
     std::cout << "profession_use_policy_tests passed\n";
     return 0;
 }
