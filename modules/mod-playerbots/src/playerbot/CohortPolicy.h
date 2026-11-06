@@ -12,7 +12,7 @@ namespace ai::cohort
 // Mode 3 (twow-repo#601, OB-00 31.10.2026: crossover A/B designs - unit 2 swaps the guarded cohort, so each bot is its own
 // control) is opt-in per key: a key whose loader clamps > 2 to 0 never passes 3 here, so for it nothing changes.
 // Value 2 means "only cohort B" for the keys that read their value as a mode here, and ONLY for those. Not cohort modes, whatever
-// their value 2 does: AiPlayerbot.ThreadSafeTeleportAck (a 0/1 switch, every other value acts like 0) and
+// their value 2 does: AiPlayerbot.ThreadSafeTeleportAck (a 0/1 switch, default 1, every other value acts like 1) and
 // AiPlayerbot.Rotation.FleeAway.Scope (0 every bot, 1 hunters only, 2 hunters and bots with a living pet out). A new key that
 // wants a cohort split takes this mode; a key with its own 0/1/2 meaning says so in the .dist (twow-repo#679, switch audit #10b).
 // Cohort B = odd low guid, cohort A = even low guid (the same parity rule as LootRolePolicy.h). A bot never changes

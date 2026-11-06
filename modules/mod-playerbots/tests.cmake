@@ -2297,7 +2297,7 @@ add_test(NAME grind_safe_pull_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/grind_safe_pull_source_contract_tests.cmake")
 
-# twow-repo#563 X5 (AiPlayerbot.ThreadSafeTeleportAck, default 0; CLI-ROT 02.11.2026): a master's bot holder no longer acks the
+# twow-repo#563 X5 (AiPlayerbot.ThreadSafeTeleportAck, default 1 since 06.11.2026; CLI-ROT 02.11.2026): a master's bot holder no longer acks the
 # near teleport of a bot in world on another thread - the bot's own UpdateAI does (crash 02.11.2026, MotionMaster::DirectClean);
 # contract in t/contracts.d.
 add_executable(teleport_ack_thread_policy_tests

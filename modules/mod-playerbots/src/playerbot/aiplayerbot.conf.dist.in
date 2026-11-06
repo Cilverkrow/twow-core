@@ -3168,9 +3168,11 @@ AiPlayerbot.X3c.InboxWrites = 0
 # AiPlayerbot.WorldBotsTrace) the [WorldBots] line carries teleport_ack_requested / _bot / _wait (per minute; _wait is 0
 # since #676). Far teleports of a master holder's bots are acked in the world-thread phase whatever this key
 # (twow-repo#676, no switch; [WorldBots] far_ack_queued / _world / _skip / _full).
-# Any other value acts like 0 - 2 included: this is a plain 0/1 switch, not a cohort mode (CohortPolicy.h). 0 = the holder acks a
-# near teleport itself as before (default).
-AiPlayerbot.ThreadSafeTeleportAck = 0
+# OB-00 06.11.2026 (BEHAVIOUR CHANGE, ON by default, 0 = rollback): crash B 04.11.2026 was a near teleport (a bot's repop
+# in a dungeon) acked by the master holder with this key 0; the G1-4 rerun with 1 had no crash (twow-repo#676).
+# Any other value acts like 1 - 2 included: this is a plain 0/1 switch, not a cohort mode (CohortPolicy.h). 0 = rollback: the
+# holder acks a near teleport itself as before.
+AiPlayerbot.ThreadSafeTeleportAck = 1
 # twow-repo#541 (owner 11.10.2026): 1 = the core builds and sends no object update packets (SMSG_UPDATE_OBJECT,
 # SMSG_COMPRESSED_UPDATE_OBJECT, SMSG_DESTROY_OBJECT) to bot sessions - a bot has no client and its AI reads object
 # state from the objects (PacketTrace: 0 update packets read). Visible sets, broadcast listeners and update masks
