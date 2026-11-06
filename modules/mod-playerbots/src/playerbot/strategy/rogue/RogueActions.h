@@ -480,6 +480,8 @@ namespace ai
                                         bot->RemoveSpellCooldown(*spellInfo, false);
                                         bot->AddCooldown(*spellInfo, poisonProto, false);
                                         SetDuration(3000);
+                                        if (!count)   // twow-repo#333 M2 shadow counter (CheatItem.Trace, log only)
+                                            ai->NoteCheatItem(ai::cheat_item::Site::Poison);
                                     }
                                     else
                                     {

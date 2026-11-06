@@ -1137,6 +1137,7 @@ public:
 
     uint32 botCheatMask = 0;
     uint32 rndBotCheatMask = 0;
+    bool cheatItemTrace = false;   // twow-repo#333 M2 shadow counter: [CheatItem] lines, log only (AiPlayerbot.CheatItem.Trace)
 
     std::vector<std::string> BotCheatMaskName = { "taxi", "gold", "health", "mana", "power", "item", "cooldown", "repair", "movespeed", "attackspeed", "breath", "glyph", "quest", "maxMask" };
 
