@@ -1359,7 +1359,7 @@ bool PlayerbotAIConfig::Initialize()
         grindSafePull = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B, 3 cohort A, 4 shadow only)
     grindSafePullReadyHp = std::min<uint32>(100, uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.Grind.SafePull.ReadyHp", 80))));   // twow-repo#656
     grindSafePullReadyMana = std::min<uint32>(100, uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.Grind.SafePull.ReadyMana", 50))));   // twow-repo#656
-    threadSafeTeleportAck = config.GetIntDefault("AiPlayerbot.ThreadSafeTeleportAck", 0) == 1;   // twow-repo#563 X5, unknown = off
+    threadSafeTeleportAck = config.GetIntDefault("AiPlayerbot.ThreadSafeTeleportAck", 1) != 0;   // twow-repo#563 X5; default on since twow-repo#676 crash B (06.11.2026): 0 = rollback, unknown = on
     botLogFile = config.GetStringDefault("AiPlayerbot.BotLogFile", "bots.log");
     {
         std::string logsDir = sConfig.GetStringDefault("LogsDir");
