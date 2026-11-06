@@ -429,7 +429,7 @@ public:
     uint32 grindQuestFirstOrder = 0;  // twow-repo#601 decision order (owner 20.10.2026): AiPlayerbot.Grind.QuestFirstOrder - "attack anything" of quest-first roster bots only on quest objectives, attackers and mobs in the way; 0 off, 1 all, 2 cohort B (odd low guid)
     uint32 grindNeighbourAware = 0;  // twow-repo#602 #2 (adds analysis 25.10.2026): the stage-2 grind pick prefers a candidate with fewer neighbours that would join the fight (GrindNeighbourPolicy.h); 0 off, 1 all, 2 cohort B (A in shadow), 3 shadow only
     uint32 grindSafePull = 0;  // twow-repo#656 (#653 lever 1, OB-00 31.10.2026): the stage-2 grind pick orders the candidates by the creatures that would join the fight at the target, the fight spot or on the approach (SafePullPolicy.h); 0 off, 1 all, 2 cohort B, 3 cohort A (crossover; the other cohort in shadow), 4 shadow only
-    bool threadSafeTeleportAck = false;  // twow-repo#563 X5 (CLI-ROT 02.11.2026, OB-00): a master's holder no longer acks the near teleport of a bot in world on another thread - the bot's own UpdateAI does (TeleportAckThreadPolicy.h); 1 on, anything else off
+    bool threadSafeTeleportAck = true;  // twow-repo#563 X5 (CLI-ROT 02.11.2026, OB-00): a master's holder no longer acks the near teleport of a bot in world on another thread - the bot's own UpdateAI does (TeleportAckThreadPolicy.h); default on since twow-repo#676 crash B (OB-00 06.11.2026), 0 = rollback, anything else on
     uint32 grindSafePullReadyHp = 80;  // twow-repo#656: HP % a bot needs for a pick with risk >= 2 (below: no target, at most 90 s)
     uint32 grindSafePullReadyMana = 50;  // twow-repo#656: the same for mana % (mana users only)
     // Filename (relative to LogsDir) for the bot subsystem log. When set,
@@ -688,6 +688,8 @@ public:
     uint32 rotationRestGateTargetMana = 85;  // ... and this mana %
     uint32 rotationRestGateMaxRestSeconds = 120;  // ... or after this many seconds (then no new episode for a minute)
     uint32 rotationCastStopFirst = 1;  // twow-repo#602 (cast-abort loop 27.10., OB-00: code default 1, 0 = rollback): a moving bot without a real player master casts a cast-time or channelled spell after StopMoving instead of cancelling it (CastWhileMovingPolicy.h); 0 off, 1 all, 2 cohort B
+    uint32 rotationDuelRule = 1;  // twow-repo#602 (W24 duel hang 06.11., OB-00: HARM per R4, code default 1, 0 = rollback): no rpg duel against a group member, accept only as the challenged player, a running duel picks the opponent, a bot-vs-bot duel without a fight is cancelled (DuelRulePolicy.h); 0 off, 1 all, 2 cohort B
+    uint32 rotationDuelRuleCancelSeconds = 60;  // ... a bot-vs-bot duel (requested or running) without a fight is cancelled after this many seconds; 0 = never
     uint32 rotationInvalidTargetQuiet = 1;  // twow-repo#602 (failure census 28.10., OB-00: code default 1, 0 = rollback): "invalid target" stays quiet for an empty current target while nothing attacks the bot (InvalidTargetPolicy.h); 0 off, 1 all, 2 cohort B
     uint32 rotationLosCacheMs = 500;  // twow-repo#602 (REF-next v2 tick 29.10., OB-00: code default 500, 0 = rollback): a bot keeps one line-of-sight verdict per target for this many ms (LosCachePolicy.h): the CastLosGate cast checks and the reach prerequisite reuse it
     uint32 rotationRetargetEmptyTrace = 0;  // twow-repo#602 (W24 pattern B, OB-00 06.11.2026 decision (A), log only): one [RetargetEmpty] line per bot at most every 10 s when the dps/tank assist picks nothing while "has attackers" is true - the first attacker that is not a possible attack target and the first filter it fails (RetargetEmptyPolicy.h); 0 off, 1 all, 2 cohort B
@@ -888,6 +890,9 @@ public:
     uint32 botGroupsOpQueueOpsPerTick = 1;          // ops per world tick, 1..16 (none in a tick with a manager group step)
     uint32 botGroupsOpQueueMaxDepth = 2048;         // 16..65536; a full queue refuses new ops (dropped_full)
     uint32 botGroupsOpQueueAlertAgeSeconds = 60;    // 5..3600; "[GroupOps] ALERT" when the oldest op is older
+    // A3 step 6 (ADR-0041, OB-00 06.11.2026): the group manager of roster bots on the world thread (GroupManagerPolicy.h,
+    // GroupManager.cpp). Scaffold: no decision yet. 0 off, 1 all, 2 cohort B, 3 cohort A; other = 0 + error line.
+    uint32 botGroupsManager = 0;
     // twow-repo#627 S7 help groups (QuestGroupPolicy.h, QuestGroupWorld.cpp); Enable: 0 off, 1 all, 2 cohort B, 3 cohort A.
     uint32 questGroupsEnable = 0;
     uint32 questGroupsScanSeconds = 60;

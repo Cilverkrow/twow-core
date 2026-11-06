@@ -1660,6 +1660,22 @@ add_test(NAME group_op_queue
   COMMAND group_op_queue_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# A3 step 6 (ADR-0041, OB-00 06.11.2026; AiPlayerbot.BotGroups.Manager): the pure rules of the group manager scaffold
+# (GroupManagerPolicy.h; no game header). The game side is pinned by
+# t/contracts.d/a3s6_group_manager_scaffold_source_contract_tests.cmake.
+add_executable(group_manager_policy_tests
+  "${PB_MODULE_DIR}/t/group_manager_policy_tests.cpp")
+
+target_include_directories(group_manager_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(group_manager_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME group_manager_policy
+  COMMAND group_manager_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # #628: ad-hoc groups form and leave on the world thread (AdHoc.WorldThread).
 add_test(NAME adhoc_group_world_thread_source_contract
   COMMAND "${CMAKE_COMMAND}"
@@ -2297,7 +2313,7 @@ add_test(NAME grind_safe_pull_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/grind_safe_pull_source_contract_tests.cmake")
 
-# twow-repo#563 X5 (AiPlayerbot.ThreadSafeTeleportAck, default 0; CLI-ROT 02.11.2026): a master's bot holder no longer acks the
+# twow-repo#563 X5 (AiPlayerbot.ThreadSafeTeleportAck, default 1 since 06.11.2026; CLI-ROT 02.11.2026): a master's bot holder no longer acks the
 # near teleport of a bot in world on another thread - the bot's own UpdateAI does (crash 02.11.2026, MotionMaster::DirectClean);
 # contract in t/contracts.d.
 add_executable(teleport_ack_thread_policy_tests
@@ -3693,6 +3709,20 @@ set_target_properties(retarget_empty_policy_tests PROPERTIES
 
 add_test(NAME retarget_empty_policy
   COMMAND retarget_empty_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#602 W24 duel hang (AiPlayerbot.Rotation.DuelRule): group duel skip, initiator accept skip, engage, cancel clock.
+add_executable(duel_rule_policy_tests
+  "${PB_MODULE_DIR}/t/duel_rule_policy_tests.cpp")
+
+target_include_directories(duel_rule_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(duel_rule_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME duel_rule_policy
+  COMMAND duel_rule_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
 # twow-repo#602 (spell-name audit): the names that resolve in the image's spell data, the warlock stone ranks.

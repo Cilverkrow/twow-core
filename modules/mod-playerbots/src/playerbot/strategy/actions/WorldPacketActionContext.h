@@ -80,6 +80,7 @@ namespace ai
             creators["party command"] = [](PlayerbotAI* ai) { return new PartyCommandAction(ai); };
             creators["tell cast failed"] = [](PlayerbotAI* ai) { return new TellCastFailedAction(ai); };
             creators["accept duel"] = [](PlayerbotAI* ai) { return new AcceptDuelAction(ai); };
+            creators["cancel duel"] = [](PlayerbotAI* ai) { return new CancelDuelAction(ai); };  // twow-repo#602 W24 (Rotation.DuelRule)
             creators["ready check"] = [](PlayerbotAI* ai) { return new ReadyCheckAction(ai); };
             creators["ready check finished"] = [](PlayerbotAI* ai) { return new FinishReadyCheckAction(ai); };
             creators["uninvite"] = [](PlayerbotAI* ai) { return new UninviteAction(ai); };

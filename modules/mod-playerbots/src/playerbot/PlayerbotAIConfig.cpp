@@ -14,6 +14,7 @@
 #include "playerbot/EmergencyLadderPolicy.h"
 #include "playerbot/RestGatePolicy.h"
 #include "playerbot/GroupOpPolicy.h"   // BOT-12: BotGroups.OpQueue clamps
+#include "playerbot/GroupManagerPolicy.h"   // A3 step 6: BotGroups.Manager mode
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
@@ -618,6 +619,10 @@ bool PlayerbotAIConfig::Initialize()
     rotationRetargetEmptyTrace = config.GetIntDefault("AiPlayerbot.Rotation.RetargetEmptyTrace", 0);   // twow-repo#602 W24 pattern B trace
     if (rotationRetargetEmptyTrace > 2)
         rotationRetargetEmptyTrace = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
+    rotationDuelRule = config.GetIntDefault("AiPlayerbot.Rotation.DuelRule", 1);   // twow-repo#602 W24 duel hang
+    if (rotationDuelRule > 2)
+        rotationDuelRule = 1;   // an unknown mode is the default (0 off = rollback, 1 all, 2 cohort B)
+    rotationDuelRuleCancelSeconds = config.GetIntDefault("AiPlayerbot.Rotation.DuelRule.CancelSeconds", 60);
     rotationInvalidTargetQuiet = config.GetIntDefault("AiPlayerbot.Rotation.InvalidTargetQuiet", 1);   // twow-repo#602 failure census
     if (rotationInvalidTargetQuiet > 2)
         rotationInvalidTargetQuiet = 1;   // an unknown mode is the default (0 off = rollback, 1 all, 2 cohort B)
@@ -867,6 +872,13 @@ bool PlayerbotAIConfig::Initialize()
     botGroupsOpQueueOpsPerTick = ai::group_ops::ClampOpsPerTick(config.GetIntDefault("AiPlayerbot.BotGroups.OpQueueOpsPerTick", 1));
     botGroupsOpQueueMaxDepth = ai::group_ops::ClampMaxDepth(config.GetIntDefault("AiPlayerbot.BotGroups.OpQueueMaxDepth", 2048));
     botGroupsOpQueueAlertAgeSeconds = ai::group_ops::ClampAlertAgeSeconds(config.GetIntDefault("AiPlayerbot.BotGroups.OpQueueAlertAgeSeconds", 60));
+    // A3 step 6 (ADR-0041): the group manager (GroupManagerPolicy.h); an unknown mode is off.
+    botGroupsManager = uint32(config.GetIntDefault("AiPlayerbot.BotGroups.Manager", 0));
+    if (!ai::group_mgr::ValidMode(botGroupsManager))
+    {
+        sLog.outError("[GroupMgr] config key=Manager value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", botGroupsManager);
+        botGroupsManager = 0;
+    }
     questGroupsEnable = (uint32)config.GetIntDefault("AiPlayerbot.QuestGroups.Enable", 0);
     questGroupsScanSeconds = std::max<uint32>(10, config.GetIntDefault("AiPlayerbot.QuestGroups.ScanSeconds", 60));
     questGroupsScanSlices = std::min<uint32>(64, (uint32)config.GetIntDefault("AiPlayerbot.QuestGroups.ScanSlices", 0));
@@ -1362,7 +1374,7 @@ bool PlayerbotAIConfig::Initialize()
         grindSafePull = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B, 3 cohort A, 4 shadow only)
     grindSafePullReadyHp = std::min<uint32>(100, uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.Grind.SafePull.ReadyHp", 80))));   // twow-repo#656
     grindSafePullReadyMana = std::min<uint32>(100, uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.Grind.SafePull.ReadyMana", 50))));   // twow-repo#656
-    threadSafeTeleportAck = config.GetIntDefault("AiPlayerbot.ThreadSafeTeleportAck", 0) == 1;   // twow-repo#563 X5, unknown = off
+    threadSafeTeleportAck = config.GetIntDefault("AiPlayerbot.ThreadSafeTeleportAck", 1) != 0;   // twow-repo#563 X5; default on since twow-repo#676 crash B (06.11.2026): 0 = rollback, unknown = on
     botLogFile = config.GetStringDefault("AiPlayerbot.BotLogFile", "bots.log");
     {
         std::string logsDir = sConfig.GetStringDefault("LogsDir");
@@ -1873,6 +1885,7 @@ bool PlayerbotAIConfig::Initialize()
             {"BotGroups.Enabled", Value(botGroupsEnabled)},
             {"BotGroups.LeaderOtherMap", Value(botGroupsLeaderOtherMap)},
             {"BotGroups.LeaderOtherMapSeconds", Value(botGroupsLeaderOtherMapSeconds)},
+            {"BotGroups.Manager", Value(botGroupsManager)},
             {"BotGroups.OpQueue", Value(botGroupsOpQueue)},
             {"BotGroups.OpQueueAlertAgeSeconds", Value(botGroupsOpQueueAlertAgeSeconds)},
             {"BotGroups.OpQueueMaxDepth", Value(botGroupsOpQueueMaxDepth)},
@@ -1981,6 +1994,8 @@ bool PlayerbotAIConfig::Initialize()
             {"Rotation.CastLosGate", Value(rotationCastLosGate)},
             {"Rotation.CastStopFirst", Value(rotationCastStopFirst)},
             {"Rotation.DarkRuneGate", Value(rotationDarkRuneGate)},
+            {"Rotation.DuelRule", Value(rotationDuelRule)},
+            {"Rotation.DuelRule.CancelSeconds", Value(rotationDuelRuleCancelSeconds)},
             {"Rotation.EmergencyLadder", Value(rotationEmergencyLadder)},
             {"Rotation.FleeAway", Value(rotationFleeAway)},
             {"Rotation.FleeAway.Scope", Value(rotationFleeAwayScope)},

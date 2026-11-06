@@ -525,7 +525,7 @@ void PlayerbotHolder::UpdateSessions(uint32 elapsed)
                    (int)bot->IsBeingTeleportedNear());
         }
 
-        // twow-repo#563 X5 (AiPlayerbot.ThreadSafeTeleportAck, default 0): a master's holder runs on the master's map thread;
+        // twow-repo#563 X5 (AiPlayerbot.ThreadSafeTeleportAck, default 1, 0 = rollback): a master's holder runs on the master's map thread;
         // a bot in world on another map is updated by another thread. Its near teleport is acked by its own UpdateAI
         // (TeleportAckThreadPolicy.h). Off: a near teleport is acked below, as before.
         // twow-repo#676 (no switch): a master's holder only queues a far teleport's guid; DrainFarTeleportAcks acks it in the

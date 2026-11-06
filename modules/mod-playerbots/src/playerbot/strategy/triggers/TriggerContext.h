@@ -105,6 +105,7 @@ namespace ai
 
             creators["tank assist"] = [](PlayerbotAI* ai) { return new TankAssistTrigger(ai); };
             creators["duel no attackers"] = [](PlayerbotAI* ai) { return new DuelNoAttackersTrigger(ai); };  // twow-repo#568 (D69)
+            creators["duel stalled"] = [](PlayerbotAI* ai) { return new DuelStalledTrigger(ai); };  // twow-repo#602 W24 (Rotation.DuelRule)
             creators["lose aggro"] = [](PlayerbotAI* ai) { return new LoseAggroTrigger(ai); };
             creators["has aggro"] = [](PlayerbotAI* ai) { return new HasAggroTrigger(ai); };
 
