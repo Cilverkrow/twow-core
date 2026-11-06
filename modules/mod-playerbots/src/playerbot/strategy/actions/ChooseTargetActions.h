@@ -71,5 +71,13 @@ namespace ai
     public:
         SelectNewTargetAction(PlayerbotAI* ai) : Action(ai, "select new target") {}
         bool Execute(Event& event) override;
+
+    private:
+        // twow-repo#602 W24 pattern B (AiPlayerbot.Rotation.RetargetEmptyTrace, RetargetEmptyPolicy.h): log only. Counts an assist that
+        // picked nothing while "has attackers" is true and writes one [RetargetEmpty] line at most every 10 s; returns picked unchanged.
+        bool TraceRetargetEmpty(bool picked);
+
+        uint64 retargetEmptyLastLine = 0;  // second of the last [RetargetEmpty] line (one action object per bot)
+        uint32 retargetEmptyFails = 0;     // assist picks without a target since that line
     };
 }

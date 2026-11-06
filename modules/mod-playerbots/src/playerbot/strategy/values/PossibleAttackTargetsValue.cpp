@@ -9,6 +9,7 @@
 #include "Maps/CellImpl.h"
 #include "AttackersValue.h"
 #include "EnemyPlayerValue.h"
+#include "playerbot/RetargetEmptyPolicy.h"
 
 using namespace ai;
 using namespace MaNGOS;
@@ -345,6 +346,24 @@ bool PossibleAttackTargetsValue::IsPossibleTarget(Unit* target, Player* player, 
     }
 
     return false;
+}
+
+// twow-repo#602 W24 pattern B (AiPlayerbot.Rotation.RetargetEmptyTrace, RetargetEmptyPolicy.h): log only. The checks of IsPossibleTarget
+// (ignoreCC) in their order, then the rest of IsValid as one fact; nothing here changes what "possible attack targets" holds.
+uint32 PossibleAttackTargetsValue::FirstFailingFilter(Unit* target, Player* player, float range)
+{
+    using ai::retarget_empty::FirstFailing;
+    if (!target || !target->IsInWorld() || target->GetMapId() != player->GetMapId())
+        return uint32(FirstFailing(false, false, false, false, false, false, false, false));
+
+    bool const alive = !sServerFacade.UnitIsDead(target);
+    bool const validAttack = alive && player->IsValidAttackTarget(target);
+    bool const inRange = player->IsWithinDistInMap(target, range);
+    bool const immune = IsImmuneToDamage(target, player);
+    bool const isNpc = dynamic_cast<Player*>(target) == nullptr;
+    bool const tapped = !isNpc || IsTapped(target, player);
+    bool const passesRest = IsValid(target, player, range, true, false);
+    return uint32(FirstFailing(true, alive, validAttack, inRange, immune, isNpc, tapped, passesRest));
 }
 
 bool PossibleAddsValue::Calculate()

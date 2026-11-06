@@ -95,7 +95,7 @@ require_order("${sample}" "activityClock.AddFarWait(credited);" "activityClock.H
 
 # 4. StuckDetail: far_wait= at the end of the line.
 between("${ai_cpp}" "void PlayerbotAI::ReportStuckDetail(ai::bot_activity::State const& state)" "\n}\n" stuck_report)
-require_text("${stuck_report}" "dropped=%u far_wait=%s\"," "far_wait= on the stuck line")
+require_text("${stuck_report}" "dropped=%u far_wait=%s\"\n        \" cur_target_entry=%u cur_target_visible=%d\"," "far_wait= on the stuck line (twow-repo#602 W24: the current-target fields after it)")
 require_text("${stuck_report}" "ai::far_move::WaitStateName(FarMoveWaitState())" "its value")
 
 # 5. The far-move arrival death: one line with ActivityTrace, within the existing arrive_deaths count (unchanged), log only.

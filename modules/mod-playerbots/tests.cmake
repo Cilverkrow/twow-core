@@ -3731,6 +3731,20 @@ add_test(NAME invalid_target_policy
   COMMAND invalid_target_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#602 W24 pattern B (AiPlayerbot.Rotation.RetargetEmptyTrace, log only): the first failing filter of "possible attack targets".
+add_executable(retarget_empty_policy_tests
+  "${PB_MODULE_DIR}/t/retarget_empty_policy_tests.cpp")
+
+target_include_directories(retarget_empty_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(retarget_empty_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME retarget_empty_policy
+  COMMAND retarget_empty_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # twow-repo#602 W24 duel hang (AiPlayerbot.Rotation.DuelRule): group duel skip, initiator accept skip, engage, cancel clock.
 add_executable(duel_rule_policy_tests
   "${PB_MODULE_DIR}/t/duel_rule_policy_tests.cpp")

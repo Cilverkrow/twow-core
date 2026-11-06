@@ -3110,7 +3110,9 @@ AiPlayerbot.ActivityTrace = 0
 # target (quest, entry, yards to its point), the travel status with the seconds held and left, the move retries, the movement
 # generator, and the engine's newest executed action with the trigger that pushed it. At most 30 lines a minute for all bots;
 # dropped= counts the lines refused since the previous one; far_wait=none|overdue the bot's far move (overdue: one that was
-# never ended). Log only, no behaviour change. 0 = off (default).
+# never ended). twow-repo#602 W24 (06.11.2026): cur_target_entry= cur_target_visible= last - the stored current target's entry
+# (0 = none or a player) and 1 = the bot sees it, 0 = gone or unseen, -1 = no target.
+# Log only, no behaviour change. 0 = off (default).
 AiPlayerbot.ActivityTrace.StuckDetail = 0
 # twow-repo#601 (OB-00 28.10.2026): 1 = with ActivityTrace on, a roster bot that is idle (no active travel target) two samples in
 # a row writes one line for the episode: "[IdleDetail] state=start bot= level= map= zone= x= y= why=no_target|null_dest|none|
@@ -3522,6 +3524,15 @@ AiPlayerbot.Rotation.RestoShamanOffdps = 0
 # "[CastStopFirst] mode= cast_after_stop= cancelled=" once a minute with the mode on.
 # 0 = as before (cancel), 1 = every bot (default), 2 = only cohort B (odd low guid). Any other value acts like 1.
 AiPlayerbot.Rotation.CastStopFirst = 1
+# twow-repo#602 ROT-01 W24 pattern B (OB-00 06.11.2026, log only, no behaviour change): after a kill a tank spun ~20 empty AI
+# passes a second for up to 29 s - "select new target" failed while "has attackers" stayed true, because the dps/tank assist
+# picks only from "possible attack targets". With the mode on, one line per bot at most every 10 s when the assist picks nothing:
+# "[RetargetEmpty] bot= level= map= x= y= fails= n_att= n_pat= entry= dist= reason= threat= victim= in_combat=" - fails = empty
+# picks since the bot's previous line, the first attacker that is not a possible attack target (entry, yards, whether it has the
+# bot on its threat list, its victim none/self/group/other) and the first filter it fails: gone, dead, not_valid_attack,
+# out_of_range, immune, not_tapped, no_victim_no_target; assist_none = every attacker passes and the assist still chose nothing.
+# 0 = off (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
+AiPlayerbot.Rotation.RetargetEmptyTrace = 0
 # twow-repo#602 ROT-01 W24 duel hang (OB-00 06.11.2026, BEHAVIOUR CHANGE, ON by default, 0 = rollback; HARM per ADR-0041 R4):
 # two bots of one group stood in a duel for the rest of the run (11 pairs in 6 runs, 190-640 min each). "rpg duel" challenged a
 # member of the own group, the challenger also "accepted" (the core ignores the initiator's accept), and the only duel attack
