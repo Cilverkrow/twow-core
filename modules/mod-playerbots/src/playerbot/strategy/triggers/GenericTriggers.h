@@ -458,6 +458,18 @@ namespace ai
         virtual bool IsActive() override;
     };
 
+    // twow-repo#602 W24 duel hang (AiPlayerbot.Rotation.DuelRule, DuelRulePolicy.h): a bot-vs-bot duel in which neither side fought for
+    // Rotation.DuelRule.CancelSeconds. One trigger object per bot (both engines read it from the bot's context), so one quiet clock.
+    class DuelStalledTrigger : public Trigger
+    {
+    public:
+        DuelStalledTrigger(PlayerbotAI* ai) : Trigger(ai, "duel stalled") {}
+        virtual bool IsActive() override;
+
+    private:
+        uint64 quietSince = 0;  // first second without a fight (0 = no duel or fighting), DuelRulePolicy.h NextQuietSince
+    };
+
     class NoTargetTrigger : public Trigger
     {
     public:

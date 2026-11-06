@@ -11,6 +11,7 @@
 #include "playerbot/PersistentRosterProfessionTrainingPolicy.h"
 #include "playerbot/RandomPlayerbotMgr.h"
 #include "playerbot/HomeBindPolicy.h"
+#include "playerbot/DuelRulePolicy.h"
 #include "playerbot/strategy/actions/RosterProfessionTrainerAction.h"
 #include "AI/ScriptDevAI/ScriptDevAIMgr.h"
 
@@ -902,6 +903,13 @@ bool RpgDuelTrigger::IsActive()
 
     if (!player)
         return false;
+
+    // twow-repo#602 W24 duel hang (AiPlayerbot.Rotation.DuelRule, DuelRulePolicy.h): no duel against a member of the own group.
+    if (ai::duel_rule::SkipGroupDuel(ai::duel_rule::Applies(sPlayerbotAIConfig.rotationDuelRule, bot->GetGUIDLow()), bot->IsInGroup(player)))
+    {
+        ai::duel_rule::skippedGroup.fetch_add(1, std::memory_order_relaxed);
+        return false;
+    }
 
     if (player->GetLevel() > bot->GetLevel() + 3)
         return false;

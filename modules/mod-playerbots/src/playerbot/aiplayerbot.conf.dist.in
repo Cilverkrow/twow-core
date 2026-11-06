@@ -3484,6 +3484,19 @@ AiPlayerbot.Rotation.RestoShamanOffdps = 0
 # "[CastStopFirst] mode= cast_after_stop= cancelled=" once a minute with the mode on.
 # 0 = as before (cancel), 1 = every bot (default), 2 = only cohort B (odd low guid). Any other value acts like 1.
 AiPlayerbot.Rotation.CastStopFirst = 1
+# twow-repo#602 ROT-01 W24 duel hang (OB-00 06.11.2026, BEHAVIOUR CHANGE, ON by default, 0 = rollback; HARM per ADR-0041 R4):
+# two bots of one group stood in a duel for the rest of the run (11 pairs in 6 runs, 190-640 min each). "rpg duel" challenged a
+# member of the own group, the challenger also "accepted" (the core ignores the initiator's accept), and the only duel attack
+# waited for the opponent to hit first, so nobody ever did; the core ends a duel only by distance or a map change, never by time.
+# With the switch: no rpg duel against a member of the own group; "accept duel" only as the challenged player, and a declined
+# duel is no longer accepted after the cancel; a running duel takes the opponent as the target; a bot-vs-bot duel (requested
+# or running) in which neither side fights for Rotation.DuelRule.CancelSeconds is cancelled (a running one as forfeit).
+# Duels with real players are not cancelled. "[DuelRule] mode= cancel_s= skipped_group= skipped_accept= engaged= cancelled="
+# once a minute with the mode on.
+# 0 = as before, 1 = every bot (default), 2 = only cohort B (odd low guid). Any other value acts like 1.
+AiPlayerbot.Rotation.DuelRule = 1
+# Seconds without a fight (neither duellist in combat) before a bot-vs-bot duel is cancelled. Default 60; 0 = never cancel.
+AiPlayerbot.Rotation.DuelRule.CancelSeconds = 60
 # twow-repo#602 ROT-01 failure census (OB-00 28.10.2026, ON by default, 0 = rollback): the combat trigger "invalid target" was also
 # true for an EMPTY current target. After a kill, while nothing attacks the bot, "select new target" then ran on every AI pass with
 # nothing to clear and nobody to pick, failed, and the AI re-ticked every 20-40 ms (hunt2: 90,889 fails, 186 streaks of 50 or more).
