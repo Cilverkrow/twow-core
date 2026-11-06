@@ -68,7 +68,7 @@ function(check factory context class_h attack_cpp choose_cpp config_h config_cpp
   need("${dist}" "\nAiPlayerbot.Rotation.RestoShamanOffdps = 0\n" "dist key, default 0")
   need("${config_h}" "uint32 rotationRestoShamanOffdps = 0;" "config member, default 0")
   need("${config_cpp}" "rotationRestoShamanOffdps = config.GetIntDefault(\"AiPlayerbot.Rotation.RestoShamanOffdps\", 0);   // twow-repo#653 resto shaman offdps\n    if (rotationRestoShamanOffdps > 3)\n        rotationRestoShamanOffdps = 0;" "config read, > 3 = off")
-  need("${config_cpp}" "            {\"Rotation.RestGate\", Value(rotationRestGate)},\n            {\"Rotation.RestoShamanOffdps\", Value(rotationRestoShamanOffdps)},\n            {\"Rotation.RogueTankStance\"" "in [ConfigEcho], sorted (owner rule #615, #710)")
+  need("${config_cpp}" "            {\"Rotation.RestGate\", Value(rotationRestGate)},\n            {\"Rotation.RestoShamanOffdps\", Value(rotationRestoShamanOffdps)},\n            {\"Rotation.RetargetEmptyTrace\"" "in [ConfigEcho], sorted (owner rule #615, #710; twow-repo#602 RetargetEmptyTrace follows since 06.11.)")
 
   # 2. The creator and the gated add.
   need("${context}" "creators[\"offdps\"] = [](PlayerbotAI* ai) { return new OffdpsPlaceholderStrategy(ai); };" "shaman offdps creator")

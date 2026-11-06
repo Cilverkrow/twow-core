@@ -8,6 +8,8 @@
 #include "playerbot/strategy/values/FreeMoveValues.h"
 #include "playerbot/CohortPolicy.h"
 #include "playerbot/InvalidTargetPolicy.h"
+#include "playerbot/RetargetEmptyPolicy.h"
+#include "playerbot/strategy/values/PossibleAttackTargetsValue.h"
 #include "playerbot/RotCastPolicy.h"
 #include "playerbot/RotCastTrace.h"
 #include "playerbot/GrindPickPolicy.h"
@@ -258,12 +260,12 @@ bool SelectNewTargetAction::Execute(Event& event)
         if (ai->HasStrategy("dps assist", BotState::BOT_STATE_NON_COMBAT))
         {
             moreAttackers = true;
-            return ai->DoSpecificAction("dps assist", event, true);
+            return TraceRetargetEmpty(ai->DoSpecificAction("dps assist", event, true));
         }
         else if (ai->HasStrategy("tank assist", BotState::BOT_STATE_NON_COMBAT))
         {
             moreAttackers = true;
-            return ai->DoSpecificAction("tank assist", event, true);
+            return TraceRetargetEmpty(ai->DoSpecificAction("tank assist", event, true));
         }
     }
     
@@ -293,4 +295,58 @@ bool SelectNewTargetAction::Execute(Event& event)
     }
 
     return false;
+}
+
+// twow-repo#602 W24 pattern B (AiPlayerbot.Rotation.RetargetEmptyTrace, RetargetEmptyPolicy.h; OB-00 06.11.2026 decision (A)): log only.
+// The assist picked nothing although "has attackers" is true (Zargrum, cfc-C-u2: 580 FAILED in 29 s after a kill, no damage). The line
+// names the first attacker that is not in "possible attack targets" and the first filter it fails (PossibleAttackTargetsValue order);
+// if every attacker passes, the first one with reason=assist_none. fails= counts the empty picks since the bot's previous line.
+bool SelectNewTargetAction::TraceRetargetEmpty(bool picked)
+{
+    if (picked || !ai::retarget_empty::Applies(sPlayerbotAIConfig.rotationRetargetEmptyTrace, bot->GetGUIDLow()))
+        return picked;
+
+    ++retargetEmptyFails;
+    uint64 const now = uint64(time(nullptr));
+    if (!ai::retarget_empty::Due(retargetEmptyLastLine, now, ai::retarget_empty::LineIntervalSeconds))
+        return picked;
+
+    std::list<ObjectGuid> const attackers = AI_VALUE(std::list<ObjectGuid>, "attackers");
+    std::list<ObjectGuid> const possible = AI_VALUE(std::list<ObjectGuid>, "possible attack targets");
+
+    Unit* shown = nullptr;
+    ObjectGuid shownGuid;
+    ai::retarget_empty::Reason reason = ai::retarget_empty::Reason::AssistNone;
+    for (ObjectGuid const& guid : attackers)
+    {
+        Unit* const unit = ai->GetUnit(guid);
+        ai::retarget_empty::Reason const first = ai::retarget_empty::Reason(PossibleAttackTargetsValue::FirstFailingFilter(unit, bot, sPlayerbotAIConfig.sightDistance));
+        if (first != ai::retarget_empty::Reason::Ok)
+        {
+            shown = unit;
+            shownGuid = guid;
+            reason = first;
+            break;
+        }
+        if (!shownGuid)
+        {
+            shown = unit;
+            shownGuid = guid;
+        }
+    }
+
+    bool const near = shown && shown->IsInWorld() && shown->GetMapId() == bot->GetMapId();
+    Unit* const victim = near ? shown->GetVictim() : nullptr;
+    char const* const victimKind = !victim ? "none" : victim == bot ? "self" :
+        (victim->IsPlayer() && bot->IsInGroup(static_cast<Player*>(victim))) ? "group" : "other";
+    sLog.outBasic("[RetargetEmpty] bot=%u level=%u map=%u x=%.0f y=%.0f fails=%u n_att=%u n_pat=%u entry=%u dist=%.1f reason=%s threat=%u"
+        " victim=%s in_combat=%u",
+        bot->GetGUIDLow(), bot->GetLevel(), bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), retargetEmptyFails,
+        uint32(attackers.size()), uint32(possible.size()), shownGuid.GetEntry(), near ? bot->GetDistance(shown) : -1.0f,
+        ai::retarget_empty::ReasonName(reason), (near && shown->getThreatManager().getThreat(bot) > 0.0f) ? 1u : 0u, victimKind,
+        bot->IsInCombat() ? 1u : 0u);
+
+    retargetEmptyLastLine = now;
+    retargetEmptyFails = 0;
+    return picked;
 }

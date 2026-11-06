@@ -38,6 +38,7 @@
 #include "Maps/GridNotifiersImpl.h"
 #include "Maps/CellImpl.h"
 #include "strategy/values/LastMovementValue.h"
+#include "strategy/values/CurrentTargetValue.h"   // twow-repo#602 W24: [StuckDetail] cur_target_* (GetSelection)
 #include "strategy/actions/MovementActions.h"   // twow-repo#342 (S1): TraceTransportEdgeFellOff
 #include "playerbot/FarMovePolicy.h"
 #include "strategy/actions/LogLevelAction.h"
@@ -729,13 +730,22 @@ void PlayerbotAI::ReportStuckDetail(ai::bot_activity::State const& state)
     ai::bot_activity::TrailPick const pick = ai::bot_activity::PickFromTrail(currentEngine ? currentEngine->GetLastAction() : "");
     // twow-repo#601 (OB-00 28.10.2026): far_wait= the bot's far move - a waiting one is no stall any more (none / overdue left: a far
     // move that was never ended)
+    // twow-repo#602 W24 (OB-00 06.11.2026, log only): the bot's stored current target - its entry (0 = none or a player) and whether the
+    // bot sees it (1 = on its map and IsVisibleForOrDetect as CurrentTargetValue::Get; 0 = gone or unseen; -1 = no target). The raw
+    // selection, because "current target" itself returns null for an unseen one. Appended last, so older parsers stay valid.
+    CurrentTargetValue* const curTargetValue = dynamic_cast<CurrentTargetValue*>(aiObjectContext->GetValue<Unit*>("current target"));
+    ObjectGuid const curTargetGuid = curTargetValue ? curTargetValue->GetSelection() : ObjectGuid();
+    Unit* const curTarget = curTargetGuid ? sObjectAccessor.GetUnit(*bot, curTargetGuid) : nullptr;
+    int32 const curTargetVisible = !curTargetGuid ? -1 : (curTarget && curTarget->IsInWorld() && curTarget->GetMapId() == bot->GetMapId() &&
+        curTarget->IsVisibleForOrDetect(bot, bot->GetCamera().GetBody(), true)) ? 1 : 0;
     sLog.outBasic("[StuckDetail] bot=%u level=%u map=%u zone=%u x=%.0f y=%.0f dest=%s quest=%u entry=%d status=%u status_s=%d left_s=%d"
-        " dist=%.0f moved=%.1f move_retries=%u motion=%u moving=%u state=%u action=\"%s\" trigger=\"%s\" dropped=%u far_wait=%s",
+        " dist=%.0f moved=%.1f move_retries=%u motion=%u moving=%u state=%u action=\"%s\" trigger=\"%s\" dropped=%u far_wait=%s"
+        " cur_target_entry=%u cur_target_visible=%d",
         bot->GetGUIDLow(), bot->GetLevel(), bot->GetMapId(), bot->GetZoneId(), bot->GetPositionX(), bot->GetPositionY(), dest,
         questId, entry, uint32(state.status), statusSeconds, leftSeconds, distance, state.moved, retries,
         uint32(bot->GetMotionMaster()->GetCurrentMovementGeneratorType()), bot->IsMoving() ? 1u : 0u, uint32(currentState),
         pick.action.c_str(), pick.trigger.c_str(), ai::bot_activity::StuckDetailGlobal().TakeDropped(),
-        ai::far_move::WaitStateName(FarMoveWaitState()));
+        ai::far_move::WaitStateName(FarMoveWaitState()), curTargetGuid.GetEntry(), curTargetVisible);
 }
 
 ai::far_move::WaitState PlayerbotAI::FarMoveWaitState() const
