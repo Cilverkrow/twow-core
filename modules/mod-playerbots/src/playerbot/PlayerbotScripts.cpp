@@ -425,6 +425,9 @@ class PlayerbotPlayerScript : public PlayerScript
                             who += ai::bot_update::TickRegionSuffix(World::m_worldLoopCounter, player->GetMapId(), player->GetInstanceId());
                         return who;
                     });
+                    // A3 step 0 (e), AiPlayerbot.BotUpdateTraceCohort: the same measured time, counted per cohort (no second clock).
+                    if (sPlayerbotAIConfig.botUpdateTraceCohort)
+                        ai::bot_update::Cohort().Add(player->GetGUIDLow(), us);
                 }
             }
             if (PlayerbotMgr* mgr = GetBotMgr(player))
