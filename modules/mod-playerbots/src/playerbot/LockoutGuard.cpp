@@ -102,6 +102,8 @@ void MinuteTick(std::uint32_t diff)
     c.keepBot = Take(KeepBot);
     c.splitDecline = Take(SplitDecline);
     c.splitEntry = Take(SplitEntry);
+    c.leaderCarryReal = Take(LeaderCarryReal);
+    c.leaderCarryBot = Take(LeaderCarryBot);
     if (!c.Any())   // a missing minute means every field was 0
         return;
     sLog.outBasic("%s", lockout::MinuteLine(sPlayerbotAIConfig.botGroupsResetRaidsRealInviterOnly, c).c_str());

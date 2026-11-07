@@ -10,7 +10,10 @@ cmake_policy(VERSION 3.16)
 #     ResetInstancesAction.cpp, "reset raids" only through ResetRaidsOnJoin in the accept tail;
 #   - S1 (accept) and S3 (relay, teleport, summon, .bot summon) call the split guard behind the switch, the guard reads only
 #     the bot's own binds and scalar ids;
-#   - the switch (default 1, string parse, only "0" off, echo, conf.dist line), the [Lockout] minute line field order.
+#   - the switch (default 1, string parse, only "0" off, echo, conf.dist line), the [Lockout] minute line field order;
+#   - leader_bind_carry (OB-00 07.11.2026, count only, both switch values): leader_carry_real / leader_carry_bot at the end of
+#     the line, counted only through LeaderBindCarry, the group's and the leader's binds read only behind the world-thread
+#     gate after the member's own check, the three PlayerScript hooks only note, count and forget (no behaviour change).
 # Pure rules: t/lockout_policy_tests.cpp. Every check_* returns "" when it holds, else the reason; the negative probes at
 # the end reuse them on mutated text (the first ones are the negative test against the MANGOS_ASSERT path).
 if(NOT DEFINED PB_SOURCE_DIR)
@@ -37,6 +40,8 @@ endfunction()
 read_file("${PB_SOURCE_DIR}/LockoutPolicy.h" policy)
 read_file("${PB_SOURCE_DIR}/LockoutGuard.h" guard_h)
 read_file("${PB_SOURCE_DIR}/LockoutGuard.cpp" guard_cpp)
+read_file("${PB_SOURCE_DIR}/LockoutCarry.h" carry_h)
+read_file("${PB_SOURCE_DIR}/LockoutCarry.cpp" carry_cpp)
 read_file("${PB_SOURCE_DIR}/strategy/actions/AcceptInvitationAction.h" accept)
 read_file("${PB_SOURCE_DIR}/strategy/actions/AreaTriggerAction.cpp" area)
 read_file("${PB_SOURCE_DIR}/strategy/actions/TeleportAction.cpp" teleport)
@@ -310,7 +315,11 @@ function(check_policy policy out)
       "    return selfOnM.instanceId && selfOnM.perm && targetOnM && targetOnM != selfOnM.instanceId;"
       "    return !switchOn || (!worldManagerSource && !joinTailSource && inviterReal);"
       "    if (first == std::string::npos)\n        return true;"
-      "    return raw.compare(first, last - first + 1, \"0\") != 0;")
+      "    return raw.compare(first, last - first + 1, \"0\") != 0;"
+      "    return copy && b.perm && b.instanceId == copy;"
+      "    return PermOn(selfAfter, entered) && !(selfBefore.instanceId && selfBefore.perm);"
+      "    return !e.memberIsLeader && e.leaderIsBot && EntryPermFromGroup(e.selfBefore, e.selfAfter, e.entered) &&\n        PermOn(e.groupOnM, e.entered) && PermOn(e.leaderOnM, e.entered);"
+      "        return resetReal || resetBot || keepBot || splitDecline || splitEntry || leaderCarryReal || leaderCarryBot;")
     string(FIND "${policy}" "${needle}" at)
     if(at EQUAL -1)
       set(${out} "LockoutPolicy.h: rule changed: ${needle}" PARENT_SCOPE)
@@ -353,7 +362,7 @@ endfunction()
 # The counters: the enum, its size kCounters and the Take() list of MinuteTick move together (a counter without a Take line
 # would never print).
 function(check_counters guard_h guard_cpp out)
-  string(FIND "${guard_h}" "enum Counter\n{\n    ResetReal = 0,\n    ResetBot,\n    KeepBot,\n    SplitDecline,\n    SplitEntry,\n    kCounters,\n};" at)
+  string(FIND "${guard_h}" "enum Counter\n{\n    ResetReal = 0,\n    ResetBot,\n    KeepBot,\n    SplitDecline,\n    SplitEntry,\n    LeaderCarryReal,   // leader_bind_carry (LockoutCarry.cpp), the entering member a real player\n    LeaderCarryBot,    // leader_bind_carry (LockoutCarry.cpp), the entering member a bot\n    kCounters,\n};" at)
   if(at EQUAL -1)
     set(${out} "LockoutGuard.h: the Counter enum changed (update kCounters, MinuteTick and this pin together)" PARENT_SCOPE)
     return()
@@ -364,14 +373,14 @@ function(check_counters guard_h guard_cpp out)
     return()
   endif()
   region("${guard_cpp}" "void MinuteTick(std::uint32_t diff)\n{" "\n}\n" tick)
-  string(FIND "${tick}" "    c.resetReal = Take(ResetReal);\n    c.resetBot = Take(ResetBot);\n    c.keepBot = Take(KeepBot);\n    c.splitDecline = Take(SplitDecline);\n    c.splitEntry = Take(SplitEntry);\n" at)
+  string(FIND "${tick}" "    c.resetReal = Take(ResetReal);\n    c.resetBot = Take(ResetBot);\n    c.keepBot = Take(KeepBot);\n    c.splitDecline = Take(SplitDecline);\n    c.splitEntry = Take(SplitEntry);\n    c.leaderCarryReal = Take(LeaderCarryReal);\n    c.leaderCarryBot = Take(LeaderCarryBot);\n" at)
   if(at EQUAL -1)
     set(${out} "LockoutGuard.cpp: MinuteTick does not take every counter in enum order" PARENT_SCOPE)
     return()
   endif()
   count_regex("${tick}" "Take\\(" n)
-  if(NOT n EQUAL 5)
-    set(${out} "LockoutGuard.cpp: MinuteTick takes ${n} counters (5 expected, one per enum value)" PARENT_SCOPE)
+  if(NOT n EQUAL 7)
+    set(${out} "LockoutGuard.cpp: MinuteTick takes ${n} counters (7 expected, one per enum value)" PARENT_SCOPE)
     return()
   endif()
   set(${out} "" PARENT_SCOPE)
@@ -523,7 +532,8 @@ endfunction()
 # The minute line: field order, only with a non-zero field, from the world thread, not in GroupOps.
 function(check_minute policy guard_cpp scripts all_sources ops out)
   set(prev -1)
-  foreach(field "\"[Lockout] minute mode=\"" "\" reset_real=\"" "\" reset_bot=\"" "\" keep_bot=\"" "\" split_decline=\"" "\" split_entry=\"")
+  foreach(field "\"[Lockout] minute mode=\"" "\" reset_real=\"" "\" reset_bot=\"" "\" keep_bot=\"" "\" split_decline=\"" "\" split_entry=\""
+      "\" leader_carry_real=\"" "\" leader_carry_bot=\"")
     string(FIND "${policy}" "${field}" at)
     if(at EQUAL -1 OR NOT at GREATER prev)
       set(${out} "LockoutPolicy.h: minute line field order changed at ${field}" PARENT_SCOPE)
@@ -574,6 +584,123 @@ function(check_unit_test tests_cmake unit_cpp out)
       "    for (int bits = 0; bits < 8; ++bits)"
       "        Require(ResetRaidsOnJoin(false, wm, tail, real), \"switch 0: reset raids on every accept\");"
       "        Require(ResetRaidsOnJoin(true, wm, tail, real) == (!wm && !tail && real), \"switch 1: only a real inviter on the direct path\");")
+    string(FIND "${unit_cpp}" "${needle}" at)
+    if(at EQUAL -1)
+      set(${out} "lockout_policy_tests.cpp: missing ${needle}" PARENT_SCOPE)
+      return()
+    endif()
+  endforeach()
+  set(${out} "" PARENT_SCOPE)
+endfunction()
+
+# leader_bind_carry (OB-00 07.11.2026, count only): the note at the far teleport, the decision at the end of the worldport ack
+# (the member's own check first, the group's and the leader's binds only behind the world-thread gate, the count only through
+# LeaderBindCarry), the hooks only note, count and forget, nothing in LockoutCarry.cpp changes the game.
+function(check_carry carry_h carry_cpp scripts conf_dist unit_cpp all_sources out)
+  foreach(needle
+      "    if (!player || mapId == player->GetMapId())   // a near teleport: no map entry follows\n        return;"
+      "    if (!IsDungeonMap(mapId))\n    {\n        std::lock_guard<std::mutex> lock(notesLock);\n        notes.erase(guid);\n        return;\n    }"
+      "    note.before = PlayerBindOn(player, mapId);"
+      "    if (note.mapId != mapId || !IsDungeonMap(mapId))\n        return;"
+      "    if (InstancePlayerBind const* pBind = player->GetBoundInstance(mapId))"
+      "    if (InstanceGroupBind const* gBind = group->GetBoundInstance(mapId))")
+    string(FIND "${carry_cpp}" "${needle}" at)
+    if(at EQUAL -1)
+      set(${out} "LockoutCarry.cpp: missing ${needle}" PARENT_SCOPE)
+      return()
+    endif()
+  endforeach()
+  region("${carry_cpp}" "void OnEntry(Player* player)\n{" "\n}\n" entry)
+  if(entry STREQUAL "")
+    set(${out} "LockoutCarry.cpp: OnEntry not found" PARENT_SCOPE)
+    return()
+  endif()
+  # The order inside OnEntry: take the note, the member's own check, the world-thread gate, the foreign reads, the count.
+  # (Quoted foreach items: the steps hold ';', which a list would split.)
+  set(prev -1)
+  foreach(step
+    "        notes.erase(it);"
+    "    e.selfAfter = PlayerBindOn(player, mapId);\n    if (!lockout::EntryPermFromGroup(e.selfBefore, e.selfAfter, e.entered))\n        return;"
+    "    if (!World::IsWorldThread())\n        return;"
+    "    Group* group = player->GetGroup();"
+    "    Player* leader = e.memberIsLeader ? player : sObjectMgr.GetPlayer(leaderGuid);"
+    "    e.leaderIsBot = !::IsRealPlayer(leader);"
+    "    e.leaderOnM = PlayerBindOn(leader, mapId);"
+    "    e.groupOnM = GroupBindOn(group, mapId);"
+    "    if (lockout::LeaderBindCarry(e))\n        lockout_guard::Count(::IsRealPlayer(player) ? lockout_guard::LeaderCarryReal : lockout_guard::LeaderCarryBot);\n}")
+    string(FIND "${entry}" "${step}" at)
+    if(at EQUAL -1 OR NOT at GREATER prev)
+      set(${out} "LockoutCarry.cpp OnEntry: missing or out of order: ${step}" PARENT_SCOPE)
+      return()
+    endif()
+    set(prev ${at})
+  endforeach()
+  # Before the gate only the member's own data: no group, no leader, no other player.
+  string(FIND "${entry}" "    if (!World::IsWorldThread())" gate)
+  string(SUBSTRING "${entry}" 0 ${gate} before_gate)
+  foreach(word "GetGroup" "GroupBindOn(" "sObjectMgr" "leader" "IsRealPlayer")
+    string(FIND "${before_gate}" "${word}" at)
+    if(NOT at EQUAL -1)
+      set(${out} "LockoutCarry.cpp OnEntry: ${word} before the world-thread gate" PARENT_SCOPE)
+      return()
+    endif()
+  endforeach()
+  count_regex("${carry_cpp}" "World::IsWorldThread\\(\\)" n)
+  count_regex("${carry_cpp}" "GetGroup\\(\\)" ng)
+  count_regex("${carry_cpp}" "GroupBindOn\\(group" nb)
+  if(NOT n EQUAL 1 OR NOT ng EQUAL 1 OR NOT nb EQUAL 1)
+    set(${out} "LockoutCarry.cpp: one world-thread gate, one group read, one group bind read expected (${n} ${ng} ${nb})" PARENT_SCOPE)
+    return()
+  endif()
+  # Count only: one Count call, the two carry counters only there, no write, no switch.
+  count_regex("${carry_cpp}" "lockout_guard::Count\\(" n)
+  count_regex("${all_sources}" "lockout_guard::LeaderCarry(Real|Bot)" nc)
+  if(NOT n EQUAL 1 OR NOT nc EQUAL 2)
+    set(${out} "leader_bind_carry: counted outside the LeaderBindCarry line (${n} Count calls, ${nc} counter names)" PARENT_SCOPE)
+    return()
+  endif()
+  foreach(word "BindToInstance" "Unbind" "TeleportTo" "SendPacket" "Uninvite" "RemoveMember" "ChangeLeader" "SetLeader"
+      "Disband" "ResetInstances" "DoSpecificAction" "SetSemaphore" "->Add(" "->Remove(" "botGroupsResetRaidsRealInviterOnly")
+    string(FIND "${carry_cpp}${carry_h}" "${word}" at)
+    if(NOT at EQUAL -1)
+      set(${out} "LockoutCarry: not count only, names ${word}" PARENT_SCOPE)
+      return()
+    endif()
+  endforeach()
+  # The hooks: each only hands the player over, gated by the module switch, not by the L1 switch.
+  foreach(needle
+      "        void OnBeforeTeleport(Player* player, uint32 mapId, float /*x*/, float /*y*/, float /*z*/, float /*orientation*/) override\n        {\n            if (!player || !sPlayerbotAIConfig.enabled)\n                return;\n\n            ai::lockout_carry::NoteTeleport(player, mapId);\n        }"
+      "        void OnMapChanged(Player* player) override\n        {\n            if (!player || !sPlayerbotAIConfig.enabled)\n                return;\n\n            ai::lockout_carry::OnEntry(player);\n        }"
+      "        void OnLogout(Player* player) override\n        {\n            if (!player)\n                return;\n\n            ai::lockout_carry::Forget(player);\n        }")
+    string(FIND "${scripts}" "${needle}" at)
+    if(at EQUAL -1)
+      set(${out} "PlayerbotScripts.cpp: leader_bind_carry hook changed: ${needle}" PARENT_SCOPE)
+      return()
+    endif()
+  endforeach()
+  foreach(call "lockout_carry::NoteTeleport\\(" "lockout_carry::OnEntry\\(" "lockout_carry::Forget\\(")
+    count_regex("${all_sources}" "${call}" n)
+    if(NOT n EQUAL 1)
+      set(${out} "${call} called ${n} times (1 expected, its hook)" PARENT_SCOPE)
+      return()
+    endif()
+  endforeach()
+  foreach(needle "# leader_bind_carry (OB-00 07.11.2026) is count only: no rule, no behaviour change, the same at 0 and 1"
+      "with the raid ADR, O7)" " split_entry= leader_carry_real= leader_carry_bot=`")
+    string(FIND "${conf_dist}" "${needle}" at)
+    if(at EQUAL -1)
+      set(${out} "conf.dist: the leader_bind_carry doc lacks ${needle}" PARENT_SCOPE)
+      return()
+    endif()
+  endforeach()
+  foreach(needle
+      "    Require(!EntryPermFromGroup({7, true}, {7, true}, 7), \"own PERM bind on the copy before: never counted\");"
+      "    Require(LeaderBindCarry(carry), \"bot leader's carried PERM bind, member new on the copy: counted\");"
+      "        Require(!LeaderBindCarry(e), \"the leader itself is never counted\");"
+      "        Require(!LeaderBindCarry(e), \"a real (or unknown) leader is not counted\");"
+      "        Require(!LeaderBindCarry(e), \"the member's own pre-existing PERM bind on the copy is not counted\");"
+      "                        Require(CoreChoice(before, group) == entered && !PermAssertWouldFire(before, entered),"
+      "leader_carry_real=6 leader_carry_bot=7\",")
     string(FIND "${unit_cpp}" "${needle}" at)
     if(at EQUAL -1)
       set(${out} "lockout_policy_tests.cpp: missing ${needle}" PARENT_SCOPE)
@@ -642,6 +769,10 @@ if(NOT r STREQUAL "")
   message(FATAL_ERROR "${TAG}: ${r}")
 endif()
 check_unit_test("${tests_cmake}" "${unit_cpp}" r)
+if(NOT r STREQUAL "")
+  message(FATAL_ERROR "${TAG}: ${r}")
+endif()
+check_carry("${carry_h}" "${carry_cpp}" "${scripts}" "${conf_dist}" "${unit_cpp}" "${all_sources}" r)
 if(NOT r STREQUAL "")
   message(FATAL_ERROR "${TAG}: ${r}")
 endif()
@@ -772,7 +903,7 @@ check_s3("${area}" "${m}" "${meeting}" "${mgr}" "${all_sources}" r)
 expect_caught("${r}" "S3 teleport refusal keeps the trigger")
 
 # Review B 3: a counter without a Take line, a Take line dropped.
-string(REPLACE "    SplitEntry,\n    kCounters," "    SplitEntry,\n    SplitOther,\n    kCounters," m "${guard_h}")
+string(REPLACE "    kCounters,\n};" "    SplitOther,\n    kCounters,\n};" m "${guard_h}")
 check_counters("${m}" "${guard_cpp}" r)
 expect_caught("${r}" "a new counter without a Take line")
 
@@ -831,5 +962,90 @@ expect_caught("${r}" "unit test without the forced-copy negative case")
 string(REPLACE "        Require(ResetRaidsOnJoin(true, wm, tail, real) == (!wm && !tail && real), \"switch 1: only a real inviter on the direct path\");" "" m "${unit_cpp}")
 check_unit_test("${tests_cmake}" "${m}" r)
 expect_caught("${r}" "unit test without the ResetRaidsOnJoin table at switch 1")
+
+# leader_bind_carry (OB-00 07.11.2026, count only): field order, the predicate gate, the thread gate, no behaviour change.
+string(REPLACE "        \" leader_carry_real=\" + std::to_string(c.leaderCarryReal) +\n        \" leader_carry_bot=\" + std::to_string(c.leaderCarryBot);" "        \" leader_carry_bot=\" + std::to_string(c.leaderCarryBot) +\n        \" leader_carry_real=\" + std::to_string(c.leaderCarryReal);" m "${policy}")
+check_minute("${m}" "${guard_cpp}" "${scripts}" "${all_sources}" "${ops}" r)
+expect_caught("${r}" "leader_carry_bot before leader_carry_real")
+
+string(REPLACE "        \" split_entry=\" + std::to_string(c.splitEntry) +\n        \" leader_carry_real=\" + std::to_string(c.leaderCarryReal) +" "        \" leader_carry_real=\" + std::to_string(c.leaderCarryReal) +\n        \" split_entry=\" + std::to_string(c.splitEntry) +" m "${policy}")
+check_minute("${m}" "${guard_cpp}" "${scripts}" "${all_sources}" "${ops}" r)
+expect_caught("${r}" "leader_carry_real moved before split_entry (not appended at the end)")
+
+string(REPLACE "        \" leader_carry_bot=\" + std::to_string(c.leaderCarryBot);" "        \"\";" m "${policy}")
+check_minute("${m}" "${guard_cpp}" "${scripts}" "${all_sources}" "${ops}" r)
+expect_caught("${r}" "leader_carry_bot missing from the line")
+
+string(REPLACE "    c.leaderCarryBot = Take(LeaderCarryBot);\n" "" m "${guard_cpp}")
+check_counters("${guard_h}" "${m}" r)
+expect_caught("${r}" "the leader_carry_bot counter never taken")
+
+string(REPLACE " || leaderCarryReal || leaderCarryBot;" ";" m "${policy}")
+check_policy("${m}" r)
+expect_caught("${r}" "a minute with only a carry not printed")
+
+string(REPLACE "    if (lockout::LeaderBindCarry(e))\n" "" m "${carry_cpp}")
+check_carry("${carry_h}" "${m}" "${scripts}" "${conf_dist}" "${unit_cpp}" "${all_sources}" r)
+expect_caught("${r}" "carry counted without the LeaderBindCarry gate")
+
+string(REPLACE "    return PermOn(selfAfter, entered) && !(selfBefore.instanceId && selfBefore.perm);" "    return PermOn(selfAfter, entered);" m "${policy}")
+check_policy("${m}" r)
+expect_caught("${r}" "a member's own pre-existing PERM bind counted")
+
+string(REPLACE "    return !e.memberIsLeader && e.leaderIsBot && EntryPermFromGroup(" "    return !e.memberIsLeader && EntryPermFromGroup(" m "${policy}")
+check_policy("${m}" r)
+expect_caught("${r}" "LeaderBindCarry without the bot leader condition")
+
+string(REPLACE "PermOn(e.groupOnM, e.entered) && PermOn(e.leaderOnM, e.entered);" "PermOn(e.groupOnM, e.entered);" m "${policy}")
+check_policy("${m}" r)
+expect_caught("${r}" "LeaderBindCarry without the leader's own PERM bind")
+
+string(REPLACE "    if (!World::IsWorldThread())\n        return;\n" "" m "${carry_cpp}")
+check_carry("${carry_h}" "${m}" "${scripts}" "${conf_dist}" "${unit_cpp}" "${all_sources}" r)
+expect_caught("${r}" "group and leader binds read without the world-thread gate")
+
+string(REPLACE "    lockout::CarryEntry e;\n" "    lockout::CarryEntry e;\n    Group* early = player->GetGroup();\n" m "${carry_cpp}")
+check_carry("${carry_h}" "${m}" "${scripts}" "${conf_dist}" "${unit_cpp}" "${all_sources}" r)
+expect_caught("${r}" "a group read before the world-thread gate")
+
+string(REPLACE "    if (!lockout::EntryPermFromGroup(e.selfBefore, e.selfAfter, e.entered))\n        return;\n" "" m "${carry_cpp}")
+check_carry("${carry_h}" "${m}" "${scripts}" "${conf_dist}" "${unit_cpp}" "${all_sources}" r)
+expect_caught("${r}" "foreign reads without the member's own check first")
+
+string(REPLACE "        notes.erase(it);\n" "" m "${carry_cpp}")
+check_carry("${carry_h}" "${m}" "${scripts}" "${conf_dist}" "${unit_cpp}" "${all_sources}" r)
+expect_caught("${r}" "the note not taken at the entry (counted again)")
+
+string(REPLACE "    if (!player || mapId == player->GetMapId())   // a near teleport: no map entry follows" "    if (!player)" m "${carry_cpp}")
+check_carry("${carry_h}" "${m}" "${scripts}" "${conf_dist}" "${unit_cpp}" "${all_sources}" r)
+expect_caught("${r}" "a near teleport noted")
+
+check_carry("${carry_h}" "${carry_cpp}\n    player->TeleportTo(mapId, 0.0f, 0.0f, 0.0f, 0.0f);" "${scripts}" "${conf_dist}" "${unit_cpp}" "${all_sources}" r)
+expect_caught("${r}" "LockoutCarry.cpp teleports (behaviour change)")
+
+check_carry("${carry_h}" "${carry_cpp}\n    group->ChangeLeader(player->GetObjectGuid());" "${scripts}" "${conf_dist}" "${unit_cpp}" "${all_sources}" r)
+expect_caught("${r}" "LockoutCarry.cpp changes the group (behaviour change)")
+
+check_carry("${carry_h}" "${carry_cpp}\n    if (sPlayerbotAIConfig.botGroupsResetRaidsRealInviterOnly) {}" "${scripts}" "${conf_dist}" "${unit_cpp}" "${all_sources}" r)
+expect_caught("${r}" "LockoutCarry.cpp reads the L1 switch (counts must not depend on it)")
+
+string(REPLACE "            if (!player || !sPlayerbotAIConfig.enabled)\n                return;\n\n            ai::lockout_carry::OnEntry(player);" "            if (!player || !sPlayerbotAIConfig.enabled || !sPlayerbotAIConfig.botGroupsResetRaidsRealInviterOnly)\n                return;\n\n            ai::lockout_carry::OnEntry(player);" m "${scripts}")
+check_carry("${carry_h}" "${carry_cpp}" "${m}" "${conf_dist}" "${unit_cpp}" "${all_sources}" r)
+expect_caught("${r}" "the entry hook gated by the L1 switch")
+
+string(REPLACE "            ai::lockout_carry::OnEntry(player);\n" "            ai::lockout_carry::OnEntry(player);\n            player->UninviteFromGroup();\n" m "${scripts}")
+check_carry("${carry_h}" "${carry_cpp}" "${m}" "${conf_dist}" "${unit_cpp}" "${all_sources}" r)
+expect_caught("${r}" "the entry hook does more than count")
+
+check_carry("${carry_h}" "${carry_cpp}" "${scripts}" "${conf_dist}" "${unit_cpp}" "${all_sources}\n    ai::lockout_guard::Count(ai::lockout_guard::LeaderCarryReal);" r)
+expect_caught("${r}" "a second, ungated carry count")
+
+string(REPLACE "# leader_bind_carry (OB-00 07.11.2026) is count only" "# leader_bind_carry (OB-00 07.11.2026) is a rule" m "${conf_dist}")
+check_carry("${carry_h}" "${carry_cpp}" "${scripts}" "${m}" "${unit_cpp}" "${all_sources}" r)
+expect_caught("${r}" "conf.dist does not name leader_bind_carry as count only")
+
+string(REPLACE "        Require(!LeaderBindCarry(e), \"the member's own pre-existing PERM bind on the copy is not counted\");\n" "" m "${unit_cpp}")
+check_carry("${carry_h}" "${carry_cpp}" "${scripts}" "${conf_dist}" "${m}" "${all_sources}" r)
+expect_caught("${r}" "unit test without the pre-existing PERM bind case")
 
 message(STATUS "${TAG}: OK")

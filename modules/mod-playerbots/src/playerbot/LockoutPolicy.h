@@ -61,6 +61,44 @@ inline bool SwitchOn(std::string const& raw)
     return raw.compare(first, last - first + 1, "0") != 0;
 }
 
+// leader_bind_carry (OB-00 07.11.2026): count only, no rule (the rule comes with the raid ADR, O7), at both switch values.
+// A group leader holding its own PERM bind on raid map M makes the core copy that bind into the group (Group::Create,
+// Group::_setLeader). A member without its own PERM bind on M who enters M is then sent into that copy (the core takes the
+// group bind only when the player has no own PERM bind: CoreChoice) and PERM-bound there on entry (the group-perm branch of
+// DungeonMap::BindPlayerOrGroupOnEnter). One entry of a member into M counts when all of this holds:
+//   - the member had no own PERM bind on M at its far teleport and holds one on the entered copy after the entry
+//     (EntryPermFromGroup; a member's own pre-existing PERM bind for the copy is therefore never counted);
+//   - the member is not the group leader and the leader is a bot;
+//   - the leader's own bind and the group's bind on M are both PERM binds on the entered copy.
+struct CarryEntry
+{
+    std::uint32_t entered = 0;    // instance id of the copy of M the member entered
+    Bind selfBefore;              // the member's own bind on M at its far teleport, before the core binds it on entry
+    Bind selfAfter;               // the member's own bind on M after the entry
+    bool memberIsLeader = false;
+    bool leaderIsBot = false;     // false also for a leader that is not online (not classified, not counted)
+    Bind leaderOnM;               // the leader's own bind on M
+    Bind groupOnM;                // the group's bind on M
+};
+
+// A PERM bind on copy (copy 0 = none).
+inline bool PermOn(Bind b, std::uint32_t copy)
+{
+    return copy && b.perm && b.instanceId == copy;
+}
+
+// The member's PERM bind on the entered copy is new at this entry: no own PERM bind on M before, one on the entered copy after.
+inline bool EntryPermFromGroup(Bind selfBefore, Bind selfAfter, std::uint32_t entered)
+{
+    return PermOn(selfAfter, entered) && !(selfBefore.instanceId && selfBefore.perm);
+}
+
+inline bool LeaderBindCarry(CarryEntry const& e)
+{
+    return !e.memberIsLeader && e.leaderIsBot && EntryPermFromGroup(e.selfBefore, e.selfAfter, e.entered) &&
+        PermOn(e.groupOnM, e.entered) && PermOn(e.leaderOnM, e.entered);
+}
+
 // The increments of one minute for the [Lockout] line.
 struct Counts
 {
@@ -69,8 +107,13 @@ struct Counts
     std::uint32_t keepBot = 0;        // binds kept: switch on, inviter a bot or a world manager
     std::uint32_t splitDecline = 0;   // S1: invite declined (perm bind on the inviter's map, another copy)
     std::uint32_t splitEntry = 0;     // S3: module move into another copy of a perm-bound map refused
+    std::uint32_t leaderCarryReal = 0;   // leader_bind_carry, the entering member a real player
+    std::uint32_t leaderCarryBot = 0;    // leader_bind_carry, the entering member a bot
 
-    bool Any() const { return resetReal || resetBot || keepBot || splitDecline || splitEntry; }
+    bool Any() const
+    {
+        return resetReal || resetBot || keepBot || splitDecline || splitEntry || leaderCarryReal || leaderCarryBot;
+    }
 };
 
 // The minute line, field order fixed (the contract pins it). Printed only in a minute with a non-zero field.
@@ -81,6 +124,8 @@ inline std::string MinuteLine(bool switchOn, Counts const& c)
         " reset_bot=" + std::to_string(c.resetBot) +
         " keep_bot=" + std::to_string(c.keepBot) +
         " split_decline=" + std::to_string(c.splitDecline) +
-        " split_entry=" + std::to_string(c.splitEntry);
+        " split_entry=" + std::to_string(c.splitEntry) +
+        " leader_carry_real=" + std::to_string(c.leaderCarryReal) +
+        " leader_carry_bot=" + std::to_string(c.leaderCarryBot);
 }
 }

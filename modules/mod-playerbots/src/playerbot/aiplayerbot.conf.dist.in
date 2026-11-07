@@ -1370,12 +1370,19 @@ AiPlayerbot.BotGroups.Manager = 0
 # still puts the bot into its own PERM copy (split group, no crash). The bot's own binds can be written by a group disband
 # on another map thread while the guard reads them (the core's own reads race the same way).
 # Out of scope: the GroupOps join decision (S2, follows with the GroupManager pairs), the dungeon-clear test-run unbinds, a bot
-# leader that keeps PERM A spreading A to members who enter (real players included; core behaviour), counting a bot with a real
-# master as "real", the sibling asserts in Map.cpp, a runtime core hook. "debug do reset raids" by a master stays manual.
+# leader that keeps PERM A spreading A to members who enter (real players included; core behaviour, only counted, see
+# leader_bind_carry), counting a bot with a real master as "real", the sibling asserts in Map.cpp, a runtime core hook.
+# "debug do reset raids" by a master stays manual.
+# leader_bind_carry (OB-00 07.11.2026) is count only: no rule, no behaviour change, the same at 0 and 1 (the rule comes later
+# with the raid ADR, O7). One count per entry of a group member (not the leader) into a dungeon map M by a far teleport, where
+# the member had no own PERM bind on M at its teleport, the core PERM-bound it on entry to the copy of the group's PERM bind,
+# and the leader is a bot holding its own PERM bind on that copy. leader_carry_real = the entering member is a real player,
+# leader_carry_bot = a bot. Not counted: an entry at login, a worldport ack off the world thread, a leader not online.
 # 1 = on (default), 0 = the old behaviour (reset raids on every accepted invite, no split guard; rollback). Any other value
-# acts like 1. Line: `[Lockout] minute mode=<0|1> reset_real= reset_bot= keep_bot= split_decline= split_entry=` (increments
-# of the minute, world thread, both values). It is printed only in a minute with a non-zero field: a missing minute means
-# every field was 0. reset_bot counts only at 0, keep_bot only at 1.
+# acts like 1. Line (increments of the minute, world thread, both values):
+# `[Lockout] minute mode=<0|1> reset_real= reset_bot= keep_bot= split_decline= split_entry= leader_carry_real= leader_carry_bot=`
+# It is printed only in a minute with a non-zero field: a missing minute means every field was 0. reset_bot counts only at
+# 0, keep_bot only at 1.
 AiPlayerbot.BotGroups.ResetRaidsRealInviterOnly = 1
 # A3 step 3 (ADR-0041 + amendment 2026-11-06, OB-00 06.11.2026): the per-bot supervisor - one owner of the bot's mode (quest,
 # grind, rest, group, rescue), and later of its travel target and tick cadence, with the activity planner ranking by value.
