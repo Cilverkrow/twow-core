@@ -10996,6 +10996,38 @@ Item* PlayerbotAI::FindOilFor(Item* weapon) const
     return oil;
 }
 
+// twow-repo#333 M2 Crafting.Consumables (owner list 07.11.2026, item 1): true when proto is one of the stones or oils that
+// FindStoneFor / FindOilFor would pick for this weapon - the same weapon rules, display id lists and checks as FindConsumable
+// (consumable or trade goods, usable by the bot), but without looking into the bags, so the item usage can keep a looted one.
+bool PlayerbotAI::IsImbueItemFor(Item* weapon, ItemPrototype const* proto) const
+{
+    ItemPrototype const* pProto = weapon ? weapon->GetProto() : nullptr;
+    if (!pProto || !proto || (proto->Class != ITEM_CLASS_CONSUMABLE && proto->Class != ITEM_CLASS_TRADE_GOODS) ||
+        bot->CanUseItem(proto) != EQUIP_ERR_OK)
+        return false;
+
+    uint32 const displayId = proto->DisplayInfoID;
+    auto const listed = [displayId](uint32 const* ids, size_t count)
+    {
+        return std::find(ids, ids + count, displayId) != ids + count;
+    };
+
+    if (pProto->Class == ITEM_CLASS_WEAPON && (pProto->SubClass == ITEM_SUBCLASS_WEAPON_SWORD || pProto->SubClass == ITEM_SUBCLASS_WEAPON_SWORD2
+        || pProto->SubClass == ITEM_SUBCLASS_WEAPON_AXE || pProto->SubClass == ITEM_SUBCLASS_WEAPON_AXE2
+        || pProto->SubClass == ITEM_SUBCLASS_WEAPON_DAGGER) && listed(uPriorizedSharpStoneIds, countof(uPriorizedSharpStoneIds)))
+        return true;
+
+    if (pProto->Class == ITEM_CLASS_WEAPON && (pProto->SubClass == ITEM_SUBCLASS_WEAPON_MACE || pProto->SubClass == ITEM_SUBCLASS_WEAPON_MACE2)
+        && listed(uPriorizedWeightStoneIds, countof(uPriorizedWeightStoneIds)))
+        return true;
+
+    if (pProto->SubClass == ITEM_SUBCLASS_WEAPON_SWORD || pProto->SubClass == ITEM_SUBCLASS_WEAPON_STAFF || pProto->SubClass == ITEM_SUBCLASS_WEAPON_DAGGER
+        || pProto->SubClass == ITEM_SUBCLASS_WEAPON_MACE || pProto->SubClass == ITEM_SUBCLASS_WEAPON_MACE2)
+        return listed(uPriorizedWizardOilIds, countof(uPriorizedWizardOilIds)) || listed(uPriorizedManaOilIds, countof(uPriorizedManaOilIds));
+
+    return false;
+}
+
 //  on self
 void PlayerbotAI::ImbueItem(Item* item)
 {

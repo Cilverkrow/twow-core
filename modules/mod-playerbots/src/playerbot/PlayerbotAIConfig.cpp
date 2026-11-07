@@ -1634,6 +1634,13 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[ProfTravel] config key=TurnInGateSkipGrindFallback value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", professionTrainingTurnInGateSkipGrindFallback);
         professionTrainingTurnInGateSkipGrindFallback = 0;
     }
+    // twow-repo#333 M2 Crafting.Consumables (owner list 07.11.2026, item 1): an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B, 3 cohort A).
+    craftingConsumables = config.GetIntDefault("AiPlayerbot.Crafting.Consumables", 0);
+    if (craftingConsumables > 3)
+    {
+        sLog.outError("[Crafting] config key=Consumables value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", craftingConsumables);
+        craftingConsumables = 0;
+    }
     professionUseToolBuy = config.GetIntDefault("AiPlayerbot.ProfessionUse.ToolBuy", 0);
     if (professionUseToolBuy > 2)
         professionUseToolBuy = 0;
@@ -1924,6 +1931,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Buy.VendorTemplateItems", Value(buyVendorTemplateItems)},
             {"CastWait.Preparing", Value(castWaitPreparing)},
             {"CheatItem.Trace", Value(cheatItemTrace)},
+            {"Crafting.Consumables", Value(craftingConsumables)},
             {"CustomRaceStartZones", Value(customRaceStartZones)},
             {"DangerMap.CountAddDeaths", Value(dangerMapCountAddDeaths)},
             {"DeathLoop.Escape", Value(deathLoopEscape)},

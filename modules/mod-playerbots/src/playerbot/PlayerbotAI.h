@@ -561,6 +561,7 @@ public:
     Item * FindBandage() const;
     Item* FindStoneFor(Item* weapon) const;
     Item* FindOilFor(Item* weapon) const;
+    bool IsImbueItemFor(Item* weapon, ItemPrototype const* proto) const;   // twow-repo#333 M2 Crafting.Consumables
 #ifdef MANGOSBOT_ZERO
     void ImbueItem(Item* item, uint16 targetFlag, ObjectGuid targetGUID);
 #else
