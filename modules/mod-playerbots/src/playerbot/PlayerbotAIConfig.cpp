@@ -884,6 +884,13 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[GroupMgr] config key=Manager value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", botGroupsManager);
         botGroupsManager = 0;
     }
+    // A3 lever 2 (ADR-0041): the group write path (GroupOpPolicy.h WritePathApplies); an unknown mode is off.
+    botGroupsWritePath = uint32(config.GetIntDefault("AiPlayerbot.BotGroups.WritePath", 0));
+    if (!ai::group_ops::ValidMode(botGroupsWritePath))
+    {
+        sLog.outError("[GroupWrite] config key=WritePath value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", botGroupsWritePath);
+        botGroupsWritePath = 0;
+    }
     // A3 step 3 (ADR-0041): the per-bot supervisor (SupervisorPolicy.h, Supervisor.cpp); an unknown mode is off.
     supervisor = uint32(config.GetIntDefault("AiPlayerbot.Supervisor", 0));
     if (!ai::supervisor::ValidMode(supervisor))
@@ -1930,6 +1937,7 @@ bool PlayerbotAIConfig::Initialize()
             {"BotGroups.OpQueueMaxDepth", Value(botGroupsOpQueueMaxDepth)},
             {"BotGroups.OpQueueOpsPerTick", Value(botGroupsOpQueueOpsPerTick)},
             {"BotGroups.WorldThreadDefer", Value(botGroupsWorldThreadDefer)},
+            {"BotGroups.WritePath", Value(botGroupsWritePath)},
             {"BotUpdateTrace", Value(botUpdateTrace)},
             {"BotUpdateTraceCohort", Value(botUpdateTraceCohort)},
             {"Buy.VendorTemplateItems", Value(buyVendorTemplateItems)},

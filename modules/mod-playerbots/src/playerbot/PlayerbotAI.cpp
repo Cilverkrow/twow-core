@@ -11620,6 +11620,10 @@ void PlayerbotAI::ApplyGroupAiRequests()
     if (!requests)
         return;
     ai::group_ai_refresh::Plan const plan = ai::group_ai_refresh::PlanFor(requests);
+    // A3 lever 2 (BotGroups.WritePath): LeaveGroupAction's queued leave with a bot master - its legacy tail without
+    // ResetStrategies (`if (!aiMaster)`); never together with the full reset below. Never posted with the key at 0.
+    if (plan.resetOnly)
+        Reset();
     if (plan.reset)
     {
         // AcceptInvitationAction's / LeaveGroupAction's own sequence; the master was already set on the world thread.

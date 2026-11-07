@@ -17,6 +17,7 @@
 #include "playerbot/RandomPlayerbotMgr.h"
 #include "playerbot/ShortcutPolicy.h"   // twow-repo#595 P4 S0: [Shortcut] counters
 #include "playerbot/CohortPolicy.h"     // twow-repo#601/#602 G2: DeathLoop.FarEscape mode 2 = cohort B
+#include "playerbot/GroupOps.h"         // A3 lever 2: BotGroups.WritePath (RepopAction's leave)
 #include <cmath>
 // The base class. Came in through botpch.h inside the bot library; a module
 // including this header from outside has no botpch.
@@ -255,7 +256,16 @@ namespace ai
                 if (Group* group = bot->GetGroup())
                 {
                     sLog.outDetail("Repop: Removing bot #%d %s:%d <%s> from group", bot->GetGUIDLow(), bot->GetTeam() == ALLIANCE ? "A" : "H", bot->GetLevel(), bot->GetName());
-                    group->RemoveMember(bot->GetObjectGuid(), 0);
+                    // A3 lever 2 (AiPlayerbot.BotGroups.WritePath): an in-scope bot leaves as a world-thread op through the core
+                    // leave (RemoveFromGroup: the group of two is removed from the group map and deleted - the raw RemoveMember
+                    // below leaves it there), with no tail (kLeaveNoTail: the raw RemoveMember had none). No pending check: a Leave
+                    // replaces a pending join, accept or invite of the bot, and a pending leave leaves it anyway. Refused (queue
+                    // full, a leader op pending) or dropped: the bot stays grouped this time (dropped_full_leave,
+                    // refused_pending_leave, stale_leave in [GroupWrite]).
+                    if (group_ops::WritePathRoutes(ai))
+                        group_ops::QueueLeave(ai, group_ops::OpSource::Repop, group_ops::kLeaveNoTail);
+                    else
+                        group->RemoveMember(bot->GetObjectGuid(), 0);
                 }
             }
 
