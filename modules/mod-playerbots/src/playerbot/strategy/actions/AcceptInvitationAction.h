@@ -54,15 +54,22 @@ namespace ai
 
             // L1 (owner 07.11.2026): S1 - a bot that keeps its raid binds on this accept (switch on, inviter a bot or a world
             // manager) declines a leader who stands in another copy of a raid the bot is perm-bound to, exactly like the
-            // security decline. Only the bot's own binds and the inviter's scalar map and instance id are read.
+            // security decline. Only the bot's own binds and the inviter's scalar map and instance id are read. Only the bot-only
+            // world managers (ad-hoc, quest groups) imply a bot inviter; the group op (BOT-12 queue, A3 lever 2) can carry a real
+            // player's invite and checks the inviter like a direct accept.
             if (sPlayerbotAIConfig.botGroupsResetRaidsRealInviterOnly)
             {
-                bool const l1WorldManager = group_ai_refresh::IsWorldManagerSource(event.getSource());
-                bool const l1InviterReal = !l1WorldManager && ::IsRealPlayer(inviter);
-                if (!ai::lockout::ResetRaidsOnJoin(true, l1WorldManager, false, l1InviterReal) &&
+                bool const l1BotManager = group_ai_refresh::IsWorldManagerSource(event.getSource()) &&
+                    event.getSource() != group_ai_refresh::GroupOpSource;
+                bool const l1InviterReal = !l1BotManager && ::IsRealPlayer(inviter);
+                if (!ai::lockout::ResetRaidsOnJoin(true, l1BotManager, false, l1InviterReal) &&
                     ai::lockout_guard::SplitToward(bot, inviter->GetMapId(), inviter->GetInstanceId()))
                 {
                     ai::lockout_guard::Count(ai::lockout_guard::SplitDecline);
+                    // A3 lever 2 (BotGroups.WritePath): an in-scope bot declines on the world thread, like the security decline.
+                    if (group_ops::WritePathRoutes(ai) && !group_ai_refresh::IsWorldManagerSource(event.getSource()) &&
+                        group_ops::QueueAccept(ai, inviter->GetGUIDLow(), true))
+                        return false;
                     WorldPacket data(SMSG_GROUP_DECLINE, 10);
                     data << bot->GetName();
                     sServerFacade.SendPacket(inviter, data);
@@ -180,14 +187,15 @@ namespace ai
 
             ai->TellPlayer(inviter, BOT_TEXT("hello"), PlayerbotSecurityLevel::PLAYERBOT_SECURITY_ALLOW_ALL, false);
 
-            // L1 (owner 07.11.2026): reset raids only on a real player's invite (switch 0: on every accept, as before). The
-            // source checks come first, so the posted tail on the bot's thread never reads the inviter's AI.
+            // L1 (owner 07.11.2026): reset raids only on a real player's invite (switch 0: on every accept, as before). Only the
+            // bot-only world managers (ad-hoc, quest groups) imply a bot inviter without a read. The group op (BOT-12 queue,
+            // A3 lever 2: it can carry a real player's invite) and the posted join tail read the inviter, which this tail
+            // already dereferences (GetBotAI(master) above).
             std::string const& l1Source = event.getSource();
-            bool const l1WorldManager = group_ai_refresh::IsWorldManagerSource(l1Source);
-            bool const l1JoinTail = l1Source == group_ai_refresh::JoinTailSource;
-            bool const l1InviterReal = !l1WorldManager && !l1JoinTail && ::IsRealPlayer(inviter);
+            bool const l1BotManager = group_ai_refresh::IsWorldManagerSource(l1Source) && l1Source != group_ai_refresh::GroupOpSource;
+            bool const l1InviterReal = !l1BotManager && ::IsRealPlayer(inviter);
             bool const resetRaids = ai::lockout::ResetRaidsOnJoin(sPlayerbotAIConfig.botGroupsResetRaidsRealInviterOnly,
-                l1WorldManager, l1JoinTail, l1InviterReal);
+                l1BotManager, false, l1InviterReal);
             ai::lockout_guard::CountJoin(resetRaids, l1InviterReal);
             if (resetRaids)
                 ai->DoSpecificAction("reset raids", event, true);

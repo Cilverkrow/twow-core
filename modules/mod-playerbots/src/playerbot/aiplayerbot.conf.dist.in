@@ -1357,7 +1357,8 @@ AiPlayerbot.BotGroups.OpQueueAlertAgeSeconds = 60
 AiPlayerbot.BotGroups.Manager = 0
 # L1 (owner 07.11.2026, owner-ordered behaviour change): a bot resets its raid lockouts ("reset raids", which drops every bind
 # except the one of its current map, PERM included) only when a real player invites it. An invite by another bot or by a
-# world-thread group manager (ad-hoc, quest groups, BOT-12 queue) keeps the bot's PERM raid binds. "Inviter" is the group
+# bot-only world-thread group manager (ad-hoc, quest groups) keeps the bot's PERM raid binds; an accept run by the group op
+# queue (BOT-12, A3 lever 2 WritePath) checks its inviter like a direct accept. "Inviter" is the group
 # leader: a real assistant inviting into a bot-led raid counts as a bot invite (binds kept). 5-man dungeons carry no PERM
 # binds in this build, so in practice this concerns raid maps only.
 # The split guard (switch 1 only): a bot that keeps a PERM bind on raid map M declines an invite from a leader who stands in

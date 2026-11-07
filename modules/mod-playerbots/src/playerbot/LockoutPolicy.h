@@ -44,7 +44,8 @@ inline bool LockSplit(Bind selfOnM, std::uint32_t targetOnM)
 }
 
 // L1 (a): whether the accept tail runs "reset raids". Switch off = the old behaviour (always). Switch on = only for a real
-// inviter on the direct accept path; the world-thread manager sources and the posted tail are bot-only.
+// inviter. The bot-only world-manager sources (ad-hoc, quest groups) are bot invites; joinTailSource marks a tail that is
+// bot-only by construction (the accept tail passes false since A3 lever 2: its posted tail can carry a real player's invite).
 inline bool ResetRaidsOnJoin(bool switchOn, bool worldManagerSource, bool joinTailSource, bool inviterReal)
 {
     return !switchOn || (!worldManagerSource && !joinTailSource && inviterReal);
