@@ -75,6 +75,7 @@ require_text("${config_h}" "uint32 craftingCooking = 0;" "config member, default
 require_text("${config_cpp}" "craftingCooking = config.GetIntDefault(\"AiPlayerbot.Crafting.Cooking\", 0);\n    if (craftingCooking > 3)\n    {\n        sLog.outError(\"[Crafting] config key=Cooking value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)\", craftingCooking);\n        craftingCooking = 0;\n    }" "config read, > 3 = off")
 require_text("${config_cpp}" "{\"Crafting.Cooking\", Value(craftingCooking)}," "[ConfigEcho] entry")
 require_order("${config_cpp}" "{\"CheatItem.Trace\", Value(cheatItemTrace)}," "{\"Crafting.Cooking\", Value(craftingCooking)}," "[ConfigEcho] sorted after CheatItem.Trace")
+require_order("${config_cpp}" "{\"Crafting.Consumables\", Value(craftingConsumables)}," "{\"Crafting.Cooking\", Value(craftingCooking)}," "[ConfigEcho] sorted after Crafting.Consumables")
 require_order("${config_cpp}" "{\"Crafting.Cooking\", Value(craftingCooking)}," "{\"CustomRaceStartZones\"" "[ConfigEcho] sorted before CustomRaceStartZones")
 
 # 1. One helper: config first, roster bot on its own, cohort. The fire: focus 4 within 10 yd as Spell::CheckCast; lighting needs
