@@ -19,13 +19,15 @@ namespace ai::group_ops
 struct Op
 {
     OpKind kind = OpKind::Leave;
-    std::uint8_t reason = 0;        // Leave: the ad-hoc reason (adhoc_group::Leave)
+    std::uint8_t reason = 0;        // Leave: the ad-hoc reason (adhoc_group::Leave); Accept/Invite/Leader: kAcceptDecline etc.
     std::uint8_t source = 0;        // OpSource
     std::uint8_t objective = 0;     // the ad-hoc key, registered on a join
     std::uint8_t inTransit = 0;     // set by the drain at the first look that found a bot in transit (transitSinceMs valid)
-    std::uint32_t bot = 0;          // the bot whose group changes: the leaver, the invitee
-    std::uint32_t other = 0;        // Leave: the group leader at the decision; Join: the inviter
-    std::uint32_t groupId = 0;      // Leave: the group it decided to leave; Join: the joining group (0 = a new one)
+    std::uint32_t bot = 0;          // the bot whose group changes: the leaver, the invitee; Invite: the inviter; Leader: the leader
+    std::uint32_t other = 0;        // Leave: the group leader at the decision; Join: the inviter; Accept: the invite's leader;
+                                    // Invite: the invitee; Leader: the new leader
+    std::uint32_t groupId = 0;      // Leave: the group it decided to leave; Join: the joining group (0 = a new one); Invite: the
+                                    // inviter's group (0 = none); Leader: the group; Accept: 0
     std::uint32_t questId = 0;
     std::uint32_t enqueuedMs = 0;
     std::uint32_t seq = 0;          // never 0 once queued (GroupOps.cpp sets it before the push, else Push does)
@@ -52,7 +54,7 @@ struct PushCounts
     std::array<std::uint32_t, kKinds> queued{};
     std::array<std::uint32_t, kKinds> droppedFull{};
     std::array<std::uint32_t, kKinds> refusedPending{};
-    std::uint32_t superseding = 0;  // a Leave that replaced a pending Join
+    std::uint32_t superseding = 0;  // a Leave that replaced a pending Join (A3 lever 2: or Accept or Invite)
     std::uint32_t depthMax = 0;
 };
 
@@ -62,6 +64,8 @@ public:
     // Dedup (design 3.4): one op per bot. A Leave replaces a pending Join of its bot (the join's entry stays in the FIFO and is
     // skipped as superseded); every other op of a bot that already has one is refused. A Join holds both bots (inviter and
     // invitee). Full: refused, nothing queued.
+    // A3 lever 2 (BotGroups.WritePath): a Leave replaces a pending Join, Accept or Invite of its bot (LeaveSupersedes); an
+    // Invite holds both bots like a Join (HoldsBoth); Accept and Leader hold their op.bot only.
     Pushed Push(Op& op, std::size_t maxDepth)
     {
         std::lock_guard<std::mutex> lock(mutex);
@@ -78,7 +82,7 @@ public:
         {
             if (mine != latest.end())
             {
-                if (mine->second.kind != OpKind::Join)
+                if (!LeaveSupersedes(mine->second.kind))
                 {
                     ++counts.refusedPending[k];
                     return Pushed::RefusedPending;
@@ -86,7 +90,7 @@ public:
                 supersedes = true;
             }
         }
-        else if (mine != latest.end() || latest.count(op.other))
+        else if (mine != latest.end() || (HoldsBoth(op.kind) && latest.count(op.other)))
         {
             ++counts.refusedPending[k];
             return Pushed::RefusedPending;
@@ -102,13 +106,16 @@ public:
         {
             // The join's partner is free again; the join itself is skipped when it comes up.
             Pending const old = mine->second;
-            auto const partner = latest.find(old.partner);
-            if (partner != latest.end() && partner->second.seq == old.seq)
-                latest.erase(partner);
+            if (old.partner)
+            {
+                auto const partner = latest.find(old.partner);
+                if (partner != latest.end() && partner->second.seq == old.seq)
+                    latest.erase(partner);
+            }
             ++counts.superseding;
         }
-        latest[op.bot] = { op.seq, op.kind, op.kind == OpKind::Join ? op.other : 0u };
-        if (op.kind == OpKind::Join)
+        latest[op.bot] = { op.seq, op.kind, HoldsBoth(op.kind) ? op.other : 0u };
+        if (HoldsBoth(op.kind))
             latest[op.other] = { op.seq, op.kind, op.bot };
         fifo[k].push_back(op);
         ++depth;
@@ -120,11 +127,17 @@ public:
     }
 
     // Leaves first (releases before formations, as S7's StepOne). The op leaves the queue; its bots stay pending until Finish
-    // (or a Requeue puts it back).
+    // (or a Requeue puts it back). A3 lever 2: kPopOrder - Leave, Leader, Accept, Invite, Join.
     Popped Pop(Op& out)
     {
         std::lock_guard<std::mutex> lock(mutex);
-        std::deque<Op>* q = !fifo[0].empty() ? &fifo[0] : (!fifo[1].empty() ? &fifo[1] : nullptr);
+        std::deque<Op>* q = nullptr;
+        for (OpKind kind : kPopOrder)
+            if (!fifo[std::size_t(kind)].empty())
+            {
+                q = &fifo[std::size_t(kind)];
+                break;
+            }
         if (!q)
             return Popped::None;
         out = q->front();
@@ -149,7 +162,7 @@ public:
     {
         std::lock_guard<std::mutex> lock(mutex);
         EraseIfLatest(op.bot, op.seq);
-        if (op.kind == OpKind::Join)
+        if (HoldsBoth(op.kind))
             EraseIfLatest(op.other, op.seq);
     }
 
@@ -213,7 +226,7 @@ private:
     {
         std::uint32_t seq = 0;
         OpKind kind = OpKind::Leave;
-        std::uint32_t partner = 0;   // Join: the other bot
+        std::uint32_t partner = 0;   // Join, Invite: the other bot
     };
 
     bool IsLatestLocked(Op const& op) const
@@ -221,7 +234,7 @@ private:
         auto const a = latest.find(op.bot);
         if (a == latest.end() || a->second.seq != op.seq)
             return false;
-        if (op.kind != OpKind::Join)
+        if (!HoldsBoth(op.kind))
             return true;
         auto const b = latest.find(op.other);
         return b != latest.end() && b->second.seq == op.seq;
@@ -235,7 +248,7 @@ private:
     }
 
     mutable std::mutex mutex;
-    std::array<std::deque<Op>, kKinds> fifo;   // [Leave], [Join]
+    std::array<std::deque<Op>, kKinds> fifo;   // [Leave], [Join], [Accept], [Invite], [Leader] (popped in kPopOrder)
     std::unordered_map<std::uint32_t, Pending> latest;
     std::size_t depth = 0;
     std::atomic<std::size_t> depthHint{ 0 };   // a copy of depth, written under the mutex, read without it

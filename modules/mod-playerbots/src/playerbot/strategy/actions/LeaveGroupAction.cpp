@@ -5,6 +5,7 @@
 #include "playerbot/BotGroupDiagnostics.h"
 #include "playerbot/AdhocGroupPolicy.h"
 #include "playerbot/QuestGroupWorld.h"
+#include "playerbot/GroupOps.h"   // A3 lever 2: BotGroups.WritePath
 
 namespace ai
 {
@@ -47,6 +48,12 @@ namespace ai
         if (!player)
             return false;
 
+        // A3 lever 2 (AiPlayerbot.BotGroups.WritePath): an in-scope bot's leave is a world-thread op; while an op of the bot
+        // waits there is nothing to decide (no goodbye per "leave far away" tick).
+        bool const writePath = group_ops::WritePathRoutes(ai);
+        if (writePath && group_ops::StillPending(ai, bot->GetGUIDLow()))
+            return false;
+
         Group* group = bot->GetGroup();
 
         if (ai->HasActivePlayerMaster() && player != bot && player != ai->GetMaster() && player->GetSession() && player->GetSession()->GetSecurity() < SEC_MODERATOR)
@@ -71,6 +78,15 @@ namespace ai
 
         if (!shouldStay)
         {
+            // A3 lever 2: the core leave and its event/membership lines run as the op (GroupOps.cpp RunLeave), which then clears
+            // a free bot's master and posts the strategy reset back to this bot (LeaveReset) - the rest of this function after
+            // the core call. Refused (queue full, an op pending): nothing changed, decided again later.
+            if (writePath && group)
+            {
+                std::string const outer = group_ops::t_outerAction ? group_ops::t_outerAction->getName() : getName();
+                return group_ops::QueueLeave(ai, group_ops::LeaveSourceOf(outer));
+            }
+
             if (group)
                 sPlayerbotAIConfig.logEvent(ai, "LeaveGroupAction", group->GetLeaderName(), std::to_string(group->GetMembersCount()-1));
 

@@ -1355,6 +1355,26 @@ AiPlayerbot.BotGroups.OpQueueAlertAgeSeconds = 60
 # Mode (in-realm A/B, cohort parity): 0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid), 3 = only
 # cohort A (even low guid). Any other value acts like 0 (one error line at load).
 AiPlayerbot.BotGroups.Manager = 0
+# A3 lever 2 (ADR-0041 amendment 4.2, OB-00 07.11.2026): the group write path. With the mode on for a bot, every group
+# membership change its own map thread would make runs as an op of the world-thread group queue above (OpQueueOpsPerTick,
+# OpQueueMaxDepth and the heavy-tick rule apply; the queue runs also with OpQueue = 0): its leaves ("leave", "party command",
+# "uninvite", "leave far away", repop - which now leaves through the core path instead of a raw RemoveMember), its accepts and
+# security declines of an invite, its invites ("invite", "invite nearby", "invite guild"; the raid conversion goes with the
+# invite) and its leader handovers ("leader", "give leader"), and its ad-hoc leaves and joins as with OpQueue. The same actions
+# decide as before; only the core write moves, re-checked on the world thread (the bot or its group changed: dropped, the bot
+# decides again); the AI tail (strategy reset, accept tail, log lines) runs on the bot's own thread. An accept the queue refuses
+# (full, an op of the bot pending) keeps the direct path (the invite comes once). In scope: bots with an AI and no real-player
+# master, not in a battleground; a real player's bots keep the old path. The "join" and "lfg" chat commands (leave, invite and
+# accept in one action) keep the direct path and are counted as bypass. Not covered: the implicit leader handover when a
+# leader leaves a group of 3+ (core, no hook; covered only through the routed leave), the offline-leader handover (already on
+# the world thread), battleground raid groups, and the "reset raids" unbind of the accept tail (the bot's own binds).
+# Line (world thread, only with this mode on, next to "[GroupOps] minute"): "[GroupWrite] minute mode= enq_<k>= exec_<k>=
+# fail_<k>= stale_<k>= refused_pending_<k>= dropped_full_<k>= superseding= superseded= bypass= off_wp_create= off_wp_disband=
+# off_wp_add= off_wp_remove= off_wp_leader= off_wp_invite=" for k = leave, join, accept, invite, leader. off_wp_* counts the
+# group events off the world thread whose acting bot is in scope, outside the bypass: 0 expected.
+# Mode (in-realm A/B, cohort parity): 0 = off (default, rollback), 1 = every bot in scope, 2 = only cohort B (odd low guid),
+# 3 = only cohort A (even low guid). Any other value acts like 0 (one error line at load).
+AiPlayerbot.BotGroups.WritePath = 0
 # A3 step 3 (ADR-0041 + amendment 2026-11-06, OB-00 06.11.2026): the per-bot supervisor - one owner of the bot's mode (quest,
 # grind, rest, group, rescue), and later of its travel target and tick cadence, with the activity planner ranking by value.
 # SCAFFOLD: the supervisor only counts its engine passes; it reads and writes nothing of the bot and writes no log line, so

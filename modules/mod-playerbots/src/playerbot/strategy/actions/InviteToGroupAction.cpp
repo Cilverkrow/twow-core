@@ -4,10 +4,11 @@
 #include "playerbot/ServerFacade.h"
 #include "playerbot/strategy/values/Formations.h"
 #include "Guild/GuildMgr.h"
+#include "playerbot/GroupOps.h"   // A3 lever 2: BotGroups.WritePath
 
 namespace ai
 {
-    bool InviteToGroupAction::Invite(Player* inviter, Player* player)
+    bool InviteToGroupAction::Invite(Player* inviter, Player* player, bool raidConvert)
     {
         if (!player)
             return false;
@@ -17,6 +18,17 @@ namespace ai
 
         if (!GetBotAI(player) && !ai->GetSecurity()->CheckLevelFor(PlayerbotSecurityLevel::PLAYERBOT_SECURITY_INVITE, true, player))
             return false;
+
+        // A3 lever 2 (AiPlayerbot.BotGroups.WritePath): an in-scope bot's own invite is a world-thread op (the raid conversion
+        // and the invite opcode run there, GroupOps.cpp RunInvite). Refused, or an op of either bot pending: false, decided
+        // again later.
+        if (group_ops::WritePathRoutes(ai) && inviter == bot)
+        {
+            PlayerbotAI* const inviteeAi = GetBotAI(player);
+            if (group_ops::StillPending(ai, bot->GetGUIDLow()) || (inviteeAi && group_ops::PendingHint(inviteeAi, player->GetGUIDLow())))
+                return false;
+            return group_ops::QueueInvite(ai, player, raidConvert);
+        }
 
         if (Group* group = inviter->GetGroup())
         {
@@ -36,6 +48,8 @@ namespace ai
 
     bool JoinGroupAction::Execute(Event& event)
     {
+        // A3 lever 2 (BotGroups.WritePath): leave, invite and accept in one action keep the direct path (counted as bypass).
+        group_ops::WritePathBypass const writeBypass(sPlayerbotAIConfig.botGroupsWritePath != 0);
         if (bot->InBattleGround())
             return false;
 
@@ -195,6 +209,8 @@ namespace ai
 
     bool LfgAction::Execute(Event& event)
     {
+        // A3 lever 2 (BotGroups.WritePath): leave, invite and accept in one action keep the direct path (counted as bypass).
+        group_ops::WritePathBypass const writeBypass(sPlayerbotAIConfig.botGroupsWritePath != 0);
         Player* requester = event.getOwner() ? event.getOwner() : GetMaster();
         if (bot->InBattleGround())
             return false;
@@ -293,6 +309,11 @@ namespace ai
 
     bool InviteNearbyToGroupAction::Execute(Event& event)
     {
+        // A3 lever 2 (BotGroups.WritePath): an op of this bot waits on the world thread - nothing to decide yet.
+        bool const writePath = group_ops::WritePathRoutes(ai);
+        if (writePath && group_ops::StillPending(ai, bot->GetGUIDLow()))
+            return false;
+
         if (!bot->GetGroup())  //Select a random formation to copy.
         {
             std::vector<std::string> formations = { "melee","queue","chaos","circle","line","shield","arrow","near","far"};
@@ -341,7 +362,11 @@ namespace ai
                 if (botAi->GetGrouperType() == GrouperType::SOLO && !botAi->HasRealPlayerMaster()) //Do not invite solo players. 
                     continue;
 
-                if (botAi->HasActivePlayerMaster()) //Do not invite alts of active players. 
+                if (botAi->HasActivePlayerMaster()) //Do not invite alts of active players.
+                    continue;
+
+                // A3 lever 2: a neighbour with an op on the world thread is no candidate until it ran (a read only).
+                if (writePath && group_ops::PendingHint(botAi, player->GetGUIDLow()))
                     continue;
             }
 
@@ -352,8 +377,15 @@ namespace ai
                 continue;
 
             //When inviting the 5th member of the group convert to raid for future invites.
+            // A3 lever 2: in scope, the conversion goes with the queued invite (world thread).
+            bool raidConvert = false;
             if (group && ai->GetGrouperType() > GrouperType::LEADER_5 && !group->IsRaidGroup() && bot->GetGroup()->GetMembersCount() > 3)
-                group->ConvertToRaid();
+            {
+                if (writePath)
+                    raidConvert = true;
+                else
+                    group->ConvertToRaid();
+            }
 
             Guild* guild = sGuildMgr.GetGuildById(bot->GetGuildId());
             if (sPlayerbotAIConfig.inviteChat && (sRandomPlayerbotMgr.IsFreeBot(bot) || !ai->HasActivePlayerMaster()))
@@ -381,7 +413,7 @@ namespace ai
                 }
             }
 
-            return Invite(bot, player);
+            return Invite(bot, player, raidConvert);
         }
 
         return false;
@@ -437,6 +469,11 @@ namespace ai
 
     bool InviteGuildToGroupAction::Execute(Event& event)
     {
+        // A3 lever 2 (BotGroups.WritePath): an op of this bot waits on the world thread - nothing to decide yet.
+        bool const writePath = group_ops::WritePathRoutes(ai);
+        if (writePath && group_ops::StillPending(ai, bot->GetGUIDLow()))
+            return false;
+
         Guild* guild = sGuildMgr.GetGuildById(bot->GetGuildId());
 
         for (auto& member : getGuildMembers())
@@ -487,6 +524,10 @@ namespace ai
                     if (!ai->IsSafe(player) || !PAI_VALUE(bool, "should get money"))
                         continue;
                 }
+
+                // A3 lever 2: a member with an op on the world thread is no candidate until it ran (a read only).
+                if (writePath && group_ops::PendingHint(playerAi, player->GetGUIDLow()))
+                    continue;
             }
 
             if (bot->GetLevel() > player->GetLevel() + 5) //Do not invite members that too low level or risk dragging them to deadly places.
@@ -497,9 +538,14 @@ namespace ai
 
             Group* group = bot->GetGroup();
             //When inviting the 5th member of the group convert to raid for future invites.
+            // A3 lever 2: in scope, the conversion goes with the queued invite (world thread).
+            bool raidConvert = false;
             if (group && ai->GetGrouperType() > GrouperType::LEADER_5 && !group->IsRaidGroup() && bot->GetGroup()->GetMembersCount() > 3)
             {
-                group->ConvertToRaid();
+                if (writePath)
+                    raidConvert = true;
+                else
+                    group->ConvertToRaid();
             }
 
             if (sPlayerbotAIConfig.inviteChat && (sRandomPlayerbotMgr.IsFreeBot(bot) || !ai->HasActivePlayerMaster()))
@@ -513,7 +559,7 @@ namespace ai
                 );
             }
 
-            return Invite(bot, player);
+            return Invite(bot, player, raidConvert);
         }
 
         return false;
