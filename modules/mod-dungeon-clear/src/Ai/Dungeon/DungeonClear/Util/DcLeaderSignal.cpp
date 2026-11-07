@@ -158,7 +158,7 @@ namespace
             return nullptr;
         if (leader->GetGroup() != group)
             return nullptr;
-        if (!PlayerbotAI::IsTank(leader) || !GET_PLAYERBOT_AI(leader))
+        if (!PlayerbotAI::IsTankFor(reference, leader) || !GET_PLAYERBOT_AI(leader))
             return nullptr;
         return leader;
     }
@@ -308,7 +308,7 @@ Player* DcLeaderSignal::FindLeaderTank(Player* reference)
     {
         // Solo: a tank bot leads itself; anyone else has no leader. Cheap —
         // no group walk, so no caching either.
-        return (PlayerbotAI::IsTank(reference) && GET_PLAYERBOT_AI(reference))
+        return (PlayerbotAI::IsTankFor(reference, reference) && GET_PLAYERBOT_AI(reference))
                    ? reference : nullptr;
     }
 
@@ -422,7 +422,7 @@ Player* DcLeaderSignal::FindLeaderTank(Player* reference)
         // Same Map OBJECT, not merely the same map id — see ValidateCachedLeader.
         if (member->FindMap() != reference->FindMap())
             continue;
-        if (!PlayerbotAI::IsTank(member))
+        if (!PlayerbotAI::IsTankFor(reference, member))
             continue;
         // Only bot tanks can drive — a real-player tank has no PlayerbotAI to
         // run the clear, so it can never be the leader.
@@ -975,7 +975,7 @@ bool DcLeaderSignal::IsLeaderFightAssistWanted(Player* bot)
         uint32(DcSettings::GetFloat(leader, "PullPlayerReleaseDelay") * 1000.0f);
     float const panicHp = DcSettings::GetFloat(leader, "PullThreatLeadPanicHp");
     return DungeonClearMath::ShouldReleaseFollower(
-        PlayerbotAI::IsHeal(bot), bot->IsInCombat(), combatSince, getMSTime(), leadMs,
+        PlayerbotAI::IsHealFor(bot, bot), bot->IsInCombat(), combatSince, getMSTime(), leadMs,
         leader->GetHealthPct(), panicHp);
 }
 bool DcLeaderSignal::IsLeaderShouldAssistFight(Player* bot)

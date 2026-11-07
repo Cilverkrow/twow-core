@@ -264,7 +264,7 @@ void DcFollowerLifecycle::ApplyFollowerPassive(Player* follower)
     // ReapStrandedPassives releases the healer (clearing the stay pin) on the SAME
     // schedule as the held DPS — it only advances once they do. Any aggro a heal
     // still pulls is the tank's to taunt off; the pet stays defensive (untouched).
-    if (PlayerbotAI::IsHeal(follower))
+    if (PlayerbotAI::IsHealFor(follower, follower))
     {
         uint8 added = 0;
         // Record per state whether our `+stay` is about to evict a present

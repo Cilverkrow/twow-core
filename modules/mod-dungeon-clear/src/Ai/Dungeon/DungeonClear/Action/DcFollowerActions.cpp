@@ -703,7 +703,7 @@ bool DungeonClearCampHoldActionBase::Execute(Event& /*event*/)
     // cast-heal action free. The position pin below still applies — we only stop
     // OWNING the tick once they're parked AND someone needs a heal, so the combat
     // engine can run the in-place heal cast.
-    bool const isHealer = PlayerbotAI::IsHeal(bot);
+    bool const isHealer = PlayerbotAI::IsHealFor(bot, bot);
 
     // SCRIPTED PULL: nobody may be INSIDE THE ROOM, ever.
     //
@@ -1277,7 +1277,7 @@ bool DungeonClearRegroupCombatAction::Execute(Event& /*event*/)
     if (!map)
         return false;
 
-    bool const isHealer = PlayerbotAI::IsHeal(bot);
+    bool const isHealer = PlayerbotAI::IsHealFor(bot, bot);
     bool const isMelee  = botAI->IsMelee(bot);
 
     // Anchor the reconnect. A healer PRE-POSITIONS on the tank (the goal is "be able

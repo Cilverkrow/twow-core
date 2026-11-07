@@ -233,7 +233,7 @@ float DungeonClearCombatMultiplier::GetValue(Action* action)
     }
 
     if (!losBreakDrag &&
-        (PlayerbotAI::IsHeal(bot) || !DcLeaderSignal::IsLeaderFightAssistWanted(bot)))
+        (PlayerbotAI::IsHealFor(bot, bot) || !DcLeaderSignal::IsLeaderFightAssistWanted(bot)))
         return 1.0f;
 
     Unit* tgt = AI_VALUE(Unit*, DcKey::Stock::CurrentTarget);

@@ -413,6 +413,10 @@ bool CheckMountStateAction::Mount(Player* requester, bool limitSpeedToGroup)
             if (!GetBotAI(member))
                 continue;
 
+            // twow-repo#697: HasStrategy below iterates the member's strategy map - only a bot of this Map object (same thread)
+            if (!SameMapObject(bot, member))
+                continue;
+
             if (!member->IsAlive())
                 continue;
 

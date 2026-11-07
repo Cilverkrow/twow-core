@@ -2295,6 +2295,12 @@ add_test(NAME bot_update_trace_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/bot_update_trace_source_contract_tests.cmake")
 
+# twow-repo#697 (BOT-05b, HARM): another bot's AI is read only on the same Map object; negative probe inside.
+add_test(NAME same_map_guard_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/same_map_guard_source_contract_tests.cmake")
+
 # twow-repo#601 S2 diagnostic: [GrindPick] grind-target sources (BotUpdateTrace).
 add_executable(grind_pick_policy_tests
   "${PB_MODULE_DIR}/t/grind_pick_policy_tests.cpp")

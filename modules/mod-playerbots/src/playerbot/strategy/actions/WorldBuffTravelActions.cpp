@@ -286,7 +286,7 @@ bool WorldBuffTravelApplyAction::TrySummonFarAwayMembers(WorldBuffTravelStep ste
             continue;
 
         bool needsSummonByStep = false;
-        PlayerbotAI* memberAI = GetBotAI(member);
+        PlayerbotAI* memberAI = GetBotAIOnMapOf(bot, member);   // twow-repo#697: another Map's step is unknown (lazy value creation = map insert from a foreign thread); differentMap/farAway decide
         if (memberAI)
         {
             uint8 memberStep = memberAI->GetAiObjectContext()->GetValue<uint8>("world buff travel step")->Get();
@@ -331,7 +331,7 @@ bool WorldBuffTravelApplyAction::TrySummonFarAwayMembers(WorldBuffTravelStep ste
             ai->TellPlayer(GetMaster(), "Summoning " + std::string(toSummon->GetName()) + " to the group!");
 
             // Sync the summoned member's step to the warlock's step
-            PlayerbotAI* memberAI = GetBotAI(toSummon);
+            PlayerbotAI* memberAI = GetBotAIOnMapOf(bot, toSummon);   // twow-repo#697: no cross-thread Set/SetForced/SetStatus; on its own Map the next pass syncs (memberStep < warlockStep)
             if (memberAI)
             {
                 memberAI->GetAiObjectContext()->GetValue<uint8>("world buff travel step")->Set(warlockStep);

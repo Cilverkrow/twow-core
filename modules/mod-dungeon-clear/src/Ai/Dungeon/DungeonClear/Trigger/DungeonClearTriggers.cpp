@@ -1457,7 +1457,7 @@ namespace
         // them relative to their hurt heal target (LOS + heal range) instead of
         // driving them onto the pack. Letting assist also grab a healer made the
         // two fight over it and aimed the healer at the mob, not the tank.
-        if (PlayerbotAI::IsHeal(bot))
+        if (PlayerbotAI::IsHealFor(bot, bot))
             return false;
         if (!DcLeaderSignal::IsLeaderFightAssistWanted(bot))
             return false;
@@ -1566,7 +1566,7 @@ bool DungeonClearAssistCampTrigger::IsActive()
         return false;
     // Healers are owned by the heal-reposition governor (aims at the hurt heal
     // target, not the pack); keep assist for DPS that must be driven into the fight.
-    if (PlayerbotAI::IsHeal(bot))
+    if (PlayerbotAI::IsHealFor(bot, bot))
         return false;
     // A scripted camp fight owns its followers — but only the WALK, which is the
     // one thing the plan forbids. This half of the action does not walk: it seeds
@@ -1831,7 +1831,7 @@ bool DungeonClearRegroupCombatTrigger::IsActive()
     // attacker list is non-empty; a healer with a hurt heal target is owned by
     // HealReposition (rel 41), so this only handles its pre-position case.
     DcRegroupDecision::RegroupInputs in;
-    in.isHealer = PlayerbotAI::IsHeal(bot);
+    in.isHealer = PlayerbotAI::IsHealFor(bot, bot);
     in.isMelee  = botAI->IsMelee(bot);
     in.casting  = bot->GetCurrentSpell(CURRENT_GENERIC_SPELL) != nullptr ||
                   bot->GetCurrentSpell(CURRENT_CHANNELED_SPELL) != nullptr;
@@ -1924,7 +1924,7 @@ bool DungeonClearHealRepositionTrigger::IsActive()
         return false;
 
     // Healer-only. Feature toggle.
-    if (!PlayerbotAI::IsHeal(bot))
+    if (!PlayerbotAI::IsHealFor(bot, bot))
         return false;
     if (!DcSettings::GetBool(bot, "HealReposition"))
         return false;
