@@ -67,7 +67,7 @@ require_text("${policy}" "    if (!eligible)\n        return \"not_eligible\";\n
 # Trainers: unlearned skills only on request, the radius on the bot's map, then the P1-b2 filter.
 require_text("${values_h}" "std::vector<int32> NearProfessionTrainers(PlayerbotAI* ai, uint32 radius, ProfessionTripDrops* drops = nullptr," "shared near trainer list")
 require_text("${values_h}" "uint32 inRadius = 0;" "no identifier 'near' (a windows.h macro under MSVC)")
-require_text("${values_cpp}" "if (onlyUnlearned && !ai::profession_travel::NearTripSkill(skill, ai->HasSkill(SkillType(skill))))" "only unlearned skills")
+require_text("${values_cpp}" "if (onlyUnlearned && !ai::profession_travel::NearTripSkill(skill, ai->HasSkill(SkillType(skill)), cooking))" "only unlearned skills (twow-repo#333 M2 Crafting.Cooking: cooking with the switch on)")
 require_text("${values_cpp}" "std::vector<int32> const trainers = PhaseOneProfessionTrainers(ai, true);" "the near list asks for unlearned skills")
 require_text("${values_cpp}" "if (destination->HasPointsOnMap(center) && ai::profession_travel::WithinNearRadius(destination->DistanceTo(center), radius) &&" "the radius rule on each destination of the bot's map")
 require_text("${values_cpp}" "return inRadius.empty() ? inRadius : ProfessionTripTargets(ai, inRadius, TravelDestinationPurpose::Trainer, drops);" "hostile / unreachable dropped (P1-b2)")

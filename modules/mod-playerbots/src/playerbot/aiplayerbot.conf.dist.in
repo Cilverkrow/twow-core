@@ -2151,6 +2151,18 @@ AiPlayerbot.ProfessionTraining.TripNoGuildTrip = 0
 # Off or outside the fallback: the turn_in rule as before. Deletion target (ADR-0041 rule 4): goes with A3 step 3.
 #   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid); other values act like 0.
 AiPlayerbot.ProfessionTraining.TurnInGateSkipGrindFallback = 0
+# twow-repo#333 M2 Crafting.Cooking (owner list 07.11.2026, item 2, M2-ENTWURF §7; inventory A3-AKTIONS-VERDRAHTUNG §4: cooking
+# dead in operation - learned only at a random local trainer, the craft loop skips fire recipes, no campfire). For a roster bot on
+# its own:
+#   - the profession trips (ProfessionTraining.Travel / NearRadius) also teach cooking (skill 185), like the phase-one skills;
+#   - under ProfessionUse.Craft + RealReagents a fire recipe (spell focus 4) is a craft candidate when a fire is within 10 yd or
+#     the bot can light Basic Campfire 818 (learned with cooking; Simple Wood 4470, Flint and Tinder 4471 - ItemUsage SKILL keeps
+#     and buys them already). Without a fire the craft action lights the campfire first and cooks on the next run.
+# Eating stays as it is (under the item cheat the bot eats the cheat food, not its own). Lines:
+#   [Crafting] kind=cooking event=campfire result=cast_started|failed check= recipe= bot= level= cohort=
+#   [Crafting] kind=cooking event=cook spell= item= bot= level= cohort=
+#   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid); other values act like 0.
+AiPlayerbot.Crafting.Cooking = 0
 # Profession use (#333), persistent roster bots without a real-player master.
 # GatherDistance: passive gathering radius for such a bot on its own (herbs,
 # ore, skinning); 0 = GatheringDistance. The hostile check stays in force.
