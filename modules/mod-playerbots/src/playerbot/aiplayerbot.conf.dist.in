@@ -2010,6 +2010,14 @@ AiPlayerbot.Revive.PreferCorpseRun = 0
 AiPlayerbot.Revive.CorpseRunFirst = 0
 # Seconds dead after which the spirit healer is taken (120..1800).
 AiPlayerbot.Revive.CorpseRunFirst.MaxSeconds = 600
+# twow-repo#575 A3 step 4 S4-2 (OB-00 07.11.2026): repop only when dead. "unstuck" sent an ALIVE bot to repop for "move long
+# stuck" / "combat long stuck" whenever its hearthstone was not useful (e.g. the homebind zone above its level): a teleport
+# to the race start or homebind, a group leave, the travel target nulled. With the switch the repop is not useful for an alive
+# bot; instead it asks for QuestRescue (the level-matched hub teleport with its per-bot and global limits) and gets a reset
+# when the per-bot limit stops that. The hearthstone first, as before. A dead bot (ghost) and a bot led by a real player keep
+# the legacy repop. Logged as [Rescue] ... alive=1 (each fallback) and [RepopDeadOnlyMin] (per minute).
+# 0 = off (default), 1 = every bot, 2 = cohort B (odd guid), 3 = cohort A (even guid); any other value is off.
+AiPlayerbot.Rescue.RepopDeadOnly = 0
 AiPlayerbot.QuestFirstProgression.TurnInDeathRouteCooldownSeconds = 3600
 # twow-repo#485: a finished quest whose turn-in keeps failing is parked instead
 # of holding the bot. A failure of a roster bot on its own is: a stall (recovery
