@@ -300,7 +300,8 @@ function(check_module_binds all_sources all_but_reset reset_cpp out)
   set(${out} "" PARENT_SCOPE)
 endfunction()
 
-# "reset raids" is reached only through ResetRaidsOnJoin in JoinTail; the source checks short-circuit IsRealPlayer.
+# "reset raids" is reached only through ResetRaidsOnJoin in JoinTail. Only the bot-only managers (ad-hoc, quest groups) skip
+# the inviter read; the group op (BOT-12 queue, A3 lever 2) and the posted tail can carry a real player's invite.
 function(check_join_tail accept all_sources out)
   region("${accept}" "        void JoinTail(Group* grp, Player* inviter, Event& event, bool onBotThread = false)" "\n        }\n" tail)
   if(tail STREQUAL "")
@@ -308,11 +309,10 @@ function(check_join_tail accept all_sources out)
     return()
   endif()
   set(gate "            std::string const& l1Source = event.getSource();
-            bool const l1WorldManager = group_ai_refresh::IsWorldManagerSource(l1Source);
-            bool const l1JoinTail = l1Source == group_ai_refresh::JoinTailSource;
-            bool const l1InviterReal = !l1WorldManager && !l1JoinTail && ::IsRealPlayer(inviter);
+            bool const l1BotManager = group_ai_refresh::IsWorldManagerSource(l1Source) && l1Source != group_ai_refresh::GroupOpSource;
+            bool const l1InviterReal = !l1BotManager && ::IsRealPlayer(inviter);
             bool const resetRaids = ai::lockout::ResetRaidsOnJoin(sPlayerbotAIConfig.botGroupsResetRaidsRealInviterOnly,
-                l1WorldManager, l1JoinTail, l1InviterReal);
+                l1BotManager, false, l1InviterReal);
             ai::lockout_guard::CountJoin(resetRaids, l1InviterReal);
             if (resetRaids)
                 ai->DoSpecificAction(\"reset raids\", event, true);
@@ -423,16 +423,22 @@ function(check_counters guard_h guard_cpp out)
   set(${out} "" PARENT_SCOPE)
 endfunction()
 
-# S1: after the security decline, before the core accept, behind the switch, the same decline.
+# S1: after the security decline, before the core accept, behind the switch, the same decline (through the write path
+# like the security decline when A3 lever 2 routes the bot; the group op is not a bot-only manager).
 function(check_s1 accept out)
   set(block "            if (sPlayerbotAIConfig.botGroupsResetRaidsRealInviterOnly)
             {
-                bool const l1WorldManager = group_ai_refresh::IsWorldManagerSource(event.getSource());
-                bool const l1InviterReal = !l1WorldManager && ::IsRealPlayer(inviter);
-                if (!ai::lockout::ResetRaidsOnJoin(true, l1WorldManager, false, l1InviterReal) &&
+                bool const l1BotManager = group_ai_refresh::IsWorldManagerSource(event.getSource()) &&
+                    event.getSource() != group_ai_refresh::GroupOpSource;
+                bool const l1InviterReal = !l1BotManager && ::IsRealPlayer(inviter);
+                if (!ai::lockout::ResetRaidsOnJoin(true, l1BotManager, false, l1InviterReal) &&
                     ai::lockout_guard::SplitToward(bot, inviter->GetMapId(), inviter->GetInstanceId()))
                 {
                     ai::lockout_guard::Count(ai::lockout_guard::SplitDecline);
+                    // A3 lever 2 (BotGroups.WritePath): an in-scope bot declines on the world thread, like the security decline.
+                    if (group_ops::WritePathRoutes(ai) && !group_ai_refresh::IsWorldManagerSource(event.getSource()) &&
+                        group_ops::QueueAccept(ai, inviter->GetGUIDLow(), true))
+                        return false;
                     WorldPacket data(SMSG_GROUP_DECLINE, 10);
                     data << bot->GetName();
                     sServerFacade.SendPacket(inviter, data);
@@ -919,9 +925,21 @@ expect_caught("${r}" "an unconditional reset raids")
 check_join_tail("${accept}" "${all_sources}\n    ai->DoSpecificAction(\"reset raids\", event, true);" r)
 expect_caught("${r}" "a second reset raids call site")
 
-string(REPLACE "bool const l1InviterReal = !l1WorldManager && !l1JoinTail && ::IsRealPlayer(inviter);" "bool const l1InviterReal = ::IsRealPlayer(inviter);" m "${accept}")
+string(REPLACE "            bool const l1BotManager = group_ai_refresh::IsWorldManagerSource(l1Source) && l1Source != group_ai_refresh::GroupOpSource;" "            bool const l1BotManager = group_ai_refresh::IsWorldManagerSource(l1Source);" m "${accept}")
 check_join_tail("${m}" "${all_sources}" r)
-expect_caught("${r}" "IsRealPlayer read on the posted tail")
+expect_caught("${r}" "the group op (a real player's invite through the queue) treated as a bot-only manager in JoinTail")
+
+string(REPLACE "bool const l1InviterReal = !l1BotManager && ::IsRealPlayer(inviter);\n            bool const resetRaids" "bool const l1InviterReal = false;\n            bool const resetRaids" m "${accept}")
+check_join_tail("${m}" "${all_sources}" r)
+expect_caught("${r}" "JoinTail never reads the inviter")
+
+string(REPLACE "                bool const l1BotManager = group_ai_refresh::IsWorldManagerSource(event.getSource()) &&\n                    event.getSource() != group_ai_refresh::GroupOpSource;" "                bool const l1BotManager = group_ai_refresh::IsWorldManagerSource(event.getSource());" m "${accept}")
+check_s1("${m}" r)
+expect_caught("${r}" "the group op treated as a bot-only manager in S1")
+
+string(REPLACE "                    if (group_ops::WritePathRoutes(ai) && !group_ai_refresh::IsWorldManagerSource(event.getSource()) &&\n                        group_ops::QueueAccept(ai, inviter->GetGUIDLow(), true))\n                        return false;\n                    WorldPacket data(SMSG_GROUP_DECLINE, 10);" "                    WorldPacket data(SMSG_GROUP_DECLINE, 10);" m "${accept}")
+check_s1("${m}" r)
+expect_caught("${r}" "S1 decline bypasses the write path")
 
 string(REPLACE "    return !switchOn || (!worldManagerSource && !joinTailSource && inviterReal);" "    return !switchOn || inviterReal;" m "${policy}")
 check_policy("${m}" r)
@@ -935,7 +953,7 @@ string(REPLACE "    if (InstancePlayerBind const* pBind = bot->GetBoundInstance(
 check_guard("${m}" r)
 expect_caught("${r}" "the guard reads a group bind")
 
-string(REPLACE "            if (sPlayerbotAIConfig.botGroupsResetRaidsRealInviterOnly)\n            {\n                bool const l1WorldManager" "            {\n                bool const l1WorldManager" m "${accept}")
+string(REPLACE "            if (sPlayerbotAIConfig.botGroupsResetRaidsRealInviterOnly)\n            {\n                bool const l1BotManager" "            {\n                bool const l1BotManager" m "${accept}")
 check_s1("${m}" r)
 expect_caught("${r}" "S1 without the switch")
 
