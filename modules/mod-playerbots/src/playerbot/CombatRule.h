@@ -5,6 +5,7 @@
 #include <string>
 
 class Player;
+class Unit;
 class PlayerbotAI;
 
 // A3 step 5 (ADR-0041; OB-00 07.11.2026): the combat rule, the parts that read game state. The pure rules are in
@@ -21,6 +22,20 @@ bool HealerMayAttack(PlayerbotAI* ai);
 // AiPlayerbot.CombatRule.PriestOverlay on for the bot's cohort, a discipline or holy priest (tab 0/1) gets it without "+dps",
 // which would replace its tree with the shadow placeholder; everything else returns the overlay unchanged.
 std::string CombatOverlay(Player* player, int tab, std::string const& overlay);
+
+// Part RestBeforePull: what the bot has to rest for before its next pull (RestNeed::None with the part off, for a cohort it does not
+// apply to, and for a bot RestGate applies to). Read by the rest node (strategy "combat rule"), "should eat" and the pull.
+RestNeed RestBeforePullNeed(PlayerbotAI* ai);
+
+// The pull bit of attack anything: false while a rest is needed and the target does not fight the bot yet (counted). True with the
+// part off, without reading anything else.
+bool MayPull(PlayerbotAI* ai, Unit* target);
+
+// A pull starts (attack anything executes): counted for solo free bots of both cohorts while the part is on, with its HP / mana.
+void CountPull(PlayerbotAI* ai);
+
+// The rest node fired (counted per tick while the part is on).
+void CountRest(PlayerbotAI* ai, RestNeed need);
 
 // One "[CombatRule] part=<Part>" line per minute and part that is on (increments); called from the minute report pass.
 void ReportCombatRule();

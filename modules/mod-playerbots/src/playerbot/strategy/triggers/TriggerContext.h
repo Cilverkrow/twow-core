@@ -10,6 +10,7 @@
 #include "RpgTriggers.h"
 #include "TravelTriggers.h"
 #include "RtiTriggers.h"
+#include "playerbot/strategy/generic/CombatRuleStrategy.h"   // A3 step 5: combat rule rest triggers
 #include "CureTriggers.h"
 #include "GuildTriggers.h"
 #include "StuckTriggers.h"
@@ -66,6 +67,8 @@ namespace ai
             creators["high mana"] = [](PlayerbotAI* ai) { return new HighManaTrigger(ai); };
             creators["rest health"] = [](PlayerbotAI* ai) { return new RestHealthTrigger(ai); };   // twow-repo#602 ROT-01 X1
             creators["rest mana"] = [](PlayerbotAI* ai) { return new RestManaTrigger(ai); };       // twow-repo#602 ROT-01 X1
+            creators["combat rule rest health"] = [](PlayerbotAI* ai) { return new CombatRuleRestHealthTrigger(ai); };   // A3 step 5
+            creators["combat rule rest mana"] = [](PlayerbotAI* ai) { return new CombatRuleRestManaTrigger(ai); };       // A3 step 5
             creators["almost full mana"] = [](PlayerbotAI* ai) { return new AlmostFullManaTrigger(ai); };
 
             creators["party member critical health"] = [](PlayerbotAI* ai) { return new PartyMemberCriticalHealthTrigger(ai); };
