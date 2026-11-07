@@ -264,6 +264,13 @@ public:
         return true;
     }
 
+    // A quest seen in the log for the first time: tracked from 0 unless a credit already arrived for it (a kill or item packet
+    // between the accept and the book's first snapshot of it keeps its count; OB-10 review of #910/#911). True when it is tracked.
+    bool Track(std::uint32_t questId)
+    {
+        return FindOrAdd(questId) != nullptr;
+    }
+
     bool Bump(std::uint32_t questId)
     {
         Entry* e = FindOrAdd(questId);
