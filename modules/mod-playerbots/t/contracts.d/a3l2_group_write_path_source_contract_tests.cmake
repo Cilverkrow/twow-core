@@ -144,7 +144,7 @@ function(check_switch config_h config_cpp conf_dist out)
   endif()
   # The whole [GroupWrite] field list of the doc, as the code's GW_LINE prints it (a renamed field leaves no stale doc).
   foreach(needle "# A3 lever 2 (ADR-0041 amendment 4.2, OB-00 07.11.2026): the group write path."
-      "\"[GroupWrite] minute mode= enq_<k>= exec_<k>=\n# fail_<k>= stale_<k>= refused_pending_<k>= dropped_full_<k>= superseding= superseded= bypass= off_wp_create= off_wp_disband=\n# off_wp_add= off_wp_remove= off_wp_leader= off_wp_invite=\" for k = leave, join, accept, invite, leader."
+      "\"[GroupWrite] minute mode= enq_<k>= exec_<k>=\n# fail_<k>= stale_<k>= refused_pending_<k>= dropped_full_<k>= superseding= superseded= bypass= off_wp_create= off_wp_disband=\n# off_wp_add= off_wp_remove= off_wp_leader= off_wp_invite= accept_player=\" for k = leave, join, accept, invite, leader.\n# accept_player counts the queued accepts of a real player's invite (a deviation from ADR-0041 E7"
       "off_wp_* counts the" "0 is necessary, not proof."
       "\"[GroupOps] minute\" line (mode=<OpQueue>) and the off-thread group observer (counters) run too, also with OpQueue = 0")
     string(FIND "${conf_dist}" "${needle}" at)
@@ -526,7 +526,16 @@ set(GW_LINE "    if (!sPlayerbotAIConfig.botGroupsWritePath)
     AddField(wline, \"off_wp_remove\", Take(writeCounts.offWp[EvRemove]));
     AddField(wline, \"off_wp_leader\", Take(writeCounts.offWp[EvLeader]));
     AddField(wline, \"off_wp_invite\", Take(writeCounts.offWp[EvInvite]));
+    AddField(wline, \"accept_player\", Take(writeCounts.acceptPlayer));
     sLog.outBasic(\"%s\", wline.c_str());")
+
+# OB-00 07.11.2026 (c): a queued accept of a real player's invite is counted after the push, never for a decline.
+set(ACCEPT_PLAYER_COUNT "    if (Enqueue(op, ai, nullptr) != Pushed::Queued)
+        return false;
+    // OB-00 07.11.2026 (c): a queued accept of a real player's invite (ADR-0041 E7 deviation) gets its own count.
+    if (!decline && IsRealPlayerOrSelfBot(sObjectMgr.GetPlayer(ObjectGuid(HIGHGUID_PLAYER, inviterGuidLow))))
+        writeCounts.acceptPlayer.fetch_add(1, std::memory_order_relaxed);
+    return true;")
 
 function(check_line ops policy out)
   # After the [GroupOps] line (whose fields stay), behind the key.
@@ -539,6 +548,14 @@ function(check_line ops policy out)
   count_text("${ops}" "[GroupWrite] minute" n)
   if(NOT n EQUAL 1)
     set(${out} "GroupOps.cpp: [GroupWrite] minute ${n} times (1 expected)" PARENT_SCOPE)
+    return()
+  endif()
+  # QueueAccept counts accept_player only after a queued push and never for a decline.
+  string(FIND "${ops}" "bool QueueAccept(PlayerbotAI* ai, std::uint32_t inviterGuidLow, bool decline)\n{" qa)
+  string(FIND "${ops}" "${ACCEPT_PLAYER_COUNT}" at)
+  count_text("${ops}" "writeCounts.acceptPlayer.fetch_add" nap)
+  if(qa EQUAL -1 OR at EQUAL -1 OR at LESS qa OR NOT nap EQUAL 1)
+    set(${out} "QueueAccept: accept_player not counted once, after a queued push, without declines" PARENT_SCOPE)
     return()
   endif()
   # Per kind in OpKind order: leave, join, accept, invite, leader.
@@ -896,6 +913,12 @@ string(REPLACE "    AddField(wline, \"bypass\", Take(writeCounts.bypass));\n    
   "    AddField(wline, \"off_wp_create\", Take(writeCounts.offWp[EvCreate]));\n    AddField(wline, \"bypass\", Take(writeCounts.bypass));" probe "${ops}")
 check_line("${probe}" "${policy}" r)
 expect_caught("[GroupWrite] field order" "${r}")
+string(REPLACE "    if (!decline && IsRealPlayerOrSelfBot(" "    if (IsRealPlayerOrSelfBot(" probe "${ops}")
+check_line("${probe}" "${policy}" r)
+expect_caught("accept_player counts declines" "${r}")
+string(REPLACE "    AddField(wline, \"accept_player\", Take(writeCounts.acceptPlayer));\n" "" probe "${ops}")
+check_line("${probe}" "${policy}" r)
+expect_caught("accept_player field missing" "${r}")
 string(REPLACE "    LeaderReset = 1u << 6," "" probe "${refresh}")
 check_tail("${probe}" r)
 expect_caught("no LeaderReset" "${r}")
