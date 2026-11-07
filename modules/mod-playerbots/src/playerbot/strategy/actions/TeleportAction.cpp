@@ -3,6 +3,8 @@
 #include "TeleportAction.h"
 #include "playerbot/strategy/values/LastMovementValue.h"
 #include "playerbot/ServerFacade.h"
+#include "playerbot/PlayerbotAIConfig.h"
+#include "playerbot/LockoutGuard.h"   // L1 (owner 07.11.2026): S3 split guard
 
 using namespace ai;
 
@@ -40,6 +42,15 @@ bool TeleportAction::Execute(Event& event)
     LastMovement& movement = context->GetValue<LastMovement&>("last area trigger")->Get();
     if (movement.lastAreaTrigger)
     {
+        // L1 (owner 07.11.2026): S3 - no relay into another copy of a raid the bot is perm-bound to, when the requester
+        // already stands on that map (its map and instance id only). The trigger stays for a later try.
+        if (sPlayerbotAIConfig.botGroupsResetRaidsRealInviterOnly && ai::lockout_guard::RelaySplit(bot, movement.lastAreaTrigger, requester))
+        {
+            ai::lockout_guard::Count(ai::lockout_guard::SplitEntry);
+            ai->TellPlayerNoFacing(requester, "I am locked to another copy of this raid");
+            return false;
+        }
+
         WorldPacket p(CMSG_AREATRIGGER);
         p << movement.lastAreaTrigger;
         p.rpos(0);
