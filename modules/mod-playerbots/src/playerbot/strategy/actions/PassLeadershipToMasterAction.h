@@ -1,5 +1,6 @@
 #pragma once
 #include "GenericActions.h"
+#include "playerbot/GroupOps.h"   // A3 lever 2: BotGroups.WritePath
 
 namespace ai
 {
@@ -15,6 +16,19 @@ namespace ai
             Player* passLeaderTo = PassLeaderTo(event);
             if (passLeaderTo && passLeaderTo != bot && bot->GetGroup() && bot->GetGroup()->IsMember(passLeaderTo->GetObjectGuid()))
             {
+                // A3 lever 2 (AiPlayerbot.BotGroups.WritePath): an in-scope bot's handover is a world-thread op (the set-leader
+                // opcode there, GroupOps.cpp RunLeader); the reset of a random bot follows it on this bot's thread (LeaderReset).
+                // The message goes out with the decision. Refused, or an op of the bot pending: false, decided again later.
+                if (group_ops::WritePathRoutes(ai))
+                {
+                    if (group_ops::StillPending(ai, bot->GetGUIDLow()) ||
+                        !group_ops::QueueLeader(ai, passLeaderTo, sRandomPlayerbotMgr.IsRandomBot(bot)))
+                        return false;
+                    if (!message.empty())
+                        ai->TellPlayerNoFacing(passLeaderTo, message);
+                    return true;
+                }
+
                 WorldPacket p(SMSG_GROUP_SET_LEADER, 8);
                 p << passLeaderTo->GetObjectGuid();
                 bot->GetSession()->HandleGroupSetLeaderOpcode(p);

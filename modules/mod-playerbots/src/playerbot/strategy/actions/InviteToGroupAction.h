@@ -27,7 +27,8 @@ namespace ai
             return Invite(bot, target);
         }
 
-        virtual bool Invite(Player* inviter, Player* player);
+        // raidConvert (A3 lever 2, BotGroups.WritePath): the caller's raid conversion, carried by the queued invite.
+        virtual bool Invite(Player* inviter, Player* player, bool raidConvert = false);
         virtual bool isUsefulWhenStunned() override { return true; }
     };
 
