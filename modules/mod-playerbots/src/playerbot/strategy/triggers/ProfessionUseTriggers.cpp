@@ -139,6 +139,14 @@ bool ai::IsRosterBotOnItsOwn(PlayerbotAI* ai)
     return bot && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster();
 }
 
+bool ai::CraftingConsumablesFor(PlayerbotAI* ai)
+{
+    if (!sPlayerbotAIConfig.craftingConsumables)
+        return false;
+    Player* bot = ai->GetBot();
+    return bot && IsRosterBotOnItsOwn(ai) && ai::cohort::Applies(sPlayerbotAIConfig.craftingConsumables, bot->GetGUIDLow());
+}
+
 bool ai::CraftingCookingFor(PlayerbotAI* ai)
 {
     if (!sPlayerbotAIConfig.craftingCooking)

@@ -10,6 +10,7 @@
 #include "playerbot/QuestGrindModePolicy.h"
 #include "playerbot/QuestSearchPolicy.h"
 #include "playerbot/QuestFeasibilityPolicy.h"
+#include "playerbot/QuestBook.h"         // A3 step 2 K2/K3 (AiPlayerbot.QuestBook): the one level window and the QB5 list
 #include "playerbot/QuestGroupWorld.h"   // twow-repo#627 S7 hooks (CLI-Deep): help-group members out of PosStuck, S3c, turn-in recovery
 #include "playerbot/AdhocGroupWorld.h"   // twow-repo#601 F5b: a bot-only group shares the kill credit (CLI-GRP 25.10.)
 #include "playerbot/CohortPolicy.h"
@@ -145,6 +146,12 @@ PlayerTravelInfo::PlayerTravelInfo(Player* player, bool gapGrind)
     bandGiverFilter = ai->QuestBandGiverFilter();
     bandGreyLevel = bandGiverFilter ? MaNGOS::XP::GetGrayLevel(level) : 0;
 
+    // A3 step 2 K2/K3 (AiPlayerbot.QuestBook, default 0): the active quest book bit, here on the bot thread; the giver and objective
+    // checks of IsPossible read it only as a value. QuestBook 0 and every other bot: false / 0, as before.
+    questBook = ai->ActiveQuestBook() != nullptr;
+    questBookGreyLevel = questBook ? MaNGOS::XP::GetGrayLevel(level) : 0;
+    questBookGuid = questBook ? player->GetGUIDLow() : 0;
+
     // twow-repo#333 P1-v (AiPlayerbot.Travel.RpgAreaLevelFromSpawn): the RPG area level bit, here on the bot thread; read by
     // RpgTravelDestination::IsPossible only as a value. Mode 0: false for every bot, as before.
     rpgAreaFromSpawn = ai::cohort::Applies(sPlayerbotAIConfig.travelRpgAreaLevelFromSpawn, player->GetGUIDLow());
@@ -226,7 +233,22 @@ bool QuestRelationTravelDestination::IsPossible(const PlayerTravelInfo& info) co
 
     if (GetRelation() == 0)
     {
-        if (!forceThisQuest && (int32)quest->GetQuestLevel() >= (int32)info.GetLevel() + (int32)5)
+        // A3 step 2 K2 (AiPlayerbot.QuestBook, default 0): a bot with an active quest book travels only to givers of quests inside
+        // the book's one level window (the accept window) and not on the QB5 list. Every other bot: the old +5 rule.
+        if (!forceThisQuest && info.HasQuestBook())
+        {
+            if (ai::questbook::Excluded(GetQuestId()))
+            {
+                ai::questbook::Note(info.GetQuestBookGuid(), ai::questbook::Count::TargetNoExcluded);
+                return refuse(ai::quest_search::GiverDropQuestLevel);
+            }
+            if (ai::questbook::TemplateWindow(quest, info.GetLevel(), info.GetQuestBookGreyLevel()) != ai::questbook::NoReason::None)
+            {
+                ai::questbook::Note(info.GetQuestBookGuid(), ai::questbook::Count::TargetNoWindow);
+                return refuse(ai::quest_search::GiverDropQuestLevel);
+            }
+        }
+        else if (!forceThisQuest && (int32)quest->GetQuestLevel() >= (int32)info.GetLevel() + (int32)5)
             return refuse(ai::quest_search::GiverDropQuestLevel);
 
         if ((int32)info.GetLevel() < quest->GetMinLevel() || (int32)info.GetLevel() > quest->GetMaxLevel())
@@ -400,7 +422,22 @@ bool QuestObjectiveTravelDestination::IsPossible(const PlayerTravelInfo& info) c
 
     if (!forceThisQuest)
     {
-        if ((int32)GetQuestTemplate()->GetQuestLevel() > (int32)info.GetLevel() + (int32)1)
+        // A3 step 2 K3 (AiPlayerbot.QuestBook, default 0): with an active quest book the objective travel uses the same window as
+        // accept and giver travel, and the QB5 list. Every other bot: the old +1 rule. The capability rule below stays for all.
+        if (info.HasQuestBook())
+        {
+            if (ai::questbook::Excluded(GetQuestId()))
+            {
+                ai::questbook::Note(info.GetQuestBookGuid(), ai::questbook::Count::TargetNoExcluded);
+                return false;
+            }
+            if (ai::questbook::TemplateWindow(GetQuestTemplate(), info.GetLevel(), info.GetQuestBookGreyLevel()) != ai::questbook::NoReason::None)
+            {
+                ai::questbook::Note(info.GetQuestBookGuid(), ai::questbook::Count::TargetNoWindow);
+                return false;
+            }
+        }
+        else if ((int32)GetQuestTemplate()->GetQuestLevel() > (int32)info.GetLevel() + (int32)1)
             return false;
 
         if (!skipShouldGrindCheck && GetQuestTemplate()->GetQuestLevel() + 5 > (int)info.GetLevel() && !info.GetBoolValue("can fight equal"))

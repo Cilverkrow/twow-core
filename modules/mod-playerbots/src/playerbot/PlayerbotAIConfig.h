@@ -559,6 +559,11 @@ public:
     // twow-repo#333 Berufe P1-ae (OB-00 06.11.2026 after M1r run 10): a finished quest does not hold the profession trips while the bot
     // is in the 8.32 grind fallback (no quest request routes it); 0 off (default), 1 all, 2 cohort B (odd guid), 3 cohort A (even guid).
     uint32 professionTrainingTurnInGateSkipGrindFallback = 0;
+    // twow-repo#333 M2 Crafting.Consumables (owner list 07.11.2026, item 1; M2-ENTWURF §7): a roster bot on its own gets the
+    // "consumables" strategy (elixirs, flasks, scrolls, buff food) and keeps its usable buff consumables and the oil / stone for its
+    // main hand instead of selling them; 0 off (default), 1 all, 2 cohort B (odd guid), 3 cohort A (even guid). No effect under the
+    // item cheat (use consumable is useless there, nothing is kept).
+    uint32 craftingConsumables = 0;
     // twow-repo#333 M2 Crafting.Cooking (owner list 07.11.2026, item 2; M2-ENTWURF §7): a roster bot on its own also learns cooking by
     // the profession trips, cooks the fire recipes (spell focus 4) of the craft loop and lights its own campfire (spell 818) for them;
     // 0 off (default), 1 all, 2 cohort B (odd guid), 3 cohort A (even guid). The craft part needs ProfessionUse.RealReagents.
@@ -901,6 +906,13 @@ public:
     // A3 step 3 (ADR-0041, OB-00 06.11.2026): the per-bot supervisor (SupervisorPolicy.h, Supervisor.cpp). Scaffold: it only
     // counts its engine passes. 0 off, 1 all, 2 cohort B, 3 cohort A; other = 0 + error line.
     uint32 supervisor = 0;
+    // A3 step 2 (ADR-0041, OB-00 07.11.2026): the quest book core QB-K (QuestBookPolicy.h, QuestBook.cpp). 0 off, 1 all, 2 cohort B,
+    // 3 cohort A; other = 0 + error line. Shadow: the other roster bots keep a book that only writes the KPI lines.
+    uint32 questBook = 0;
+    bool questBookShadow = false;
+    uint32 questBookAboveLevels = 1;              // the one level window: a quest at most this above the bot
+    uint32 questBookStaleCompleteSeconds = 1800;  // QB4 KPI: complete, not turned in for this long
+    std::set<uint32> questBookExclude;            // QB5 permanent list (OB-00 07.11. D1 (a)); read only after the load
     // twow-repo#627 S7 help groups (QuestGroupPolicy.h, QuestGroupWorld.cpp); Enable: 0 off, 1 all, 2 cohort B, 3 cohort A.
     uint32 questGroupsEnable = 0;
     uint32 questGroupsScanSeconds = 60;

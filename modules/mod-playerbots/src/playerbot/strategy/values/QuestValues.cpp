@@ -6,6 +6,8 @@
 #include "playerbot/TravelMgr.h"
 #include <algorithm>
 #include "playerbot/RandomPlayerbotMgr.h"
+#include "playerbot/QuestBook.h"   // A3 step 2 K2 (AiPlayerbot.QuestBook): the one level window and the QB5 list
+#include "Formulas.h"
 #include "playerbot/strategy/deathknight/DKActions.h"
 
 using namespace ai;
@@ -205,6 +207,9 @@ questGiverMap QuestGiversValue::Calculate()
     // This value feeds autonomous travel only. A real-player-directed quest
     // still uses the normal Core hard limit and is not rejected here.
     bool const questFirst = UsesQuestFirstProgression(bot);
+    // A3 step 2 K2 (AiPlayerbot.QuestBook, default 0): a bot with an active quest book filters the givers by the book's one level
+    // window and the QB5 list; every other bot keeps the quest-first deltas below.
+    bool const questBook = ai->ActiveQuestBook() != nullptr;
     if (questFirst && ActiveQuestSlotCount(bot) >= sPlayerbotAIConfig.questFirstProgressionAutonomousLogSoftLimit)
         return guidps;
 
@@ -218,7 +223,13 @@ questGiverMap QuestGiversValue::Calculate()
 				{
 					Quest const* quest = sObjectMgr.GetQuestTemplate(questId);
 
-                    if (quest && (level < quest->GetMinLevel() ||
+                    if (quest && questBook)
+                    {
+                        if (ai::questbook::Excluded(questId) ||
+                            ai::questbook::TemplateWindow(quest, level, MaNGOS::XP::GetGrayLevel(level)) != ai::questbook::NoReason::None)
+                            continue;
+                    }
+                    else if (quest && (level < quest->GetMinLevel() ||
                         (int32)level >= quest->GetQuestLevel() +
                             (questFirst ? sPlayerbotAIConfig.questFirstProgressionRejectBelowLevelDelta : 10) ||
                         (questFirst && (int32)quest->GetQuestLevel() >

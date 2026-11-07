@@ -23,6 +23,7 @@
 #include "playerbot/ProfessionUsePolicy.h"   // twow-repo#333 M2-T: the [ProfCount] created line
 #include "playerbot/TeleportAckThreadPolicy.h"   // twow-repo#563 X5 (ThreadSafeTeleportAck)
 #include "playerbot/Supervisor.h"   // A3 step 3 (AiPlayerbot.Supervisor): the per-bot supervisor scaffold
+#include "playerbot/QuestBook.h"    // A3 step 2 (AiPlayerbot.QuestBook): the per-bot quest book core
 #include "Maps/PathFinder.h"
 #include <stdarg.h>
 #include <array>
@@ -444,6 +445,25 @@ ai::supervisor::Supervisor* PlayerbotAI::EnsureSupervisor()
     if (!supervisor_)
         supervisor_ = std::make_unique<ai::supervisor::Supervisor>(this);
     return supervisor_.get();
+}
+
+ai::questbook::QuestBook* PlayerbotAI::EnsureQuestBook(bool shadow)
+{
+    if (!questBook_)
+        questBook_ = std::make_unique<ai::questbook::QuestBook>(this, shadow);
+    else
+        questBook_->SetShadow(shadow);
+    return questBook_.get();
+}
+
+ai::questbook::QuestBook* PlayerbotAI::ActiveQuestBook() const
+{
+    return questBook_ && !questBook_->Shadow() ? questBook_.get() : nullptr;
+}
+
+bool PlayerbotAI::InQuestBookScope()
+{
+    return bot && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !HasRealPlayerMaster();
 }
 
 PlayerbotAI::~PlayerbotAI()
@@ -2273,6 +2293,20 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
                     grant.firstSighting ? 1u : 0u, castWait.capped ? 1u : 0u);
                 if (!CanUpdateAIInternal())
                     return;
+            }
+        }
+
+        // A3 step 2 (ADR-0041, AiPlayerbot.QuestBook, default 0): the quest book watches the log once per engine pass (a snapshot
+        // at most every 5 s). Active for a roster bot on its own in the switch's cohort; with QuestBook.Shadow the other roster
+        // bots keep a shadow book (KPI lines only, no caller asks it). Otherwise the instance is released and dropped.
+        {
+            bool const active = sPlayerbotAIConfig.questBook && ai::questbook::Applies(sPlayerbotAIConfig.questBook, bot->GetGUIDLow());
+            if ((active || sPlayerbotAIConfig.questBookShadow) && InQuestBookScope())
+                EnsureQuestBook(!active)->Observe(WorldTimer::getMSTime());
+            else if (questBook_)
+            {
+                questBook_->Release();
+                questBook_.reset();
             }
         }
 
@@ -10960,6 +10994,38 @@ Item* PlayerbotAI::FindOilFor(Item* weapon) const
     }
 
     return oil;
+}
+
+// twow-repo#333 M2 Crafting.Consumables (owner list 07.11.2026, item 1): true when proto is one of the stones or oils that
+// FindStoneFor / FindOilFor would pick for this weapon - the same weapon rules, display id lists and checks as FindConsumable
+// (consumable or trade goods, usable by the bot), but without looking into the bags, so the item usage can keep a looted one.
+bool PlayerbotAI::IsImbueItemFor(Item* weapon, ItemPrototype const* proto) const
+{
+    ItemPrototype const* pProto = weapon ? weapon->GetProto() : nullptr;
+    if (!pProto || !proto || (proto->Class != ITEM_CLASS_CONSUMABLE && proto->Class != ITEM_CLASS_TRADE_GOODS) ||
+        bot->CanUseItem(proto) != EQUIP_ERR_OK)
+        return false;
+
+    uint32 const displayId = proto->DisplayInfoID;
+    auto const listed = [displayId](uint32 const* ids, size_t count)
+    {
+        return std::find(ids, ids + count, displayId) != ids + count;
+    };
+
+    if (pProto->Class == ITEM_CLASS_WEAPON && (pProto->SubClass == ITEM_SUBCLASS_WEAPON_SWORD || pProto->SubClass == ITEM_SUBCLASS_WEAPON_SWORD2
+        || pProto->SubClass == ITEM_SUBCLASS_WEAPON_AXE || pProto->SubClass == ITEM_SUBCLASS_WEAPON_AXE2
+        || pProto->SubClass == ITEM_SUBCLASS_WEAPON_DAGGER) && listed(uPriorizedSharpStoneIds, countof(uPriorizedSharpStoneIds)))
+        return true;
+
+    if (pProto->Class == ITEM_CLASS_WEAPON && (pProto->SubClass == ITEM_SUBCLASS_WEAPON_MACE || pProto->SubClass == ITEM_SUBCLASS_WEAPON_MACE2)
+        && listed(uPriorizedWeightStoneIds, countof(uPriorizedWeightStoneIds)))
+        return true;
+
+    if (pProto->SubClass == ITEM_SUBCLASS_WEAPON_SWORD || pProto->SubClass == ITEM_SUBCLASS_WEAPON_STAFF || pProto->SubClass == ITEM_SUBCLASS_WEAPON_DAGGER
+        || pProto->SubClass == ITEM_SUBCLASS_WEAPON_MACE || pProto->SubClass == ITEM_SUBCLASS_WEAPON_MACE2)
+        return listed(uPriorizedWizardOilIds, countof(uPriorizedWizardOilIds)) || listed(uPriorizedManaOilIds, countof(uPriorizedManaOilIds));
+
+    return false;
 }
 
 //  on self
