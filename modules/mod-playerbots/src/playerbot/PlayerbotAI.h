@@ -19,6 +19,7 @@
 
 #include "playerbot/BotSlots.h"
 #include "playerbot/DeathLoopPolicy.h"
+#include "playerbot/CorpseRunFirstPolicy.h"   // twow-repo#575 A3 step 4 S4-1: own deaths for Revive.CorpseRunFirst
 #include "playerbot/DeathAddsPolicy.h"
 #include "playerbot/SafePullPolicy.h"   // twow-repo#656 (Grind.SafePull): the last pick, read at the death
 #include "playerbot/CastWaitPolicy.h"
@@ -798,6 +799,20 @@ public:
     // twow-repo#541 A39 (AiPlayerbot.DeathLoop.Escape): when the last evacuation of this bot happened (repeat check).
     void MarkDeathLoopEscape(uint32 nowSeconds) { lastDeathLoopEscapeAt = nowSeconds; }
     uint32 GetDeathLoopSize() const { return uint32(recentDeaths.size()); }
+    // twow-repo#575 A3 step 4 S4-1 (AiPlayerbot.Revive.CorpseRunFirst): the bot's own last deaths (loop at the corpse) and the
+    // decision already logged for the current death (one [CorpseRun] line per death and reason). Bot's own thread only.
+    ai::corpse_first::Ring const& GetCorpseFirstDeaths() const { return corpseFirstDeaths; }
+    void RecordCorpseFirstDeath(ai::corpse_first::DeathMark const& mark) { ai::corpse_first::Record(corpseFirstDeaths, mark); }
+    // 0 = this decision is already logged for this death, 1 = the first decision of this death, 2 = the decision changed.
+    uint32 MarkCorpseFirstDecision(uint32 deathAt, ai::corpse_first::Reason reason)
+    {
+        if (corpseFirstLoggedDeathAt == deathAt && corpseFirstLoggedReason == reason)
+            return 0;
+        uint32 const kind = corpseFirstLoggedDeathAt != deathAt ? 1 : 2;
+        corpseFirstLoggedDeathAt = deathAt;
+        corpseFirstLoggedReason = reason;
+        return kind;
+    }
     //Checks if the bot is summoned as alt of a player
     bool IsAlt() { return HasRealPlayerMaster() && !sRandomPlayerbotMgr.IsRandomBot(bot); }
     //Get the group leader or the master of the bot.
@@ -1324,6 +1339,9 @@ protected:
     // twow-repo#601 S3a: the bot's recent [QuestFeasibility] skip lines (16 quests, bot's own thread only).
     ai::quest_feasibility::SkipLog questFeasibilityLog;
     std::deque<ai::death_loop::Death> recentDeaths;
+    ai::corpse_first::Ring corpseFirstDeaths;   // S4-1: own deaths (Revive.CorpseRunFirst bots only)
+    uint32 corpseFirstLoggedDeathAt = 0;          // S4-1: ghost time of the death whose decision was logged last
+    ai::corpse_first::Reason corpseFirstLoggedReason = ai::corpse_first::Reason::Count;
     bool lastDeathHostileArea = false;   // A39: the latest death lay in an area of the hostile faction
     uint32 lastDeathLoopEscapeAt = 0;    // A39: time of the last evacuation (repeat_after_escape)
     ai::death_loop::ShortLife shortLife;   // G2: revive -> death streak (bot's own thread only)

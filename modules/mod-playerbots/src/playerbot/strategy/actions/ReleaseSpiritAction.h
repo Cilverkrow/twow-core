@@ -11,6 +11,7 @@
 
 #include "playerbot/BotSlots.h"
 #include "playerbot/CorpseRunPolicy.h"
+#include "playerbot/CorpseRunFirstPolicy.h"   // twow-repo#575 A3 step 4 S4-1: Revive.CorpseRunFirst counters
 #include "playerbot/StartZonePolicy.h"
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/RandomPlayerbotMgr.h"
@@ -216,6 +217,18 @@ namespace ai
         virtual bool Execute(Event& event) override
         {
             Player* requester = event.getOwner() ? event.getOwner() : GetMaster();
+
+            // twow-repo#575 A3 step 4 S4-1 (AiPlayerbot.Revive.CorpseRunFirst): a ghost with a corpse hit by "move long stuck" goes to
+            // the spirit healer instead of a repop (race start teleport, group leave). The death-loop, death count > 15 and falling-far
+            // repops stay; the spirit healer's own repop fallback (no graveyard) comes without this source.
+            if (event.getSource().find("move long stuck") != std::string::npos && bot->HasFlag(PLAYER_FLAGS, PLAYER_FLAGS_GHOST) && bot->GetCorpse() &&
+                !ai->HasActivePlayerMaster() && ai::cohort::Applies(sPlayerbotAIConfig.reviveCorpseRunFirst, bot->GetGUIDLow()))
+            {
+                ai::corpse_first::SharedCounters().ghostStuck.fetch_add(1, std::memory_order_relaxed);
+                sLog.outBasic("[CorpseRun] bot=%u cohort=%c level=%u map=%u zone=%u decision=healer reason=ghost_stuck",
+                    bot->GetGUIDLow(), ai::cohort::Letter(bot->GetGUIDLow()), bot->GetLevel(), bot->GetMapId(), bot->GetZoneId());
+                return ai->DoSpecificAction("spirit healer", event, true);
+            }
 
             sLog.outDetail("Repop bot #%d %s:%d <%s>", bot->GetGUIDLow(), bot->GetTeam() == ALLIANCE ? "A" : "H", bot->GetLevel(), bot->GetName());
 

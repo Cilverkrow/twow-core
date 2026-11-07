@@ -3291,6 +3291,21 @@ add_test(NAME island_guard_policy
   COMMAND island_guard_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#575 A3 step 4 S4-1 (AiPlayerbot.Revive.CorpseRunFirst, OB-00 07.11.2026): corpse run before the spirit healer
+# (CorpseRunFirstPolicy.h rules: reasons, own deaths near the corpse, counters); source contract in t/contracts.d.
+add_executable(corpse_run_first_policy_tests
+  "${PB_MODULE_DIR}/t/corpse_run_first_policy_tests.cpp")
+
+target_include_directories(corpse_run_first_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(corpse_run_first_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME corpse_run_first_policy
+  COMMAND corpse_run_first_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # twow-repo#591 (PERF-AB-01): budget exemption for bots without a travel target, configurable limit.
 add_test(NAME budget_start_source_contract
   COMMAND "${CMAKE_COMMAND}"
