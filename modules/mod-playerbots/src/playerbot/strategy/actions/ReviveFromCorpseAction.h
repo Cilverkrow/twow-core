@@ -8,6 +8,8 @@ namespace ai
 	public:
 		ReviveFromCorpseAction(PlayerbotAI* ai) : MovementAction(ai, "revive from corpse") {}
         virtual bool Execute(Event& event) override;
+        // twow-repo#575 A3 step 4 S4-1 (AiPlayerbot.Revive.CorpseRunFirst): the reclaim runs in the dead engine ("stay").
+        virtual bool isUseful() override;
     };
 
     class FindCorpseAction : public MovementAction 

@@ -11,11 +11,13 @@
 
 #include "playerbot/BotSlots.h"
 #include "playerbot/CorpseRunPolicy.h"
+#include "playerbot/CorpseRunFirstPolicy.h"   // twow-repo#575 A3 step 4 S4-1: Revive.CorpseRunFirst counters
 #include "playerbot/StartZonePolicy.h"
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/RandomPlayerbotMgr.h"
 #include "playerbot/ShortcutPolicy.h"   // twow-repo#595 P4 S0: [Shortcut] counters
 #include "playerbot/CohortPolicy.h"     // twow-repo#601/#602 G2: DeathLoop.FarEscape mode 2 = cohort B
+#include "playerbot/GroupOps.h"         // A3 lever 2: BotGroups.WritePath (RepopAction's leave)
 #include <cmath>
 // The base class. Came in through botpch.h inside the bot library; a module
 // including this header from outside has no botpch.
@@ -217,6 +219,18 @@ namespace ai
         {
             Player* requester = event.getOwner() ? event.getOwner() : GetMaster();
 
+            // twow-repo#575 A3 step 4 S4-1 (AiPlayerbot.Revive.CorpseRunFirst): a ghost with a corpse hit by "move long stuck" goes to
+            // the spirit healer instead of a repop (race start teleport, group leave). The death-loop, death count > 15 and falling-far
+            // repops stay; the spirit healer's own repop fallback (no graveyard) comes without this source.
+            if (event.getSource().find("move long stuck") != std::string::npos && bot->HasFlag(PLAYER_FLAGS, PLAYER_FLAGS_GHOST) && bot->GetCorpse() &&
+                !ai->HasActivePlayerMaster() && ai::cohort::Applies(sPlayerbotAIConfig.reviveCorpseRunFirst, bot->GetGUIDLow()))
+            {
+                ai::corpse_first::SharedCounters().ghostStuck.fetch_add(1, std::memory_order_relaxed);
+                sLog.outBasic("[CorpseRun] bot=%u cohort=%c level=%u map=%u zone=%u decision=healer reason=ghost_stuck",
+                    bot->GetGUIDLow(), ai::cohort::Letter(bot->GetGUIDLow()), bot->GetLevel(), bot->GetMapId(), bot->GetZoneId());
+                return ai->DoSpecificAction("spirit healer", event, true);
+            }
+
             sLog.outDetail("Repop bot #%d %s:%d <%s>", bot->GetGUIDLow(), bot->GetTeam() == ALLIANCE ? "A" : "H", bot->GetLevel(), bot->GetName());
 
             // G4: always visible, the acceptance signal of the death loop guard.
@@ -242,7 +256,16 @@ namespace ai
                 if (Group* group = bot->GetGroup())
                 {
                     sLog.outDetail("Repop: Removing bot #%d %s:%d <%s> from group", bot->GetGUIDLow(), bot->GetTeam() == ALLIANCE ? "A" : "H", bot->GetLevel(), bot->GetName());
-                    group->RemoveMember(bot->GetObjectGuid(), 0);
+                    // A3 lever 2 (AiPlayerbot.BotGroups.WritePath): an in-scope bot leaves as a world-thread op through the core
+                    // leave (RemoveFromGroup: the group of two is removed from the group map and deleted - the raw RemoveMember
+                    // below leaves it there), with no tail (kLeaveNoTail: the raw RemoveMember had none). No pending check: a Leave
+                    // replaces a pending join, accept or invite of the bot, and a pending leave leaves it anyway. Refused (queue
+                    // full, a leader op pending) or dropped: the bot stays grouped this time (dropped_full_leave,
+                    // refused_pending_leave, stale_leave in [GroupWrite]).
+                    if (group_ops::WritePathRoutes(ai))
+                        group_ops::QueueLeave(ai, group_ops::OpSource::Repop, group_ops::kLeaveNoTail);
+                    else
+                        group->RemoveMember(bot->GetObjectGuid(), 0);
                 }
             }
 

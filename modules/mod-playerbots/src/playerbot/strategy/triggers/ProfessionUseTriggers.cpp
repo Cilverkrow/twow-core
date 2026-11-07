@@ -4,6 +4,7 @@
 #include "playerbot/RandomPlayerbotMgr.h"
 #include "playerbot/ServerFacade.h"
 #include "playerbot/ProfessionUsePolicy.h"
+#include "playerbot/CohortPolicy.h"
 #include "playerbot/MaterialReservePolicy.h"
 #include "playerbot/strategy/values/CraftValues.h"
 
@@ -133,6 +134,14 @@ bool ai::IsRosterBotOnItsOwn(PlayerbotAI* ai)
 {
     Player* bot = ai->GetBot();
     return bot && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster();
+}
+
+bool ai::CraftingConsumablesFor(PlayerbotAI* ai)
+{
+    if (!sPlayerbotAIConfig.craftingConsumables)
+        return false;
+    Player* bot = ai->GetBot();
+    return bot && IsRosterBotOnItsOwn(ai) && ai::cohort::Applies(sPlayerbotAIConfig.craftingConsumables, bot->GetGUIDLow());
 }
 
 bool ai::IsReadyToCraft(PlayerbotAI* ai)

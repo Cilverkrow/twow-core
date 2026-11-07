@@ -4,7 +4,26 @@
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/ServerFacade.h"
 
+#include "playerbot/CohortPolicy.h"
+#include "playerbot/strategy/triggers/ProfessionUseTriggers.h"
+
 using namespace ai;
+
+namespace
+{
+    // twow-repo#333 M2 Crafting.Consumables (owner list 07.11.2026, item 1): one line per started stone or oil use (an attempt - the
+    // cast result is in the action log), only for the bots the switch applies to. Returns `used` unchanged.
+    bool NoteCraftingImbue(PlayerbotAI* ai, bool used, uint32 itemId, char const* what, char const* slot)
+    {
+        if (used && CraftingConsumablesFor(ai))
+        {
+            Player* bot = ai->GetBot();
+            sLog.outBasic("[Crafting] kind=consumables event=imbue type=%s slot=%s item=%u bot=%u level=%u cohort=%c", what, slot, itemId,
+                bot->GetGUIDLow(), bot->GetLevel(), ai::cohort::Letter(bot->GetGUIDLow()));
+        }
+        return used;
+    }
+}
 
 bool ImbueWithStoneAction::Execute(Event& event)
 {
@@ -61,7 +80,10 @@ bool ImbueWithStoneAction::Execute(Event& event)
             }
 
             if (stone)
-                return UseItem(requester, stone->GetEntry(), mainWeapon);
+            {
+                uint32 const stoneId = stone->GetEntry();   // read before the use: the last stone may be gone after it
+                return NoteCraftingImbue(ai, UseItem(requester, stoneId, mainWeapon), stoneId, "stone", "mainhand");
+            }
         }
     }
 
@@ -78,7 +100,10 @@ bool ImbueWithStoneAction::Execute(Event& event)
         }
 
         if (stone)
-            return UseItem(requester, stone->GetEntry(), secondaryWeapon);
+        {
+            uint32 const stoneId = stone->GetEntry();   // read before the use: the last stone may be gone after it
+            return NoteCraftingImbue(ai, UseItem(requester, stoneId, secondaryWeapon), stoneId, "stone", "offhand");
+        }
     }
 
     return false;
@@ -171,7 +196,8 @@ bool ImbueWithOilAction::Execute(Event& event)
         Item* oil = ai->FindOilFor(weapon);
         if (oil)
         {
-            return UseItem(requester, oil->GetEntry(), weapon);
+            uint32 const oilId = oil->GetEntry();   // read before the use: the last oil may be gone after it
+            return NoteCraftingImbue(ai, UseItem(requester, oilId, weapon), oilId, "oil", "mainhand");
         }
     }
 

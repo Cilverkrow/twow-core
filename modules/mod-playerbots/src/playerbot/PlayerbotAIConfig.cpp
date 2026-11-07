@@ -3,6 +3,7 @@
 #include "playerbot/playerbot.h"
 #include "playerbot/PathFailPolicy.h"
 #include "playerbot/IslandGuardPolicy.h"   // twow-repo#575 A3 step 4 M-c: Path.IslandGuard loader clamps
+#include "playerbot/CorpseRunFirstPolicy.h"   // twow-repo#575 A3 step 4 S4-1: Revive.CorpseRunFirst loader clamps
 #include "playerbot/PosStuckPolicy.h"
 #include "playerbot/RoutePrecheckPolicy.h"
 #include "playerbot/AreaTeamPolicy.h"
@@ -887,6 +888,13 @@ bool PlayerbotAIConfig::Initialize()
     // L1 (owner 07.11.2026): code default 1; only "0" is off, any other value is 1. Read as a string: GetIntDefault is atoi,
     // which would turn a non-numeric value such as "on" into 0 (rollback).
     botGroupsResetRaidsRealInviterOnly = ai::lockout::SwitchOn(config.GetStringDefault("AiPlayerbot.BotGroups.ResetRaidsRealInviterOnly", "1"));
+    // A3 lever 2 (ADR-0041): the group write path (GroupOpPolicy.h WritePathApplies); an unknown mode is off.
+    botGroupsWritePath = uint32(config.GetIntDefault("AiPlayerbot.BotGroups.WritePath", 0));
+    if (!ai::group_ops::ValidMode(botGroupsWritePath))
+    {
+        sLog.outError("[GroupWrite] config key=WritePath value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", botGroupsWritePath);
+        botGroupsWritePath = 0;
+    }
     // A3 step 3 (ADR-0041): the per-bot supervisor (SupervisorPolicy.h, Supervisor.cpp); an unknown mode is off.
     supervisor = uint32(config.GetIntDefault("AiPlayerbot.Supervisor", 0));
     if (!ai::supervisor::ValidMode(supervisor))
@@ -1114,6 +1122,9 @@ bool PlayerbotAIConfig::Initialize()
     pathIslandStepOffYards = ai::island::ClampStepOffYards(config.GetFloatDefault("AiPlayerbot.Path.IslandStepOffYards", ai::island::DefaultStepOffYards));
     customRaceStartZones = config.GetBoolDefault("AiPlayerbot.CustomRaceStartZones", false);
     revivePreferCorpseRun = config.GetBoolDefault("AiPlayerbot.Revive.PreferCorpseRun", false);
+    // twow-repo#575 A3 step 4 S4-1 (Revive.CorpseRunFirst): an unknown mode is off; MaxSeconds clamped to 120..1800 (CorpseRunFirstPolicy.h).
+    reviveCorpseRunFirst = ai::corpse_first::ClampMode(config.GetIntDefault("AiPlayerbot.Revive.CorpseRunFirst", 0));
+    reviveCorpseRunFirstMaxSeconds = ai::corpse_first::ClampMaxSeconds(config.GetIntDefault("AiPlayerbot.Revive.CorpseRunFirst.MaxSeconds", int(ai::corpse_first::DefaultMaxSeconds)));
     questFirstProgressionTurnInDeathRouteCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInDeathRouteCooldownSeconds", 3600));
     questFirstProgressionTurnInParkFailures = std::min<uint32>(255, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInParkFailures", 0));
     questFirstProgressionTurnInParkWindowSeconds = std::min<uint32>(DAY, std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInParkWindowSeconds", 3600)));
@@ -1638,6 +1649,13 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[ProfTravel] config key=TurnInGateSkipGrindFallback value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", professionTrainingTurnInGateSkipGrindFallback);
         professionTrainingTurnInGateSkipGrindFallback = 0;
     }
+    // twow-repo#333 M2 Crafting.Consumables (owner list 07.11.2026, item 1): an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B, 3 cohort A).
+    craftingConsumables = config.GetIntDefault("AiPlayerbot.Crafting.Consumables", 0);
+    if (craftingConsumables > 3)
+    {
+        sLog.outError("[Crafting] config key=Consumables value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", craftingConsumables);
+        craftingConsumables = 0;
+    }
     professionUseToolBuy = config.GetIntDefault("AiPlayerbot.ProfessionUse.ToolBuy", 0);
     if (professionUseToolBuy > 2)
         professionUseToolBuy = 0;
@@ -1924,11 +1942,13 @@ bool PlayerbotAIConfig::Initialize()
             {"BotGroups.OpQueueOpsPerTick", Value(botGroupsOpQueueOpsPerTick)},
             {"BotGroups.ResetRaidsRealInviterOnly", Value(botGroupsResetRaidsRealInviterOnly)},
             {"BotGroups.WorldThreadDefer", Value(botGroupsWorldThreadDefer)},
+            {"BotGroups.WritePath", Value(botGroupsWritePath)},
             {"BotUpdateTrace", Value(botUpdateTrace)},
             {"BotUpdateTraceCohort", Value(botUpdateTraceCohort)},
             {"Buy.VendorTemplateItems", Value(buyVendorTemplateItems)},
             {"CastWait.Preparing", Value(castWaitPreparing)},
             {"CheatItem.Trace", Value(cheatItemTrace)},
+            {"Crafting.Consumables", Value(craftingConsumables)},
             {"CustomRaceStartZones", Value(customRaceStartZones)},
             {"DangerMap.CountAddDeaths", Value(dangerMapCountAddDeaths)},
             {"DeathLoop.Escape", Value(deathLoopEscape)},
@@ -2032,6 +2052,8 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestLoop.RelationWorkNoGrind", Value(questLoopRelationWorkNoGrind)},
             {"QuestLoop.TurnInWorkDeathNotRoute", Value(questLoopTurnInWorkDeathNotRoute)},
             {"QuestRescue.KeepRequestWhenFull", Value(questRescueKeepRequestWhenFull)},
+            {"Revive.CorpseRunFirst", Value(reviveCorpseRunFirst)},
+            {"Revive.CorpseRunFirst.MaxSeconds", Value(reviveCorpseRunFirstMaxSeconds)},
             {"Revive.SpiritHealerFull", Value(reviveSpiritHealerFull)},
             {"RosterFarMove.ArriveSafe", Value(rosterFarMoveArriveSafe)},
             {"RosterFarMove.LevelGuard", Value(rosterFarMoveLevelGuard)},
