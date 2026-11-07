@@ -51,7 +51,7 @@ namespace DcTankForm
 {
     // True when this bot fights as a bear: a druid running the "bear" combat
     // strategy that has actually trained a bear form. Deliberately keyed on the
-    // strategy rather than PlayerbotAI::IsTank(bySpec=true) — the spec test for
+    // strategy rather than the IsTank spec test (inGroup=true) — the spec test for
     // a druid asks whether it is ALREADY in bear form, which is circular here.
     bool IsBearTank(PlayerbotAI* botAI);
 

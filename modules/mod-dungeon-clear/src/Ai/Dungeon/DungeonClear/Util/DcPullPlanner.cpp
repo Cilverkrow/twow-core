@@ -1387,7 +1387,7 @@ bool DcPullPlanner::IsPartySetAtCamp(Player* leader, Position const& camp, float
         // set on a healer. Mirror that: a healer counts as "set" on position
         // alone; every other member must also carry the passive strategy (parked
         // AND holding fire) before the party is ready to tag.
-        if (!PlayerbotAI::IsHeal(member) &&
+        if (!PlayerbotAI::IsHealFor(leader, member) &&
             !memberAI->HasStrategy("passive", BOT_STATE_COMBAT))
             return false;
     }
