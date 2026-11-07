@@ -31,7 +31,7 @@ read_source("${CORE_SOURCE_DIR}/src/game/Objects/Creature.cpp" creature_cpp)
 require_text("${dist}" "\nAiPlayerbot.Buy.VendorTemplateItems = 1\n" "dist key, default 1")
 require_text("${config_h}" "uint32 buyVendorTemplateItems = 1;" "config member, default 1")
 require_text("${config_cpp}" "buyVendorTemplateItems = config.GetIntDefault(\"AiPlayerbot.Buy.VendorTemplateItems\", 1);   // twow-repo#333 P1-z vendor templates\n    if (buyVendorTemplateItems > 2)\n        buyVendorTemplateItems = 1;" "config read, > 2 = the default 1")
-require_text("${config_cpp}" "            {\"BotUpdateTrace\", Value(botUpdateTrace)},\n            {\"Buy.VendorTemplateItems\", Value(buyVendorTemplateItems)},\n            {\"CastWait.Preparing\"" "parsed mode in [ConfigEcho], sorted (owner rule #615, #710)")
+require_text("${config_cpp}" "            {\"BotUpdateTraceCohort\", Value(botUpdateTraceCohort)},\n            {\"Buy.VendorTemplateItems\", Value(buyVendorTemplateItems)},\n            {\"CastWait.Preparing\"" "parsed mode in [ConfigEcho], sorted (owner rule #615, #710)")
 
 # 2. BuyAction "vendor": the ZERO branch reads the template list behind the cohort rule; the non-ZERO branch is unchanged.
 require_text("${buy}" "\n            vItems = pCreature->GetVendorTemplateItems();\n#else\n" "upstream branch kept, ZERO branch added")
