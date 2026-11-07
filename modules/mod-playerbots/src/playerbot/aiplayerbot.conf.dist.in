@@ -2151,6 +2151,17 @@ AiPlayerbot.ProfessionTraining.TripNoGuildTrip = 0
 # Off or outside the fallback: the turn_in rule as before. Deletion target (ADR-0041 rule 4): goes with A3 step 3.
 #   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid); other values act like 0.
 AiPlayerbot.ProfessionTraining.TurnInGateSkipGrindFallback = 0
+# twow-repo#333 M2 Crafting.Consumables (owner list 07.11.2026, item 1, M2-ENTWURF §7; inventory A3-AKTIONS-VERDRAHTUNG §4: the
+# "consumables" strategy is in no default list, oil and stone are USELESS without one in the bags). For a roster bot on its own:
+# the non-combat strategy "consumables" (use consumable: elixir, flask, scroll, buff food from the bags, out of combat) is added,
+# and the item usage keeps those buff consumables and the stone or oil for its main hand (FindStoneFor / FindOilFor rules) up to
+# AiPlayerbot.RosterConsumables.KeepStacks instead of selling them. Buying is not part of it (purchase purpose, A3 step 3).
+# No effect under the item cheat (RndBotCheats item): use consumable is useless there and nothing is kept - the A/B runs with the
+# cheat-off arm. Lines, one per started use (an attempt; the cast result is in the action log):
+#   [Crafting] kind=consumables event=use type=flask|elixir|scroll|food_buff|alcohol item= bot= level= cohort=
+#   [Crafting] kind=consumables event=imbue type=stone|oil slot=mainhand|offhand item= bot= level= cohort=
+#   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid); other values act like 0.
+AiPlayerbot.Crafting.Consumables = 0
 # Profession use (#333), persistent roster bots without a real-player master.
 # GatherDistance: passive gathering radius for such a bot on its own (herbs,
 # ore, skinning); 0 = GatheringDistance. The hostile check stays in force.
