@@ -1086,6 +1086,10 @@ public:
     float pathIslandStepOffYards = 7.0f;
     bool customRaceStartZones = false;  // twow-repo#575 (PATH-01 wave 0): goblins / high elves quest in their real start zones (StartZonePolicy.h), 0 = off
     bool revivePreferCorpseRun = false;  // hotfix 8.34 (#544): corpse run before the spirit-healer shortcuts
+    // twow-repo#575 A3 step 4 S4-1 (AiPlayerbot.Revive.CorpseRunFirst, CorpseRunFirstPolicy.h): cohort mode 0 off / 1 all / 2 B / 3 A;
+    // the reclaim at the corpse runs, the spirit healer only with a reason (no corpse, sickness, durability, loop, timeout).
+    uint32 reviveCorpseRunFirst = 0;
+    uint32 reviveCorpseRunFirstMaxSeconds = 600;
     uint32 questFirstProgressionTurnInDeathRouteCooldownSeconds = 3600;
     // twow-repo#485: a finished quest whose turn-in failed TurnInParkFailures times
     // within TurnInParkWindowSeconds is parked for TurnInParkSeconds (0 = off, the
