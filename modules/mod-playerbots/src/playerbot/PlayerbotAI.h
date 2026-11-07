@@ -467,8 +467,11 @@ public:
     void ResetStrategies(bool autoLoad = true);
     void ReInitCurrentEngine();
     void Reset(bool full = false);
-    static bool IsTank(Player* player, bool inGroup = true);
-    static bool IsHeal(Player* player, bool inGroup = true);
+    // twow-repo#697: the AI of 'player' is read only when it stands on the asker's Map object (or is the asker). A null asker reads no foreign AI.
+    static bool IsTankFor(Player const* asker, Player* player, bool inGroup = true);
+    static bool IsHealFor(Player const* asker, Player* player, bool inGroup = true);
+    bool IsTank(Player* player, bool inGroup = true) { return IsTankFor(bot, player, inGroup); }
+    bool IsHeal(Player* player, bool inGroup = true) { return IsHealFor(bot, player, inGroup); }
     bool IsRanged(Player* player, bool inGroup = true);
     bool IsMelee(Player* player, bool inGroup = true);
     Creature* GetCreature(ObjectGuid guid) const;

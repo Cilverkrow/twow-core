@@ -24,7 +24,7 @@ bool ShouldPullTrigger::IsActive()
     if (!map || !map->IsDungeon())
         return false;
 
-    if (!PlayerbotAI::IsTank(bot))
+    if (!PlayerbotAI::IsTankFor(bot, bot))
         return false;
 
     Group* group = bot->GetGroup();
@@ -44,7 +44,7 @@ bool ShouldPullTrigger::IsActive()
 
         // The healer decides the pace. Pulling with an empty healer is how a
         // group wipes on trash it could otherwise walk through.
-        if (PlayerbotAI::IsHeal(member) && member->GetPowerType() == POWER_MANA)
+        if (PlayerbotAI::IsHealFor(bot, member) && member->GetPowerType() == POWER_MANA)
         {
             const uint32 maxMana = member->GetMaxPower(POWER_MANA);
             if (maxMana && (100 * member->GetPower(POWER_MANA)) / maxMana < sPlayerbotAIConfig.mediumMana)

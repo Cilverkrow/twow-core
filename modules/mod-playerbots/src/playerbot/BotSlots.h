@@ -32,7 +32,8 @@ inline bool SameMapObject(Player const* a, Player const* b)
 
 inline PlayerbotAI* GetBotAIOnMapOf(Player const* self, Player const* other)
 {
-    return (other == self || SameMapObject(self, other)) ? GetBotAI(other) : nullptr;
+    // a null asker never reads a foreign AI (it does not mean "unguarded")
+    return (self && (other == self || SameMapObject(self, other))) ? GetBotAI(other) : nullptr;
 }
 
 inline PlayerbotMgr* GetBotMgr(Player const* player)
