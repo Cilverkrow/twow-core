@@ -78,10 +78,11 @@ endforeach()
 # 2. The death: living attackers counted once, only with a switch on; the danger map records them; the camp ring gets the position
 #    whatever the travel target (not behind IsActiveForDeathAttribution).
 between("${ai_source}" "void PlayerbotAI::OnDeath()" "\nvoid PlayerbotAI::" on_death)
-require_text("${on_death}" "if (ai::cohort::Applies(sPlayerbotAIConfig.destinationDeathsCampBlock, bot->GetGUIDLow()) || sPlayerbotAIConfig.dangerMapCountAddDeaths)" "attackers only read with a switch on")
+# twow-repo#575 A3 step 4 S4-4: Danger.Memory reads the same set for the real killer (a third switch on the same read).
+require_text("${on_death}" "if (ai::cohort::Applies(sPlayerbotAIConfig.destinationDeathsCampBlock, bot->GetGUIDLow()) || sPlayerbotAIConfig.dangerMapCountAddDeaths ||\n                sPlayerbotAIConfig.dangerMemory)" "attackers only read with a switch on")
 require_text("${on_death}" "ai::death_adds::MergeAdds(live, deathAdds, ai::death_adds::Fresh(deathAdds, WorldTimer::getMSTime())," "adds from the fight snapshot")
-require_text("${on_death}" "if (deathTarget && deathTarget->IsAlive())\n                    ++deathAttackers;" "the living target counts")
-require_text("${on_death}" "RecordDangerMapDeath(bot, AI_VALUE(Unit*, \"current target\"), deathAttackers);" "attackers into the danger map")
+require_text("${on_death}" "if (deathTarget && deathTarget->IsAlive())\n                {\n                    ++deathAttackers;" "the living target counts")
+require_text("${on_death}" "RecordDangerMapDeath(bot, AI_VALUE(Unit*, \"current target\"), deathAttackers, realKillerLevel);" "attackers into the danger map")
 require_text("${ai_source}" "death.attackers = uint8(std::min<uint32>(255, attackers));" "recorded attacker count")
 require_order("${on_death}" "travelTarget->OnDeathAtDestination();" "travelTarget->OnCampDeath(deathAttackers);" "camp record next to the destination record")
 

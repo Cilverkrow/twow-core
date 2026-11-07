@@ -134,7 +134,8 @@ require_text("${release_h}" "#include \"playerbot/CorpseRunFirstPolicy.h\"" "rel
 # 7. Own deaths: recorded on death for the switch's bots, next to the death loop record; bot thread only.
 require_order("${ai_cpp}" "RecordDeathForLoop();\n" "RecordCorpseFirstDeath(mark);" "own death recorded with the loop record")
 between("${ai_cpp}" "RecordDeathForLoop();\n" "RecordDeathForSeries();" own_death)
-require_text("${own_death}" "if (ai::cohort::Applies(sPlayerbotAIConfig.reviveCorpseRunFirst, bot->GetGUIDLow()))" "recorded only for the switch's bots")
+# S4-4 (Danger.Memory) shares the ring as DangerAt's per-bot layer, so its bots record too.
+require_text("${own_death}" "if (ai::cohort::Applies(sPlayerbotAIConfig.reviveCorpseRunFirst, bot->GetGUIDLow()) ||\n                ai::cohort::Applies(sPlayerbotAIConfig.dangerMemory, bot->GetGUIDLow()))" "recorded only for the switch's bots (S4-1 or S4-4)")
 require_text("${ai_h}" "ai::corpse_first::Ring corpseFirstDeaths;" "per-bot ring")
 require_text("${ai_h}" "#include \"playerbot/CorpseRunFirstPolicy.h\"" "ai header include")
 

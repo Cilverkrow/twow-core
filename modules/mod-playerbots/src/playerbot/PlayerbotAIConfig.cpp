@@ -5,6 +5,7 @@
 #include "playerbot/IslandGuardPolicy.h"   // twow-repo#575 A3 step 4 M-c: Path.IslandGuard loader clamps
 #include "playerbot/CorpseRunFirstPolicy.h"   // twow-repo#575 A3 step 4 S4-1: Revive.CorpseRunFirst loader clamps
 #include "playerbot/RepopDeadOnlyPolicy.h"    // twow-repo#575 A3 step 4 S4-2: Rescue.RepopDeadOnly loader clamp
+#include "playerbot/DangerMemoryPolicy.h"     // twow-repo#575 A3 step 4 S4-4: Danger.Memory loader clamp
 #include "playerbot/PosStuckPolicy.h"
 #include "playerbot/RoutePrecheckPolicy.h"
 #include "playerbot/AreaTeamPolicy.h"
@@ -838,6 +839,8 @@ bool PlayerbotAIConfig::Initialize()
         dangerMapCountAddDeaths = 0;
     }
     dangerMapAddDeathMinAttackers = std::min<uint32>(16, std::max<uint32>(2, config.GetIntDefault("AiPlayerbot.DangerMap.AddDeathMinAttackers", 3)));
+    // twow-repo#575 A3 step 4 S4-4 (Danger.Memory): an unknown mode is off (DangerMemoryPolicy.h).
+    dangerMemory = ai::danger_memory::ClampMode(config.GetIntDefault("AiPlayerbot.Danger.Memory", 0));
     grindCapLowLevelBelow = config.GetIntDefault("AiPlayerbot.GrindCap.LowLevelBelow", 0);
     grindCapLowLevelMargin = config.GetIntDefault("AiPlayerbot.GrindCap.LowLevelMargin", 2);
     questRescueIdleMinutes = config.GetIntDefault("AiPlayerbot.QuestRescue.IdleMinutes", 30);
@@ -1956,6 +1959,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Crafting.Consumables", Value(craftingConsumables)},
             {"Crafting.Cooking", Value(craftingCooking)},
             {"CustomRaceStartZones", Value(customRaceStartZones)},
+            {"Danger.Memory", Value(dangerMemory)},
             {"DangerMap.CountAddDeaths", Value(dangerMapCountAddDeaths)},
             {"DeathLoop.Escape", Value(deathLoopEscape)},
             {"DeathLoop.FarEscape", Value(deathLoopFarEscape)},

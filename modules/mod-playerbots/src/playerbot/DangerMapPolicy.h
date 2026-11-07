@@ -29,6 +29,9 @@ struct Death
     std::uint8_t killerLevel = 0;
     std::uint8_t victimLevel = 0;
     std::uint8_t attackers = 0;     // living attackers at the death (adds + the target), recorded always, read only with addDeathMinAttackers
+    // twow-repo#575 A3 step 4 S4-4 (AiPlayerbot.Danger.Memory): the highest living attacker at the death (0 = not recorded, the key
+    // is 0). Read only by QueryAt (DangerAt); the legacy readers keep killerLevel.
+    std::uint8_t realKillerLevel = 0;
 };
 
 struct Params
@@ -97,6 +100,30 @@ inline std::uint32_t DangerousKillerLevel(std::vector<Death> const& deaths, std:
             victims.push_back(death.victim);
         // never 0 for a counted death (0 = not dangerous); a crowd of low mobs reports its own killer level
         worst = std::max<std::uint32_t>(worst, std::max<std::uint32_t>(1, death.killerLevel));
+    }
+
+    return victims.size() >= params.minDeaths ? worst : 0;
+}
+
+// twow-repo#575 A3 step 4 S4-4 (DangerAt): the same cluster rule as DangerousKillerLevel, judged by the real killer only (a death
+// without a recorded real killer does not count). Returns the highest counted real killer level, 0 = not dangerous for botLevel.
+inline std::uint32_t DangerousRealKillerLevel(std::vector<Death> const& deaths, std::uint32_t now, std::uint32_t botLevel,
+    Params const& params)
+{
+    if (params.minDeaths == 0)
+        return 0;
+
+    std::vector<std::uint32_t> victims;
+    std::uint32_t worst = 0;
+    for (Death const& death : deaths)
+    {
+        if (IsExpired(death, now, params.windowSeconds) || !death.realKillerLevel ||
+            death.realKillerLevel < botLevel + params.levelMargin)
+            continue;
+
+        if (std::find(victims.begin(), victims.end(), death.victim) == victims.end())
+            victims.push_back(death.victim);
+        worst = std::max<std::uint32_t>(worst, death.realKillerLevel);
     }
 
     return victims.size() >= params.minDeaths ? worst : 0;
@@ -190,6 +217,32 @@ public:
                 hit.worstKillerLevel = std::max(hit.worstKillerLevel, level);
             }
         }
+
+        return hit;
+    }
+
+    // twow-repo#575 A3 step 4 S4-4 (DangerAt, design F4): the point's cell and its 8 neighbours - no start exclusion, no line -
+    // judged by the real killer. Query(point, point) skipped exactly these cells, so the far-move arrival check never fired.
+    Hit QueryAt(std::uint32_t map, float x, float y, std::uint32_t botLevel, std::uint32_t now, Params const& params) const
+    {
+        Cell const center = CellOf(map, x, y, params.cellSize);
+        Hit hit;
+        std::lock_guard<std::mutex> lock(mutex);
+        if (cells.empty())
+            return hit;
+
+        for (std::int32_t ox = -1; ox <= 1; ++ox)
+            for (std::int32_t oy = -1; oy <= 1; ++oy)
+            {
+                auto const it = cells.find(Cell{ map, center.x + ox, center.y + oy });
+                if (it == cells.end())
+                    continue;
+                if (std::uint32_t const level = DangerousRealKillerLevel(it->second, now, botLevel, params))
+                {
+                    ++hit.cells;
+                    hit.worstKillerLevel = std::max(hit.worstKillerLevel, level);
+                }
+            }
 
         return hit;
     }
