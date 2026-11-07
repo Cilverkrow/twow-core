@@ -80,6 +80,7 @@
 #include "playerbot/MeleeSkipPolicy.h"   // twow-repo#602 (Rotation.MeleeSkipAttacking): [MeleeSkip] minute line
 #include "playerbot/InvalidTargetPolicy.h"   // twow-repo#602 (Rotation.InvalidTargetQuiet): [InvalidTarget] minute line
 #include "playerbot/DuelRulePolicy.h"   // twow-repo#602 W24 (Rotation.DuelRule): [DuelRule] minute line
+#include "playerbot/QuestBook.h"        // A3 step 2 (AiPlayerbot.QuestBook): [QuestBookMin] minute line
 #include "playerbot/TankKitPolicy.h"   // twow-repo#602 (Rotation.TankKitFromLevel): [TankKit] minute line
 #include "playerbot/PathReusePolicy.h"
 #include "playerbot/NeverPossiblePolicy.h"   // twow-repo#602 (Rotation.NeverPossibleSkip): [NeverPossible] minute line
@@ -2120,6 +2121,7 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     ReportMeleeSkip();      // twow-repo#602: [MeleeSkip] once per minute (AiPlayerbot.Rotation.MeleeSkipAttacking)
     ReportInvalidTarget();  // twow-repo#602: [InvalidTarget] once per minute (AiPlayerbot.Rotation.InvalidTargetQuiet)
     ReportDuelRule();       // twow-repo#602 W24: [DuelRule] once per minute (AiPlayerbot.Rotation.DuelRule)
+    ReportQuestBook();      // A3 step 2: [QuestBookMin] once per minute (AiPlayerbot.QuestBook / QuestBook.Shadow)
     ReportTankKit();        // twow-repo#602: [TankKit] once per minute (AiPlayerbot.Rotation.TankKitFromLevel)
     ReportParkSleep();    // twow-repo#541: core switches + cell source lines once per minute (AiPlayerbot.Park.CellSourceStats)
     ReportCombatIdle();   // twow-repo#541 (audit A17): [CombatIdle] once per minute (AiPlayerbot.Perf.CombatIdleYield)

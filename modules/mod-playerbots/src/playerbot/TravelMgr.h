@@ -94,6 +94,12 @@ namespace ai
 		// bot without a real player master in the mode's cohort), set in the constructor on the bot thread; false with the mode off.
 		bool HasGiverAnyQuest() const { return giverAnyQuest; }
 		uint32 GetBandGreyLevel() const { return bandGreyLevel; }
+		// A3 step 2 K2/K3 (AiPlayerbot.QuestBook, default 0): the bot has an active quest book (PlayerbotAI::ActiveQuestBook, set in the
+		// constructor on the bot thread); the giver and objective checks of IsPossible then use the book's one level window and the
+		// QB5 list, read here only as values. false / 0 for every other bot: the old rules.
+		bool HasQuestBook() const { return questBook; }
+		uint32 GetQuestBookGreyLevel() const { return questBookGreyLevel; }
+		uint32 GetQuestBookGuid() const { return questBookGuid; }
 		// twow-repo#601 quest acceptance step 1b (TraceTravelDecisions): the drop counters of one traced giver fetch. Set only on the
 		// copy the async quest fetch job passes to GetPartitions, counted by QuestRelationTravelDestination::IsPossible in that job's
 		// thread and written by it; null everywhere else (no count).
@@ -110,6 +116,9 @@ namespace ai
 		bool rpgAreaFromSpawn = false;   // twow-repo#333 P1-v: Travel.RpgAreaLevelFromSpawn applies to this bot
 		bool giverAnyQuest = false;     // twow-repo#601 lever (iv): QuestFirstProgression.GiverFetchAnyQuest applies to this bot
 		uint32 bandGreyLevel = 0;
+		bool questBook = false;          // A3 step 2: an active quest book (QuestBook applies to this roster bot on its own)
+		uint32 questBookGreyLevel = 0;
+		uint32 questBookGuid = 0;        // the cohort of the [QuestBookMin] counters
 		uint16 currentSkill[MAX_SKILL_TYPE] = {0};
 		uint16 skillMax[MAX_SKILL_TYPE] = { 0 };
 		uint8 groupSize = 0;
