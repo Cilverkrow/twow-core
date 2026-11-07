@@ -85,7 +85,7 @@ function(check policy mgr_cpp mgr_h ai_cpp ai_h config_h config_cpp dist rnd_cpp
   need("${dist}" "BEHAVIOUR CHANGE, ON by default, 0 = rollback" "dist text, owner default-1 rule (#740)")
   need("${config_h}" "bool threadSafeTeleportAck = true;" "config member, default on")
   need("${config_cpp}" "threadSafeTeleportAck = config.GetIntDefault(\"AiPlayerbot.ThreadSafeTeleportAck\", 1) != 0;" "config read, default 1, only 0 = off")
-  need("${config_cpp}" "            {\"Rpg.TurnInFirst\", Value(rpgTurnInFirst)},\n            {\"ThreadSafeTeleportAck\", Value(threadSafeTeleportAck)},\n            {\"ThrownUsageFix\"" "[ConfigEcho], sorted (owner rule #615, #710)")
+  need("${config_cpp}" "            {\"Supervisor\", Value(supervisor)},\n            {\"ThreadSafeTeleportAck\", Value(threadSafeTeleportAck)},\n            {\"ThrownUsageFix\"" "[ConfigEcho], sorted (owner rule #615, #710)")
   # #676 has no switch of its own (OB-00 05.11.2026: default on, a switch only for an A/B).
   ban("${dist}" "FarTeleportAck" "a #676 switch in the dist")
   ban("${config_h}" "farTeleportAck" "a #676 switch in the config")

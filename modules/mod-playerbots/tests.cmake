@@ -1690,6 +1690,35 @@ add_test(NAME group_manager_policy
   COMMAND group_manager_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# A3 step 3 (ADR-0041 + amendment 2026-11-06, OB-00 06.11.2026; AiPlayerbot.Supervisor): the pure rules of the supervisor and
+# the planner scaffold (SupervisorPolicy.h, PlannerPolicy.h; no game header). The game side is pinned by
+# t/contracts.d/a3s3_supervisor_scaffold_source_contract_tests.cmake.
+add_executable(supervisor_policy_tests
+  "${PB_MODULE_DIR}/t/supervisor_policy_tests.cpp")
+
+target_include_directories(supervisor_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(supervisor_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME supervisor_policy
+  COMMAND supervisor_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_executable(planner_policy_tests
+  "${PB_MODULE_DIR}/t/planner_policy_tests.cpp")
+
+target_include_directories(planner_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(planner_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME planner_policy
+  COMMAND planner_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # #628: ad-hoc groups form and leave on the world thread (AdHoc.WorldThread).
 add_test(NAME adhoc_group_world_thread_source_contract
   COMMAND "${CMAKE_COMMAND}"

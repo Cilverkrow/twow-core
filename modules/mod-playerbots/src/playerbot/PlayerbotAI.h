@@ -28,6 +28,7 @@
 #include <atomic>
 #include <functional>
 #include <mutex>
+#include <memory>
 #include "playerbot/QuestSearchPolicy.h"
 #include "playerbot/QuestFeasibilityPolicy.h"
 #include "playerbot/BotActivityPolicy.h"
@@ -45,6 +46,7 @@ class Player;
 class PlayerbotMgr;
 class ChatHandler;
 class Channel;
+namespace ai::supervisor { class Supervisor; }   // A3 step 3 (AiPlayerbot.Supervisor): PlayerbotAI.cpp holds the full type
 
 using namespace ai;
 
@@ -410,6 +412,9 @@ private:
     void StretchCombatIdle();
     // twow-repo#602 ROT-01 3c-B: idle out-of-mana combat pass -> wait DelayMs (AiPlayerbot.Rotation.OomBackoff).
     void BackoffOutOfMana(bool yieldSetDelay, bool minimal);
+    // A3 step 3 (ADR-0041, AiPlayerbot.Supervisor, default 0): the supervisor of this bot, made on the first engine pass the
+    // switch applies to it.
+    ai::supervisor::Supervisor* EnsureSupervisor();
 public:    
     static std::string BotStateToString(BotState state);
     std::string GetDefaultMovementStrategy();
@@ -1359,6 +1364,8 @@ protected:
     uint32 losCacheAt = 0;   // when it was taken (WorldTimer ms)
     ai::cast_wait::Watch castWait;   // twow-repo#602 (AiPlayerbot.CastWait.Preparing): pending wait for the bot's own PREPARING cast
     ai::teleport_cast::HoldWatch teleportHold;   // twow-repo#333 finding 4: pending travel / unstuck / zone-escape hold for a teleport
+    // A3 step 3 (ADR-0041, AiPlayerbot.Supervisor, default 0): nullptr while the switch does not apply to this bot.
+    std::unique_ptr<ai::supervisor::Supervisor> supervisor_;
     bool isPlayerFriend = false;
     bool isMovingToTransport = false;
     bool shouldLogOut = false;
