@@ -909,6 +909,13 @@ public:
     uint32 combatRuleRestBeforePull = 0;
     uint32 combatRuleRestStartHp = 60;     // 1..99
     uint32 combatRuleRestStartMana = 40;   // 0..99, 0 = no mana rest
+    // A3 step 2 (ADR-0041, OB-00 07.11.2026): the quest book core QB-K (QuestBookPolicy.h, QuestBook.cpp). 0 off, 1 all, 2 cohort B,
+    // 3 cohort A; other = 0 + error line. Shadow: the other roster bots keep a book that only writes the KPI lines.
+    uint32 questBook = 0;
+    bool questBookShadow = false;
+    uint32 questBookAboveLevels = 1;              // the one level window: a quest at most this above the bot
+    uint32 questBookStaleCompleteSeconds = 1800;  // QB4 KPI: complete, not turned in for this long
+    std::set<uint32> questBookExclude;            // QB5 permanent list (OB-00 07.11. D1 (a)); read only after the load
     // twow-repo#627 S7 help groups (QuestGroupPolicy.h, QuestGroupWorld.cpp); Enable: 0 off, 1 all, 2 cohort B, 3 cohort A.
     uint32 questGroupsEnable = 0;
     uint32 questGroupsScanSeconds = 60;
