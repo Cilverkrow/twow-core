@@ -14,23 +14,63 @@
 // sMapMgr.Update, with all maps idle (GroupOps.cpp). Pure rules here, no game types, no config reads, no locks.
 namespace ai::group_ops
 {
+// A3 lever 2 (ADR-0041, AiPlayerbot.BotGroups.WritePath): Accept, Invite and Leader are the write path's new kinds. The value
+// is the FIFO index; the pop order is kPopOrder.
 enum class OpKind : std::uint8_t
 {
     Leave = 0,
     Join = 1,
+    Accept = 2,   // the invitee accepts (or declines) a pending invite: bot = invitee, other = the invite's leader
+    Invite = 3,   // bot = inviter, other = invitee, groupId = the inviter's group at the decision (0 = none)
+    Leader = 4,   // bot = the leader, other = the new leader, groupId = its group
 };
-constexpr std::size_t kKinds = 2;
+constexpr std::size_t kKinds = 5;
 
 inline char const* KindName(OpKind kind)
 {
-    return kind == OpKind::Leave ? "leave" : "join";
+    switch (kind)
+    {
+        case OpKind::Leave:  return "leave";
+        case OpKind::Join:   return "join";
+        case OpKind::Accept: return "accept";
+        case OpKind::Invite: return "invite";
+        case OpKind::Leader: return "leader";
+    }
+    return "leave";
 }
 
-// Who queued the op (PR1: only the ad-hoc action; the other paths are PR2/PR3 candidates).
+// A3 lever 2: releases before formations - Leave, Leader, Accept, Invite, Join.
+constexpr OpKind kPopOrder[kKinds] = { OpKind::Leave, OpKind::Leader, OpKind::Accept, OpKind::Invite, OpKind::Join };
+
+// A two-bot op holds both bots in the queue (dedup, pending marks): Join (as before) and Invite.
+inline bool HoldsBoth(OpKind kind)
+{
+    return kind == OpKind::Join || kind == OpKind::Invite;
+}
+
+// A3 lever 2 (generalised supersede): a Leave of a bot replaces its pending Join, Accept or Invite; a pending Leave or
+// Leader refuses it.
+inline bool LeaveSupersedes(OpKind pending)
+{
+    return pending == OpKind::Join || pending == OpKind::Accept || pending == OpKind::Invite;
+}
+
+// Who queued the op. AdhocAction = 0 (PR1); the rest are the A3 lever 2 producers (BotGroups.WritePath).
 enum class OpSource : std::uint8_t
 {
     AdhocAction = 0,
+    Command,        // LeaveGroupAction::Leave from "leave", "uninvite", "party command" (and any other outer action)
+    LeaveFarAway,   // LeaveGroupAction::Leave from "leave far away"
+    Repop,          // RepopAction (was a raw Group::RemoveMember)
+    Accept,         // AcceptInvitationAction
+    Invite,         // InviteToGroupAction::Invite ("invite", "invite nearby", "invite guild")
+    Leader,         // PassLeadershipToMasterAction ("leader", "give leader")
 };
+
+// Op.reason of the new kinds (Leave keeps the ad-hoc reason).
+constexpr std::uint8_t kAcceptDecline = 1;      // Accept: the security decline (UninviteFromGroup)
+constexpr std::uint8_t kInviteRaidConvert = 1;  // Invite: the caller's "5th member: convert to raid" ("invite nearby/guild")
+constexpr std::uint8_t kLeaderReset = 1;        // Leader: the legacy strategy reset after the change (a random bot)
 
 // ---- the switch -----------------------------------------------------------------------------------------------------------
 // AiPlayerbot.BotGroups.OpQueue: 0 off (today, default), 1 all bots, 2 cohort B (odd low guid), 3 cohort A (even low guid).
@@ -58,6 +98,15 @@ inline bool QueueApplies(std::uint32_t mode, std::uint32_t guidLow)
 inline bool JoinQueueApplies(std::uint32_t mode, std::uint32_t inviterLow, std::uint32_t inviteeLow)
 {
     return QueueApplies(mode, inviterLow) || QueueApplies(mode, inviteeLow);
+}
+
+// A3 lever 2 (ADR-0041 amendment 4.2, AiPlayerbot.BotGroups.WritePath, default 0): the same modes (ValidMode / SanitizeMode
+// above; the loader writes one [GroupWrite] error line for an unknown value). The cohort part of "in scope"; the game side
+// (GroupOps.cpp WritePathRoutes) adds: a bot AI without a real-player master, not in a battleground, not on the world thread,
+// outside the "join"/"lfg" bypass scope.
+inline bool WritePathApplies(std::uint32_t mode, std::uint32_t guidLow)
+{
+    return cohort::Applies(SanitizeMode(mode), guidLow);
 }
 
 // ---- limits (OB-00 04.11. addition a) -------------------------------------------------------------------------------------
@@ -318,5 +367,109 @@ inline OffSource OffSourceOf(bool hasAction, std::string const& action, bool adh
     if (StartsWith(action, "dungeon clear") || StartsWith(action, "dc "))
         return OffSource::DungeonClear;
     return OffSource::OtherAction;
+}
+
+// A3 lever 2: the source of a queued LeaveGroupAction::Leave, by the outermost action on the thread (OffSourceOf's names):
+// "leave far away", "repop"/"release", the ad-hoc action; every other caller ("leave", "uninvite", "party command", ...) is a
+// command.
+inline OpSource LeaveSourceOf(std::string const& outerAction)
+{
+    switch (OffSourceOf(true, outerAction))
+    {
+        case OffSource::LeaveFar: return OpSource::LeaveFarAway;
+        case OffSource::Repop:    return OpSource::Repop;
+        case OffSource::Adhoc:    return OpSource::AdhocAction;
+        default:                  return OpSource::Command;
+    }
+}
+
+// ---- A3 lever 2: staleness of the write path's new kinds, decided on the world thread (GroupOps.cpp) ------------------------
+// The existing verdicts only (the [GroupOps] minute line prints every verdict: a new one would change its fields).
+struct AcceptOpFacts
+{
+    bool found = false;          // the invitee (session, AI) and the invite's leader (session)
+    bool inWorld = false;        // both
+    bool teleporting = false;    // either
+    bool realMaster = false;     // the invitee
+    bool invited = false;        // the invitee still has a pending invite whose leader is op.other
+    std::uint32_t transitMs = 0;
+};
+
+inline Verdict DecideAcceptOp(AcceptOpFacts const& f)
+{
+    if (!f.found)
+        return Verdict::DropLoggedOut;
+    if (!f.inWorld || f.teleporting)
+        return f.transitMs >= kTransitMaxAgeMs ? Verdict::DropTransit : Verdict::Retry;
+    if (f.realMaster)
+        return Verdict::DropNotFree;
+    if (!f.invited)
+        return Verdict::DropStalePair;
+    return Verdict::Execute;
+}
+
+struct InviteOpFacts
+{
+    bool found = false;                // the inviter (session, AI) and the invitee (session; a real player too)
+    bool inWorld = false;              // both
+    bool teleporting = false;          // either
+    bool realMaster = false;           // the inviter
+    bool inBattleground = false;       // either
+    bool inviteeGrouped = false;
+    bool inviteeInvited = false;       // a pending invite of anyone
+    std::uint32_t inviterGroupId = 0;  // the inviter's group now (0 = none)
+    std::uint32_t opGroupId = 0;       // the inviter's group at the decision (0 = none)
+    bool groupFull = false;            // the inviter's group is full (after the raid conversion the legacy code would do)
+    std::uint32_t transitMs = 0;
+};
+
+inline Verdict DecideInviteOp(InviteOpFacts const& f)
+{
+    if (!f.found)
+        return Verdict::DropLoggedOut;
+    if (!f.inWorld || f.teleporting)
+        return f.transitMs >= kTransitMaxAgeMs ? Verdict::DropTransit : Verdict::Retry;
+    if (f.realMaster)
+        return Verdict::DropNotFree;
+    if (f.inBattleground)
+        return Verdict::DropBg;
+    if (f.inviteeGrouped || f.inviteeInvited)
+        return Verdict::DropStalePair;
+    if (f.inviterGroupId != f.opGroupId || f.groupFull)
+        return Verdict::DropStalePair;
+    return Verdict::Execute;
+}
+
+struct LeaderOpFacts
+{
+    bool found = false;            // the leader (session, AI) and the new leader (session)
+    bool inWorld = false;          // both
+    bool teleporting = false;      // either
+    bool realMaster = false;       // the leader
+    bool inBattleground = false;   // the leader
+    std::uint32_t groupId = 0;     // the leader's group now (0 = none)
+    std::uint32_t opGroupId = 0;   // its group at the decision
+    bool leads = false;            // op.bot still leads it
+    bool otherMember = false;      // the new leader is still a member (the core's own check: the same group)
+    std::uint32_t transitMs = 0;
+};
+
+inline Verdict DecideLeaderOp(LeaderOpFacts const& f)
+{
+    if (!f.found)
+        return Verdict::DropLoggedOut;
+    if (!f.inWorld || f.teleporting)
+        return f.transitMs >= kTransitMaxAgeMs ? Verdict::DropTransit : Verdict::Retry;
+    if (f.realMaster)
+        return Verdict::DropNotFree;
+    if (f.inBattleground)
+        return Verdict::DropBg;
+    if (!f.groupId)
+        return Verdict::DropAlreadyLeft;
+    if (f.groupId != f.opGroupId)
+        return Verdict::DropGroupChanged;
+    if (!f.leads || !f.otherMember)
+        return Verdict::DropStalePair;
+    return Verdict::Execute;
 }
 }
