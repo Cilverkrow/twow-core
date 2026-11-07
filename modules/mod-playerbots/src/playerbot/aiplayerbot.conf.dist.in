@@ -1355,6 +1355,37 @@ AiPlayerbot.BotGroups.OpQueueAlertAgeSeconds = 60
 # Mode (in-realm A/B, cohort parity): 0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid), 3 = only
 # cohort A (even low guid). Any other value acts like 0 (one error line at load).
 AiPlayerbot.BotGroups.Manager = 0
+# A3 lever 2 (ADR-0041 amendment 4.2, OB-00 07.11.2026): the group write path. With the mode on for a bot, every group
+# membership change its own map thread would make runs as an op of the world-thread group queue above (OpQueueOpsPerTick,
+# OpQueueMaxDepth and the heavy-tick rule apply; the queue runs also with OpQueue = 0): its leaves ("leave", "party command",
+# "uninvite", "leave far away", repop - which now leaves through the core path instead of a raw RemoveMember), its accepts and
+# security declines of an invite, its invites ("invite", "invite nearby", "invite guild"; the raid conversion goes with the
+# invite) and its leader handovers ("leader", "give leader"), and its ad-hoc leaves and joins as with OpQueue. The same actions
+# decide as before; only the core write moves, re-checked on the world thread (the bot or its group changed: dropped, the bot
+# decides again); the AI tail runs on the bot's own thread and is the legacy one of each source (a leave: its log lines, a
+# free bot's master cleared, the strategy reset only without a bot master, else the AI reset alone; repop: none). An accept
+# the queue refuses (full, an op of the bot pending) keeps the direct path (the invite comes once); a dropped or superseded
+# accept clears its invite on the world thread. A refused one-shot leave or leader handover (repop, a "leave"/"give leader"
+# command: queue full, a leave or leader op of the bot pending) or a dropped one is lost: the bot stays (dropped_full_<k>,
+# refused_pending_<k>, stale_<k>). In scope: bots with an AI and no real-player master, not in a battleground; a real player's
+# bots keep the old path (a free bot's accept of a real player's invite is queued: its master is set only by the accept). The
+# "join" and "lfg" chat commands (leave, invite and accept in one action) keep the direct path and are counted as bypass. Not
+# covered: the implicit leader handover when a leader leaves a group of 3+ (core, no hook; covered only through the routed
+# leave), the offline-leader handover (already on the world thread), battleground raid groups, and the "reset raids" unbind of
+# the accept tail (the bot's own binds).
+# Line (world thread, only with this mode on, next to "[GroupOps] minute"): "[GroupWrite] minute mode= enq_<k>= exec_<k>=
+# fail_<k>= stale_<k>= refused_pending_<k>= dropped_full_<k>= superseding= superseded= bypass= off_wp_create= off_wp_disband=
+# off_wp_add= off_wp_remove= off_wp_leader= off_wp_invite= accept_player=" for k = leave, join, accept, invite, leader.
+# accept_player counts the queued accepts of a real player's invite (a deviation from ADR-0041 E7: one tick later, on the
+# world thread; OB-00 07.11.2026). off_wp_* counts the
+# group events off the world thread whose acting bot is in scope, outside the bypass: 0 expected. Blind spots of off_wp_*:
+# it knows the acting bot only through the outermost action (ActionScope), so writes from the ReactionEngine, from
+# PlayerbotAI-level code or from a test command are not counted - 0 is necessary, not proof. With this mode on, the
+# "[GroupOps] minute" line (mode=<OpQueue>) and the off-thread group observer (counters) run too, also with OpQueue = 0 and
+# Diagnostics = 0.
+# Mode (in-realm A/B, cohort parity): 0 = off (default, rollback), 1 = every bot in scope, 2 = only cohort B (odd low guid),
+# 3 = only cohort A (even low guid). Any other value acts like 0 (one error line at load).
+AiPlayerbot.BotGroups.WritePath = 0
 # A3 step 3 (ADR-0041 + amendment 2026-11-06, OB-00 06.11.2026): the per-bot supervisor - one owner of the bot's mode (quest,
 # grind, rest, group, rescue), and later of its travel target and tick cadence, with the activity planner ranking by value.
 # SCAFFOLD: the supervisor only counts its engine passes; it reads and writes nothing of the bot and writes no log line, so
@@ -1978,6 +2009,18 @@ AiPlayerbot.CustomRaceStartZones = 0
 # death in a row. Resurrection sickness, low durability, many deaths and a long time dead still use
 # the spirit healer. v35: 506 spirit-healer revives vs 13 corpse runs in 6.56 h. 0 = off (default).
 AiPlayerbot.Revive.PreferCorpseRun = 0
+# twow-repo#575 A3 step 4 S4-1 (OB-00 07.11.2026): corpse run before the spirit healer. "revive from corpse" never ran in
+# the dead engine (the engine always carries "stay", and MovementAction::isUseful is !stay), so a ghost walked to its corpse
+# and then waited for the spirit healer or for "move long stuck" to repop it to its race start (group leave). With the switch
+# the reclaim at the corpse runs, and the spirit healer is taken only for a reason: no corpse, resurrection sickness,
+# durability below 10, a loop (2 own deaths within 10 min and 60 yd of the corpse) or dead longer than MaxSeconds. "Death count
+# > 8" and the enemies / graveyard-in-sight shortcuts no longer send these bots to the spirit healer; the death-loop and death
+# count > 15 repops stay. A ghost hit by "move long stuck" goes to the spirit healer instead of repop. Not for a bot with an
+# active player master. Logged as [CorpseRun] (first decision per death) and [CorpseRunMin] (per minute).
+# 0 = off (default), 1 = every bot, 2 = cohort B (odd guid), 3 = cohort A (even guid); any other value is off.
+AiPlayerbot.Revive.CorpseRunFirst = 0
+# Seconds dead after which the spirit healer is taken (120..1800).
+AiPlayerbot.Revive.CorpseRunFirst.MaxSeconds = 600
 AiPlayerbot.QuestFirstProgression.TurnInDeathRouteCooldownSeconds = 3600
 # twow-repo#485: a finished quest whose turn-in keeps failing is parked instead
 # of holding the bot. A failure of a roster bot on its own is: a stall (recovery
@@ -2183,6 +2226,17 @@ AiPlayerbot.ProfessionTraining.TripNoGuildTrip = 0
 # Off or outside the fallback: the turn_in rule as before. Deletion target (ADR-0041 rule 4): goes with A3 step 3.
 #   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid); other values act like 0.
 AiPlayerbot.ProfessionTraining.TurnInGateSkipGrindFallback = 0
+# twow-repo#333 M2 Crafting.Consumables (owner list 07.11.2026, item 1, M2-ENTWURF §7; inventory A3-AKTIONS-VERDRAHTUNG §4: the
+# "consumables" strategy is in no default list, oil and stone are USELESS without one in the bags). For a roster bot on its own:
+# the non-combat strategy "consumables" (use consumable: elixir, flask, scroll, buff food from the bags, out of combat) is added,
+# and the item usage keeps those buff consumables and the stone or oil for its main hand (FindStoneFor / FindOilFor rules) up to
+# AiPlayerbot.RosterConsumables.KeepStacks instead of selling them. Buying is not part of it (purchase purpose, A3 step 3).
+# No effect under the item cheat (RndBotCheats item): use consumable is useless there and nothing is kept - the A/B runs with the
+# cheat-off arm. Lines, one per started use (an attempt; the cast result is in the action log):
+#   [Crafting] kind=consumables event=use type=flask|elixir|scroll|food_buff|alcohol item= bot= level= cohort=
+#   [Crafting] kind=consumables event=imbue type=stone|oil slot=mainhand|offhand item= bot= level= cohort=
+#   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid); other values act like 0.
+AiPlayerbot.Crafting.Consumables = 0
 # Profession use (#333), persistent roster bots without a real-player master.
 # GatherDistance: passive gathering radius for such a bot on its own (herbs,
 # ore, skinning); 0 = GatheringDistance. The hostile check stays in force.

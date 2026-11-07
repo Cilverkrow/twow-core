@@ -5,6 +5,8 @@
 #include "playerbot/GraveyardSelectionPolicy.h"
 #include "playerbot/ReviveChoicePolicy.h"
 #include "playerbot/RandomPlayerbotMgr.h"
+#include "playerbot/CohortPolicy.h"
+#include "playerbot/CorpseRunFirstPolicy.h"   // twow-repo#575 A3 step 4 S4-1: Revive.CorpseRunFirst
 
 using namespace ai;
 
@@ -202,6 +204,65 @@ GuidPosition BestGraveyardValue::Calculate()
     return AI_VALUE2(GuidPosition, "graveyard", "self");
 }
 
+// twow-repo#575 A3 step 4 S4-1 (AiPlayerbot.Revive.CorpseRunFirst, CorpseRunFirstPolicy.h): the spirit healer only with a reason,
+// else the corpse run (the reclaim itself runs through ReviveFromCorpseAction::isUseful). One [CorpseRun] line per death and
+// decision, a [CorpseRunMin] line per minute; the counters make real loops at the corpse visible (reason=loop), next to the
+// unchanged [DeathLoop] evacuation and the death count > 15 repop.
+static bool CorpseRunFirstHealer(PlayerbotAI* ai, Player* bot, uint8 durability)
+{
+    namespace cf = ai::corpse_first;
+    uint32 const now = uint32(time(nullptr));
+    Corpse* corpse = bot->GetCorpse();
+    // Not released yet (no corpse, no ghost): the spirit healer is not useful before the release anyway; nothing to decide.
+    if (!corpse && !bot->HasFlag(PLAYER_FLAGS, PLAYER_FLAGS_GHOST))
+        return true;
+
+    cf::Input in;
+    in.hasCorpse = corpse != nullptr;
+    in.sickness = ai->HasAura(SPELL_ID_PASSIVE_RESURRECTION_SICKNESS, bot);
+    in.durability = durability;
+    in.maxSeconds = sPlayerbotAIConfig.reviveCorpseRunFirstMaxSeconds;
+    uint32 deathAt = 0;
+    float corpseDistance = -1.0f;
+    if (corpse)
+    {
+        deathAt = uint32(corpse->GetGhostTime());
+        in.deadSeconds = now > deathAt ? now - deathAt : 0;
+        in.deathsNear = cf::DeathsNear(ai->GetCorpseFirstDeaths(), now, corpse->GetMapId(), corpse->GetPositionX(), corpse->GetPositionY());
+        corpseDistance = WorldPosition(bot).fDist(corpse);
+    }
+
+    cf::Reason const reason = cf::Decide(in);
+    cf::Counters& counters = cf::SharedCounters();
+    if (uint32 const kind = ai->MarkCorpseFirstDecision(deathAt, reason))
+    {
+        if (kind == 1)
+            counters.deaths.fetch_add(1, std::memory_order_relaxed);
+        counters.decided[std::size_t(reason)].fetch_add(1, std::memory_order_relaxed);
+        sLog.outBasic("[CorpseRun] bot=%u cohort=%c level=%u map=%u zone=%u decision=%s reason=%s dead_s=%u corpse_d=%.0f deaths_10m=%u first=%u",
+            bot->GetGUIDLow(), ai::cohort::Letter(bot->GetGUIDLow()), bot->GetLevel(), bot->GetMapId(), bot->GetZoneId(),
+            reason == cf::Reason::Corpse ? "corpse" : "healer", cf::ReasonName(reason), in.deadSeconds, corpseDistance, in.deathsNear,
+            kind == 1 ? 1u : 0u);
+    }
+
+    if (counters.LogDue(now))
+    {
+        uint32 v[std::size_t(cf::Reason::Count)];
+        uint32 any = 0;
+        for (std::size_t i = 0; i < std::size_t(cf::Reason::Count); ++i)
+            any |= v[i] = counters.decided[i].exchange(0, std::memory_order_relaxed);
+        uint32 const deaths = counters.deaths.exchange(0, std::memory_order_relaxed);
+        uint32 const reclaimed = counters.reclaimed.exchange(0, std::memory_order_relaxed);
+        uint32 const ghostStuck = counters.ghostStuck.exchange(0, std::memory_order_relaxed);
+        if (any || deaths || reclaimed || ghostStuck)
+            sLog.outBasic("[CorpseRunMin] deaths=%u corpse=%u no_corpse=%u sickness=%u durability=%u loop=%u timeout=%u reclaimed=%u ghost_stuck=%u",
+                deaths, v[std::size_t(cf::Reason::Corpse)], v[std::size_t(cf::Reason::NoCorpse)], v[std::size_t(cf::Reason::Sickness)],
+                v[std::size_t(cf::Reason::Durability)], v[std::size_t(cf::Reason::Loop)], v[std::size_t(cf::Reason::Timeout)], reclaimed, ghostStuck);
+    }
+
+    return reason != cf::Reason::Corpse;
+}
+
 bool ShouldSpiritHealerValue::Calculate()
 {
     uint32 deathCount = AI_VALUE(uint32, "death count");
@@ -209,6 +270,10 @@ bool ShouldSpiritHealerValue::Calculate()
 
     if (ai->HasActivePlayerMaster()) //Only use spirit healers with direct command with active master.
         return false;
+
+    // twow-repo#575 A3 step 4 S4-1 (AiPlayerbot.Revive.CorpseRunFirst): the rules below stay for every other bot.
+    if (ai::cohort::Applies(sPlayerbotAIConfig.reviveCorpseRunFirst, bot->GetGUIDLow()))
+        return CorpseRunFirstHealer(ai, bot, durability);
 
     //Nothing to lose
     if (ai->HasAura(SPELL_ID_PASSIVE_RESURRECTION_SICKNESS, bot) || durability < 10)
