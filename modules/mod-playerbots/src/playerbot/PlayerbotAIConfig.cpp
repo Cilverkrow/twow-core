@@ -4,6 +4,7 @@
 #include "playerbot/PathFailPolicy.h"
 #include "playerbot/IslandGuardPolicy.h"   // twow-repo#575 A3 step 4 M-c: Path.IslandGuard loader clamps
 #include "playerbot/PosStuckPolicy.h"
+#include "playerbot/CombatRulePolicy.h"   // A3 step 5: CombatRule.RestStartHp / RestStartMana loader clamps
 #include "playerbot/RoutePrecheckPolicy.h"
 #include "playerbot/AreaTeamPolicy.h"
 #include "playerbot/BgFillPolicy.h"
@@ -889,13 +890,19 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[Supervisor] config key=Supervisor value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", supervisor);
         supervisor = 0;
     }
-    // A3 step 5 (ADR-0041): the combat rule, parts HealerStart and PriestOverlay (CombatRulePolicy.h); an unknown mode is off.
+    // A3 step 5 (ADR-0041): the combat rule, parts HealerStart, PriestOverlay and RestBeforePull (CombatRulePolicy.h); an unknown
+    // mode is off.
     combatRuleHealerStart = uint32(config.GetIntDefault("AiPlayerbot.CombatRule.HealerStart", 0));
     if (combatRuleHealerStart > 3)
         combatRuleHealerStart = 0;
     combatRulePriestOverlay = uint32(config.GetIntDefault("AiPlayerbot.CombatRule.PriestOverlay", 0));
     if (combatRulePriestOverlay > 3)
         combatRulePriestOverlay = 0;
+    combatRuleRestBeforePull = uint32(config.GetIntDefault("AiPlayerbot.CombatRule.RestBeforePull", 0));
+    if (combatRuleRestBeforePull > 3)
+        combatRuleRestBeforePull = 0;
+    combatRuleRestStartHp = ai::combat_rule::ClampStartHp(config.GetIntDefault("AiPlayerbot.CombatRule.RestStartHp", 60));
+    combatRuleRestStartMana = ai::combat_rule::ClampStartMana(config.GetIntDefault("AiPlayerbot.CombatRule.RestStartMana", 40));
     questGroupsEnable = (uint32)config.GetIntDefault("AiPlayerbot.QuestGroups.Enable", 0);
     questGroupsScanSeconds = std::max<uint32>(10, config.GetIntDefault("AiPlayerbot.QuestGroups.ScanSeconds", 60));
     questGroupsScanSlices = std::min<uint32>(64, (uint32)config.GetIntDefault("AiPlayerbot.QuestGroups.ScanSlices", 0));
@@ -1921,6 +1928,9 @@ bool PlayerbotAIConfig::Initialize()
             {"CheatItem.Trace", Value(cheatItemTrace)},
             {"CombatRule.HealerStart", Value(combatRuleHealerStart)},
             {"CombatRule.PriestOverlay", Value(combatRulePriestOverlay)},
+            {"CombatRule.RestBeforePull", Value(combatRuleRestBeforePull)},
+            {"CombatRule.RestStartHp", Value(combatRuleRestStartHp)},
+            {"CombatRule.RestStartMana", Value(combatRuleRestStartMana)},
             {"CustomRaceStartZones", Value(customRaceStartZones)},
             {"DangerMap.CountAddDeaths", Value(dangerMapCountAddDeaths)},
             {"DeathLoop.Escape", Value(deathLoopEscape)},

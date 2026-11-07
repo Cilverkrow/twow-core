@@ -112,4 +112,80 @@ inline PriestOverlayCounters& PriestOverlayGlobal()
     static PriestOverlayCounters counters;
     return counters;
 }
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// Part RestBeforePull (AiPlayerbot.CombatRule.RestBeforePull; A3-AKTIONS-VERDRAHTUNG v1.1 §1.4, F7).
+//
+// Without RestGate a bot eats only with HP in [20, 50) (the "low health" band) and drinks below 65 % mana, and below 20 % HP out of
+// combat nothing runs at all; it pulls the next mob at any HP. The rule owns the pull bit instead: a solo free bot out of combat and
+// not attacked does not start a pull (attack anything) below StartHp, or below StartMana with a mana pool, and its own rest node
+// (strategy "combat rule": food / drink at 7.0, above choose travel target 6.98 and attack anything 5) eats or drinks first - with
+// no lower bound, so it closes the < 20 % gap. Unlike RestGate it locks no movement ("can move around" stays) and keeps no episode
+// state: one food / drink cast lasts until the bot is full (eat / drink duration). A target that already fights the bot is always
+// allowed (self-defence). A bot RestGate applies to is left to RestGate.
+
+enum class RestNeed : std::uint8_t
+{
+    None = 0,
+    Health = 1,
+    Mana = 2,
+};
+
+struct RestReading
+{
+    bool soloFree = false;       // no group, no real player (master), free bot, not in a battleground, alive
+    bool inCombat = false;
+    bool attacked = false;       // has attackers
+    std::uint32_t hp = 100;      // percent
+    bool manaPool = false;       // has a mana pool now (not a druid in cat / bear form)
+    std::uint32_t mana = 100;    // percent
+};
+
+// What the bot has to rest for before its next pull; health first.
+inline RestNeed RestBeforePull(RestReading const& r, std::uint32_t startHp, std::uint32_t startMana)
+{
+    if (!r.soloFree || r.inCombat || r.attacked)
+        return RestNeed::None;
+    if (r.hp < startHp)
+        return RestNeed::Health;
+    if (r.manaPool && r.mana < startMana)
+        return RestNeed::Mana;
+    return RestNeed::None;
+}
+
+// The pull bit: refused while a rest is needed, unless the target already fights the bot.
+inline bool MayPull(RestNeed need, bool targetFightsBot)
+{
+    return need == RestNeed::None || targetFightsBot;
+}
+
+// Clamps for the .dist keys: StartHp 1..99 (default 60), StartMana 0..99 (default 40; 0 = no mana rest).
+inline std::uint32_t ClampStartHp(int value)
+{
+    return value < 1 ? 1u : (value > 99 ? 99u : std::uint32_t(value));
+}
+
+inline std::uint32_t ClampStartMana(int value)
+{
+    return value < 0 ? 0u : (value > 99 ? 99u : std::uint32_t(value));
+}
+
+// Per-minute counts for the "[CombatRule] part=RestBeforePull" line (part on), increments, index 0 = cohort A, 1 = cohort B:
+// pulls started by solo free bots (both cohorts) and of those below StartHp / StartMana (the outcome, measured in the control
+// cohort too), pull checks the part refused, and rest nodes fired (health / mana).
+struct RestBeforePullCounters
+{
+    std::atomic<std::uint64_t> pulls[2] {};
+    std::atomic<std::uint64_t> pullsLowHp[2] {};
+    std::atomic<std::uint64_t> pullsLowMana[2] {};
+    std::atomic<std::uint64_t> refused[2] {};
+    std::atomic<std::uint64_t> restHealth[2] {};
+    std::atomic<std::uint64_t> restMana[2] {};
+};
+
+inline RestBeforePullCounters& RestBeforePullGlobal()
+{
+    static RestBeforePullCounters counters;
+    return counters;
+}
 }

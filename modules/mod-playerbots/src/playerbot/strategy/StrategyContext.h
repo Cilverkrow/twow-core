@@ -57,6 +57,7 @@
 #include "generic/BlackwingLairDungeonStrategies.h"
 #include "generic/KarazhanDungeonStrategies.h"
 #include "generic/NaxxramasDungeonStrategies.h"
+#include "generic/CombatRuleStrategy.h"   // A3 step 5: the combat rule's rest node
 
 namespace ai
 {
@@ -74,6 +75,7 @@ namespace ai
             creators["passive"] = [](PlayerbotAI* ai) { return new PassiveStrategy(ai); };
             creators["conserve mana"] = [](PlayerbotAI* ai) { return new ConserveManaStrategy(ai); };
             creators["food"] = [](PlayerbotAI* ai) { return new UseFoodStrategy(ai); };
+            creators["combat rule"] = [](PlayerbotAI* ai) { return new CombatRuleStrategy(ai); };   // A3 step 5 (CombatRule.RestBeforePull)
             creators["consumables"] = [](PlayerbotAI* ai) { return new ConsumableStrategy(ai); };
             creators["chat"] = [](PlayerbotAI* ai) { return new ChatCommandHandlerStrategy(ai); };
             creators["default"] = [](PlayerbotAI* ai) { return new WorldPacketHandlerStrategy(ai); };

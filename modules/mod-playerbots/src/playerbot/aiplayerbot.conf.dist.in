@@ -1381,6 +1381,22 @@ AiPlayerbot.CombatRule.HealerStart = 0
 # the overlay, per cohort, and how many got it without "+dps"; increments). Mode: 0 = off (default, rollback: the overlay as it
 # is), 1 = every bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid). Any other value acts like 0.
 AiPlayerbot.CombatRule.PriestOverlay = 0
+# Part RestBeforePull (A3-AKTIONS-VERDRAHTUNG §1.4, F7): without RestGate a bot eats only with HP in [20, 50) and drinks below 65 %
+# mana; below 20 % HP out of combat nothing runs, and it pulls the next mob at any HP. With the part on, a solo free bot (no group,
+# no real player, not in a battleground) out of combat and not attacked does not start a pull (attack anything) below RestStartHp,
+# or below RestStartMana with a mana pool; the rule's rest node (strategy "combat rule", added only to the bots the part applies to)
+# eats / drinks first at relevance 7.0, with no lower bound. Unlike RestGate it locks no movement and keeps no episode: one food or
+# drink cast lasts until the bot is full. A target that already fights the bot is always taken. A bot that Rotation.RestGate applies
+# to is left to RestGate. Minute line "[CombatRule] part=RestBeforePull mode= start_hp= start_mana= pulls=A/B pulls_low_hp=A/B
+# pulls_low_mana=A/B refused=A/B rest_ticks_hp=A/B rest_ticks_mana=A/B" (pulls of solo free bots in both cohorts and of those below
+# the start values = the outcome; refused pull checks; ticks the rest node fired; increments). Mode: 0 = off (default, rollback),
+# 1 = every bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid). Any other value acts like 0. Changing it
+# needs a restart or a strategy reset (the rest node is added at strategy setup).
+AiPlayerbot.CombatRule.RestBeforePull = 0
+# RestBeforePull: no pull below this HP percent (1..99; default 60).
+AiPlayerbot.CombatRule.RestStartHp = 60
+# RestBeforePull: no pull below this mana percent, bots with a mana pool only (0..99; default 40; 0 = no mana rest).
+AiPlayerbot.CombatRule.RestStartMana = 40
 
 # #627 S7 help groups (owner 18.10./23.10.2026): roster bots holding the same elite
 # quest (Type 1; with SuggestedPlayers = 1 also SuggestedPlayers >= 2; never

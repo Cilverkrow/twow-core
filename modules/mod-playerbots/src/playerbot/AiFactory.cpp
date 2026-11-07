@@ -1282,6 +1282,11 @@ void AiFactory::AddDefaultNonCombatStrategies(Player* player, PlayerbotAI* const
         sRandomPlayerbotMgr.IsPersistentRosterMember(player->GetGUIDLow()))
         nonCombatEngine->addStrategy("adhoc group");
 
+    // A3 step 5 (CombatRule.RestBeforePull, default 0): the combat rule's rest node, only for the bots the part applies to (with the part
+    // off no engine holds it).
+    if (ai::cohort::Applies(sPlayerbotAIConfig.combatRuleRestBeforePull, player->GetGUIDLow()) && !player->InBattleGround())
+        nonCombatEngine->addStrategy("combat rule");
+
     // Battleground switch
     if (player->InBattleGround())
     {
