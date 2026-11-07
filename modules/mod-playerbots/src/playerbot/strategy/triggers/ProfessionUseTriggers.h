@@ -10,6 +10,10 @@ namespace ai
 
     bool IsRosterBotOnItsOwn(PlayerbotAI* ai);
 
+    // twow-repo#333 M2 Crafting.Consumables (owner list 07.11.2026, item 1): the switch is on for this bot - a roster bot on its own
+    // in the switch's cohort (CohortPolicy.h). The config check first, so the default costs nothing.
+    bool CraftingConsumablesFor(PlayerbotAI* ai);
+
     // twow-repo#485: not moving (nor on a flight path), fighting, casting,
     // sitting or mounted - a craft cast would fail now.
     bool IsReadyToCraft(PlayerbotAI* ai);
