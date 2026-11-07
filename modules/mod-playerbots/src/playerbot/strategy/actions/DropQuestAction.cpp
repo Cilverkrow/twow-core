@@ -4,6 +4,7 @@
 #include "playerbot/QuestSearchPolicy.h"
 #include "playerbot/QuestAcceptPolicy.h"
 #include "playerbot/QuestFeasibilityPolicy.h"
+#include "playerbot/QuestBook.h"
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/strategy/values/GuildValues.h"
 #include "playerbot/TravelMgr.h"
@@ -318,6 +319,13 @@ void CleanQuestLogAction::IdleRotateOnItsOwn()
 
 bool CleanQuestLogAction::HasProgress(Player* bot, Quest const* quest)
 {
+    // A3 step 2 K4 (AiPlayerbot.QuestBook, default 0): with an active quest book progress is the book's one notion - a credit
+    // since the quest came into the log, or an objective count, or complete. Objective text is no progress there. Every
+    // other bot keeps the rule below.
+    if (PlayerbotAI* botAi = GetBotAI(bot))
+        if (ai::questbook::QuestBook* book = botAi->ActiveQuestBook())
+            return book->HasProgress(quest);
+
     uint32 questId = quest->GetQuestId();
 
     if (bot->GetQuestStatus(questId) == QUEST_STATUS_COMPLETE)

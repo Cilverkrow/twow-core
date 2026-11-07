@@ -47,6 +47,7 @@ class PlayerbotMgr;
 class ChatHandler;
 class Channel;
 namespace ai::supervisor { class Supervisor; }   // A3 step 3 (AiPlayerbot.Supervisor): PlayerbotAI.cpp holds the full type
+namespace ai::questbook { class QuestBook; }   // A3 step 2 (AiPlayerbot.QuestBook): PlayerbotAI.cpp holds the full type
 
 using namespace ai;
 
@@ -436,6 +437,9 @@ private:
     // A3 step 3 (ADR-0041, AiPlayerbot.Supervisor, default 0): the supervisor of this bot, made on the first engine pass the
     // switch applies to it.
     ai::supervisor::Supervisor* EnsureSupervisor();
+    // A3 step 2 (ADR-0041, AiPlayerbot.QuestBook, default 0): the quest book of this bot (active or shadow), made on the first
+    // engine pass it applies to the bot.
+    ai::questbook::QuestBook* EnsureQuestBook(bool shadow);
 public:    
     static std::string BotStateToString(BotState state);
     std::string GetDefaultMovementStrategy();
@@ -1274,6 +1278,11 @@ public:
     bool InQuestBandScope();
     // InQuestBandScope() and the bot's ladder key has a usable row for its race and level (O(1) bitmap): the giver filter.
     bool QuestBandGiverFilter();
+    // A3 step 2 (ADR-0041, AiPlayerbot.QuestBook, default 0): the active quest book (a roster bot on its own in the switch's
+    // cohort), or null - then every caller keeps its old rule. A shadow book is never returned. Bot thread only.
+    ai::questbook::QuestBook* ActiveQuestBook() const;
+    // A persistent roster bot without a real player master: the population of the quest book (as quest_accept::SkipForRosterBot).
+    bool InQuestBookScope();
     // Switch first, then a band trip runs (travel target with a band end, active) - the idle quest rescue waits for it.
     bool BandTripRunning();
     // A park ended the episode (SetParked): consumed by the next band step on the bot thread.
@@ -1390,6 +1399,8 @@ protected:
     ai::teleport_cast::HoldWatch teleportHold;   // twow-repo#333 finding 4: pending travel / unstuck / zone-escape hold for a teleport
     // A3 step 3 (ADR-0041, AiPlayerbot.Supervisor, default 0): nullptr while the switch does not apply to this bot.
     std::unique_ptr<ai::supervisor::Supervisor> supervisor_;
+    // A3 step 2 (ADR-0041, AiPlayerbot.QuestBook, default 0): nullptr while neither the switch nor the shadow applies to this bot.
+    std::unique_ptr<ai::questbook::QuestBook> questBook_;
     bool isPlayerFriend = false;
     bool isMovingToTransport = false;
     bool shouldLogOut = false;
