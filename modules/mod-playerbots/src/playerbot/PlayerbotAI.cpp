@@ -2983,6 +2983,39 @@ void PlayerbotAI::HandleCommands()
             chatCommands.pop();
         }
         ChatCommandHolder& holder = *next;
+
+        // twow-repo#563: directives queued by HandleCommand run here, on the bot's thread, in queue order.
+        if (holder.GetKind() != ChatCommandKind::Chat)
+        {
+            Player* directiveOwner = holder.GetOwner();
+            switch (holder.GetKind())
+            {
+                case ChatCommandKind::DoAction:
+                {
+                    Event event("do", "", directiveOwner);
+                    DoSpecificAction(holder.GetCommand(), event);
+                    break;
+                }
+                case ChatCommandKind::Reset:
+                    Reset(true);
+                    break;
+                case ChatCommandKind::LogoutCancel:
+                    if (bot->IsStunnedByLogout() || bot->GetSession()->isLogingOut())
+                    {
+                        if (holder.GetType() == CHAT_MSG_WHISPER && directiveOwner)
+                            TellPlayer(directiveOwner, BOT_TEXT("logout_cancel"));
+
+                        WorldPacket p;
+                        bot->GetSession()->HandleLogoutCancelOpcode(p);
+                        SetShouldLogOut(false);
+                    }
+                    break;
+                default:
+                    break;
+            }
+            continue;
+        }
+
         time_t checkTime = holder.GetTime();
         if (checkTime && time(0) < checkTime)
         {
@@ -3377,16 +3410,15 @@ void PlayerbotAI::HandleCommand(uint32 type, const std::string& text, Player& fr
 
     if ((filtered.size() > 2 && filtered.substr(0, 2) == "d ") || (filtered.size() > 3 && filtered.substr(0, 3) == "do "))
     {
-        Event event("do", "", &fromPlayer);
+        // twow-repo#563: queued, run by HandleCommands on the bot's thread (this function runs on the AsyncPackets thread).
         std::string action = filtered.substr(filtered.find(" ") + 1);
-        DoSpecificAction(action, event);
+        QueueChatCommand(ChatCommandHolder(action, &fromPlayer, type, 0, ChatCommandKind::DoAction));
     }
     if (ChatHelper::parseValue("command", filtered).substr(0, 3) == "do ")
     {
-        Event event("do", "", &fromPlayer);
         std::string action = ChatHelper::parseValue("command", filtered);
         action = action.substr(3);
-        DoSpecificAction(action, event);
+        QueueChatCommand(ChatCommandHolder(action, &fromPlayer, type, 0, ChatCommandKind::DoAction));
     }
     else if (type != CHAT_MSG_WHISPER && filtered.size() > 6 && filtered.substr(0, 6) == "queue ")
     {
@@ -3411,7 +3443,7 @@ void PlayerbotAI::HandleCommand(uint32 type, const std::string& text, Player& fr
     }
     else if (filtered == "reset")
     {
-        Reset(true);
+        QueueChatCommand(ChatCommandHolder(filtered, &fromPlayer, type, 0, ChatCommandKind::Reset));   // twow-repo#563
     }
     else if (filtered == "logout")
     {
@@ -3426,15 +3458,8 @@ void PlayerbotAI::HandleCommand(uint32 type, const std::string& text, Player& fr
     }
     else if (filtered == "logout cancel")
     {
-        if (bot->IsStunnedByLogout() || bot->GetSession()->isLogingOut())
-        {
-            if (type == CHAT_MSG_WHISPER)
-                TellPlayer(&fromPlayer, BOT_TEXT("logout_cancel"));
-
-            WorldPacket p;
-            bot->GetSession()->HandleLogoutCancelOpcode(p);
-            SetShouldLogOut(false);
-        }
+        // twow-repo#563: the state check and the cancel run in HandleCommands on the bot's thread.
+        QueueChatCommand(ChatCommandHolder(filtered, &fromPlayer, type, 0, ChatCommandKind::LogoutCancel));
     }
     else if ((filtered.size() > 5) && (filtered.substr(0, 5) == "wait ") && (filtered.find("wait for attack") == std::string::npos))
     {
