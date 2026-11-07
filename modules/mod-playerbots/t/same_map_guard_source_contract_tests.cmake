@@ -1,0 +1,132 @@
+# twow-repo#697 (BOT-05b, HARM): continents are split into regions - every region is its own Map object (same map id, own instance id) and is
+# updated on its own pool thread. The AI of another bot (strategy maps, values) may only be read while both bots stand on the same Map OBJECT.
+# Comparing GetMapId() lets a member of a neighbouring region through (node2 SIGSEGV in Engine::ContainsStrategy from FindPartyMember).
+# This contract pins the guards and carries a negative probe: the old GetMapId-only guard must be rejected by the same checker.
+
+function(read_source path out_var)
+  file(READ "${PB_SOURCE_DIR}/${path}" text)
+  string(REPLACE "\r" "" text "${text}")
+  set(${out_var} "${text}" PARENT_SCOPE)
+endfunction()
+
+function(require_text text needle description)
+  string(FIND "${text}" "${needle}" offset)
+  if(offset EQUAL -1)
+    message(FATAL_ERROR "#697 same-Map guard: missing ${description}: ${needle}")
+  endif()
+endfunction()
+
+# The group loop of FindPartyMember is guarded when it names SameMapObject and does not rely on the map id alone.
+function(group_loop_guarded text out_var)
+  set(ok TRUE)
+  string(FIND "${text}" "SameMapObject(bot, ref->getSource())" has_guard)
+  string(FIND "${text}" "bot->GetMapId() != ref->getSource()->GetMapId()" has_weak)
+  if(has_guard EQUAL -1 OR NOT has_weak EQUAL -1)
+    set(ok FALSE)
+  endif()
+  set(${out_var} ${ok} PARENT_SCOPE)
+endfunction()
+
+# --- negative probe: the guard that crashed (map id only) must be rejected, the fixed one accepted ---
+group_loop_guarded("if (!ref->getSource() || bot->GetMapId() != ref->getSource()->GetMapId()) continue;" probe_old)
+if(probe_old)
+  message(FATAL_ERROR "#697 same-Map guard: negative probe failed - the GetMapId-only guard was accepted")
+endif()
+group_loop_guarded("if (!ref->getSource() || (ref->getSource() != bot && !SameMapObject(bot, ref->getSource()))) continue;" probe_new)
+if(NOT probe_new)
+  message(FATAL_ERROR "#697 same-Map guard: positive probe failed - the same-Map guard was rejected")
+endif()
+
+# --- the real sources ---
+read_source("strategy/values/PartyMemberValue.cpp" party)
+group_loop_guarded("${party}" party_ok)
+if(NOT party_ok)
+  message(FATAL_ERROR "#697 same-Map guard: FindPartyMember's group loop must use SameMapObject and not the map id alone")
+endif()
+# the second loop (nearby players, out of group) classifies IsHeal/IsTank of every candidate
+require_text("${party}" "if (!SameMapObject(bot, player))" "SameMapObject before IsHeal/IsTank in the nearby-player loop")
+string(FIND "${party}" "if (!SameMapObject(bot, player))" guard_pos)
+string(FIND "${party}" "if (ai->IsHeal(player))" heal_pos)
+if(NOT guard_pos LESS heal_pos)
+  message(FATAL_ERROR "#697 same-Map guard: the guard must come before ai->IsHeal(player)")
+endif()
+# the single-list overload keeps its Map-object check
+require_text("${party}" "if (!player->FindMap() || player->FindMap() != bot->FindMap())" "list overload Map check")
+
+read_source("BotSlots.h" slots)
+require_text("${slots}" "inline bool SameMapObject(Player const* a, Player const* b)" "SameMapObject helper")
+require_text("${slots}" "a->FindMap() == b->FindMap()" "Map object comparison")
+require_text("${slots}" "inline PlayerbotAI* GetBotAIOnMapOf(Player const* self, Player const* other)" "GetBotAIOnMapOf helper")
+
+# the three role getters read another bot's strategies through GetBotAIOnMapOf, never through plain GetBotAI(player)
+read_source("PlayerbotAI.cpp" ai_cpp)
+foreach(getter "bool PlayerbotAI::IsRanged(Player* player, bool inGroup)"
+               "bool PlayerbotAI::IsTankFor(Player const* asker, Player* player, bool inGroup)"
+               "bool PlayerbotAI::IsHealFor(Player const* asker, Player* player, bool inGroup)")
+  string(FIND "${ai_cpp}" "${getter}" start)
+  if(start EQUAL -1)
+    message(FATAL_ERROR "#697 same-Map guard: ${getter} not found")
+  endif()
+  string(SUBSTRING "${ai_cpp}" ${start} 200 head)
+  if("${getter}" MATCHES "For[(]")
+    require_text("${head}" "GetBotAIOnMapOf(asker, player)" "${getter} reads through GetBotAIOnMapOf(asker, ...)")
+  else()
+    require_text("${head}" "GetBotAIOnMapOf(bot, player)" "${getter} reads through GetBotAIOnMapOf")
+  endif()
+  string(FIND "${head}" "= GetBotAI(player);" plain)
+  if(NOT plain EQUAL -1)
+    message(FATAL_ERROR "#697 same-Map guard: ${getter} reads another bot's AI through plain GetBotAI(player)")
+  endif()
+endforeach()
+
+# the other sites that read a group member's strategies or values
+read_source("strategy/actions/CheckMountStateAction.cpp" mount)
+require_text("${mount}" "if (!SameMapObject(bot, member))" "CheckMountStateAction same-Map guard")
+read_source("strategy/actions/MoveToTravelTargetAction.cpp" movetravel)
+require_text("${movetravel}" "if (GetBotAI(member) && !SameMapObject(bot, member))" "MoveToTravelTargetAction same-Map guard")
+read_source("strategy/actions/ChooseTravelTargetAction.cpp" choosetravel)
+require_text("${choosetravel}" "if (!SameMapObject(bot, player))" "ChooseTravelTargetAction group-copy same-Map guard")
+read_source("strategy/actions/MovementActions.cpp" movement)
+require_text("${movement}" "!SameMapObject(bot, groupMember)" "MovementActions flee-to-member same-Map guard")
+read_source("strategy/actions/WorldBuffTravelActions.cpp" worldbuff)
+require_text("${worldbuff}" "GetBotAIOnMapOf(bot, member)" "WorldBuffTravelActions step read of a member")
+require_text("${worldbuff}" "GetBotAIOnMapOf(bot, toSummon)" "WorldBuffTravelActions step/target write of the summoned member")
+string(FIND "${worldbuff}" "= GetBotAI(member);" wb_plain_member)
+string(FIND "${worldbuff}" "= GetBotAI(toSummon);" wb_plain_summon)
+if(NOT wb_plain_member EQUAL -1 OR NOT wb_plain_summon EQUAL -1)
+  message(FATAL_ERROR "#697 same-Map guard: WorldBuffTravelActions reads/writes a member's AI through plain GetBotAI")
+endif()
+
+# IsTank/IsHeal are static-capable only through the explicit-asker variants; the member wrappers pass the bot. A null asker reads no foreign AI.
+read_source("PlayerbotAI.h" ai_h)
+require_text("${ai_h}" "static bool IsTankFor(Player const* asker, Player* player, bool inGroup = true);" "static IsTankFor with asker")
+require_text("${ai_h}" "static bool IsHealFor(Player const* asker, Player* player, bool inGroup = true);" "static IsHealFor with asker")
+require_text("${ai_h}" "bool IsTank(Player* player, bool inGroup = true) { return IsTankFor(bot, player, inGroup); }" "IsTank member wrapper")
+require_text("${ai_h}" "bool IsHeal(Player* player, bool inGroup = true) { return IsHealFor(bot, player, inGroup); }" "IsHeal member wrapper")
+require_text("${slots}" "return (self && (other == self || SameMapObject(self, other))) ? GetBotAI(other) : nullptr;" "null asker reads no foreign AI")
+# no static call without an asker remains anywhere in the module
+# the module itself and the mod-dungeon-clear module (compiled with MODULES=static; it calls the same static API)
+file(GLOB_RECURSE all_sources
+  "${PB_SOURCE_DIR}/*.cpp" "${PB_SOURCE_DIR}/*.h"
+  "${PB_SOURCE_DIR}/../../../mod-dungeon-clear/src/*.cpp" "${PB_SOURCE_DIR}/../../../mod-dungeon-clear/src/*.h")
+list(LENGTH all_sources n_sources)
+if(n_sources LESS 100)
+  message(FATAL_ERROR "#697 same-Map guard: source glob found only ${n_sources} files")
+endif()
+set(dc_seen FALSE)
+foreach(src ${all_sources})
+  if(src MATCHES "mod-dungeon-clear")
+    set(dc_seen TRUE)
+  endif()
+endforeach()
+if(NOT dc_seen)
+  message(FATAL_ERROR "#697 same-Map guard: mod-dungeon-clear sources were not scanned (the glob must cover them)")
+endif()
+foreach(src ${all_sources})
+  file(READ "${src}" body)
+  string(FIND "${body}" "PlayerbotAI::IsTank(" p1)
+  string(FIND "${body}" "PlayerbotAI::IsHeal(" p2)
+  if(NOT p1 EQUAL -1 OR NOT p2 EQUAL -1)
+    message(FATAL_ERROR "#697 same-Map guard: ${src} calls PlayerbotAI::IsTank/IsHeal without an asker (use IsTankFor/IsHealFor)")
+  endif()
+endforeach()

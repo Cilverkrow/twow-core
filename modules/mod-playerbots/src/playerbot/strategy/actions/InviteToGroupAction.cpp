@@ -149,13 +149,14 @@ namespace ai
 
     std::unordered_map<uint8, std::unordered_map<BotRoles, uint32>> LfgAction::AllowedClassRoleNr(Player* player, uint8 groupSize)
     {
+        Player* const asker = player;   // twow-repo#697: the requester; group members are read only on its Map object (the inner 'player' shadows it)
         std::unordered_map<uint8, std::unordered_map<BotRoles, uint32>> allowedClassNr = AllowedClassRoleNr(groupSize);
 
         Group* group = player->GetGroup();
 
         if (!group)
         {
-            BotRoles role = PlayerbotAI::IsTank(player, false) ? BOT_ROLE_TANK : PlayerbotAI::IsHeal(player, false) ? BOT_ROLE_HEALER :
+            BotRoles role = PlayerbotAI::IsTankFor(asker, player, false) ? BOT_ROLE_TANK : PlayerbotAI::IsHealFor(asker, player, false) ? BOT_ROLE_HEALER :
                                                                                                                       BOT_ROLE_DPS;
             uint8 cls = (Classes)player->getClass();
 
@@ -179,7 +180,7 @@ namespace ai
             if (!PlayerbotAI::IsSafe(groupMaster, player))
                 continue;
 
-            BotRoles role = PlayerbotAI::IsTank(player, false) ? BOT_ROLE_TANK : PlayerbotAI::IsHeal(player, false) ? BOT_ROLE_HEALER : BOT_ROLE_DPS;
+            BotRoles role = PlayerbotAI::IsTankFor(asker, player, false) ? BOT_ROLE_TANK : PlayerbotAI::IsHealFor(asker, player, false) ? BOT_ROLE_HEALER : BOT_ROLE_DPS;
             uint8 cls = (Classes)player->getClass();
 
             if (allowedClassNr[0][role] > 0)

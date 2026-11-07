@@ -65,8 +65,8 @@ namespace
             Member m;
             m.isDead = member->isDead();
             m.canRezClass = IsRezClass(member);
-            m.isHealerRole = PlayerbotAI::IsHeal(member);
-            m.isTankRole = PlayerbotAI::IsTank(member);
+            m.isHealerRole = PlayerbotAI::IsHealFor(bot, member);
+            m.isTankRole = PlayerbotAI::IsTankFor(bot, member);
             m.isBot = GET_PLAYERBOT_AI(member) != nullptr;
             out.push_back(m);
             players.push_back(member);

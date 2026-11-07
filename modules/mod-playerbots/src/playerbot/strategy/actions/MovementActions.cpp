@@ -4350,7 +4350,7 @@ bool MovementAction::Flee(Unit *target)
             Player* groupMember = gref->getSource();
 
             // Ignore group member if is not alive or on a different zone
-            if (!groupMember || groupMember->IsBeingTeleported() || groupMember == bot || groupMember == master || !sServerFacade.IsAlive(groupMember) || bot->GetMapId() != groupMember->GetMapId())
+            if (!groupMember || groupMember->IsBeingTeleported() || groupMember == bot || groupMember == master || !sServerFacade.IsAlive(groupMember) || bot->GetMapId() != groupMember->GetMapId() || !SameMapObject(bot, groupMember))   // twow-repo#697: same Map object (reads the member's AI values below)
                 continue;
 
             // Don't flee to group member if too close or too far

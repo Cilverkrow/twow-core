@@ -2226,6 +2226,10 @@ bool ChooseGroupTravelTargetAction::Execute(Event& event)
         if (!ai->IsSafe(player))
             continue;
 
+        // twow-repo#697: PAI_VALUE / TellDebug below read the member's AI - only a bot of this Map object (same thread)
+        if (!SameMapObject(bot, player))
+            continue;
+
         if (!GetBotAI(player))
             continue;
 

@@ -22,6 +22,20 @@ inline PlayerbotAI* GetBotAI(Player const* player)
     return player ? player->GetModuleSlotAs<PlayerbotAI>(MODULE_SLOT_BOT_AI) : nullptr;
 }
 
+// twow-repo#697 (BOT-05b): continents are split into regions; every region is its own Map object (same map id, own instance id) updated on its own
+// pool thread. The AI of another bot (strategy maps, values) may only be read while that bot is updated on the thread we run on, i.e. while both
+// stand on the same Map OBJECT - comparing GetMapId() is not enough. Null when the other bot is on another Map (or not in a Map).
+inline bool SameMapObject(Player const* a, Player const* b)
+{
+    return a && b && a->FindMap() && a->FindMap() == b->FindMap();
+}
+
+inline PlayerbotAI* GetBotAIOnMapOf(Player const* self, Player const* other)
+{
+    // a null asker never reads a foreign AI (it does not mean "unguarded")
+    return (self && (other == self || SameMapObject(self, other))) ? GetBotAI(other) : nullptr;
+}
+
 inline PlayerbotMgr* GetBotMgr(Player const* player)
 {
     return player ? player->GetModuleSlotAs<PlayerbotMgr>(MODULE_SLOT_BOT_MGR) : nullptr;

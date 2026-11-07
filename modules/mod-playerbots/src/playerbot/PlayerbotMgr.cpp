@@ -1826,8 +1826,8 @@ void BuildRosterListEntries(std::vector<ai::roster_list::Entry>& out)
             e.raceId = bot->getRace();
             e.level = bot->GetLevel();
             e.online = true;
-            e.role = PlayerbotAI::IsTank(bot) ? ai::roster_list::Role::TANK
-                : PlayerbotAI::IsHeal(bot) ? ai::roster_list::Role::HEAL
+            e.role = PlayerbotAI::IsTankFor(bot, bot) ? ai::roster_list::Role::TANK
+                : PlayerbotAI::IsHealFor(bot, bot) ? ai::roster_list::Role::HEAL
                 : ai::roster_list::Role::DPS;
             if (Group* group = bot->GetGroup())
                 e.group = group->IsRaidGroup() ? ai::roster_list::GroupState::RAID : ai::roster_list::GroupState::GROUP;

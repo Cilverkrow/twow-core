@@ -61,6 +61,10 @@ bool MoveToTravelTargetAction::Execute(Event& event)
             if (!member->IsMoving())
                 continue;
 
+            // twow-repo#697: HasStrategy iterates the member's strategy map - only a bot of this Map object (same thread)
+            if (GetBotAI(member) && !SameMapObject(bot, member))
+                continue;
+
             if (GetBotAI(member) &&
                 !(GetBotAI(member)->HasStrategy("follow", BotState::BOT_STATE_NON_COMBAT) || GetBotAI(member)->HasStrategy("wander", BotState::BOT_STATE_NON_COMBAT)))
                 continue;

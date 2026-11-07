@@ -35,7 +35,7 @@ namespace DcRegroupDecision
     // Everything the verdict needs, resolved from live game state by the trigger.
     struct RegroupInputs
     {
-        bool  isHealer = false;          // PlayerbotAI::IsHeal(bot)
+        bool  isHealer = false;          // PlayerbotAI::IsHealFor(bot, bot)
         bool  isMelee = false;           // PlayerbotAI::IsMelee(bot) — role split for the action's radius
         bool  casting = false;           // a generic or channeled spell is in flight
         bool  ccd = false;               // stunned / fleeing / confused / rooted
