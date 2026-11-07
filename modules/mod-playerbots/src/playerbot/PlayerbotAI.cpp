@@ -2984,10 +2984,25 @@ void PlayerbotAI::HandleCommands()
         }
         ChatCommandHolder& holder = *next;
 
+        // twow-repo#563 part 2: the owner travels as an ObjectGuid; resolve it here, on the bot's thread. A sender who logged out while the
+        // command waited is gone - drop the command and count it (an empty guid = no owner, not dropped).
+        Player* directiveOwner = nullptr;
+        if (!holder.GetOwnerGuid().IsEmpty())
+        {
+            directiveOwner = ObjectAccessor::FindPlayer(holder.GetOwnerGuid());
+            if (!directiveOwner)
+            {
+                static std::atomic<uint32> ownerGoneDrops{0};
+                uint32 const n = ownerGoneDrops.fetch_add(1, std::memory_order_relaxed) + 1;
+                if (n == 1 || n % 100 == 0)
+                    sLog.outBasic("[ChatCmd] owner gone, command dropped bot=%u kind=%u drops=%u", bot ? bot->GetGUIDLow() : 0, uint32(holder.GetKind()), n);
+                continue;
+            }
+        }
+
         // twow-repo#563: directives queued by HandleCommand run here, on the bot's thread, in queue order.
         if (holder.GetKind() != ChatCommandKind::Chat)
         {
-            Player* directiveOwner = holder.GetOwner();
             switch (holder.GetKind())
             {
                 case ChatCommandKind::DoAction:
@@ -3010,6 +3025,53 @@ void PlayerbotAI::HandleCommands()
                         SetShouldLogOut(false);
                     }
                     break;
+                case ChatCommandKind::Logout:
+                    if (!(bot->IsStunnedByLogout() || bot->GetSession()->isLogingOut()))
+                    {
+                        if (holder.GetType() == CHAT_MSG_WHISPER && directiveOwner)
+                            TellPlayer(directiveOwner, BOT_TEXT("logout_start"));
+
+                        if (master && GetBotMgr(master))
+                            SetShouldLogOut(true);
+                    }
+                    break;
+                case ChatCommandKind::Wait:
+                {
+                    std::string const remaining = holder.GetCommand();
+                    uint32 const delay = atof(remaining.c_str()) * static_cast<uint32>(IN_MILLISECONDS);
+                    if (delay > 20000)
+                    {
+                        if (directiveOwner)
+                            TellPlayer(directiveOwner, "Max wait time is 20 seconds!");
+                        break;
+                    }
+
+                    IncreaseAIInternalUpdateDelay(delay);
+                    isWaiting = true;
+                    if (directiveOwner)
+                        TellPlayer(directiveOwner, "Waiting for " + remaining + " seconds!");
+                    break;
+                }
+                case ChatCommandKind::QueueWalk:
+                {
+                    // the group walk used to run on the AsyncPackets thread; here it reads the group on the bot's thread
+                    int index = 1;
+                    if (Group* group = bot->GetGroup())
+                    {
+                        for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+                        {
+                            if (ref->getSource() == master)
+                                continue;
+
+                            if (ref->getSource() == bot)
+                                break;
+
+                            index++;
+                        }
+                    }
+                    delayed.push_back(ChatCommandHolder(holder.GetCommand(), holder.GetOwnerGuid(), holder.GetType(), time(0) + index, ChatCommandKind::Chat));
+                    break;
+                }
                 default:
                     break;
             }
@@ -3024,7 +3086,7 @@ void PlayerbotAI::HandleCommands()
         }
 
         std::string command = holder.GetCommand();
-        Player* owner = holder.GetOwner();
+        Player* owner = directiveOwner;
         if (!helper.ParseChatCommand(command, owner) && holder.GetType() == CHAT_MSG_WHISPER)
         {
             //ostringstream out; out << "Unknown command " << command;
@@ -3422,24 +3484,9 @@ void PlayerbotAI::HandleCommand(uint32 type, const std::string& text, Player& fr
     }
     else if (type != CHAT_MSG_WHISPER && filtered.size() > 6 && filtered.substr(0, 6) == "queue ")
     {
+        // twow-repo#563 part 2: the group walk (bot->GetGroup, master) runs in HandleCommands on the bot's thread
         std::string remaining = filtered.substr(filtered.find(" ") + 1);
-        int index = 1;
-        Group* group = bot->GetGroup();
-        if (group)
-        {
-            for (GroupReference *ref = group->GetFirstMember(); ref; ref = ref->next())
-            {
-                if (ref->getSource() == master)
-                    continue;
-
-                if (ref->getSource() == bot)
-                    break;
-
-                index++;
-            }
-        }
-        ChatCommandHolder cmd(remaining, &fromPlayer, type, time(0) + index);
-        QueueChatCommand(cmd);
+        QueueChatCommand(ChatCommandHolder(remaining, &fromPlayer, type, 0, ChatCommandKind::QueueWalk));
     }
     else if (filtered == "reset")
     {
@@ -3447,14 +3494,8 @@ void PlayerbotAI::HandleCommand(uint32 type, const std::string& text, Player& fr
     }
     else if (filtered == "logout")
     {
-        if (!(bot->IsStunnedByLogout() || bot->GetSession()->isLogingOut()))
-        {
-            if (type == CHAT_MSG_WHISPER)
-                TellPlayer(&fromPlayer, BOT_TEXT("logout_start"));
-
-            if (master && GetBotMgr(master))
-                SetShouldLogOut(true);
-        }
+        // twow-repo#563 part 2: state check, reply and SetShouldLogOut run in HandleCommands on the bot's thread
+        QueueChatCommand(ChatCommandHolder(filtered, &fromPlayer, type, 0, ChatCommandKind::Logout));
     }
     else if (filtered == "logout cancel")
     {
@@ -3463,17 +3504,9 @@ void PlayerbotAI::HandleCommand(uint32 type, const std::string& text, Player& fr
     }
     else if ((filtered.size() > 5) && (filtered.substr(0, 5) == "wait ") && (filtered.find("wait for attack") == std::string::npos))
     {
+        // twow-repo#563 part 2: delay, isWaiting and the replies run in HandleCommands on the bot's thread
         std::string remaining = filtered.substr(filtered.find(" ") + 1);
-        uint32 delay = atof(remaining.c_str()) * static_cast<uint32>(IN_MILLISECONDS);
-        if (delay > 20000)
-        {
-            TellPlayer(&fromPlayer, "Max wait time is 20 seconds!");
-            return;
-        }
-
-        IncreaseAIInternalUpdateDelay(delay);
-        isWaiting = true;
-        TellPlayer(&fromPlayer, "Waiting for " + remaining + " seconds!");
+        QueueChatCommand(ChatCommandHolder(remaining, &fromPlayer, type, 0, ChatCommandKind::Wait));
         return;
     }
     else

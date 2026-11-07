@@ -376,16 +376,23 @@ enum class ChatCommandKind : uint8
     DoAction,          // DoSpecificAction(command, Event("do", "", owner))
     Reset,             // Reset(true)
     LogoutCancel,      // logout cancel (whisper reply to owner)
+    Logout,            // logout (whisper reply to owner, SetShouldLogOut)
+    Wait,              // "wait <seconds>": delay + reply to owner; command = the text after "wait "
+    QueueWalk,         // "queue <command>": the group walk runs on the bot thread, then the command is delayed by the index
 };
 
+// twow-repo#563 part 2: the holder keeps the owner as an ObjectGuid, never as a Player*. The Player of the sender can be logged out and freed
+// while the command waits in the queue; HandleCommands resolves the guid on the bot's thread (ObjectAccessor::FindPlayer) and drops the command
+// (counted) when the owner is gone. An empty guid means "no owner" and is not dropped.
 class ChatCommandHolder
 {
 public:
-    ChatCommandHolder(std::string command, Player* owner = NULL, uint32 type = CHAT_MSG_WHISPER, time_t time = 0, ChatCommandKind kind = ChatCommandKind::Chat) : command(command), owner(owner), type(type), time(time), kind(kind) {}
+    ChatCommandHolder(std::string command, Player* owner = NULL, uint32 type = CHAT_MSG_WHISPER, time_t time = 0, ChatCommandKind kind = ChatCommandKind::Chat) : command(command), ownerGuid(owner ? owner->GetObjectGuid() : ObjectGuid()), type(type), time(time), kind(kind) {}
+    ChatCommandHolder(std::string command, ObjectGuid ownerGuid, uint32 type, time_t time, ChatCommandKind kind) : command(command), ownerGuid(ownerGuid), type(type), time(time), kind(kind) {}
     ChatCommandHolder(ChatCommandHolder const& other)
     {
         this->command = other.command;
-        this->owner = other.owner;
+        this->ownerGuid = other.ownerGuid;
         this->type = other.type;
         this->time = other.time;
         this->kind = other.kind;
@@ -393,14 +400,14 @@ public:
 
 public:
     std::string GetCommand() { return command; }
-    Player* GetOwner() { return owner; }
+    ObjectGuid GetOwnerGuid() const { return ownerGuid; }
     uint32 GetType() { return type; }
     time_t GetTime() { return time; }
     ChatCommandKind GetKind() const { return kind; }
 
 private:
     std::string command;
-    Player* owner;
+    ObjectGuid ownerGuid;
     uint32 type;
     time_t time;
     ChatCommandKind kind;

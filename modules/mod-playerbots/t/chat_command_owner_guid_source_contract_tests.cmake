@@ -1,0 +1,107 @@
+# twow-repo#563 part 2 (HARM, OB-00 07.11.2026): PlayerbotAI::HandleCommand runs on the AsyncPackets thread. (1) The queued command must not
+# keep a raw Player* of the sender (the sender can log out and be freed while the command waits): the holder keeps an ObjectGuid and
+# HandleCommands resolves it with ObjectAccessor::FindPlayer on the bot's thread, dropping (and counting) the command when the owner is gone.
+# (2) "wait ", "logout", the TellPlayer replies and the "queue " group walk read or write bot state, so they run in HandleCommands too.
+# Carries a negative probe: the old raw-pointer holder must be rejected by the same checker.
+
+function(read_source path out_var)
+  file(READ "${PB_SOURCE_DIR}/${path}" text)
+  string(REPLACE "\r" "" text "${text}")
+  set(${out_var} "${text}" PARENT_SCOPE)
+endfunction()
+
+function(require_text text needle description)
+  string(FIND "${text}" "${needle}" offset)
+  if(offset EQUAL -1)
+    message(FATAL_ERROR "#563 part 2 owner guid: missing ${description}: ${needle}")
+  endif()
+endfunction()
+
+function(forbid_text text needle description)
+  string(FIND "${text}" "${needle}" offset)
+  if(NOT offset EQUAL -1)
+    message(FATAL_ERROR "#563 part 2 owner guid: ${description} must not appear here: ${needle}")
+  endif()
+endfunction()
+
+function(slice text begin_marker end_marker out_var)
+  string(FIND "${text}" "${begin_marker}" b)
+  string(FIND "${text}" "${end_marker}" e)
+  if(b EQUAL -1 OR e EQUAL -1 OR NOT b LESS e)
+    message(FATAL_ERROR "#563 part 2 owner guid: cannot find ${begin_marker}")
+  endif()
+  math(EXPR len "${e} - ${b}")
+  string(SUBSTRING "${text}" ${b} ${len} piece)
+  set(${out_var} "${piece}" PARENT_SCOPE)
+endfunction()
+
+# A holder is safe when it stores the owner as an ObjectGuid and has no raw Player* member / getter.
+function(holder_keeps_guid text out_var)
+  set(ok TRUE)
+  string(FIND "${text}" "ObjectGuid ownerGuid;" has_guid)
+  string(FIND "${text}" "Player* owner;" has_raw)
+  string(FIND "${text}" "Player* GetOwner()" has_raw_getter)
+  if(has_guid EQUAL -1 OR NOT has_raw EQUAL -1 OR NOT has_raw_getter EQUAL -1)
+    set(ok FALSE)
+  endif()
+  set(${out_var} ${ok} PARENT_SCOPE)
+endfunction()
+
+# --- negative probe: the part-1 holder (raw Player*) must be rejected, the guid holder accepted ---
+holder_keeps_guid("private:\n    std::string command;\n    Player* owner;\n    uint32 type;\n    Player* GetOwner() { return owner; }" probe_old)
+if(probe_old)
+  message(FATAL_ERROR "#563 part 2 owner guid: negative probe failed - the raw Player* holder was accepted")
+endif()
+holder_keeps_guid("private:\n    std::string command;\n    ObjectGuid ownerGuid;\n    uint32 type;\n    ObjectGuid GetOwnerGuid() const { return ownerGuid; }" probe_new)
+if(NOT probe_new)
+  message(FATAL_ERROR "#563 part 2 owner guid: positive probe failed - the guid holder was rejected")
+endif()
+
+read_source("PlayerbotAI.h" ai_h)
+read_source("PlayerbotAI.cpp" ai_cpp)
+
+slice("${ai_h}" "class ChatCommandHolder" "class PlayerbotAI : public PlayerbotAIBase" holder)
+holder_keeps_guid("${holder}" holder_ok)
+if(NOT holder_ok)
+  message(FATAL_ERROR "#563 part 2 owner guid: ChatCommandHolder must keep the owner as ObjectGuid, not as Player*")
+endif()
+require_text("${holder}" "this->ownerGuid = other.ownerGuid;" "copy constructor copies the guid")
+require_text("${holder}" "ObjectGuid GetOwnerGuid() const" "guid getter")
+require_text("${ai_h}" "    Logout," "Logout kind")
+require_text("${ai_h}" "    Wait," "Wait kind")
+require_text("${ai_h}" "    QueueWalk," "QueueWalk kind")
+
+slice("${ai_cpp}" "void PlayerbotAI::HandleCommand(uint32 type" "void PlayerbotAI::HandleBotOutgoingPacket" off_thread)
+slice("${ai_cpp}" "void PlayerbotAI::HandleCommands()" "void PlayerbotAI::QueueChatCommand" drain)
+
+# HandleCommand (AsyncPackets thread): no reply, no delay, no logout flag, no group walk.
+forbid_text("${off_thread}" "TellPlayer(" "TellPlayer")
+forbid_text("${off_thread}" "IncreaseAIInternalUpdateDelay(" "IncreaseAIInternalUpdateDelay")
+forbid_text("${off_thread}" "isWaiting = " "isWaiting write")
+forbid_text("${off_thread}" "SetShouldLogOut(" "SetShouldLogOut")
+forbid_text("${off_thread}" "IsStunnedByLogout" "logout state read")
+forbid_text("${off_thread}" "isLogingOut" "logout state read")
+forbid_text("${off_thread}" "GetFirstMember(" "group walk")
+forbid_text("${off_thread}" "bot->GetGroup()" "group read")
+forbid_text("${off_thread}" "GetOwner()" "raw owner getter")
+require_text("${off_thread}" "ChatCommandKind::Logout" "queued logout")
+require_text("${off_thread}" "ChatCommandKind::Wait" "queued wait")
+require_text("${off_thread}" "ChatCommandKind::QueueWalk" "queued queue-walk")
+
+# HandleCommands (bot thread): resolves the guid, drops + counts a missing owner, runs the moved work.
+require_text("${drain}" "ObjectAccessor::FindPlayer(holder.GetOwnerGuid())" "owner resolved by guid on the bot thread")
+require_text("${drain}" "ownerGoneDrops.fetch_add" "drop counter")
+require_text("${drain}" "[ChatCmd] owner gone, command dropped" "drop log line")
+forbid_text("${drain}" "holder.GetOwner()" "raw owner getter")
+string(FIND "${drain}" "ObjectAccessor::FindPlayer(holder.GetOwnerGuid())" resolve_pos)
+string(FIND "${drain}" "if (holder.GetKind() != ChatCommandKind::Chat)" kind_pos)
+if(resolve_pos EQUAL -1 OR kind_pos EQUAL -1 OR NOT resolve_pos LESS kind_pos)
+  message(FATAL_ERROR "#563 part 2 owner guid: the owner must be resolved before any directive runs")
+endif()
+require_text("${drain}" "case ChatCommandKind::Logout:" "drain: Logout")
+require_text("${drain}" "SetShouldLogOut(true);" "drain: SetShouldLogOut")
+require_text("${drain}" "case ChatCommandKind::Wait:" "drain: Wait")
+require_text("${drain}" "IncreaseAIInternalUpdateDelay(delay);" "drain: wait delay")
+require_text("${drain}" "case ChatCommandKind::QueueWalk:" "drain: QueueWalk")
+require_text("${drain}" "bot->GetGroup()" "drain: group walk")
+require_text("${drain}" "delayed.push_back(ChatCommandHolder(holder.GetCommand(), holder.GetOwnerGuid()" "drain: delayed command keeps the guid")
