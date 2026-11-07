@@ -48,11 +48,8 @@ namespace ai
         if (!player)
             return false;
 
-        // A3 lever 2 (AiPlayerbot.BotGroups.WritePath): an in-scope bot's leave is a world-thread op; while an op of the bot
-        // waits there is nothing to decide (no goodbye per "leave far away" tick).
+        // A3 lever 2 (AiPlayerbot.BotGroups.WritePath): an in-scope bot's leave is a world-thread op.
         bool const writePath = group_ops::WritePathRoutes(ai);
-        if (writePath && group_ops::StillPending(ai, bot->GetGUIDLow()))
-            return false;
 
         Group* group = bot->GetGroup();
 
@@ -60,6 +57,29 @@ namespace ai
             return false;
 
         bool aiMaster = (ai->GetMaster() && GetBotAI(ai->GetMaster()));
+
+        // A3 lever 2: the leave branch below as an op (GroupOps.cpp RunLeave: the event and membership lines, the core leave, a
+        // free bot's master cleared, then the reset posted back here - Reset only with a bot master, as below). The goodbye and
+        // the [RosterGroup] line only for a queued leave; refused (queue full, a leave or leader op pending), or an op of the bot
+        // still waiting: nothing said, nothing changed, decided again later. A bot that stays keeps the code below.
+        if (writePath && group)
+        {
+            bool const wpSelfLed = singleton_group::IsSelfLedSingleton(
+                group->GetMembersCount(), group->IsLeader(bot->GetObjectGuid()), group->isBGGroup());
+            if (!singleton_group::ShouldStayInGroup(sRandomPlayerbotMgr.IsFreeBot(bot), true, player == bot, wpSelfLed))
+            {
+                if (group_ops::StillPending(ai, bot->GetGUIDLow()))
+                    return false;
+                std::string const outer = group_ops::t_outerAction ? group_ops::t_outerAction->getName() : getName();
+                if (!group_ops::QueueLeave(ai, group_ops::LeaveSourceOf(outer), aiMaster ? group_ops::kLeaveBotMaster : 0))
+                    return false;
+                ai->TellPlayer(player, BOT_TEXT("goodbye"), PlayerbotSecurityLevel::PLAYERBOT_SECURITY_TALK, false);
+                if (wpSelfLed && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()))
+                    sLog.outBasic("[RosterGroup] state=singleton_disband bot=%u issuer=%u group=%u",
+                        bot->GetGUIDLow(), player->GetGUIDLow(), group->GetId());
+                return true;
+            }
+        }
 
         ai->TellPlayer(player, BOT_TEXT("goodbye"), PlayerbotSecurityLevel::PLAYERBOT_SECURITY_TALK, false);
 
@@ -78,15 +98,6 @@ namespace ai
 
         if (!shouldStay)
         {
-            // A3 lever 2: the core leave and its event/membership lines run as the op (GroupOps.cpp RunLeave), which then clears
-            // a free bot's master and posts the strategy reset back to this bot (LeaveReset) - the rest of this function after
-            // the core call. Refused (queue full, an op pending): nothing changed, decided again later.
-            if (writePath && group)
-            {
-                std::string const outer = group_ops::t_outerAction ? group_ops::t_outerAction->getName() : getName();
-                return group_ops::QueueLeave(ai, group_ops::LeaveSourceOf(outer));
-            }
-
             if (group)
                 sPlayerbotAIConfig.logEvent(ai, "LeaveGroupAction", group->GetLeaderName(), std::to_string(group->GetMembersCount()-1));
 

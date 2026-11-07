@@ -25,6 +25,9 @@ enum Request : std::uint32_t
     // A3 lever 2 (BotGroups.WritePath): PassLeadershipToMasterAction's reset after a queued leader change (a random bot:
     // ResetStrategies + Reset, as the legacy code did after its core call). Drops nothing pending.
     LeaderReset = 1u << 6,
+    // A3 lever 2 (review fix): LeaveGroupAction's AI part when its master was a bot at the decision - Reset only, no
+    // ResetStrategies (the legacy `if (!aiMaster)`). A leave like LeaveReset in Merge.
+    LeaveResetOnly = 1u << 7,
 };
 
 // BOT-12 (twow-repo#677, AiPlayerbot.BotGroups.OpQueue): the event source of the world-thread group queue's "accept invitation"
@@ -57,6 +60,11 @@ inline std::uint32_t Merge(std::uint32_t pending, std::uint32_t add)
         pending &= ~std::uint32_t(LeaveReset | Follower | TurnIn | ForceTravel);
     if (add & LeaveReset)
         pending &= ~std::uint32_t(JoinReset | JoinTail | Follower | TurnIn | ForceTravel);
+    // A3 lever 2: the reset-only leave is a leave (a join drops it, it drops a pending join and the sets).
+    if (add & JoinReset)
+        pending &= ~std::uint32_t(LeaveResetOnly);
+    if (add & LeaveResetOnly)
+        pending &= ~std::uint32_t(JoinReset | JoinTail | Follower | TurnIn | ForceTravel);
     if (add & Follower)
         pending &= ~std::uint32_t(TurnIn);
     if (add & TurnIn)
@@ -73,6 +81,7 @@ struct Plan
     bool turnIn = false;
     bool joinTail = false;      // after the reset, before the set
     bool forceTravel = false;   // last: after the reset and the set
+    bool resetOnly = false;     // A3 lever 2: Reset without ResetStrategies (LeaveResetOnly, no full reset requested)
 };
 
 inline Plan PlanFor(std::uint32_t requests)
@@ -84,6 +93,7 @@ inline Plan PlanFor(std::uint32_t requests)
     p.follower = !p.turnIn && (requests & Follower) != 0;
     p.joinTail = (requests & JoinTail) != 0;
     p.forceTravel = (requests & ForceTravel) != 0;
+    p.resetOnly = !p.reset && (requests & LeaveResetOnly) != 0;
     return p;
 }
 

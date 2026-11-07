@@ -387,6 +387,11 @@ namespace ai
                     group->ConvertToRaid();
             }
 
+            // A3 lever 2: in scope the invite is queued first and the chat follows only a queued invite (a refused push says
+            // nothing, so the next try does not repeat it).
+            if (writePath && !Invite(bot, player, raidConvert))
+                return false;
+
             Guild* guild = sGuildMgr.GetGuildById(bot->GetGuildId());
             if (sPlayerbotAIConfig.inviteChat && (sRandomPlayerbotMgr.IsFreeBot(bot) || !ai->HasActivePlayerMaster()))
             {
@@ -413,7 +418,7 @@ namespace ai
                 }
             }
 
-            return Invite(bot, player, raidConvert);
+            return writePath || Invite(bot, player, raidConvert);
         }
 
         return false;
@@ -548,6 +553,11 @@ namespace ai
                     group->ConvertToRaid();
             }
 
+            // A3 lever 2: in scope the invite is queued first and the chat follows only a queued invite (a refused push says
+            // nothing, so the next try does not repeat it).
+            if (writePath && !Invite(bot, player, raidConvert))
+                return false;
+
             if (sPlayerbotAIConfig.inviteChat && (sRandomPlayerbotMgr.IsFreeBot(bot) || !ai->HasActivePlayerMaster()))
             {
                 BroadcastHelper::BroadcastGuildGroupOrRaidInvite(
@@ -559,7 +569,7 @@ namespace ai
                 );
             }
 
-            return Invite(bot, player, raidConvert);
+            return writePath || Invite(bot, player, raidConvert);
         }
 
         return false;

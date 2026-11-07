@@ -245,12 +245,12 @@ namespace ai
                     sLog.outDetail("Repop: Removing bot #%d %s:%d <%s> from group", bot->GetGUIDLow(), bot->GetTeam() == ALLIANCE ? "A" : "H", bot->GetLevel(), bot->GetName());
                     // A3 lever 2 (AiPlayerbot.BotGroups.WritePath): an in-scope bot leaves as a world-thread op through the core
                     // leave (RemoveFromGroup: the group of two is removed from the group map and deleted - the raw RemoveMember
-                    // below leaves it there). Refused, or an op pending: the bot stays grouped this time.
+                    // below leaves it there), with no tail (kLeaveNoTail: the raw RemoveMember had none). No pending check: a Leave
+                    // replaces a pending join, accept or invite of the bot, and a pending leave leaves it anyway. Refused (queue
+                    // full, a leader op pending) or dropped: the bot stays grouped this time (dropped_full_leave,
+                    // refused_pending_leave, stale_leave in [GroupWrite]).
                     if (group_ops::WritePathRoutes(ai))
-                    {
-                        if (!group_ops::StillPending(ai, bot->GetGUIDLow()))
-                            group_ops::QueueLeave(ai, group_ops::OpSource::Repop);
-                    }
+                        group_ops::QueueLeave(ai, group_ops::OpSource::Repop, group_ops::kLeaveNoTail);
                     else
                         group->RemoveMember(bot->GetObjectGuid(), 0);
                 }

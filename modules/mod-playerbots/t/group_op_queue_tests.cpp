@@ -680,5 +680,23 @@ int main()
             "a leader reset drops no pending join tail or set");
         Require((Merge(LeaderReset, LeaveReset) & LeaveReset) != 0, "a leave after it still resets");
     }
+
+    // ---- A3 lever 2 review fix: the tail of a queued Leave is the legacy tail of its producer --------------------------------
+    Require(LeaveTailOf(0) == LeaveTail::Adhoc && LeaveTailOf(8) == LeaveTail::Adhoc, "the ad-hoc reasons keep the ad-hoc tail");
+    Require(LeaveTailOf(std::uint8_t(kLeaveQueued)) == LeaveTail::Command, "LeaveGroupAction::Leave, master not a bot");
+    Require(LeaveTailOf(std::uint8_t(kLeaveQueued | kLeaveBotMaster)) == LeaveTail::CommandBotMaster,
+        "LeaveGroupAction::Leave, bot master");
+    Require(LeaveTailOf(std::uint8_t(kLeaveQueued | kLeaveNoTail)) == LeaveTail::None, "repop: no tail");
+    {
+        using namespace ai::group_ai_refresh;
+        Plan const only = PlanFor(LeaveResetOnly);
+        Require(only.resetOnly && !only.reset && !only.joinStrategies, "a bot-master leave: Reset only, no ResetStrategies");
+        Require(!PlanFor(LeaveReset).resetOnly && !PlanFor(0).resetOnly, "no reset-only without the request");
+        Plan const both = PlanFor(LeaveResetOnly | LeaveReset);
+        Require(both.reset && !both.resetOnly, "a full reset covers the reset-only one");
+        Require(Merge(JoinReset | JoinTail | Follower, LeaveResetOnly) == LeaveResetOnly, "the reset-only leave drops a pending join");
+        Require(Merge(LeaveResetOnly, JoinReset) == JoinReset, "a join drops a pending reset-only leave");
+        Require(Merge(LeaveReset, JoinReset) == JoinReset, "a join drops a pending leave (unchanged)");
+    }
     return 0;
 }
