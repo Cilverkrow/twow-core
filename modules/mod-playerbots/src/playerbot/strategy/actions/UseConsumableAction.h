@@ -40,6 +40,10 @@ namespace ai
         bool isPossible() override;
         bool isUseful() override;
 
+        // twow-repo#333 M2 Crafting.Consumables (owner list 07.11.2026, item 1): the item usage keeps what this action would use -
+        // the same classification (elixir, flask, scroll, buff food; never a potion or a protection consumable), usable by the bot.
+        bool IsBuffConsumable(ItemPrototype const* proto) const;
+
     protected:
         uint32 GetItemId() override { return selectedItemId; }
 
@@ -76,6 +80,7 @@ namespace ai
         float GetStatWeight(uint32 statType) const;
 
         uint32 selectedItemId = 0;
+        ConsumableType selectedType = ConsumableType::Count;
 
         static const std::vector<uint32> knownFlaskAuras;
         static const std::vector<uint32> knownFoodBuffAuras;
