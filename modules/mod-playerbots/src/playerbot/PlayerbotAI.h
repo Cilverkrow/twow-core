@@ -367,16 +367,28 @@ public:
     size_t QueueSize() { std::lock_guard<std::mutex> lock(m_botPacketMutex); return queue.size(); }
 };
 
+// twow-repo#563 (HARM, 07.11.): HandleCommand runs on the AsyncPackets thread, in parallel with the map threads. The branches that used to
+// act on the bot directly ("d "/"do "/command:do, "reset", "logout cancel") are queued as a kind other than Chat and run by HandleCommands
+// on the bot's own thread, in queue order (latency one tick).
+enum class ChatCommandKind : uint8
+{
+    Chat = 0,          // parsed by ExternalEventHelper::ParseChatCommand
+    DoAction,          // DoSpecificAction(command, Event("do", "", owner))
+    Reset,             // Reset(true)
+    LogoutCancel,      // logout cancel (whisper reply to owner)
+};
+
 class ChatCommandHolder
 {
 public:
-    ChatCommandHolder(std::string command, Player* owner = NULL, uint32 type = CHAT_MSG_WHISPER, time_t time = 0) : command(command), owner(owner), type(type), time(time) {}
+    ChatCommandHolder(std::string command, Player* owner = NULL, uint32 type = CHAT_MSG_WHISPER, time_t time = 0, ChatCommandKind kind = ChatCommandKind::Chat) : command(command), owner(owner), type(type), time(time), kind(kind) {}
     ChatCommandHolder(ChatCommandHolder const& other)
     {
         this->command = other.command;
         this->owner = other.owner;
         this->type = other.type;
         this->time = other.time;
+        this->kind = other.kind;
     }
 
 public:
@@ -384,12 +396,14 @@ public:
     Player* GetOwner() { return owner; }
     uint32 GetType() { return type; }
     time_t GetTime() { return time; }
+    ChatCommandKind GetKind() const { return kind; }
 
 private:
     std::string command;
     Player* owner;
     uint32 type;
     time_t time;
+    ChatCommandKind kind;
 };
 
 class PlayerbotAI : public PlayerbotAIBase
