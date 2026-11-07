@@ -12,8 +12,9 @@ namespace ai::combat_rule
 {
 bool HealerMayAttack(PlayerbotAI* ai)
 {
+    // The old rule's facts; offdps is read only for a healer, as the old expression's short circuit did.
     bool const heal = ai->ContainsStrategy(STRATEGY_TYPE_HEAL);
-    bool const offdps = ai->HasStrategy("offdps", BotState::BOT_STATE_COMBAT);
+    bool const offdps = heal && ai->HasStrategy("offdps", BotState::BOT_STATE_COMBAT);
     uint32 const mode = sPlayerbotAIConfig.combatRuleHealerStart;
     // Part off, or the old rule already lets the bot attack: the old expression, nothing else is read.
     if (!mode || !heal || offdps)

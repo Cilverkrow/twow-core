@@ -92,7 +92,7 @@ function(check factory context class_h attack_cpp choose_cpp config_h config_cpp
   need("${attack_cpp}" "bool AttackMyTargetAction::isUseful()\n{\n    return ai::combat_rule::HealerMayAttack(ai);" "attack my target gate (combat rule)")
   need("${attack_cpp}" "bool AttackRTITargetAction::isUseful()\n{\n    return ai::combat_rule::HealerMayAttack(ai);" "attack RTI target gate (combat rule)")
   need("${choose_cpp}" "    if (!ai::combat_rule::HealerMayAttack(ai))   // A3 step 5: the healer gate (CombatRule.HealerStart, default 0 = the old rule)\n        return false;" "attack anything gate (combat rule)")
-  need("${choose_cpp}" "    bool const heal = ai->ContainsStrategy(STRATEGY_TYPE_HEAL);\n    bool const offdps = ai->HasStrategy(\"offdps\", BotState::BOT_STATE_COMBAT);" "the healer gate reads offdps from the combat engine")
+  need("${choose_cpp}" "    bool const heal = ai->ContainsStrategy(STRATEGY_TYPE_HEAL);\n    bool const offdps = heal && ai->HasStrategy(\"offdps\", BotState::BOT_STATE_COMBAT);" "the healer gate reads offdps from the combat engine")
 
   set(${out_var} "${errors}" PARENT_SCOPE)
 endfunction()
@@ -125,6 +125,6 @@ probe("creator missing" context "creators[\"offdps\"] = [](PlayerbotAI* ai) { re
 probe("ungated add" factory " && ai::cohort::Applies(sPlayerbotAIConfig.rotationRestoShamanOffdps, player->GetGUIDLow()))\n                    combatEngine->addStrategy(\"offdps\");" ")\n                    combatEngine->addStrategy(\"offdps\");")
 probe("placeholder with triggers" class_h "        std::string getName() override { return \"offdps\"; }\n" "        std::string getName() override { return \"offdps\"; }\n        void InitCombatTriggers(std::list<TriggerNode*>& triggers) override {}\n")
 probe("resto reads offdps" shaman_all "RestorationShaman" "RestorationShaman /* offdps */")
-probe("heal gate changed" choose_cpp "    bool const offdps = ai->HasStrategy(\"offdps\", BotState::BOT_STATE_COMBAT);" "    bool const offdps = false;")
+probe("heal gate changed" choose_cpp "    bool const offdps = heal && ai->HasStrategy(\"offdps\", BotState::BOT_STATE_COMBAT);" "    bool const offdps = false;")
 
 message(STATUS "resto_shaman_offdps source contract passed (${probes} negative probes)")

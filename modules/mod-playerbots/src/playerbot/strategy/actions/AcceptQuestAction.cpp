@@ -4,6 +4,7 @@
 #include "ShareQuestAction.h"
 #include "playerbot/QuestAcceptPolicy.h"
 #include "playerbot/QuestFeasibilityPolicy.h"
+#include "playerbot/QuestBook.h"
 #include "playerbot/RandomPlayerbotMgr.h"
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/TravelMgr.h"
@@ -39,6 +40,11 @@ static bool SkipQuestForRosterBot(PlayerbotAI* ai, Player* bot, Quest const* que
     for (uint16 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
         if (!bot->GetQuestSlotQuestId(slot))
             ++freeSlots;
+    // A3 step 2 K1 (AiPlayerbot.QuestBook, default 0): a roster bot on its own with an active quest book takes the book's verdict -
+    // the one level window, the log-full rule and the QB5 list. Every other bot keeps the hotfix 8.11 rule below.
+    if (rosterOnItsOwn)
+        if (ai::questbook::QuestBook* book = ai->ActiveQuestBook())
+            return !book->Accept(quest, freeSlots).IsYes();
     return ai::quest_accept::SkipForRosterBot(rosterOnItsOwn, bot->GetLevel(), bot->GetQuestLevelForPlayer(quest),
         MaNGOS::XP::GetGrayLevel(bot->GetLevel()), quest->GetRequiredClasses() != 0, freeSlots);
 }

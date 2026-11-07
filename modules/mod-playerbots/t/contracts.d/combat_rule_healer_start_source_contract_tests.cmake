@@ -65,7 +65,7 @@ function(check policy glue attack_cpp choose_cpp paladin_ctx druid_ctx mgr_cpp c
   need("${policy}" "constexpr std::uint32_t ClassPaladin = 2;\nconstexpr std::uint32_t ClassDruid = 11;" "class ids as in SharedDefines.h")
 
   # 3. The glue: part off = the old expression, nothing else read; the healer facts from the combat engine.
-  need("${glue}" "    bool const heal = ai->ContainsStrategy(STRATEGY_TYPE_HEAL);\n    bool const offdps = ai->HasStrategy(\"offdps\", BotState::BOT_STATE_COMBAT);\n    uint32 const mode = sPlayerbotAIConfig.combatRuleHealerStart;\n" "glue: the old rule's facts")
+  need("${glue}" "    bool const heal = ai->ContainsStrategy(STRATEGY_TYPE_HEAL);\n    bool const offdps = heal && ai->HasStrategy(\"offdps\", BotState::BOT_STATE_COMBAT);\n    uint32 const mode = sPlayerbotAIConfig.combatRuleHealerStart;\n" "glue: the old rule's facts")
   need("${glue}" "    if (!mode || !heal || offdps)\n        return HealerMayAttack(heal, offdps, false, false);\n" "glue: part off or old rule passes = old expression")
   need("${glue}" "ai->HasStrategy(\"holy\", BotState::BOT_STATE_COMBAT)" "glue: holy from the combat engine")
   need("${glue}" "ai->HasStrategy(\"restoration\", BotState::BOT_STATE_COMBAT)" "glue: restoration from the combat engine")
@@ -118,6 +118,7 @@ probe("policy impure" policy "#include <cstdint>" "#include <cstdint>\n#include 
 probe("policy drops the old rule" policy "    if (!hasHealStrategy || hasOffdps)\n        return true;\n" "")
 probe("policy opens every healer" policy "    return partApplies && healerWithoutOffdpsCreator;" "    return partApplies;")
 probe("glue reads more with the part off" glue "    if (!mode || !heal || offdps)\n" "    if (!heal || offdps)\n")
+probe("offdps read without heal" glue "    bool const offdps = heal && ai->HasStrategy(" "    bool const offdps = ai->HasStrategy(")
 probe("old gate left at a call site" attack_cpp "bool AttackRTITargetAction::isUseful()\n{\n    return ai::combat_rule::HealerMayAttack(ai);" "bool AttackRTITargetAction::isUseful()\n{\n    return ${old_gate};")
 probe("attack anything bypasses the rule" choose_cpp "    if (!ai::combat_rule::HealerMayAttack(ai))" "    if (${old_gate_neg})")
 probe("paladin offdps creator" paladin_ctx "creators[\"holy\"] = " "creators[\"offdps\"] = [](PlayerbotAI* ai) { return new OffdpsPlaceholderStrategy(ai); };\n                creators[\"holy\"] = ")
