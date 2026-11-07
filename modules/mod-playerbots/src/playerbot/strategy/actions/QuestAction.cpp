@@ -4,6 +4,7 @@
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/ServerFacade.h"
 #include "playerbot/TravelMgr.h"
+#include "playerbot/QuestBook.h"   // A3 step 2 (AiPlayerbot.QuestBook): credit_seq from the quest packet actions
 
 using namespace ai;
 
@@ -283,6 +284,9 @@ bool QuestUpdateAddKillAction::Execute(Event& event)
 
     // twow-repo#601 cand4 (i) StaleObjectiveFilter: a kill credit proves the quest winnable - its objectives leave the stale memory.
     ai::stale_objective::NoteQuestCredit(bot, questId);
+    // A3 step 2 (AiPlayerbot.QuestBook, default 0): the kill credit is the quest's progress in the book (credit_seq).
+    if (ai::questbook::QuestBook* book = ai->ActiveQuestBook())
+        book->OnCredit(questId);
 
     Player* requester = event.getOwner() ? event.getOwner() : GetMaster();
 
@@ -352,6 +356,9 @@ bool QuestUpdateAddItemAction::Execute(Event& event)
         {
             // twow-repo#601 cand4 (i) StaleObjectiveFilter: an item credit of the quest, as the kill credit above.
             ai::stale_objective::NoteQuestCredit(bot, pair.first->GetQuestId());
+            // A3 step 2 (AiPlayerbot.QuestBook, default 0): the item credit is the quest's progress in the book (credit_seq).
+            if (ai::questbook::QuestBook* book = ai->ActiveQuestBook())
+                book->OnCredit(pair.first->GetQuestId());
             placeholders["%quest_link"] = chat->formatQuest(pair.first);
             uint32 requiredItemsCount = pair.second;
             placeholders["%quest_obj_required"] = std::to_string(requiredItemsCount);
@@ -431,6 +438,10 @@ bool QuestUpdateCompleteAction::Execute(Event& event)
 
     uint32 questId;
     p >> questId;
+
+    // A3 step 2 (AiPlayerbot.QuestBook, default 0): quest complete is progress in the book (credit_seq).
+    if (ai::questbook::QuestBook* book = ai->ActiveQuestBook())
+        book->OnCredit(questId);
 
     Player* requester = event.getOwner() ? event.getOwner() : GetMaster();
 

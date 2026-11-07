@@ -1706,6 +1706,20 @@ add_test(NAME supervisor_policy
   COMMAND supervisor_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# A3 step 2 quest book core QB-K (QuestBookPolicy.h, AiPlayerbot.QuestBook); source contract in t/contracts.d.
+add_executable(questbook_policy_tests
+  "${PB_MODULE_DIR}/t/questbook_policy_tests.cpp")
+
+target_include_directories(questbook_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(questbook_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME questbook_policy
+  COMMAND questbook_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 add_executable(planner_policy_tests
   "${PB_MODULE_DIR}/t/planner_policy_tests.cpp")
 
