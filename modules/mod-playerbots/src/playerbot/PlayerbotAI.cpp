@@ -22,6 +22,7 @@
 #include "playerbot/CastWhileMovingPolicy.h"   // twow-repo#333 P1-w: a loot cast after StopMoving; #602 Rotation.CastStopFirst
 #include "playerbot/ProfessionUsePolicy.h"   // twow-repo#333 M2-T: the [ProfCount] created line
 #include "playerbot/TeleportAckThreadPolicy.h"   // twow-repo#563 X5 (ThreadSafeTeleportAck)
+#include "playerbot/Supervisor.h"   // A3 step 3 (AiPlayerbot.Supervisor): the per-bot supervisor scaffold
 #include "Maps/PathFinder.h"
 #include <stdarg.h>
 #include <array>
@@ -436,6 +437,13 @@ void PlayerbotAI::BackoffOutOfMana(bool yieldSetDelay, bool minimal)
     aiInternalUpdateDelay = sPlayerbotAIConfig.rotationOomBackoffDelayMs;
     oomBackoffPending = true;
     ai::oom_backoff::backoffs.fetch_add(1, std::memory_order_relaxed);
+}
+
+ai::supervisor::Supervisor* PlayerbotAI::EnsureSupervisor()
+{
+    if (!supervisor_)
+        supervisor_ = std::make_unique<ai::supervisor::Supervisor>(this);
+    return supervisor_.get();
 }
 
 PlayerbotAI::~PlayerbotAI()
@@ -2266,6 +2274,17 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
                 if (!CanUpdateAIInternal())
                     return;
             }
+        }
+
+        // A3 step 3 (ADR-0041, AiPlayerbot.Supervisor, default 0): the supervisor ticks once per engine pass (after the
+        // countdown, the reaction gate and the cast-delay returns, so it counts decision passes, not world ticks). Scaffold:
+        // Tick only counts. When the switch stops applying (reload to 0, other cohort) the instance is released and dropped.
+        if (sPlayerbotAIConfig.supervisor && ai::supervisor::Applies(sPlayerbotAIConfig.supervisor, bot->GetGUIDLow()))
+            EnsureSupervisor()->Tick(WorldTimer::getMSTime());
+        else if (supervisor_)
+        {
+            supervisor_->Release();
+            supervisor_.reset();
         }
 
         SC_PHASE("UpdateAI.UpdateAIInternal", bot ? bot->GetName() : "(null)");

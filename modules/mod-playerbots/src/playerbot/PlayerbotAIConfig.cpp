@@ -16,6 +16,7 @@
 #include "playerbot/RestGatePolicy.h"
 #include "playerbot/GroupOpPolicy.h"   // BOT-12: BotGroups.OpQueue clamps
 #include "playerbot/GroupManagerPolicy.h"   // A3 step 6: BotGroups.Manager mode
+#include "playerbot/SupervisorPolicy.h"   // A3 step 3: Supervisor mode
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
@@ -879,6 +880,13 @@ bool PlayerbotAIConfig::Initialize()
     {
         sLog.outError("[GroupMgr] config key=Manager value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", botGroupsManager);
         botGroupsManager = 0;
+    }
+    // A3 step 3 (ADR-0041): the per-bot supervisor (SupervisorPolicy.h, Supervisor.cpp); an unknown mode is off.
+    supervisor = uint32(config.GetIntDefault("AiPlayerbot.Supervisor", 0));
+    if (!ai::supervisor::ValidMode(supervisor))
+    {
+        sLog.outError("[Supervisor] config key=Supervisor value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", supervisor);
+        supervisor = 0;
     }
     questGroupsEnable = (uint32)config.GetIntDefault("AiPlayerbot.QuestGroups.Enable", 0);
     questGroupsScanSeconds = std::max<uint32>(10, config.GetIntDefault("AiPlayerbot.QuestGroups.ScanSeconds", 60));
@@ -2034,6 +2042,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Rotation.TankKitFromLevel", Value(rotationTankKitFromLevel)},
             {"Rotation.TankRoguePoison", Value(rotationTankRoguePoison)},
             {"Rpg.TurnInFirst", Value(rpgTurnInFirst)},
+            {"Supervisor", Value(supervisor)},
             {"ThreadSafeTeleportAck", Value(threadSafeTeleportAck)},
             {"ThrownUsageFix", Value(thrownUsageFix)},
             {"Travel.ElevatorScanCache", Value(travelElevatorScanCache)},
