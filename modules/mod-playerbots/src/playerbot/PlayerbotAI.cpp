@@ -2951,6 +2951,16 @@ void PlayerbotAI::OnDeath()
             // G4: a death loop at one spot (graveyard among mobs above the
             // bot) is counted apart from "death count", which XP resets.
             RecordDeathForLoop();
+            // twow-repo#575 A3 step 4 S4-1 (AiPlayerbot.Revive.CorpseRunFirst): own deaths for the loop rule at the corpse.
+            if (ai::cohort::Applies(sPlayerbotAIConfig.reviveCorpseRunFirst, bot->GetGUIDLow()))
+            {
+                ai::corpse_first::DeathMark mark;
+                mark.atSeconds = uint32(time(nullptr));
+                mark.mapId = bot->GetMapId();
+                mark.x = bot->GetPositionX();
+                mark.y = bot->GetPositionY();
+                RecordCorpseFirstDeath(mark);
+            }
             // #422: death series and environmental gathering deaths.
             RecordDeathForSeries();
             // Hotfix 8.1: deaths of a bot on a tank path.

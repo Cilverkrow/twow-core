@@ -1967,6 +1967,18 @@ AiPlayerbot.CustomRaceStartZones = 0
 # death in a row. Resurrection sickness, low durability, many deaths and a long time dead still use
 # the spirit healer. v35: 506 spirit-healer revives vs 13 corpse runs in 6.56 h. 0 = off (default).
 AiPlayerbot.Revive.PreferCorpseRun = 0
+# twow-repo#575 A3 step 4 S4-1 (OB-00 07.11.2026): corpse run before the spirit healer. "revive from corpse" never ran in
+# the dead engine (the engine always carries "stay", and MovementAction::isUseful is !stay), so a ghost walked to its corpse
+# and then waited for the spirit healer or for "move long stuck" to repop it to its race start (group leave). With the switch
+# the reclaim at the corpse runs, and the spirit healer is taken only for a reason: no corpse, resurrection sickness,
+# durability below 10, a loop (2 own deaths within 10 min and 60 yd of the corpse) or dead longer than MaxSeconds. "Death count
+# > 8" and the enemies / graveyard-in-sight shortcuts no longer send these bots to the spirit healer; the death-loop and death
+# count > 15 repops stay. A ghost hit by "move long stuck" goes to the spirit healer instead of repop. Not for a bot with an
+# active player master. Logged as [CorpseRun] (first decision per death) and [CorpseRunMin] (per minute).
+# 0 = off (default), 1 = every bot, 2 = cohort B (odd guid), 3 = cohort A (even guid); any other value is off.
+AiPlayerbot.Revive.CorpseRunFirst = 0
+# Seconds dead after which the spirit healer is taken (120..1800).
+AiPlayerbot.Revive.CorpseRunFirst.MaxSeconds = 600
 AiPlayerbot.QuestFirstProgression.TurnInDeathRouteCooldownSeconds = 3600
 # twow-repo#485: a finished quest whose turn-in keeps failing is parked instead
 # of holding the bot. A failure of a roster bot on its own is: a stall (recovery
