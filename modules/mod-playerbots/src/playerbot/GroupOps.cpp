@@ -92,6 +92,8 @@ struct WriteCounts
 {
     std::array<std::atomic<std::uint32_t>, kEvents> offWp{};
     std::atomic<std::uint32_t> bypass{ 0 };
+    // OB-00 07.11.2026 (c): queued accepts of a real player's invite (deviation from ADR-0041 E7, measured on its own).
+    std::atomic<std::uint32_t> acceptPlayer{ 0 };
 };
 
 WriteCounts writeCounts;
@@ -694,6 +696,7 @@ void FlushMinute(WorldState& w, std::uint32_t nowMs)
     AddField(wline, "off_wp_remove", Take(writeCounts.offWp[EvRemove]));
     AddField(wline, "off_wp_leader", Take(writeCounts.offWp[EvLeader]));
     AddField(wline, "off_wp_invite", Take(writeCounts.offWp[EvInvite]));
+    AddField(wline, "accept_player", Take(writeCounts.acceptPlayer));
     sLog.outBasic("%s", wline.c_str());
 }
 }
@@ -897,7 +900,12 @@ bool QueueAccept(PlayerbotAI* ai, std::uint32_t inviterGuidLow, bool decline)
     op.source = std::uint8_t(OpSource::Accept);
     op.bot = ai->GetBot()->GetGUIDLow();
     op.other = inviterGuidLow;
-    return Enqueue(op, ai, nullptr) == Pushed::Queued;
+    if (Enqueue(op, ai, nullptr) != Pushed::Queued)
+        return false;
+    // OB-00 07.11.2026 (c): a queued accept of a real player's invite (ADR-0041 E7 deviation) gets its own count.
+    if (!decline && IsRealPlayerOrSelfBot(sObjectMgr.GetPlayer(ObjectGuid(HIGHGUID_PLAYER, inviterGuidLow))))
+        writeCounts.acceptPlayer.fetch_add(1, std::memory_order_relaxed);
+    return true;
 }
 
 bool QueueInvite(PlayerbotAI* ai, Player* invitee, bool raidConvert)

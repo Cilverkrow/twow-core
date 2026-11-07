@@ -1375,7 +1375,9 @@ AiPlayerbot.BotGroups.Manager = 0
 # the accept tail (the bot's own binds).
 # Line (world thread, only with this mode on, next to "[GroupOps] minute"): "[GroupWrite] minute mode= enq_<k>= exec_<k>=
 # fail_<k>= stale_<k>= refused_pending_<k>= dropped_full_<k>= superseding= superseded= bypass= off_wp_create= off_wp_disband=
-# off_wp_add= off_wp_remove= off_wp_leader= off_wp_invite=" for k = leave, join, accept, invite, leader. off_wp_* counts the
+# off_wp_add= off_wp_remove= off_wp_leader= off_wp_invite= accept_player=" for k = leave, join, accept, invite, leader.
+# accept_player counts the queued accepts of a real player's invite (a deviation from ADR-0041 E7: one tick later, on the
+# world thread; OB-00 07.11.2026). off_wp_* counts the
 # group events off the world thread whose acting bot is in scope, outside the bypass: 0 expected. Blind spots of off_wp_*:
 # it knows the acting bot only through the outermost action (ActionScope), so writes from the ReactionEngine, from
 # PlayerbotAI-level code or from a test command are not counted - 0 is necessary, not proof. With this mode on, the
