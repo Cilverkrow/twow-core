@@ -108,6 +108,9 @@ int main()
         e.selfBefore = {7, true};
         Require(!LeaderBindCarry(e), "the member's own pre-existing PERM bind on the copy is not counted");
         e = carry;
+        e.selfBefore = {7, false};
+        Require(LeaderBindCarry(e), "a group PERM bind earned in the run (released member, solo bind on the copy before): counted too");
+        e = carry;
         e.selfAfter = {7, false};
         Require(!LeaderBindCarry(e), "no PERM bind after the entry: not counted");
         e = carry;

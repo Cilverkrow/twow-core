@@ -5,6 +5,7 @@
 #include "playerbot/BotSlots.h"
 #include "Group/Group.h"
 #include "Maps/MapPersistentStateMgr.h"
+#include "ObjectAccessor.h"
 
 #include <mutex>
 #include <unordered_map>
@@ -111,9 +112,11 @@ void OnEntry(Player* player)
         return;
     ObjectGuid const leaderGuid = group->GetLeaderGuid();
     e.memberIsLeader = leaderGuid == player->GetObjectGuid();
-    Player* leader = e.memberIsLeader ? player : sObjectMgr.GetPlayer(leaderGuid);
+    // Not in world is fine here: a bot leader on its own far teleport (often the same one as the member's) is out of world
+    // until its ack. Safe behind the gate: no map worker runs, and the core's own transit writes run on this thread.
+    Player* leader = e.memberIsLeader ? player : ObjectAccessor::FindPlayerNotInWorld(leaderGuid);
     if (!leader)
-        return;   // leader not online: not classified, not counted
+        return;   // leader offline: not classified, not counted
     e.leaderIsBot = !::IsRealPlayer(leader);
     e.leaderOnM = PlayerBindOn(leader, mapId);
     e.groupOnM = GroupBindOn(group, mapId);

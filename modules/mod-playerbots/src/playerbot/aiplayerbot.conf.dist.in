@@ -1377,7 +1377,11 @@ AiPlayerbot.BotGroups.Manager = 0
 # with the raid ADR, O7). One count per entry of a group member (not the leader) into a dungeon map M by a far teleport, where
 # the member had no own PERM bind on M at its teleport, the core PERM-bound it on entry to the copy of the group's PERM bind,
 # and the leader is a bot holding its own PERM bind on that copy. leader_carry_real = the entering member is a real player,
-# leader_carry_bot = a bot. Not counted: an entry at login, a worldport ack off the world thread, a leader not online.
+# leader_carry_bot = a bot. The origin of the group's PERM bind is not visible at entry, so both count: a bind the bot
+# leader carried in (group create, leader change) and one the group earned in the current run (a boss kill with the leader
+# inside), e.g. a released member running back in or a member who joins mid-run.
+# Not counted: an entry at login, a worldport ack off the world thread, an offline leader (a leader that is itself on a
+# far teleport is still read).
 # 1 = on (default), 0 = the old behaviour (reset raids on every accepted invite, no split guard; rollback). Any other value
 # acts like 1. Line (increments of the minute, world thread, both values):
 # `[Lockout] minute mode=<0|1> reset_real= reset_bot= keep_bot= split_decline= split_entry= leader_carry_real= leader_carry_bot=`
