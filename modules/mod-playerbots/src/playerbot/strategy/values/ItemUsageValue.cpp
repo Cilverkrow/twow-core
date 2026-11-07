@@ -14,6 +14,7 @@
 #include "playerbot/ProfessionUsePolicy.h"
 #include "playerbot/ConsumablesPolicy.h"
 #include "playerbot/strategy/triggers/ProfessionUseTriggers.h"
+#include "playerbot/strategy/actions/UseConsumableAction.h"
 
 using namespace ai;
 
@@ -265,6 +266,25 @@ ItemUsage ItemUsageValue::Calculate()
             default:
                 break;
             }
+        }
+    }
+
+    // twow-repo#333 M2 Crafting.Consumables (owner list 07.11.2026, item 1; M2-ENTWURF §7): a roster bot on its own in the switch's
+    // cohort keeps what it would use itself - the buff consumables of "use consumable" (elixir, flask, scroll, buff food) and the stone
+    // or oil for its main hand - up to RosterConsumables.KeepStacks, instead of selling them. Not under the item cheat (nothing is used
+    // there). Above KeepStacks, or anything else: the old rules. Buying stays with the purchase purpose of A3 step 3.
+    if (sPlayerbotAIConfig.craftingConsumables && !ai->HasCheat(BotCheatMask::item) && CraftingConsumablesFor(ai) &&
+        proto->RequiredLevel <= bot->GetLevel() && CurrentStacks(ai, proto) <= sPlayerbotAIConfig.rosterConsumablesKeepStacks)
+    {
+        Item* const mainhand = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_MAINHAND);
+        if (mainhand && ai->IsImbueItemFor(mainhand, proto))
+            return ItemUsage::ITEM_USAGE_KEEP;
+
+        if (proto->Class == ITEM_CLASS_CONSUMABLE)
+        {
+            UseConsumableAction const* const use = dynamic_cast<UseConsumableAction*>(ai->GetAiObjectContext()->GetAction("use consumable"));
+            if (use && use->IsBuffConsumable(proto))
+                return ItemUsage::ITEM_USAGE_KEEP;
         }
     }
 
