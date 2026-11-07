@@ -10,6 +10,7 @@
 #include "playerbot/TravelChoosePolicy.h"
 #include "playerbot/QuestSearchPolicy.h"
 #include "playerbot/QuestFailureClassPolicy.h"
+#include "playerbot/QuestBook.h"   // A3 step 2 K5 (QB4, AiPlayerbot.QuestBook): the turn-in yield of the quest book
 #include "playerbot/QuestGrindModePolicy.h"
 #include "playerbot/GatherPurposePolicy.h"
 #include "playerbot/DirectTargetDestinations.h"
@@ -1316,6 +1317,29 @@ bool NeedTravelPurposeValue::Calculate()
         // objective destinations are built independently by the quest path.
         if (UsesQuestFirstProgression(bot))
         {
+            // A3 step 2 K5 (QB4, AiPlayerbot.QuestBook, default 0): a bot with an active quest book takes S1's turn-in yield
+            // (below) without the S1 switches - a complete quest with a routable open turn-in ends the grind fallback. Its own
+            // block, so the S1 block stays as it is; a bot with both runs this one first and S1's finds the same answer.
+            // Every other bot: as before.
+            if (ai->ActiveQuestBook() && !ai->HasRealPlayerMaster())
+            {
+                bool const routeBackoffRunning =
+                    uint32(time(nullptr)) < uint32(std::max(0, AI_VALUE2(int, "manual int", "quest route backoff until")));
+                TravelTarget const* turnIns = AI_VALUE(TravelTarget*, "travel target");
+                std::string const checked = AI_VALUE2(std::string, "manual string", ai::quest_failure_class::CheckedTurnInsValue);
+                std::string const validated = AI_VALUE2(std::string, "manual string", ai::quest_failure_class::ValidatedTurnInsValue);
+                uint32 routableOpen = 0;
+                for (auto const& [questId, status] : bot->getQuestStatusMap())
+                    if (!status.m_rewarded && status.m_status == QUEST_STATUS_COMPLETE && turnIns->IsTurnInOpen(questId) &&
+                        (ai::quest_failure_class::ListHas(validated, questId) || !ai::quest_failure_class::ListHas(checked, questId)))
+                        ++routableOpen;
+                if (ai::quest_failure_class::GrindYieldsToTurnIn(true, routableOpen, routeBackoffRunning))
+                {
+                    ai::questbook::Note(bot->GetGUIDLow(), ai::questbook::Count::TurnInYield);
+                    return false;
+                }
+            }
+
             // twow-repo#601 S1 (AiPlayerbot.QuestFirstProgression.FailureClasses, OB-10 answer 3): the 8.5 gather rule
             // generalised to grind - a quest-first bot on its own does not grind while a routable open turn-in waits:
             // one the last quest request validated, or one finished since (not checked yet - the next request checks
