@@ -5,6 +5,7 @@
 #include <cstdint>
 
 class PlayerbotAI;
+class Player;
 
 namespace ai
 {
@@ -83,4 +84,47 @@ private:
 
 // Registers the GroupScript that counts group creates/disbands off the world thread (AddSC_playerbot_hooks).
 void AddGroupOpsObserver();
+
+// ---- A3 lever 2: the group write path (ADR-0041 amendment 4.2, AiPlayerbot.BotGroups.WritePath, default 0) ----------------
+// Design: cli-grp/a3-hebel2/DESIGN-A3-HEBEL2-SCHREIBWEG-20261107.md. With the key on for a bot, every group membership change
+// its own map thread would make (leave, accept/decline, invite, leader) is queued instead and runs in Drain on the world
+// thread (RunLeave / RunAccept / RunInvite / RunLeader, GroupOps.cpp); the AI tail goes back to the bot's thread.
+
+// "join"/"lfg" chat commands (JoinGroupAction, LfgAction) leave, invite and accept in one action - an order one op per bot
+// cannot keep. They keep the direct path inside this scope (set only in those two Execute bodies); the observer counts the
+// writes in it as bypass. on = false (the key at 0): no scope.
+inline thread_local std::uint32_t t_writeBypass = 0;
+
+class WritePathBypass
+{
+public:
+    explicit WritePathBypass(bool on) : active(on)
+    {
+        if (active)
+            ++t_writeBypass;
+    }
+    ~WritePathBypass()
+    {
+        if (active)
+            --t_writeBypass;
+    }
+    WritePathBypass(WritePathBypass const&) = delete;
+    WritePathBypass& operator=(WritePathBypass const&) = delete;
+
+private:
+    bool active;
+};
+
+// The producers' gate (any map thread): the key on, the bot in scope (WritePathApplies: cohort; a bot AI without a real-player
+// master, not in a battleground), not on the world thread (the drain, the managers - already there) and not in the bypass scope.
+// The key at 0: false before anything else is read.
+bool WritePathRoutes(PlayerbotAI* ai);
+
+// The producers' ops (the bot's own thread; ids only, the group read from the bot). true = queued; refused (queue full, an op
+// of one of its bots pending): false, nothing changed. QueueLeave's tail (GroupOpPolicy.h LeaveTailOf): kLeaveNoTail for
+// RepopAction, kLeaveBotMaster or 0 for LeaveGroupAction::Leave.
+bool QueueLeave(PlayerbotAI* ai, OpSource source, std::uint8_t tail);
+bool QueueAccept(PlayerbotAI* ai, std::uint32_t inviterGuidLow, bool decline);
+bool QueueInvite(PlayerbotAI* ai, Player* invitee, bool raidConvert);
+bool QueueLeader(PlayerbotAI* ai, Player* newLeader, bool reset);
 }

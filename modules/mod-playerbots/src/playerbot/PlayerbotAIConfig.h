@@ -559,6 +559,11 @@ public:
     // twow-repo#333 Berufe P1-ae (OB-00 06.11.2026 after M1r run 10): a finished quest does not hold the profession trips while the bot
     // is in the 8.32 grind fallback (no quest request routes it); 0 off (default), 1 all, 2 cohort B (odd guid), 3 cohort A (even guid).
     uint32 professionTrainingTurnInGateSkipGrindFallback = 0;
+    // twow-repo#333 M2 Crafting.Consumables (owner list 07.11.2026, item 1; M2-ENTWURF §7): a roster bot on its own gets the
+    // "consumables" strategy (elixirs, flasks, scrolls, buff food) and keeps its usable buff consumables and the oil / stone for its
+    // main hand instead of selling them; 0 off (default), 1 all, 2 cohort B (odd guid), 3 cohort A (even guid). No effect under the
+    // item cheat (use consumable is useless there, nothing is kept).
+    uint32 craftingConsumables = 0;
     uint32 professionUseToolBuy = 0;
     // twow-repo#333 P1-z (OB-00 31.10.2026, bug fix: code default 1, 0 = rollback, 2 cohort B): BuyAction "vendor" also reads the
     // vendor template items (creature_template.vendor_id), as the player's buy, the by-name buy and the vendor map already do.
@@ -894,6 +899,10 @@ public:
     // A3 step 6 (ADR-0041, OB-00 06.11.2026): the group manager of roster bots on the world thread (GroupManagerPolicy.h,
     // GroupManager.cpp). Scaffold: no decision yet. 0 off, 1 all, 2 cohort B, 3 cohort A; other = 0 + error line.
     uint32 botGroupsManager = 0;
+    // A3 lever 2 (ADR-0041 amendment 4.2, OB-00 07.11.2026): the group write path - the membership changes (leave, accept,
+    // invite, leader) of in-scope bots run as world-thread ops (GroupOps.cpp). 0 off, 1 all, 2 cohort B, 3 cohort A; other = 0
+    // + error line.
+    uint32 botGroupsWritePath = 0;
     // A3 step 3 (ADR-0041, OB-00 06.11.2026): the per-bot supervisor (SupervisorPolicy.h, Supervisor.cpp). Scaffold: it only
     // counts its engine passes. 0 off, 1 all, 2 cohort B, 3 cohort A; other = 0 + error line.
     uint32 supervisor = 0;
@@ -1100,6 +1109,10 @@ public:
     float pathIslandStepOffYards = 7.0f;
     bool customRaceStartZones = false;  // twow-repo#575 (PATH-01 wave 0): goblins / high elves quest in their real start zones (StartZonePolicy.h), 0 = off
     bool revivePreferCorpseRun = false;  // hotfix 8.34 (#544): corpse run before the spirit-healer shortcuts
+    // twow-repo#575 A3 step 4 S4-1 (AiPlayerbot.Revive.CorpseRunFirst, CorpseRunFirstPolicy.h): cohort mode 0 off / 1 all / 2 B / 3 A;
+    // the reclaim at the corpse runs, the spirit healer only with a reason (no corpse, sickness, durability, loop, timeout).
+    uint32 reviveCorpseRunFirst = 0;
+    uint32 reviveCorpseRunFirstMaxSeconds = 600;
     uint32 questFirstProgressionTurnInDeathRouteCooldownSeconds = 3600;
     // twow-repo#485: a finished quest whose turn-in failed TurnInParkFailures times
     // within TurnInParkWindowSeconds is parked for TurnInParkSeconds (0 = off, the

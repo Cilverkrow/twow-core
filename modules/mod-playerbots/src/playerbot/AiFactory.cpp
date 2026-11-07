@@ -20,6 +20,7 @@
 #include "playerbot/TankPathPolicy.h"
 #include "playerbot/CohortPolicy.h"
 #include "playerbot/CombatRule.h"   // A3 step 5: CombatRule.PriestOverlay
+#include "playerbot/strategy/triggers/ProfessionUseTriggers.h"
 #include "playerbot/SpecPathPolicy.h"
 #include "playerbot/TankKitPolicy.h"
 
@@ -1281,6 +1282,11 @@ void AiFactory::AddDefaultNonCombatStrategies(Player* player, PlayerbotAI* const
     if (sPlayerbotAIConfig.botGroupsEnabled && !player->InBattleGround() &&
         sRandomPlayerbotMgr.IsPersistentRosterMember(player->GetGUIDLow()))
         nonCombatEngine->addStrategy("adhoc group");
+
+    // twow-repo#333 M2 Crafting.Consumables (owner list 07.11.2026, item 1): elixirs, flasks, scrolls and buff food from the bags
+    // for a roster bot on its own in the switch's cohort. Useless under the item cheat (UseConsumableAction::isUseful).
+    if (!player->InBattleGround() && ai::CraftingConsumablesFor(facade))
+        nonCombatEngine->addStrategy("consumables");
 
     // Battleground switch
     if (player->InBattleGround())
