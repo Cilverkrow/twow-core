@@ -1372,6 +1372,15 @@ AiPlayerbot.Supervisor = 0
 # Mode (in-realm A/B, cohort parity): 0 = off (default, rollback: the old rule), 1 = every bot, 2 = only cohort B (odd low
 # guid), 3 = only cohort A (even low guid). Any other value acts like 0.
 AiPlayerbot.CombatRule.HealerStart = 0
+# Part PriestOverlay (A3-AKTIONS-VERDRAHTUNG F1 (a)): AiPlayerbot.RandomBotCombatStrategies goes onto every free bot's combat
+# engine. Only the priest context creates "dps" (the shadow placeholder), and class strategies of one context replace each other,
+# so "+dps" turns every discipline / holy priest into a shadow priest (10-h action logs: mind flay is the combat default in 100 %
+# of priest combat ticks and impossible in 66 %). With the part on, a discipline / holy priest gets the overlay without the exact
+# entry "+dps"; it keeps its tree and its offdps ladder (smite, shadow word: pain, holy fire). "+dps assist" and all other entries
+# stay. Minute line "[CombatRule] part=PriestOverlay mode= engines=A/B stripped=A/B" (combat engines of those priests set up with
+# the overlay, per cohort, and how many got it without "+dps"; increments). Mode: 0 = off (default, rollback: the overlay as it
+# is), 1 = every bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid). Any other value acts like 0.
+AiPlayerbot.CombatRule.PriestOverlay = 0
 
 # #627 S7 help groups (owner 18.10./23.10.2026): roster bots holding the same elite
 # quest (Type 1; with SuggestedPlayers = 1 also SuggestedPlayers >= 2; never

@@ -901,6 +901,9 @@ public:
     // HealerStart: a holy paladin / restoration druid may attack like a healer with "offdps" (their contexts have no offdps
     // creator, so the healer gate refused every attack). 0 off (default, the old rule), 1 all, 2 cohort B, 3 cohort A; other = 0.
     uint32 combatRuleHealerStart = 0;
+    // PriestOverlay: a discipline / holy priest gets the RandomBotCombatStrategies overlay without "+dps" (which swaps its tree for
+    // the shadow placeholder). 0 off (default, overlay unchanged), 1 all, 2 cohort B, 3 cohort A; other = 0.
+    uint32 combatRulePriestOverlay = 0;
     // twow-repo#627 S7 help groups (QuestGroupPolicy.h, QuestGroupWorld.cpp); Enable: 0 off, 1 all, 2 cohort B, 3 cohort A.
     uint32 questGroupsEnable = 0;
     uint32 questGroupsScanSeconds = 60;

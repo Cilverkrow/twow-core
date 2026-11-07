@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <string>
 
 namespace ai::combat_rule
 {
@@ -53,6 +54,62 @@ struct HealerStartCounters
 inline HealerStartCounters& HealerStartGlobal()
 {
     static HealerStartCounters counters;
+    return counters;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// Part PriestOverlay (AiPlayerbot.CombatRule.PriestOverlay; A3-AKTIONS-VERDRAHTUNG v1.1 §0.2 point 4, F1 (a)).
+//
+// AiPlayerbot.RandomBotCombatStrategies ("+dps,+dps assist,-threat" in the profile) goes onto every free bot's combat engine. Only
+// the priest context creates "dps" (the shadow placeholder), and class strategies of one context are siblings, so "+dps" replaces
+// "holy" / "discipline": every priest fights as shadow (K8, 10 h: mind flay is the combat default in 100 % of priest combat ticks
+// and IMPOSSIBLE in 66 %). With the part on, the overlay of a discipline or holy priest goes on without the "+dps" entry; the
+// priest keeps its tree and its "offdps" ladder. "+dps assist" and every other entry stay, in their order.
+
+constexpr std::uint32_t ClassPriest = 5;
+
+// A priest of a healing tree: AiFactory's tab 0 (discipline) or 1 (holy); tab 2 is shadow, where "+dps" changes nothing.
+inline bool HealerPriest(std::uint32_t cls, int tab)
+{
+    return cls == ClassPriest && (tab == 0 || tab == 1);
+}
+
+// The comma list without the entries that equal `token` exactly. Engine::ChangeStrategy splits on ',' and does not trim, so the
+// match does not trim either: "+dps assist" and " +dps" are other entries. Empty entries are kept as they were.
+inline std::string WithoutEntry(std::string const& list, std::string const& token)
+{
+    std::string out;
+    bool first = true;
+    std::string::size_type start = 0;
+    while (true)
+    {
+        std::string::size_type const comma = list.find(',', start);
+        std::string const entry = list.substr(start, comma == std::string::npos ? std::string::npos : comma - start);
+        if (entry != token)
+        {
+            if (!first)
+                out += ',';
+            out += entry;
+            first = false;
+        }
+        if (comma == std::string::npos)
+            break;
+        start = comma + 1;
+    }
+    return out;
+}
+
+// Per-minute counts for the "[CombatRule] part=PriestOverlay" line (part on), increments: combat engines of healing-tree priests
+// set up with the overlay (both cohorts), and of those, the ones that got it without "+dps". Index 0 = cohort A, 1 = cohort B.
+struct PriestOverlayCounters
+{
+    std::atomic<std::uint64_t> engines[2] {};
+    std::atomic<std::uint64_t> stripped[2] {};
+};
+
+inline PriestOverlayCounters& PriestOverlayGlobal()
+{
+    static PriestOverlayCounters counters;
     return counters;
 }
 }

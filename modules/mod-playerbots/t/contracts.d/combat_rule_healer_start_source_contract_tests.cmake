@@ -51,12 +51,12 @@ function(check policy glue attack_cpp choose_cpp paladin_ctx druid_ctx mgr_cpp c
   need("${dist}" "\nAiPlayerbot.CombatRule.HealerStart = 0\n" "dist key, default 0")
   need("${config_h}" "    uint32 combatRuleHealerStart = 0;\n" "config member, default 0")
   need("${config_cpp}" "    combatRuleHealerStart = uint32(config.GetIntDefault(\"AiPlayerbot.CombatRule.HealerStart\", 0));\n    if (combatRuleHealerStart > 3)\n        combatRuleHealerStart = 0;\n" "config read, > 3 = off")
-  need("${config_cpp}" "            {\"CheatItem.Trace\", Value(cheatItemTrace)},\n            {\"CombatRule.HealerStart\", Value(combatRuleHealerStart)},\n            {\"CustomRaceStartZones\"" "in [ConfigEcho], sorted")
+  need("${config_cpp}" "            {\"CheatItem.Trace\", Value(cheatItemTrace)},\n            {\"CombatRule.HealerStart\", Value(combatRuleHealerStart)},\n            {\"CombatRule.PriestOverlay\"" "in [ConfigEcho], sorted (PriestOverlay follows)")
 
   # 2. The policy is pure and keeps the old rule first.
   string(REGEX MATCHALL "#include [<\"][^>\"]+[>\"]" incs "${policy}")
   foreach(inc IN LISTS incs)
-    if(NOT inc MATCHES "^#include <(atomic|cstdint)>$")
+    if(NOT inc MATCHES "^#include <(atomic|cstdint|string)>$")
       list(APPEND errors "CombatRulePolicy.h is not pure: ${inc}")
     endif()
   endforeach()
