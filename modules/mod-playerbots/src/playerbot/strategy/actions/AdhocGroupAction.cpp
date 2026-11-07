@@ -135,6 +135,12 @@ bool AdhocGroupAction::CheckLeave(Group* group, uint32 now)
         EnqueueLeave(group, entry, reason, now);
         return true;
     }
+    // A3 lever 2 (AiPlayerbot.BotGroups.WritePath): the same queued leave for an in-scope bot OpQueue does not apply to.
+    if (group_ops::WritePathRoutes(ai))
+    {
+        EnqueueLeave(group, entry, reason, now);
+        return true;
+    }
 
     if (sPlayerbotAIConfig.botGroupsDiagnostics)
         sLog.outBasic("[BotGroup] kind=adhoc event=leave bot=%u group=%u quest=%u objective=%u reason=%s members=%u",
@@ -275,6 +281,16 @@ void AdhocGroupAction::Scan(uint32 now)
         Player* const inviter = invite == adhoc_group::Invite::AInvitesB ? bot : other;
         Player* const invitee = invite == adhoc_group::Invite::AInvitesB ? other : bot;
         if (group_ops::JoinQueueApplies(sPlayerbotAIConfig.botGroupsOpQueue, inviter->GetGUIDLow(), invitee->GetGUIDLow()))
+        {
+            if (EnqueueJoin(inviter, invitee, key) && sPlayerbotAIConfig.botGroupsDiagnostics)
+                sLog.outBasic("[BotGroup] kind=adhoc event=invite inviter=%u invitee=%u quest=%u objective=%u joining_group=%u via=queue",
+                    inviter->GetGUIDLow(), invitee->GetGUIDLow(), key.questId, uint32(key.objective),
+                    inviter->GetGroup() ? inviter->GetGroup()->GetId() : 0u);
+            return;  // at most one invite per scan (queued or not)
+        }
+        // A3 lever 2 (AiPlayerbot.BotGroups.WritePath): the same queued join when the write path applies to either bot (as
+        // JoinQueueApplies) and OpQueue to neither.
+        if (sPlayerbotAIConfig.botGroupsWritePath && (group_ops::WritePathRoutes(ai) || group_ops::WritePathRoutes(GetBotAI(other))))
         {
             if (EnqueueJoin(inviter, invitee, key) && sPlayerbotAIConfig.botGroupsDiagnostics)
                 sLog.outBasic("[BotGroup] kind=adhoc event=invite inviter=%u invitee=%u quest=%u objective=%u joining_group=%u via=queue",

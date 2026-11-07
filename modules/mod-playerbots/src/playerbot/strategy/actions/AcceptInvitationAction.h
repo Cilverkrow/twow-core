@@ -6,6 +6,7 @@
 #include "playerbot/BotGroupDiagnostics.h"
 #include "playerbot/GroupAiRefresh.h"
 #include "playerbot/GroupOpTiming.h"
+#include "playerbot/GroupOps.h"   // A3 lever 2: BotGroups.WritePath
 namespace ai
 {
     class AcceptInvitationAction : public Action
@@ -37,6 +38,11 @@ namespace ai
 
 			if (!ai->GetSecurity()->CheckLevelFor(PlayerbotSecurityLevel::PLAYERBOT_SECURITY_INVITE, false, inviter))
             {
+                // A3 lever 2 (AiPlayerbot.BotGroups.WritePath): an in-scope bot declines on the world thread (an Accept op with
+                // kAcceptDecline: the packet and UninviteFromGroup there). Refused by the queue: the direct decline below.
+                if (group_ops::WritePathRoutes(ai) && !group_ai_refresh::IsWorldManagerSource(event.getSource()) &&
+                    group_ops::QueueAccept(ai, inviter->GetGUIDLow(), true))
+                    return false;
                 WorldPacket data(SMSG_GROUP_DECLINE, 10);
                 data << bot->GetName();
                 sServerFacade.SendPacket(inviter, data);
@@ -46,6 +52,14 @@ namespace ai
             
             if (bot->isAFK())
                 bot->ToggleAFK();
+
+            // A3 lever 2 (AiPlayerbot.BotGroups.WritePath): an in-scope bot accepts on the world thread - the op runs this action
+            // again with the group-op source (a world-thread source: never queued, its tail posted back here). Refused by the
+            // queue (full, an op of this bot pending): the direct accept below - the invite packet comes once, and an invite left
+            // pending would block every later invite of the bot (counted as off_wp_* in [GroupWrite]).
+            if (group_ops::WritePathRoutes(ai) && !group_ai_refresh::IsWorldManagerSource(event.getSource()) &&
+                group_ops::QueueAccept(ai, inviter->GetGUIDLow(), false))
+                return true;
 
             WorldPacket p;
             uint32 roles_mask = 0;
