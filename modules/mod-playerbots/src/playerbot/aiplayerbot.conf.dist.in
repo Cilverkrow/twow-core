@@ -1381,6 +1381,27 @@ AiPlayerbot.CombatRule.HealerStart = 0
 # the overlay, per cohort, and how many got it without "+dps"; increments). Mode: 0 = off (default, rollback: the overlay as it
 # is), 1 = every bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid). Any other value acts like 0.
 AiPlayerbot.CombatRule.PriestOverlay = 0
+# A3 step 2 (ADR-0041, OB-00 07.11.2026): the quest book core (QB-K). One book per roster bot on its own (no real player master)
+# answers accept, travel target and turn-in with one level window, one progress notion (credit per quest, not objective text) and
+# the QB5 exclusion list, and a complete quest ends the grind fallback (QB4). Where the switch does not apply, every old rule stays.
+# Mode (in-realm A/B, cohort parity): 0 = off (default, rollback), 1 = every roster bot, 2 = only cohort B (odd low guid), 3 = only
+# cohort A (even low guid). Any other value acts like 0 (one error line at load).
+# Lines: `[QuestBook] state=complete_stale|left_log ... mode=active|shadow` and `[QuestBookMin] cohort=A|B ...` once per minute
+# (increments). QB8 is detection only: no quest item is destroyed.
+AiPlayerbot.QuestBook = 0
+# 1 = the roster bots without an active book keep one that only writes the KPI lines (complete_stale, left_log), so both arms of an
+# A/B have the QB4 KPI. It answers no caller. 0 = off (default).
+AiPlayerbot.QuestBook.Shadow = 0
+# The one level window for accept, giver travel and objective travel: a quest is inside when the bot reached its MinLevel, it is
+# above the bot's grey level and at most this many levels above the bot; class quests are always inside. 0..10, default 1 (the
+# PREREG sets it).
+AiPlayerbot.QuestBook.AboveLevels = 1
+# QB4 KPI: a quest complete and not turned in for this many seconds writes one complete_stale line. 60..86400, default 1800.
+AiPlayerbot.QuestBook.StaleCompleteSeconds = 1800
+# QB5 permanent exclusion list (OB-00 07.11. D1 (a)): comma-separated quest ids (at most 512). OB-20 / OB-50 classify, every entry
+# has a source, the list is versioned in the profile. The book neither accepts nor targets a listed quest; a complete listed quest
+# may still be turned in. Empty = none (default).
+AiPlayerbot.QuestBook.Exclude =
 
 # #627 S7 help groups (owner 18.10./23.10.2026): roster bots holding the same elite
 # quest (Type 1; with SuggestedPlayers = 1 also SuggestedPlayers >= 2; never

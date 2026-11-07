@@ -23,6 +23,7 @@
 #include "playerbot/ProfessionUsePolicy.h"   // twow-repo#333 M2-T: the [ProfCount] created line
 #include "playerbot/TeleportAckThreadPolicy.h"   // twow-repo#563 X5 (ThreadSafeTeleportAck)
 #include "playerbot/Supervisor.h"   // A3 step 3 (AiPlayerbot.Supervisor): the per-bot supervisor scaffold
+#include "playerbot/QuestBook.h"    // A3 step 2 (AiPlayerbot.QuestBook): the per-bot quest book core
 #include "Maps/PathFinder.h"
 #include <stdarg.h>
 #include <array>
@@ -444,6 +445,25 @@ ai::supervisor::Supervisor* PlayerbotAI::EnsureSupervisor()
     if (!supervisor_)
         supervisor_ = std::make_unique<ai::supervisor::Supervisor>(this);
     return supervisor_.get();
+}
+
+ai::questbook::QuestBook* PlayerbotAI::EnsureQuestBook(bool shadow)
+{
+    if (!questBook_)
+        questBook_ = std::make_unique<ai::questbook::QuestBook>(this, shadow);
+    else
+        questBook_->SetShadow(shadow);
+    return questBook_.get();
+}
+
+ai::questbook::QuestBook* PlayerbotAI::ActiveQuestBook() const
+{
+    return questBook_ && !questBook_->Shadow() ? questBook_.get() : nullptr;
+}
+
+bool PlayerbotAI::InQuestBookScope()
+{
+    return bot && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !HasRealPlayerMaster();
 }
 
 PlayerbotAI::~PlayerbotAI()
@@ -2273,6 +2293,20 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
                     grant.firstSighting ? 1u : 0u, castWait.capped ? 1u : 0u);
                 if (!CanUpdateAIInternal())
                     return;
+            }
+        }
+
+        // A3 step 2 (ADR-0041, AiPlayerbot.QuestBook, default 0): the quest book watches the log once per engine pass (a snapshot
+        // at most every 5 s). Active for a roster bot on its own in the switch's cohort; with QuestBook.Shadow the other roster
+        // bots keep a shadow book (KPI lines only, no caller asks it). Otherwise the instance is released and dropped.
+        {
+            bool const active = sPlayerbotAIConfig.questBook && ai::questbook::Applies(sPlayerbotAIConfig.questBook, bot->GetGUIDLow());
+            if ((active || sPlayerbotAIConfig.questBookShadow) && InQuestBookScope())
+                EnsureQuestBook(!active)->Observe(WorldTimer::getMSTime());
+            else if (questBook_)
+            {
+                questBook_->Release();
+                questBook_.reset();
             }
         }
 
