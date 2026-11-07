@@ -261,7 +261,7 @@ namespace DcSpectator
             if (DcLeaderSignal::IsDungeonClearLeader(candidate))
                 return candidate;
 
-            if (!fallback && PlayerbotAI::IsTank(candidate))
+            if (!fallback && PlayerbotAI::IsTankFor(viewer, candidate))
                 fallback = candidate;
         }
 
@@ -437,7 +437,7 @@ namespace DcSpectator
             out += bot->GetName();
             if (DcLeaderSignal::IsDungeonClearLeader(bot))
                 out += " (leader tank)";
-            else if (PlayerbotAI::IsTank(bot))
+            else if (PlayerbotAI::IsTankFor(viewer, bot))
                 out += " (tank)";
             out += Acore::StringFormat(" — lvl {}, {}% hp", bot->GetLevel(),
                                        bot->GetMaxHealth()

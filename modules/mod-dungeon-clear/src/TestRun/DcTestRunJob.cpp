@@ -1237,8 +1237,8 @@ void DcTestRunJob::TickProvisioningRoster()
         // proceeds anyway (that is the stated policy), but it is the first thing
         // anyone will want to see in the post-mortem of a run where the "tank"
         // died in six seconds.
-        char const* detected = PlayerbotAI::IsTank(bot, /*bySpec*/ true)   ? "tank"
-                               : PlayerbotAI::IsHeal(bot, /*bySpec*/ true) ? "heal"
+        char const* detected = PlayerbotAI::IsTankFor(bot, bot, /*bySpec*/ true) ? "tank"
+                               : PlayerbotAI::IsHealFor(bot, bot, /*bySpec*/ true) ? "heal"
                                                                           : "dps";
 
         DcTestRunRecord::CompEntry entry;

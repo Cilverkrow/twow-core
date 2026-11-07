@@ -45,7 +45,7 @@ namespace
                            leader->GetMaxPower(POWER_MANA) > 0;
             if (m.isManaUser)
                 m.manaPct = leader->GetPowerPct(POWER_MANA);
-            m.isHealer = PlayerbotAI::IsHeal(leader);
+            m.isHealer = PlayerbotAI::IsHealFor(leader, leader);
             out.push_back(m);
             if (players)
                 players->push_back(leader);
@@ -69,7 +69,7 @@ namespace
                            member->GetMaxPower(POWER_MANA) > 0;
             if (m.isManaUser)
                 m.manaPct = member->GetPowerPct(POWER_MANA);
-            m.isHealer = PlayerbotAI::IsHeal(member);
+            m.isHealer = PlayerbotAI::IsHealFor(leader, member);
             out.push_back(m);
             if (players)
                 players->push_back(member);
