@@ -72,7 +72,10 @@ set(ECHO "            {\"ProfessionUse.Trace\", Value(professionUseTrace)},
             {\"QuestBook\", Value(questBook)},
             {\"QuestBook.AboveLevels\", Value(questBookAboveLevels)},
             {\"QuestBook.Exclude.count\", Value(uint32(questBookExclude.size()))},
+            {\"QuestBook.KillSeconds\", Value(questBookKillSeconds)},
             {\"QuestBook.Shadow\", Value(questBookShadow)},
+            {\"QuestBook.SingleSpawnMargin\", Value(questBookSingleSpawnMargin)},
+            {\"QuestBook.SourceChoice\", Value(questBookSourceChoice)},
             {\"QuestBook.StaleCompleteSeconds\", Value(questBookStaleCompleteSeconds)},
             {\"QuestFeasibility.Blocklist.count\"")
 
@@ -228,10 +231,10 @@ function(check_sites accept drop values travel_cpp travel_values all_sources out
     set(${out} "TravelMgr.cpp: ActiveQuestBook() ${n} times (1 expected: the PlayerTravelInfo constructor)" PARENT_SCOPE)
     return()
   endif()
-  # The callers: K1, K4, K2 value, travel bit, K5, three credits, plus the declaration and the definition.
+  # The callers: K1, K4, K2 value, travel bit, K5, three credits, QB-S NotePick, plus the declaration and the definition.
   count_regex("${all_sources}" "ActiveQuestBook\\(\\)" n)
-  if(NOT n EQUAL 10)
-    set(${out} "ActiveQuestBook() appears ${n} times in the module (10 expected); a new caller belongs in this contract" PARENT_SCOPE)
+  if(NOT n EQUAL 11)
+    set(${out} "ActiveQuestBook() appears ${n} times in the module (11 expected); a new caller belongs in this contract" PARENT_SCOPE)
     return()
   endif()
   set(${out} "" PARENT_SCOPE)
@@ -284,7 +287,7 @@ set(LEFT_FMT "\"[QuestBook] state=left_log bot=%s guid=%u cohort=%c quest=%u rea
 set(STALE_FMT "\"[QuestBook] state=complete_stale bot=%s guid=%u cohort=%c quest=%u age_s=%u mode=%s\"")
 set(MIN_FMT "\"[QuestBookMin] cohort=%c mode=%u shadow=%u accept_yes=%llu accept_no_window=%llu accept_no_grey=%llu \"
             \"accept_no_full=%llu accept_no_excl=%llu target_no_window=%llu target_no_excl=%llu turnin_yield=%llu complete_stale=%llu \"
-            \"left_log=%llu credit_dropped=%llu\"")
+            \"left_log=%llu credit_dropped=%llu source_single=%llu source_common=%llu source_regroup=%llu order_scored=%llu\"")
 set(SILENT "if ((!sPlayerbotAIConfig.questBook && !sPlayerbotAIConfig.questBookShadow) || now < lastReport + 60)")
 set(REPORT "    ReportDuelRule();       // twow-repo#602 W24: [DuelRule] once per minute (AiPlayerbot.Rotation.DuelRule)
     ReportQuestBook();      // A3 step 2: [QuestBookMin] once per minute (AiPlayerbot.QuestBook / QuestBook.Shadow)")
