@@ -69,6 +69,7 @@
 #include "playerbot/GrindNeighbourPolicy.h"   // twow-repo#602 #2 (Grind.NeighbourAware): [GrindNeighbour] minute line
 #include "playerbot/SafePullPolicy.h"   // twow-repo#656 (Grind.SafePull): [SafePull] minute line
 #include "playerbot/KnownSpellNodesPolicy.h"   // twow-repo#602 (Rotation.KnownSpellNodes): [KnownSpellNodes] minute line
+#include "playerbot/CombatRule.h"   // A3 step 5: [CombatRule] minute lines
 #include "playerbot/HunterMeleeStartPolicy.h"   // twow-repo#602 (Rotation.HunterMeleeStart): [HunterMelee] minute line
 #include "playerbot/MeleeFleeBreakPolicy.h"
 #include "playerbot/FleeAwayPolicy.h"   // twow-repo#602 (c) (Rotation.FleeAway): [FleeAway] minute line
@@ -2129,6 +2130,7 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     ReportGrindNeighbour();   // twow-repo#602 #2: [GrindNeighbour] once per minute (AiPlayerbot.Grind.NeighbourAware)
     ReportSafePull();   // twow-repo#656: [SafePull] once per minute (AiPlayerbot.Grind.SafePull)
     ReportKnownSpellNodes();   // twow-repo#602: [KnownSpellNodes] once per minute (AiPlayerbot.Rotation.KnownSpellNodes)
+    ai::combat_rule::ReportCombatRule();   // A3 step 5: [CombatRule] once per minute and part (AiPlayerbot.CombatRule.*)
     ReportOomBackoff();   // twow-repo#602 ROT-01 3c-B: [OomBackoff] once per minute (AiPlayerbot.Rotation.OomBackoff)
     ReportMeleeFleeBreak(); // twow-repo#602: [MeleeFleeBreak] once per minute (AiPlayerbot.Rotation.MeleeFleeBreak)
     ReportFleeAway();       // twow-repo#602 (c): [FleeAway] once per minute (AiPlayerbot.Rotation.FleeAway)
