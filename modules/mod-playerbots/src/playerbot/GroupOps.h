@@ -121,8 +121,9 @@ private:
 bool WritePathRoutes(PlayerbotAI* ai);
 
 // The producers' ops (the bot's own thread; ids only, the group read from the bot). true = queued; refused (queue full, an op
-// of one of its bots pending): false, nothing changed.
-bool QueueLeave(PlayerbotAI* ai, OpSource source);
+// of one of its bots pending): false, nothing changed. QueueLeave's tail (GroupOpPolicy.h LeaveTailOf): kLeaveNoTail for
+// RepopAction, kLeaveBotMaster or 0 for LeaveGroupAction::Leave.
+bool QueueLeave(PlayerbotAI* ai, OpSource source, std::uint8_t tail);
 bool QueueAccept(PlayerbotAI* ai, std::uint32_t inviterGuidLow, bool decline);
 bool QueueInvite(PlayerbotAI* ai, Player* invitee, bool raidConvert);
 bool QueueLeader(PlayerbotAI* ai, Player* newLeader, bool reset);

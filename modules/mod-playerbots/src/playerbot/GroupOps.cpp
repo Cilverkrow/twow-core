@@ -269,6 +269,19 @@ void ClearPending(Op const& op)
         ClearPending(op.other, op.seq);
 }
 
+// A3 lever 2 (review fix): an Accept op dropped or superseded must not leave its invite pending - the "group invite" trigger
+// fired once, so nothing would answer it again and the bot would refuse every later invite until the inviter's group goes.
+// Only the invite this op answered (its leader still op.other); world thread, as RunJoin's own cleanup.
+void DropAcceptInvite(Op const& op)
+{
+    if (op.kind != OpKind::Accept)
+        return;
+    Player* bot = FindPlayer(op.bot);
+    Group* invite = bot ? bot->GetGroupInvite() : nullptr;
+    if (invite && invite->GetLeaderGuid().GetCounter() == op.other)
+        bot->UninviteFromGroup();
+}
+
 // The core leave of the ad-hoc manager (WorldThreadManager::LeaveGroup, S7 LeaveCore): HandleGroupDisbandOpcode ->
 // RemoveFromGroup -> RemoveMember, or Disband + RemoveGroup + delete for a group of two. With the maps idle. The log lines and
 // the AI part (strategy reset) go to the bot's own thread - always, whatever WorldThreadDefer says.
@@ -298,6 +311,10 @@ Verdict RunLeave(Op const& op, std::uint32_t transitMs, DrainMinute& m)
     // really out (a refused core leave keeps the group ad-hoc, so the bot decides again).
     std::uint32_t const groupId = group->GetId();
     bool const lastPair = group->GetMembersCount() <= 2;
+    // A3 lever 2 (review fix): the tail of the code the op replaces (LeaveTailOf): the ad-hoc tail as before; LeaveGroupAction's
+    // own (Reset only with a bot master); none for RepopAction (its legacy raw RemoveMember had no line, master clear or reset).
+    LeaveTail const tail = LeaveTailOf(op.reason);
+    if (tail != LeaveTail::None)
     {
         deferred_log::Scope const deferLogs(ai, true);
         sPlayerbotAIConfig.logEvent(ai, "LeaveGroupAction", group->GetLeaderName(), std::to_string(group->GetMembersCount() - 1));
@@ -312,9 +329,15 @@ Verdict RunLeave(Op const& op, std::uint32_t transitMs, DrainMinute& m)
     m.leaveCoreUsMax = std::max(m.leaveCoreUsMax, group_op_timing::UsSince(coreStart));
     // `group` may be deleted now (a group of two): only the bot's own pointer from here on.
 
-    if (sRandomPlayerbotMgr.IsFreeBot(bot))
-        ai->SetMaster(nullptr);
-    ai->RequestGroupAi(group_ai_refresh::LeaveReset);
+    if (tail != LeaveTail::None)
+    {
+        if (sRandomPlayerbotMgr.IsFreeBot(bot))
+            ai->SetMaster(nullptr);
+        if (tail == LeaveTail::CommandBotMaster)
+            ai->RequestGroupAi(group_ai_refresh::LeaveResetOnly);
+        else
+            ai->RequestGroupAi(group_ai_refresh::LeaveReset);
+    }
 
     Group* after = bot->GetGroup();
     if (after && after->GetId() == groupId)
@@ -524,14 +547,15 @@ Verdict RunLeader(Op const& op, std::uint32_t transitMs, DrainMinute& m)
     WorldPacket p(SMSG_GROUP_SET_LEADER, 8);
     p << newLeader->GetObjectGuid();
     bot->GetSession()->HandleGroupSetLeaderOpcode(p);
+    // As the legacy code: the random bot's reset after the core call, whether the core changed the leader or not.
+    if (op.reason == kLeaderReset)
+        ai->RequestGroupAi(group_ai_refresh::LeaderReset);
     Group* g = bot->GetGroup();
     if (!g || !g->IsLeader(newLeader->GetObjectGuid()))
     {
         ++m.failed[std::size_t(OpKind::Leader)];
         return v;
     }
-    if (op.reason == kLeaderReset)
-        ai->RequestGroupAi(group_ai_refresh::LeaderReset);
     ++m.executed[std::size_t(OpKind::Leader)];
     return v;
 }
@@ -763,6 +787,7 @@ void Drain()
                 if (popped == Popped::Superseded)
                 {
                     ++m.superseded;
+                    DropAcceptInvite(op);
                     ClearPending(op);
                     queue.Finish(op);
                     continue;
@@ -791,7 +816,10 @@ void Drain()
                     m.opUsMax = std::max(m.opUsMax, UsSince(opStart));
                 }
                 else
+                {
                     ++m.stale[std::size_t(op.kind)];
+                    DropAcceptInvite(op);
+                }
                 // A dropped op: the bot keeps its state and decides again on its next scan (AdhocGroupAction).
                 ClearPending(op);
                 queue.Finish(op);
@@ -845,7 +873,7 @@ bool WritePathRoutes(PlayerbotAI* ai)
     return InWritePathScope(ai);
 }
 
-bool QueueLeave(PlayerbotAI* ai, OpSource source)
+bool QueueLeave(PlayerbotAI* ai, OpSource source, std::uint8_t tail)
 {
     Player* bot = ai->GetBot();
     Group* group = bot->GetGroup();
@@ -853,6 +881,7 @@ bool QueueLeave(PlayerbotAI* ai, OpSource source)
         return false;
     Op op;
     op.kind = OpKind::Leave;
+    op.reason = std::uint8_t(kLeaveQueued | tail);   // never the ad-hoc tail (LeaveTailOf)
     op.source = std::uint8_t(source);
     op.bot = bot->GetGUIDLow();
     op.other = group->GetLeaderGuid().GetCounter();
@@ -882,7 +911,10 @@ bool QueueInvite(PlayerbotAI* ai, Player* invitee, bool raidConvert)
     op.bot = bot->GetGUIDLow();
     op.other = invitee->GetGUIDLow();
     op.groupId = group ? group->GetId() : 0u;
-    PlayerbotAI* inviteeAi = GetBotAI(invitee);   // a real player invitee: no mark (the queue still holds it)
+    // The invitee's pending mark only on this map (its AI is touched from this thread; "invite guild"/"invite <name>" can name a
+    // bot on another map thread that logs out meanwhile). A real player invitee or another map: no mark - the queue still holds
+    // the invitee (dedup through latest), the mark is only the producers' hint.
+    PlayerbotAI* inviteeAi = invitee->GetMap() == bot->GetMap() ? GetBotAI(invitee) : nullptr;
     return Enqueue(op, ai, inviteeAi && !inviteeAi->IsRealPlayer() ? inviteeAi : nullptr) == Pushed::Queued;
 }
 

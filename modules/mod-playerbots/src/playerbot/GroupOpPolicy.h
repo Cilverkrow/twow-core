@@ -67,10 +67,34 @@ enum class OpSource : std::uint8_t
     Leader,         // PassLeadershipToMasterAction ("leader", "give leader")
 };
 
-// Op.reason of the new kinds (Leave keeps the ad-hoc reason).
+// Op.reason of the new kinds (Leave keeps the ad-hoc reason; a QueueLeave op: kLeaveQueued below).
 constexpr std::uint8_t kAcceptDecline = 1;      // Accept: the security decline (UninviteFromGroup)
 constexpr std::uint8_t kInviteRaidConvert = 1;  // Invite: the caller's "5th member: convert to raid" ("invite nearby/guild")
 constexpr std::uint8_t kLeaderReset = 1;        // Leader: the legacy strategy reset after the change (a random bot)
+
+// A3 lever 2 (review fix): the tail of a queued Leave. The ad-hoc action's EnqueueLeave keeps its adhoc_group::Leave reason
+// (< 0x80) and the ad-hoc tail; QueueLeave (LeaveGroupAction::Leave, RepopAction) sets kLeaveQueued plus the legacy tail of its
+// producer, so the op keeps exactly the non-core part of the code it replaces.
+constexpr std::uint8_t kLeaveQueued = 0x80;     // Leave: a QueueLeave op (not the ad-hoc action's)
+constexpr std::uint8_t kLeaveNoTail = 0x01;     // Leave (RepopAction): no tail - the legacy raw RemoveMember had none
+constexpr std::uint8_t kLeaveBotMaster = 0x02;  // Leave (LeaveGroupAction::Leave): the master was a bot at the decision (aiMaster)
+
+enum class LeaveTail : std::uint8_t
+{
+    Adhoc = 0,          // event + membership line, a free bot's master cleared, LeaveReset (BOT-12, as before)
+    Command,            // LeaveGroupAction::Leave, its master not a bot: the same (legacy: ResetStrategies + Reset)
+    CommandBotMaster,   // LeaveGroupAction::Leave with a bot master: the same, but Reset only (legacy `if (!aiMaster)`)
+    None,               // RepopAction: nothing but the core leave
+};
+
+inline LeaveTail LeaveTailOf(std::uint8_t reason)
+{
+    if (!(reason & kLeaveQueued))
+        return LeaveTail::Adhoc;
+    if (reason & kLeaveNoTail)
+        return LeaveTail::None;
+    return (reason & kLeaveBotMaster) ? LeaveTail::CommandBotMaster : LeaveTail::Command;
+}
 
 // ---- the switch -----------------------------------------------------------------------------------------------------------
 // AiPlayerbot.BotGroups.OpQueue: 0 off (today, default), 1 all bots, 2 cohort B (odd low guid), 3 cohort A (even low guid).
