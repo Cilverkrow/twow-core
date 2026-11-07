@@ -921,6 +921,11 @@ public:
     uint32 questBookAboveLevels = 1;              // the one level window: a quest at most this above the bot
     uint32 questBookStaleCompleteSeconds = 1800;  // QB4 KPI: complete, not turned in for this long
     std::set<uint32> questBookExclude;            // QB5 permanent list (OB-00 07.11. D1 (a)); read only after the load
+    // A3 step 2 QB-S (QuestSourcePolicy.h): source choice and quest order where the quest book is active. 0 off, 1 all, 2 cohort B,
+    // 3 cohort A; other = 0 + error line.
+    uint32 questBookSourceChoice = 0;
+    float questBookKillSeconds = 12.0f;           // one kill incl. loot, for the expected work at a source
+    float questBookSingleSpawnMargin = 1.5f;      // a named / single source must be this much cheaper than a common one
     // twow-repo#627 S7 help groups (QuestGroupPolicy.h, QuestGroupWorld.cpp); Enable: 0 off, 1 all, 2 cohort B, 3 cohort A.
     uint32 questGroupsEnable = 0;
     uint32 questGroupsScanSeconds = 60;
