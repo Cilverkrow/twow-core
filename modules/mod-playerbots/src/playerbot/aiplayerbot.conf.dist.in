@@ -1363,8 +1363,12 @@ AiPlayerbot.BotGroups.Manager = 0
 # The split guard (switch 1 only): a bot that keeps a PERM bind on raid map M declines an invite from a leader who stands in
 # another copy of M (S1), and does not relay an area trigger, a teleport command, a summon or .bot summon into another copy
 # of M toward a player on M (S3). It reads only the bot's own binds and the other player's map and instance id.
-# Blind spots: a target not (yet) on M is not checked; core-only summons (ritual of summoning, meeting stones through the
-# core) run no module code and cannot be vetoed - the core still puts the bot into its own PERM copy (split group, no crash).
+# Timing: when the master walks through the entrance, the bot's area-trigger relay waits while the master is still on its
+# loading screen toward M (only a bot with a PERM bind on M), then checks the master's copy.
+# Blind spots: any other target not (yet) on M is not checked (the "teleport" command and the trigger reach do not wait);
+# core-only summons (ritual of summoning, meeting stones through the core) run no module code and cannot be vetoed - the core
+# still puts the bot into its own PERM copy (split group, no crash). The bot's own binds can be written by a group disband
+# on another map thread while the guard reads them (the core's own reads race the same way).
 # Out of scope: the GroupOps join decision (S2, follows with the GroupManager pairs), the dungeon-clear test-run unbinds, a bot
 # leader that keeps PERM A spreading A to members who enter (real players included; core behaviour), counting a bot with a real
 # master as "real", the sibling asserts in Map.cpp, a runtime core hook. "debug do reset raids" by a master stays manual.

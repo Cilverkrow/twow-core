@@ -50,6 +50,7 @@ read_file("${PB_SOURCE_DIR}/aiplayerbot.conf.dist.in" conf_dist)
 read_file("${PB_SOURCE_DIR}/GroupOps.cpp" ops_cpp)
 read_file("${PB_SOURCE_DIR}/GroupOps.h" ops_h)
 read_file("${PB_MODULE_DIR}/tests.cmake" tests_cmake)
+read_file("${PB_MODULE_DIR}/t/lockout_policy_tests.cpp" unit_cpp)
 read_file("${CORE_SOURCE_DIR}/src/game/Objects/Player.cpp" player_cpp)
 read_file("${CORE_SOURCE_DIR}/src/game/Objects/Player.h" player_h)
 read_file("${CORE_SOURCE_DIR}/src/game/Maps/MapManager.cpp" mapmgr_cpp)
@@ -181,10 +182,28 @@ function(check_core_ack movement_cpp out)
   set(${out} "" PARENT_SCOPE)
 endfunction()
 
-function(check_core_teleport player_h out)
+# No way to name the instance copy in a teleport: no parameter called *InstanceId, no second integer right after the map id,
+# exactly the three known Player.h overloads (map+coords, the AzerothCore long form, the location template) and one
+# Player::TeleportTo definition in Player.cpp.
+function(check_core_teleport player_h player_cpp out)
   string(REGEX MATCH "TeleportTo\\([^)]*[Ii]nstance[Ii]d" m "${player_h}")
   if(NOT m STREQUAL "")
     set(${out} "Player.h: a TeleportTo overload takes an instance id: ${m}" PARENT_SCOPE)
+    return()
+  endif()
+  string(REGEX MATCH "TeleportTo\\(uint32 [A-Za-z_]+, *(uint|int|ObjectGuid)" m "${player_h}")
+  if(NOT m STREQUAL "")
+    set(${out} "Player.h: a TeleportTo overload takes a second integer after the map id: ${m}" PARENT_SCOPE)
+    return()
+  endif()
+  count_regex("${player_h}" "bool TeleportTo\\(" n)
+  if(NOT n EQUAL 3)
+    set(${out} "Player.h: ${n} TeleportTo overloads (3 expected)" PARENT_SCOPE)
+    return()
+  endif()
+  count_regex("${player_cpp}" "Player::TeleportTo\\(" n)
+  if(NOT n EQUAL 1)
+    set(${out} "Player.cpp: ${n} Player::TeleportTo definitions (1 expected)" PARENT_SCOPE)
     return()
   endif()
   set(${out} "" PARENT_SCOPE)
@@ -307,7 +326,9 @@ function(check_guard guard_cpp out)
       "    if (InstancePlayerBind const* pBind = bot->GetBoundInstance(mapId))"
       "    if (!entry || !entry->IsDungeon())\n        return false;\n    return lockout::LockSplit(OwnBind(bot, mapId), targetInstanceId);"
       "    if (target->GetMapId() != mapId)"
-      "    return SplitToward(bot, mapId, target->GetInstanceId());")
+      "    return SplitToward(bot, mapId, target->GetInstanceId());"
+      "    if (!bot || !target || target == bot || !target->IsBeingTeleportedFar())"
+      "    if (target->GetTeleportDest().mapId != mapId || target->GetMapId() == mapId)\n        return false;\n    MapEntry const* entry = sMapStorage.LookupEntry<MapEntry>(mapId);\n    if (!entry || !entry->IsDungeon())\n        return false;\n    lockout::Bind const own = OwnBind(bot, mapId);\n    return own.instanceId && own.perm;")
     string(FIND "${guard_cpp}" "${needle}" at)
     if(at EQUAL -1)
       set(${out} "LockoutGuard.cpp: missing ${needle}" PARENT_SCOPE)
@@ -324,6 +345,33 @@ function(check_guard guard_cpp out)
   count_regex("${guard_cpp}" "GetBoundInstance\\(" n)
   if(NOT n EQUAL 1)
     set(${out} "LockoutGuard.cpp: ${n} GetBoundInstance reads (1 expected, the bot's own)" PARENT_SCOPE)
+    return()
+  endif()
+  set(${out} "" PARENT_SCOPE)
+endfunction()
+
+# The counters: the enum, its size kCounters and the Take() list of MinuteTick move together (a counter without a Take line
+# would never print).
+function(check_counters guard_h guard_cpp out)
+  string(FIND "${guard_h}" "enum Counter\n{\n    ResetReal = 0,\n    ResetBot,\n    KeepBot,\n    SplitDecline,\n    SplitEntry,\n    kCounters,\n};" at)
+  if(at EQUAL -1)
+    set(${out} "LockoutGuard.h: the Counter enum changed (update kCounters, MinuteTick and this pin together)" PARENT_SCOPE)
+    return()
+  endif()
+  string(FIND "${guard_cpp}" "std::array<std::atomic<std::uint32_t>, kCounters> counters{};" at)
+  if(at EQUAL -1)
+    set(${out} "LockoutGuard.cpp: the counter array is not sized by kCounters" PARENT_SCOPE)
+    return()
+  endif()
+  region("${guard_cpp}" "void MinuteTick(std::uint32_t diff)\n{" "\n}\n" tick)
+  string(FIND "${tick}" "    c.resetReal = Take(ResetReal);\n    c.resetBot = Take(ResetBot);\n    c.keepBot = Take(KeepBot);\n    c.splitDecline = Take(SplitDecline);\n    c.splitEntry = Take(SplitEntry);\n" at)
+  if(at EQUAL -1)
+    set(${out} "LockoutGuard.cpp: MinuteTick does not take every counter in enum order" PARENT_SCOPE)
+    return()
+  endif()
+  count_regex("${tick}" "Take\\(" n)
+  if(NOT n EQUAL 5)
+    set(${out} "LockoutGuard.cpp: MinuteTick takes ${n} counters (5 expected, one per enum value)" PARENT_SCOPE)
     return()
   endif()
   set(${out} "" PARENT_SCOPE)
@@ -377,8 +425,27 @@ function(check_s3 area teleport meeting mgr all_sources out)
     set(${out} "${r}" PARENT_SCOPE)
     return()
   endif()
-  order("${teleport}" "        if (sPlayerbotAIConfig.botGroupsResetRaidsRealInviterOnly && ai::lockout_guard::RelaySplit(bot, movement.lastAreaTrigger, requester))\n        {\n            ai::lockout_guard::Count(ai::lockout_guard::SplitEntry);"
-    "        bot->GetSession()->HandleAreaTriggerOpcode(p);" "S3 TeleportAction relay" r)
+  # S3 timing (review A L-1): the relay keeps the trigger while the master is still on its far teleport toward M, after the
+  # consume and before the split check, behind the switch.
+  set(wait "    if (sPlayerbotAIConfig.botGroupsResetRaidsRealInviterOnly && ai::lockout_guard::RelayWait(bot, triggerId, GetMaster()))\n    {\n        movement.lastAreaTrigger = triggerId;\n        return false;\n    }")
+  order("${relay}" "    movement.lastAreaTrigger = 0;" "${wait}" "S3 relay wait after the consume" r)
+  if(NOT r STREQUAL "")
+    set(${out} "${r}" PARENT_SCOPE)
+    return()
+  endif()
+  order("${relay}" "${wait}" "ai::lockout_guard::RelaySplit(bot, triggerId, GetMaster())" "S3 relay wait before the split check" r)
+  if(NOT r STREQUAL "")
+    set(${out} "${r}" PARENT_SCOPE)
+    return()
+  endif()
+  count_regex("${all_sources}" "lockout_guard::RelayWait\\(" n)
+  if(NOT n EQUAL 1)
+    set(${out} "lockout_guard::RelayWait( called ${n} times (1 expected: the relay)" PARENT_SCOPE)
+    return()
+  endif()
+  # Review A L-2: the refused teleport consumes the trigger (no second count, no relay toward another target).
+  order("${teleport}" "        if (sPlayerbotAIConfig.botGroupsResetRaidsRealInviterOnly && ai::lockout_guard::RelaySplit(bot, movement.lastAreaTrigger, requester))\n        {\n            ai::lockout_guard::Count(ai::lockout_guard::SplitEntry);\n            movement.lastAreaTrigger = 0;"
+    "        bot->GetSession()->HandleAreaTriggerOpcode(p);" "S3 TeleportAction relay (refusal consumes the trigger)" r)
   if(NOT r STREQUAL "")
     set(${out} "${r}" PARENT_SCOPE)
     return()
@@ -488,11 +555,28 @@ function(check_minute policy guard_cpp scripts all_sources ops out)
   set(${out} "" PARENT_SCOPE)
 endfunction()
 
-function(check_unit_test tests_cmake out)
+function(check_unit_test tests_cmake unit_cpp out)
   foreach(needle "add_executable(lockout_policy_tests\n  \"\${PB_MODULE_DIR}/t/lockout_policy_tests.cpp\")" "add_test(NAME lockout_policy\n  COMMAND lockout_policy_tests")
     string(FIND "${tests_cmake}" "${needle}" at)
     if(at EQUAL -1)
       set(${out} "tests.cmake: missing ${needle}" PARENT_SCOPE)
+      return()
+    endif()
+  endforeach()
+  # Review B 1: the body too - the I0 loop over every bind combination, the forced-copy negative case, the LockSplit and
+  # ResetRaidsOnJoin truth tables.
+  foreach(needle
+      "    for (std::uint32_t id : {0u, 7u, 9u})\n    {\n        for (bool perm : {false, true})"
+      "    for (Bind const& self : selves)\n        for (Bind const& group : groups)\n            Require(!PermAssertWouldFire(self, CoreChoice(self, group)), \"I0: the core's own choice never fires the perm assert\");"
+      "    Require(PermAssertWouldFire({7, true}, 9), \"perm self forced into another copy fires\");"
+      "    Require(LockSplit({7, true}, 9), \"perm on M, target in another copy: split\");"
+      "    Require(!LockSplit({7, true}, 7), \"perm on M, target in the same copy: no split\");"
+      "    for (int bits = 0; bits < 8; ++bits)"
+      "        Require(ResetRaidsOnJoin(false, wm, tail, real), \"switch 0: reset raids on every accept\");"
+      "        Require(ResetRaidsOnJoin(true, wm, tail, real) == (!wm && !tail && real), \"switch 1: only a real inviter on the direct path\");")
+    string(FIND "${unit_cpp}" "${needle}" at)
+    if(at EQUAL -1)
+      set(${out} "lockout_policy_tests.cpp: missing ${needle}" PARENT_SCOPE)
       return()
     endif()
   endforeach()
@@ -513,7 +597,7 @@ check_core_ack("${movement_cpp}" r)
 if(NOT r STREQUAL "")
   message(FATAL_ERROR "${TAG}: ${r}")
 endif()
-check_core_teleport("${player_h}" r)
+check_core_teleport("${player_h}" "${player_cpp}" r)
 if(NOT r STREQUAL "")
   message(FATAL_ERROR "${TAG}: ${r}")
 endif()
@@ -537,6 +621,10 @@ check_guard("${guard_cpp}" r)
 if(NOT r STREQUAL "")
   message(FATAL_ERROR "${TAG}: ${r}")
 endif()
+check_counters("${guard_h}" "${guard_cpp}" r)
+if(NOT r STREQUAL "")
+  message(FATAL_ERROR "${TAG}: ${r}")
+endif()
 check_s1("${accept}" r)
 if(NOT r STREQUAL "")
   message(FATAL_ERROR "${TAG}: ${r}")
@@ -553,7 +641,7 @@ check_minute("${policy}" "${guard_cpp}" "${scripts}" "${all_sources}" "${ops}" r
 if(NOT r STREQUAL "")
   message(FATAL_ERROR "${TAG}: ${r}")
 endif()
-check_unit_test("${tests_cmake}" r)
+check_unit_test("${tests_cmake}" "${unit_cpp}" r)
 if(NOT r STREQUAL "")
   message(FATAL_ERROR "${TAG}: ${r}")
 endif()
@@ -591,11 +679,31 @@ string(REPLACE "        map = sMapMgr.CreateMap(loc.mapId, GetPlayer());" "     
 check_core_ack("${m}" r)
 expect_caught("${r}" "worldport ack without CreateMap")
 
-check_core_teleport("${player_h}\n        bool TeleportTo(uint32 mapid, uint32 instanceId, float x, float y, float z, float orientation);" r)
+# Review B 4: the ack adds the player before CreateMap picked the copy.
+string(REPLACE "    bool const _scAddOk = GetPlayer()->GetMap()->Add(GetPlayer());" "    bool const _scAddOk = true;" m "${movement_cpp}")
+string(REPLACE "        map = sMapMgr.CreateMap(loc.mapId, GetPlayer());" "        GetPlayer()->GetMap()->Add(GetPlayer());\n        map = sMapMgr.CreateMap(loc.mapId, GetPlayer());" m "${m}")
+check_core_ack("${m}" r)
+expect_caught("${r}" "worldport ack adds the player before CreateMap")
+
+check_core_teleport("${player_h}\n        bool TeleportTo(uint32 mapid, uint32 instanceId, float x, float y, float z, float orientation);" "${player_cpp}" r)
 expect_caught("${r}" "an instance-id TeleportTo added")
+
+# Review B 2: other parameter names, another shape, a Player.cpp-only definition.
+check_core_teleport("${player_h}\n        bool TeleportTo(uint32 mapid, uint32 copy, float x, float y, float z, float orientation);" "${player_cpp}" r)
+expect_caught("${r}" "a TeleportTo with a second integer after the map id")
+
+check_core_teleport("${player_h}\n        bool TeleportTo(uint32 mapid, float x, float y, float z, float orientation, uint32 options, uint32 copy);" "${player_cpp}" r)
+expect_caught("${r}" "a fourth TeleportTo overload")
+
+check_core_teleport("${player_h}" "${player_cpp}\nbool Player::TeleportTo(WorldLocation const& loc, uint32 copy)\n{\n}\n" r)
+expect_caught("${r}" "a second Player::TeleportTo definition in Player.cpp")
 
 check_module_binds("${all_sources}\n    bot->BindToInstance(state, true);" "${all_but_reset}" "${reset_cpp}" r)
 expect_caught("${r}" "a module BindToInstance")
+
+# Review B 4: a module CreateInstance.
+check_module_binds("${all_sources}\n    Map* map = sMapMgr.CreateInstance(mapId, bot);" "${all_but_reset}" "${reset_cpp}" r)
+expect_caught("${r}" "a module CreateInstance")
 
 check_module_binds("${all_sources}\n    bot->GetMap()->Add(bot);" "${all_but_reset}" "${reset_cpp}" r)
 expect_caught("${r}" "a module player Map::Add")
@@ -641,6 +749,37 @@ expect_caught("${r}" "S3 relay without the switch")
 check_s3("${area}" "${teleport}" "${meeting}" "${mgr}" "${all_sources}\n    if (ai::lockout_guard::SplitToward(bot, 1, 2)) {}" r)
 expect_caught("${r}" "an ungated fourth SplitToward call")
 
+# Review A L-1: the relay wait removed, ungated, or put before the consume.
+string(REPLACE "    if (sPlayerbotAIConfig.botGroupsResetRaidsRealInviterOnly && ai::lockout_guard::RelayWait(bot, triggerId, GetMaster()))\n    {\n        movement.lastAreaTrigger = triggerId;\n        return false;\n    }\n" "" m "${area}")
+check_s3("${m}" "${teleport}" "${meeting}" "${mgr}" "${all_sources}" r)
+expect_caught("${r}" "S3 relay without the landing wait")
+
+string(REPLACE "    if (sPlayerbotAIConfig.botGroupsResetRaidsRealInviterOnly && ai::lockout_guard::RelayWait(bot, triggerId, GetMaster()))" "    if (ai::lockout_guard::RelayWait(bot, triggerId, GetMaster()))" m "${area}")
+check_s3("${m}" "${teleport}" "${meeting}" "${mgr}" "${all_sources}" r)
+expect_caught("${r}" "S3 relay wait without the switch")
+
+string(REPLACE "    uint32 triggerId = movement.lastAreaTrigger;\n    movement.lastAreaTrigger = 0;\n" "    uint32 triggerId = movement.lastAreaTrigger;\n" m "${area}")
+check_s3("${m}" "${teleport}" "${meeting}" "${mgr}" "${all_sources}" r)
+expect_caught("${r}" "S3 relay without the consume before the wait")
+
+string(REPLACE "    lockout::Bind const own = OwnBind(bot, mapId);\n    return own.instanceId && own.perm;" "    return true;" m "${guard_cpp}")
+check_guard("${m}" r)
+expect_caught("${r}" "the relay wait for every bot, not only a perm-bound one")
+
+# Review A L-2: the refused teleport keeps the trigger (second count, relay toward another target).
+string(REPLACE "            ai::lockout_guard::Count(ai::lockout_guard::SplitEntry);\n            movement.lastAreaTrigger = 0;\n" "            ai::lockout_guard::Count(ai::lockout_guard::SplitEntry);\n" m "${teleport}")
+check_s3("${area}" "${m}" "${meeting}" "${mgr}" "${all_sources}" r)
+expect_caught("${r}" "S3 teleport refusal keeps the trigger")
+
+# Review B 3: a counter without a Take line, a Take line dropped.
+string(REPLACE "    SplitEntry,\n    kCounters," "    SplitEntry,\n    SplitOther,\n    kCounters," m "${guard_h}")
+check_counters("${m}" "${guard_cpp}" r)
+expect_caught("${r}" "a new counter without a Take line")
+
+string(REPLACE "    c.splitDecline = Take(SplitDecline);\n" "" m "${guard_cpp}")
+check_counters("${guard_h}" "${m}" r)
+expect_caught("${r}" "a counter never taken in MinuteTick")
+
 string(REPLACE "    bool botGroupsResetRaidsRealInviterOnly = true;" "    bool botGroupsResetRaidsRealInviterOnly = false;" m "${config_h}")
 check_switch("${m}" "${config_cpp}" "${conf_dist}" r)
 expect_caught("${r}" "member default 0")
@@ -677,7 +816,20 @@ check_minute("${policy}" "${guard_cpp}" "${scripts}" "${all_sources}" "${ops}\n 
 expect_caught("${r}" "lockout counters in GroupOps")
 
 string(REPLACE "add_test(NAME lockout_policy\n" "add_test(NAME other\n" m "${tests_cmake}")
-check_unit_test("${m}" r)
+check_unit_test("${m}" "${unit_cpp}" r)
 expect_caught("${r}" "unit test not registered")
+
+# Review B 1: the unit test body gutted.
+string(REPLACE "            Require(!PermAssertWouldFire(self, CoreChoice(self, group)), \"I0: the core's own choice never fires the perm assert\");" "            (void)self, (void)group;" m "${unit_cpp}")
+check_unit_test("${tests_cmake}" "${m}" r)
+expect_caught("${r}" "unit test without the I0 loop check")
+
+string(REPLACE "    Require(PermAssertWouldFire({7, true}, 9), \"perm self forced into another copy fires\");\n" "" m "${unit_cpp}")
+check_unit_test("${tests_cmake}" "${m}" r)
+expect_caught("${r}" "unit test without the forced-copy negative case")
+
+string(REPLACE "        Require(ResetRaidsOnJoin(true, wm, tail, real) == (!wm && !tail && real), \"switch 1: only a real inviter on the direct path\");" "" m "${unit_cpp}")
+check_unit_test("${tests_cmake}" "${m}" r)
+expect_caught("${r}" "unit test without the ResetRaidsOnJoin table at switch 1")
 
 message(STATUS "${TAG}: OK")

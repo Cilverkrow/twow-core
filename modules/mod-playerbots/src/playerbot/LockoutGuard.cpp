@@ -70,6 +70,24 @@ bool RelaySplit(Player* bot, std::uint32_t triggerId, Player* target)
     return SplitToward(bot, mapId, target->GetInstanceId());
 }
 
+bool RelayWait(Player* bot, std::uint32_t triggerId, Player* target)
+{
+    if (!bot || !target || target == bot || !target->IsBeingTeleportedFar())
+        return false;
+    AreaTriggerTeleport const* at = sObjectMgr.GetAreaTriggerTeleport(triggerId);
+    if (!at)
+        return false;
+    std::uint32_t const mapId = at->destination.mapId;
+    // On its way to M, not yet on M (scalar reads; the ack sets the map before it clears the far-teleport flag).
+    if (target->GetTeleportDest().mapId != mapId || target->GetMapId() == mapId)
+        return false;
+    MapEntry const* entry = sMapStorage.LookupEntry<MapEntry>(mapId);
+    if (!entry || !entry->IsDungeon())
+        return false;
+    lockout::Bind const own = OwnBind(bot, mapId);
+    return own.instanceId && own.perm;
+}
+
 void MinuteTick(std::uint32_t diff)
 {
     static std::uint32_t elapsedMs = 0;   // world thread only

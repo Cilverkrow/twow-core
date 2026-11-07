@@ -35,6 +35,11 @@ bool SplitToward(Player* bot, std::uint32_t mapId, std::uint32_t targetInstanceI
 // bot is perm-bound to. No target, a target not on M or a trigger without a teleport = no check (false).
 bool RelaySplit(Player* bot, std::uint32_t triggerId, Player* target);
 
+// S3 timing for the area-trigger relay: target is still on its far teleport toward the trigger's dungeon map M (loading
+// screen: its map and instance id are the old ones until the worldport ack) and the bot holds a PERM bind on M. The relay
+// then keeps the trigger and waits, so RelaySplit sees the target's copy once it has landed. Scalar reads of target only.
+bool RelayWait(Player* bot, std::uint32_t triggerId, Player* target);
+
 // World thread (PlayerbotWorldScript::OnUpdate): once a minute, the [Lockout] line when a counter moved.
 void MinuteTick(std::uint32_t diff);
 }
