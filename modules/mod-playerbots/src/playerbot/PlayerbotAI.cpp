@@ -2951,6 +2951,16 @@ void PlayerbotAI::OnDeath()
             // G4: a death loop at one spot (graveyard among mobs above the
             // bot) is counted apart from "death count", which XP resets.
             RecordDeathForLoop();
+            // twow-repo#575 A3 step 4 S4-1 (AiPlayerbot.Revive.CorpseRunFirst): own deaths for the loop rule at the corpse.
+            if (ai::cohort::Applies(sPlayerbotAIConfig.reviveCorpseRunFirst, bot->GetGUIDLow()))
+            {
+                ai::corpse_first::DeathMark mark;
+                mark.atSeconds = uint32(time(nullptr));
+                mark.mapId = bot->GetMapId();
+                mark.x = bot->GetPositionX();
+                mark.y = bot->GetPositionY();
+                RecordCorpseFirstDeath(mark);
+            }
             // #422: death series and environmental gathering deaths.
             RecordDeathForSeries();
             // Hotfix 8.1: deaths of a bot on a tank path.
@@ -10996,6 +11006,38 @@ Item* PlayerbotAI::FindOilFor(Item* weapon) const
     return oil;
 }
 
+// twow-repo#333 M2 Crafting.Consumables (owner list 07.11.2026, item 1): true when proto is one of the stones or oils that
+// FindStoneFor / FindOilFor would pick for this weapon - the same weapon rules, display id lists and checks as FindConsumable
+// (consumable or trade goods, usable by the bot), but without looking into the bags, so the item usage can keep a looted one.
+bool PlayerbotAI::IsImbueItemFor(Item* weapon, ItemPrototype const* proto) const
+{
+    ItemPrototype const* pProto = weapon ? weapon->GetProto() : nullptr;
+    if (!pProto || !proto || (proto->Class != ITEM_CLASS_CONSUMABLE && proto->Class != ITEM_CLASS_TRADE_GOODS) ||
+        bot->CanUseItem(proto) != EQUIP_ERR_OK)
+        return false;
+
+    uint32 const displayId = proto->DisplayInfoID;
+    auto const listed = [displayId](uint32 const* ids, size_t count)
+    {
+        return std::find(ids, ids + count, displayId) != ids + count;
+    };
+
+    if (pProto->Class == ITEM_CLASS_WEAPON && (pProto->SubClass == ITEM_SUBCLASS_WEAPON_SWORD || pProto->SubClass == ITEM_SUBCLASS_WEAPON_SWORD2
+        || pProto->SubClass == ITEM_SUBCLASS_WEAPON_AXE || pProto->SubClass == ITEM_SUBCLASS_WEAPON_AXE2
+        || pProto->SubClass == ITEM_SUBCLASS_WEAPON_DAGGER) && listed(uPriorizedSharpStoneIds, countof(uPriorizedSharpStoneIds)))
+        return true;
+
+    if (pProto->Class == ITEM_CLASS_WEAPON && (pProto->SubClass == ITEM_SUBCLASS_WEAPON_MACE || pProto->SubClass == ITEM_SUBCLASS_WEAPON_MACE2)
+        && listed(uPriorizedWeightStoneIds, countof(uPriorizedWeightStoneIds)))
+        return true;
+
+    if (pProto->SubClass == ITEM_SUBCLASS_WEAPON_SWORD || pProto->SubClass == ITEM_SUBCLASS_WEAPON_STAFF || pProto->SubClass == ITEM_SUBCLASS_WEAPON_DAGGER
+        || pProto->SubClass == ITEM_SUBCLASS_WEAPON_MACE || pProto->SubClass == ITEM_SUBCLASS_WEAPON_MACE2)
+        return listed(uPriorizedWizardOilIds, countof(uPriorizedWizardOilIds)) || listed(uPriorizedManaOilIds, countof(uPriorizedManaOilIds));
+
+    return false;
+}
+
 //  on self
 void PlayerbotAI::ImbueItem(Item* item)
 {
@@ -11578,6 +11620,10 @@ void PlayerbotAI::ApplyGroupAiRequests()
     if (!requests)
         return;
     ai::group_ai_refresh::Plan const plan = ai::group_ai_refresh::PlanFor(requests);
+    // A3 lever 2 (BotGroups.WritePath): LeaveGroupAction's queued leave with a bot master - its legacy tail without
+    // ResetStrategies (`if (!aiMaster)`); never together with the full reset below. Never posted with the key at 0.
+    if (plan.resetOnly)
+        Reset();
     if (plan.reset)
     {
         // AcceptInvitationAction's / LeaveGroupAction's own sequence; the master was already set on the world thread.

@@ -86,9 +86,33 @@ struct OffCounts
 
 OffCounts offCounts;
 
+// A3 lever 2 (BotGroups.WritePath): group events OFF the world thread caused by an in-scope bot - outside the "join"/"lfg"
+// bypass scope (off_wp_<event>, the write path's primary metric: 0) and inside it (bypass). Counted only with the key on.
+struct WriteCounts
+{
+    std::array<std::atomic<std::uint32_t>, kEvents> offWp{};
+    std::atomic<std::uint32_t> bypass{ 0 };
+    // OB-00 07.11.2026 (c): queued accepts of a real player's invite (deviation from ADR-0041 E7, measured on its own).
+    std::atomic<std::uint32_t> acceptPlayer{ 0 };
+};
+
+WriteCounts writeCounts;
+
 bool ObserverOn()
 {
+    // A3 lever 2: the observer (and so the drain's minute) also runs with BotGroups.WritePath, whatever OpQueue says.
+    if (sPlayerbotAIConfig.botGroupsWritePath)
+        return true;
     return sPlayerbotAIConfig.botGroupsDiagnostics || sPlayerbotAIConfig.botGroupsOpQueue;
+}
+
+// A3 lever 2: the game part of "in scope" (design 3): the cohort of the key, a bot AI without a real-player master (roster
+// and free bots; a real player's bots keep the legacy path, ADR draft E7), not in a battleground (BG groups are out of scope).
+bool InWritePathScope(PlayerbotAI* ai)
+{
+    Player* const bot = ai ? ai->GetBot() : nullptr;
+    return bot && !ai->IsRealPlayer() && !ai->HasRealPlayerMaster() && !bot->InBattleGround() &&
+        WritePathApplies(sPlayerbotAIConfig.botGroupsWritePath, bot->GetGUIDLow());
 }
 
 bool IsRealPlayerOrSelfBot(Player* player)
@@ -112,6 +136,13 @@ void Observe(GroupEvent e, Group* group, std::uint32_t addedLow = 0)
     if (!worldSeen.load(std::memory_order_relaxed))
         return;   // before the first world tick: no world thread known yet
     offCounts.off[e].fetch_add(1, std::memory_order_relaxed);
+    // A3 lever 2 (BotGroups.WritePath): every event (leader and invite too) whose outermost acting bot is in scope.
+    if (sPlayerbotAIConfig.botGroupsWritePath)
+    {
+        PlayerbotAI* const wpActor = t_outerAction ? t_actionAi : nullptr;
+        if (InWritePathScope(wpActor))
+            (t_writeBypass ? writeCounts.bypass : writeCounts.offWp[e]).fetch_add(1, std::memory_order_relaxed);
+    }
     if (!mapWrite && e != EvAdd && e != EvRemove)
         return;   // leader change / invite: totals only
 
@@ -236,8 +267,21 @@ void ClearPending(std::uint32_t guidLow, std::uint32_t seq)
 void ClearPending(Op const& op)
 {
     ClearPending(op.bot, op.seq);
-    if (op.kind == OpKind::Join)
+    if (HoldsBoth(op.kind))
         ClearPending(op.other, op.seq);
+}
+
+// A3 lever 2 (review fix): an Accept op dropped or superseded must not leave its invite pending - the "group invite" trigger
+// fired once, so nothing would answer it again and the bot would refuse every later invite until the inviter's group goes.
+// Only the invite this op answered (its leader still op.other); world thread, as RunJoin's own cleanup.
+void DropAcceptInvite(Op const& op)
+{
+    if (op.kind != OpKind::Accept)
+        return;
+    Player* bot = FindPlayer(op.bot);
+    Group* invite = bot ? bot->GetGroupInvite() : nullptr;
+    if (invite && invite->GetLeaderGuid().GetCounter() == op.other)
+        bot->UninviteFromGroup();
 }
 
 // The core leave of the ad-hoc manager (WorldThreadManager::LeaveGroup, S7 LeaveCore): HandleGroupDisbandOpcode ->
@@ -269,6 +313,10 @@ Verdict RunLeave(Op const& op, std::uint32_t transitMs, DrainMinute& m)
     // really out (a refused core leave keeps the group ad-hoc, so the bot decides again).
     std::uint32_t const groupId = group->GetId();
     bool const lastPair = group->GetMembersCount() <= 2;
+    // A3 lever 2 (review fix): the tail of the code the op replaces (LeaveTailOf): the ad-hoc tail as before; LeaveGroupAction's
+    // own (Reset only with a bot master); none for RepopAction (its legacy raw RemoveMember had no line, master clear or reset).
+    LeaveTail const tail = LeaveTailOf(op.reason);
+    if (tail != LeaveTail::None)
     {
         deferred_log::Scope const deferLogs(ai, true);
         sPlayerbotAIConfig.logEvent(ai, "LeaveGroupAction", group->GetLeaderName(), std::to_string(group->GetMembersCount() - 1));
@@ -283,9 +331,15 @@ Verdict RunLeave(Op const& op, std::uint32_t transitMs, DrainMinute& m)
     m.leaveCoreUsMax = std::max(m.leaveCoreUsMax, group_op_timing::UsSince(coreStart));
     // `group` may be deleted now (a group of two): only the bot's own pointer from here on.
 
-    if (sRandomPlayerbotMgr.IsFreeBot(bot))
-        ai->SetMaster(nullptr);
-    ai->RequestGroupAi(group_ai_refresh::LeaveReset);
+    if (tail != LeaveTail::None)
+    {
+        if (sRandomPlayerbotMgr.IsFreeBot(bot))
+            ai->SetMaster(nullptr);
+        if (tail == LeaveTail::CommandBotMaster)
+            ai->RequestGroupAi(group_ai_refresh::LeaveResetOnly);
+        else
+            ai->RequestGroupAi(group_ai_refresh::LeaveReset);
+    }
 
     Group* after = bot->GetGroup();
     if (after && after->GetId() == groupId)
@@ -381,6 +435,146 @@ Verdict RunJoin(Op const& op, std::uint32_t transitMs, DrainMinute& m)
     return v;
 }
 
+// A3 lever 2 (BotGroups.WritePath): the invitee's accept (AcceptInvitationAction) as an op. Re-checked here with the maps idle,
+// then the accept runs exactly as in RunJoin: the action with the group-op source keeps the core join (HandleGroupAcceptOpcode,
+// SetMaster) and posts its tail to the bot (RequestJoinTail). The security decline is the same op with kAcceptDecline: the
+// decline packet and UninviteFromGroup, here instead of on the bot's map thread.
+Verdict RunAccept(Op const& op, std::uint32_t transitMs, DrainMinute& m)
+{
+    Player* bot = FindPlayer(op.bot);
+    PlayerbotAI* ai = bot ? GetBotAI(bot) : nullptr;
+    Player* inviter = FindPlayer(op.other);
+    AcceptOpFacts f;
+    f.found = bot && ai && bot->GetSession() && inviter && inviter->GetSession();
+    if (f.found)
+    {
+        f.inWorld = bot->IsInWorld() && inviter->IsInWorld();
+        f.teleporting = bot->IsBeingTeleported() || inviter->IsBeingTeleported();
+        f.realMaster = ai->HasRealPlayerMaster();
+        Group* invite = bot->GetGroupInvite();
+        f.invited = invite && invite->GetLeaderGuid().GetCounter() == op.other;
+    }
+    f.transitMs = transitMs;
+    Verdict const v = DecideAcceptOp(f);
+    if (v != Verdict::Execute)
+        return v;
+
+    std::size_t const k = std::size_t(OpKind::Accept);
+    if (op.reason == kAcceptDecline)
+    {
+        WorldPacket data(SMSG_GROUP_DECLINE, 10);
+        data << bot->GetName();
+        sServerFacade.SendPacket(inviter, data);
+        bot->UninviteFromGroup();
+        ++(bot->GetGroupInvite() ? m.failed[k] : m.executed[k]);
+        return v;
+    }
+
+    ai->DoSpecificAction("accept invitation", Event(group_ai_refresh::GroupOpSource, "", inviter), true);
+    Group* group = bot->GetGroup();
+    ++(group && group->IsMember(inviter->GetObjectGuid()) ? m.executed[k] : m.failed[k]);
+    return v;
+}
+
+// A3 lever 2: InviteToGroupAction::Invite as an op - its core steps here: the raid conversion where the legacy code does it
+// (a bot invitee into a party of 5, or the caller's "5th member" rule carried as kInviteRaidConvert), then the inviter's
+// invite opcode. No tail: the invitee's own "accept invitation" answers the SMSG_GROUP_INVITE (in scope: an Accept op).
+Verdict RunInvite(Op const& op, std::uint32_t transitMs, DrainMinute& m)
+{
+    Player* inviter = FindPlayer(op.bot);
+    PlayerbotAI* inviterAi = inviter ? GetBotAI(inviter) : nullptr;
+    Player* invitee = FindPlayer(op.other);
+    InviteOpFacts f;
+    bool convert = false;
+    f.found = inviterAi && inviter->GetSession() && invitee && invitee->GetSession();
+    if (f.found)
+    {
+        f.inWorld = inviter->IsInWorld() && invitee->IsInWorld();
+        f.teleporting = inviter->IsBeingTeleported() || invitee->IsBeingTeleported();
+        f.realMaster = inviterAi->HasRealPlayerMaster();
+        f.inBattleground = inviter->InBattleGround() || invitee->InBattleGround();
+        f.inviteeGrouped = invitee->GetGroup() != nullptr;
+        f.inviteeInvited = invitee->GetGroupInvite() != nullptr;
+        Group* g = inviter->GetGroup();
+        f.inviterGroupId = g ? g->GetId() : 0u;
+        PlayerbotAI* inviteeAi = GetBotAI(invitee);
+        convert = g && !g->IsRaidGroup() &&
+            ((op.reason == kInviteRaidConvert && g->GetMembersCount() > 3) ||
+             (inviteeAi && !inviteeAi->IsRealPlayer() && g->GetMembersCount() > 4));
+        f.groupFull = g && !convert && g->IsFull();
+    }
+    f.opGroupId = op.groupId;
+    f.transitMs = transitMs;
+    Verdict const v = DecideInviteOp(f);
+    if (v != Verdict::Execute)
+        return v;
+
+    if (convert)
+        inviter->GetGroup()->ConvertToRaid();
+    WorldPacket p;
+    uint32 const rolesMask = 0;
+    p << invitee->GetName();
+    p << rolesMask;
+    inviter->GetSession()->HandleGroupInviteOpcode(p);
+    ++(invitee->GetGroupInvite() ? m.executed[std::size_t(OpKind::Invite)] : m.failed[std::size_t(OpKind::Invite)]);
+    return v;
+}
+
+// A3 lever 2: PassLeadershipToMasterAction's core call as an op (HandleGroupSetLeaderOpcode on the leader's session); its
+// strategy reset (a random bot) goes back to the bot (LeaderReset). The producer already told the new leader.
+Verdict RunLeader(Op const& op, std::uint32_t transitMs, DrainMinute& m)
+{
+    Player* bot = FindPlayer(op.bot);
+    PlayerbotAI* ai = bot ? GetBotAI(bot) : nullptr;
+    Player* newLeader = FindPlayer(op.other);
+    LeaderOpFacts f;
+    f.found = bot && ai && bot->GetSession() && newLeader && newLeader->GetSession();
+    if (f.found)
+    {
+        f.inWorld = bot->IsInWorld() && newLeader->IsInWorld();
+        f.teleporting = bot->IsBeingTeleported() || newLeader->IsBeingTeleported();
+        f.realMaster = ai->HasRealPlayerMaster();
+        f.inBattleground = bot->InBattleGround();
+        Group* g = bot->GetGroup();
+        f.groupId = g ? g->GetId() : 0u;
+        f.leads = g && g->IsLeader(bot->GetObjectGuid());
+        f.otherMember = g && newLeader->GetGroup() == g;
+    }
+    f.opGroupId = op.groupId;
+    f.transitMs = transitMs;
+    Verdict const v = DecideLeaderOp(f);
+    if (v != Verdict::Execute)
+        return v;
+
+    WorldPacket p(SMSG_GROUP_SET_LEADER, 8);
+    p << newLeader->GetObjectGuid();
+    bot->GetSession()->HandleGroupSetLeaderOpcode(p);
+    // As the legacy code: the random bot's reset after the core call, whether the core changed the leader or not.
+    if (op.reason == kLeaderReset)
+        ai->RequestGroupAi(group_ai_refresh::LeaderReset);
+    Group* g = bot->GetGroup();
+    if (!g || !g->IsLeader(newLeader->GetObjectGuid()))
+    {
+        ++m.failed[std::size_t(OpKind::Leader)];
+        return v;
+    }
+    ++m.executed[std::size_t(OpKind::Leader)];
+    return v;
+}
+
+Verdict Run(Op const& op, std::uint32_t transitMs, DrainMinute& m)
+{
+    switch (op.kind)
+    {
+        case OpKind::Leave:  return RunLeave(op, transitMs, m);
+        case OpKind::Join:   return RunJoin(op, transitMs, m);
+        case OpKind::Accept: return RunAccept(op, transitMs, m);
+        case OpKind::Invite: return RunInvite(op, transitMs, m);
+        case OpKind::Leader: return RunLeader(op, transitMs, m);
+    }
+    return Verdict::DropLoggedOut;
+}
+
 void AddField(std::string& out, char const* name, std::uint32_t value)
 {
     out += ' ';
@@ -392,6 +586,13 @@ void AddField(std::string& out, char const* name, std::uint32_t value)
 std::uint32_t Take(std::atomic<std::uint32_t>& counter)
 {
     return counter.exchange(0, std::memory_order_relaxed);
+}
+
+// A3 lever 2: <prefix><kind> for every kind, in OpKind order (leave, join, accept, invite, leader).
+void AddKindFields(std::string& out, char const* prefix, std::array<std::uint32_t, kKinds> const& values)
+{
+    for (std::size_t i = 0; i < kKinds; ++i)
+        AddField(out, (std::string(prefix) + KindName(OpKind(i))).c_str(), values[i]);
 }
 
 // One line per minute (world thread), with BotGroups.Diagnostics or OpQueue on; counters are increments of this minute.
@@ -473,6 +674,30 @@ void FlushMinute(WorldState& w, std::uint32_t nowMs)
     AddField(line, "wt_create", wtCreate);
     AddField(line, "wt_disband", wtDisband);
     sLog.outBasic("%s", line.c_str());
+
+    // A3 lever 2 (BotGroups.WritePath): the write path's own line, only with the key on (the [GroupOps] line above keeps its
+    // fields). The same minute's counts, every kind: leave, join, accept, invite, leader.
+    if (!sPlayerbotAIConfig.botGroupsWritePath)
+        return;
+    std::string wline = "[GroupWrite] minute";
+    AddField(wline, "mode", sPlayerbotAIConfig.botGroupsWritePath);
+    AddKindFields(wline, "enq_", pc.queued);
+    AddKindFields(wline, "exec_", m.executed);
+    AddKindFields(wline, "fail_", m.failed);
+    AddKindFields(wline, "stale_", m.stale);
+    AddKindFields(wline, "refused_pending_", pc.refusedPending);
+    AddKindFields(wline, "dropped_full_", pc.droppedFull);
+    AddField(wline, "superseding", pc.superseding);
+    AddField(wline, "superseded", m.superseded);
+    AddField(wline, "bypass", Take(writeCounts.bypass));
+    AddField(wline, "off_wp_create", Take(writeCounts.offWp[EvCreate]));
+    AddField(wline, "off_wp_disband", Take(writeCounts.offWp[EvDisband]));
+    AddField(wline, "off_wp_add", Take(writeCounts.offWp[EvAdd]));
+    AddField(wline, "off_wp_remove", Take(writeCounts.offWp[EvRemove]));
+    AddField(wline, "off_wp_leader", Take(writeCounts.offWp[EvLeader]));
+    AddField(wline, "off_wp_invite", Take(writeCounts.offWp[EvInvite]));
+    AddField(wline, "accept_player", Take(writeCounts.acceptPlayer));
+    sLog.outBasic("%s", wline.c_str());
 }
 }
 
@@ -565,6 +790,7 @@ void Drain()
                 if (popped == Popped::Superseded)
                 {
                     ++m.superseded;
+                    DropAcceptInvite(op);
                     ClearPending(op);
                     queue.Finish(op);
                     continue;
@@ -575,7 +801,7 @@ void Drain()
                 // The transit limit counts from the first look that found a bot in transit, not from the enqueue.
                 std::uint32_t const transitMs = op.inTransit ? nowMs - op.transitSinceMs : 0u;
                 auto const opStart = Clock::now();
-                Verdict const v = op.kind == OpKind::Leave ? RunLeave(op, transitMs, m) : RunJoin(op, transitMs, m);
+                Verdict const v = Run(op, transitMs, m);
                 ++m.verdicts[std::size_t(v)];
                 if (v == Verdict::Retry)
                 {
@@ -593,7 +819,10 @@ void Drain()
                     m.opUsMax = std::max(m.opUsMax, UsSince(opStart));
                 }
                 else
+                {
                     ++m.stale[std::size_t(op.kind)];
+                    DropAcceptInvite(op);
+                }
                 // A dropped op: the bot keeps its state and decides again on its next scan (AdhocGroupAction).
                 ClearPending(op);
                 queue.Finish(op);
@@ -634,5 +863,82 @@ void Drain()
 void AddGroupOpsObserver()
 {
     new GroupOpsObserver();
+}
+
+// ---- A3 lever 2: the write path's producers' side (the bots' own threads) ---------------------------------------------------
+bool WritePathRoutes(PlayerbotAI* ai)
+{
+    if (!sPlayerbotAIConfig.botGroupsWritePath)
+        return false;
+    // On the world thread (the drain's accept, the managers) the write is where it belongs already.
+    if (t_worldThread || t_writeBypass)
+        return false;
+    return InWritePathScope(ai);
+}
+
+bool QueueLeave(PlayerbotAI* ai, OpSource source, std::uint8_t tail)
+{
+    Player* bot = ai->GetBot();
+    Group* group = bot->GetGroup();
+    if (!group)
+        return false;
+    Op op;
+    op.kind = OpKind::Leave;
+    op.reason = std::uint8_t(kLeaveQueued | tail);   // never the ad-hoc tail (LeaveTailOf)
+    op.source = std::uint8_t(source);
+    op.bot = bot->GetGUIDLow();
+    op.other = group->GetLeaderGuid().GetCounter();
+    op.groupId = group->GetId();
+    return Enqueue(op, ai, nullptr) == Pushed::Queued;
+}
+
+bool QueueAccept(PlayerbotAI* ai, std::uint32_t inviterGuidLow, bool decline)
+{
+    Op op;
+    op.kind = OpKind::Accept;
+    op.reason = decline ? kAcceptDecline : 0;
+    op.source = std::uint8_t(OpSource::Accept);
+    op.bot = ai->GetBot()->GetGUIDLow();
+    op.other = inviterGuidLow;
+    if (Enqueue(op, ai, nullptr) != Pushed::Queued)
+        return false;
+    // OB-00 07.11.2026 (c): a queued accept of a real player's invite (ADR-0041 E7 deviation) gets its own count.
+    if (!decline && IsRealPlayerOrSelfBot(sObjectMgr.GetPlayer(ObjectGuid(HIGHGUID_PLAYER, inviterGuidLow))))
+        writeCounts.acceptPlayer.fetch_add(1, std::memory_order_relaxed);
+    return true;
+}
+
+bool QueueInvite(PlayerbotAI* ai, Player* invitee, bool raidConvert)
+{
+    Player* bot = ai->GetBot();
+    Group* group = bot->GetGroup();
+    Op op;
+    op.kind = OpKind::Invite;
+    op.reason = raidConvert ? kInviteRaidConvert : 0;
+    op.source = std::uint8_t(OpSource::Invite);
+    op.bot = bot->GetGUIDLow();
+    op.other = invitee->GetGUIDLow();
+    op.groupId = group ? group->GetId() : 0u;
+    // The invitee's pending mark only on this map (its AI is touched from this thread; "invite guild"/"invite <name>" can name a
+    // bot on another map thread that logs out meanwhile). A real player invitee or another map: no mark - the queue still holds
+    // the invitee (dedup through latest), the mark is only the producers' hint.
+    PlayerbotAI* inviteeAi = invitee->GetMap() == bot->GetMap() ? GetBotAI(invitee) : nullptr;
+    return Enqueue(op, ai, inviteeAi && !inviteeAi->IsRealPlayer() ? inviteeAi : nullptr) == Pushed::Queued;
+}
+
+bool QueueLeader(PlayerbotAI* ai, Player* newLeader, bool reset)
+{
+    Player* bot = ai->GetBot();
+    Group* group = bot->GetGroup();
+    if (!group)
+        return false;
+    Op op;
+    op.kind = OpKind::Leader;
+    op.reason = reset ? kLeaderReset : 0;
+    op.source = std::uint8_t(OpSource::Leader);
+    op.bot = bot->GetGUIDLow();
+    op.other = newLeader->GetGUIDLow();
+    op.groupId = group->GetId();
+    return Enqueue(op, ai, nullptr) == Pushed::Queued;
 }
 }
