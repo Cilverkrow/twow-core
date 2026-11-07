@@ -3144,12 +3144,18 @@ AiPlayerbot.WorldBotsTrace = 0
 # twow-repo#601 S2 diagnostic: also one [GrindPick] line per 5-level band and minute - every new grind target by
 # source (attacker = attacks the bot or its group, victim = already on the bot, quest = needed for a quest, grind =
 # anything else) as picks/grey (grey = no XP). Bands without a pick are left out.
+# Note: over10ms / over20ms of the [BotUpdate] line are bucket lower bounds (calls >= 16.384 ms / >= 32.768 ms), not exact counts.
 AiPlayerbot.BotUpdateTrace = 0
 # twow-repo#597 (TICK-01): 1 = every [BotUpdateSlow] line ends with " tick=<world loop counter>
 # region=<map>.<inst>" (the world tick and the map region of that slow bot update), so a slow update
 # can be matched with [WorldTickSlow] tick= and [MapTickRegion]. Only with AiPlayerbot.BotUpdateTrace = 1.
 # Log only. 0 = off (default, the line unchanged).
 AiPlayerbot.BotUpdateTraceTick = 0
+# A3 step 0 (e): 1 (with AiPlayerbot.BotUpdateTrace = 1) = two lines per minute right after [BotUpdate], always both, also
+# with calls=0: `[BotUpdateCohort] cohort=A|B calls= sum_us= max_us= over10ms= over20ms= p99_us=` - the bot updates of cohort A
+# (even low guid) and B (odd), as increments of that minute. over10ms / over20ms are exact (>= 10 / >= 20 ms), p99_us is a
+# bucket upper edge. Needs BotUpdateTrace = 1 (no clock, no line otherwise). Log only. 0 = off (default).
+AiPlayerbot.BotUpdateTraceCohort = 0
 # twow-repo#597 (TICK-01): 1 = the [WorldBots] minute line ends with " hook_ms=<x> remote_ms=<x>
 # ahbot_ms=<x> dungeonclear_ms=<x>": the whole bot WorldScript update hook per minute and its parts
 # (remote admin commands, AhBot update, dungeon-clear reaper hook) in ms. Only with
