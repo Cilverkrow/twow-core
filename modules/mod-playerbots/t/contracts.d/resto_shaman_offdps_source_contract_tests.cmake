@@ -4,7 +4,8 @@
 # Pins: key default 0, > 3 = off, in [ConfigEcho] sorted; the shaman creator; AiFactory adds offdps to a resto shaman only through the
 # cohort switch (no ungated add left in the shaman case). OB-00 condition 1 (heal priority unchanged in a group): offdps stays an
 # empty placeholder (no triggers, no actions, no multiplier), no shaman strategy / action / trigger reads it, and its readers stay the
-# three attack gates (attack my target, attack RTI target, attack anything). Every check runs once on the real sources and once per
+# three attack gates (attack my target, attack RTI target, attack anything) - since A3 step 5 through the combat rule's healer gate
+# (CombatRule.cpp, which keeps the old rule with CombatRule.HealerStart off). Every check runs once on the real sources and once per
 # negative probe (a mutated copy that must fail).
 
 # cmake 3.x script mode (Debian trixie builder / CI): policies as in the host cmake 4.x.
@@ -21,6 +22,9 @@ read_file("${PB_SOURCE_DIR}/strategy/shaman/ShamanAiObjectContext.cpp" context)
 read_file("${PB_SOURCE_DIR}/strategy/generic/ClassStrategy.h" class_h)
 read_file("${PB_SOURCE_DIR}/strategy/actions/AttackAction.cpp" attack_cpp)
 read_file("${PB_SOURCE_DIR}/strategy/actions/ChooseTargetActions.cpp" choose_cpp)
+# A3 step 5: the gate itself lives in the combat rule; its glue is checked together with the attack anything call site.
+read_file("${PB_SOURCE_DIR}/CombatRule.cpp" rule_cpp)
+string(APPEND choose_cpp "\n${rule_cpp}")
 read_file("${PB_SOURCE_DIR}/PlayerbotAIConfig.h" config_h)
 read_file("${PB_SOURCE_DIR}/PlayerbotAIConfig.cpp" config_cpp)
 read_file("${PB_SOURCE_DIR}/aiplayerbot.conf.dist.in" dist)
@@ -85,9 +89,10 @@ function(check factory context class_h attack_cpp choose_cpp config_h config_cpp
   need("${class_h}" "    class PlaceholderStrategy : public Strategy\n    {\n    public:\n        PlaceholderStrategy(PlayerbotAI* ai) : Strategy(ai) {}\n    };" "an empty placeholder base")
   need("${class_h}" "    class OffdpsPlaceholderStrategy : public PlaceholderStrategy\n    {\n    public:\n        OffdpsPlaceholderStrategy(PlayerbotAI* ai) : PlaceholderStrategy(ai) {}\n        std::string getName() override { return \"offdps\"; }\n    };" "offdps without triggers, actions or multipliers")
   ban("${shaman_all}" "offdps" "a shaman strategy, action, trigger or multiplier reading offdps (heal priority)")
-  need("${attack_cpp}" "bool AttackMyTargetAction::isUseful()\n{\n    return !ai->ContainsStrategy(STRATEGY_TYPE_HEAL) || ai->HasStrategy(\"offdps\", BotState::BOT_STATE_COMBAT);\n}" "attack my target gate")
-  need("${attack_cpp}" "bool AttackRTITargetAction::isUseful()\n{\n    return !ai->ContainsStrategy(STRATEGY_TYPE_HEAL) || ai->HasStrategy(\"offdps\", BotState::BOT_STATE_COMBAT);\n}" "attack RTI target gate")
-  need("${choose_cpp}" "    if (ai->ContainsStrategy(STRATEGY_TYPE_HEAL) && !ai->HasStrategy(\"offdps\", BotState::BOT_STATE_COMBAT))\n        return false;" "attack anything gate")
+  need("${attack_cpp}" "bool AttackMyTargetAction::isUseful()\n{\n    return ai::combat_rule::HealerMayAttack(ai);" "attack my target gate (combat rule)")
+  need("${attack_cpp}" "bool AttackRTITargetAction::isUseful()\n{\n    return ai::combat_rule::HealerMayAttack(ai);" "attack RTI target gate (combat rule)")
+  need("${choose_cpp}" "    if (!ai::combat_rule::HealerMayAttack(ai))   // A3 step 5: the healer gate (CombatRule.HealerStart, default 0 = the old rule)\n        return false;" "attack anything gate (combat rule)")
+  need("${choose_cpp}" "    bool const heal = ai->ContainsStrategy(STRATEGY_TYPE_HEAL);\n    bool const offdps = ai->HasStrategy(\"offdps\", BotState::BOT_STATE_COMBAT);" "the healer gate reads offdps from the combat engine")
 
   set(${out_var} "${errors}" PARENT_SCOPE)
 endfunction()
@@ -120,6 +125,6 @@ probe("creator missing" context "creators[\"offdps\"] = [](PlayerbotAI* ai) { re
 probe("ungated add" factory " && ai::cohort::Applies(sPlayerbotAIConfig.rotationRestoShamanOffdps, player->GetGUIDLow()))\n                    combatEngine->addStrategy(\"offdps\");" ")\n                    combatEngine->addStrategy(\"offdps\");")
 probe("placeholder with triggers" class_h "        std::string getName() override { return \"offdps\"; }\n" "        std::string getName() override { return \"offdps\"; }\n        void InitCombatTriggers(std::list<TriggerNode*>& triggers) override {}\n")
 probe("resto reads offdps" shaman_all "RestorationShaman" "RestorationShaman /* offdps */")
-probe("heal gate changed" choose_cpp "    if (ai->ContainsStrategy(STRATEGY_TYPE_HEAL) && !ai->HasStrategy(\"offdps\", BotState::BOT_STATE_COMBAT))" "    if (!ai->HasStrategy(\"offdps\", BotState::BOT_STATE_COMBAT))")
+probe("heal gate changed" choose_cpp "    bool const offdps = ai->HasStrategy(\"offdps\", BotState::BOT_STATE_COMBAT);" "    bool const offdps = false;")
 
 message(STATUS "resto_shaman_offdps source contract passed (${probes} negative probes)")

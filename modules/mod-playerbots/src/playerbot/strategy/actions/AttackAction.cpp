@@ -7,6 +7,7 @@
 #include "playerbot/ServerFacade.h"
 #include "playerbot/BotDiagnostics.h" // SC_LOG for attack-command diagnostic trace
 #include "playerbot/HunterMeleeStartPolicy.h"
+#include "playerbot/CombatRule.h"   // A3 step 5: the healer gate (CombatRule.HealerStart)
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/strategy/generic/CombatStrategy.h"
 
@@ -97,12 +98,12 @@ bool AttackRTITargetAction::Execute(Event& event)
 
 bool AttackMyTargetAction::isUseful()
 {
-    return !ai->ContainsStrategy(STRATEGY_TYPE_HEAL) || ai->HasStrategy("offdps", BotState::BOT_STATE_COMBAT);
+    return ai::combat_rule::HealerMayAttack(ai);   // A3 step 5: the healer gate (CombatRule.HealerStart, default 0 = the old rule)
 }
 
 bool AttackRTITargetAction::isUseful()
 {
-    return !ai->ContainsStrategy(STRATEGY_TYPE_HEAL) || ai->HasStrategy("offdps", BotState::BOT_STATE_COMBAT);
+    return ai::combat_rule::HealerMayAttack(ai);   // A3 step 5: the healer gate (CombatRule.HealerStart, default 0 = the old rule)
 }
 
 bool AttackAction::Attack(Player* requester, Unit* target)

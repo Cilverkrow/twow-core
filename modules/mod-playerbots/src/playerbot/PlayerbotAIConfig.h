@@ -897,6 +897,10 @@ public:
     // A3 step 3 (ADR-0041, OB-00 06.11.2026): the per-bot supervisor (SupervisorPolicy.h, Supervisor.cpp). Scaffold: it only
     // counts its engine passes. 0 off, 1 all, 2 cohort B, 3 cohort A; other = 0 + error line.
     uint32 supervisor = 0;
+    // A3 step 5 (ADR-0041, OB-00 07.11.2026): the combat rule (CombatRulePolicy.h, CombatRule.cpp), one switch per part.
+    // HealerStart: a holy paladin / restoration druid may attack like a healer with "offdps" (their contexts have no offdps
+    // creator, so the healer gate refused every attack). 0 off (default, the old rule), 1 all, 2 cohort B, 3 cohort A; other = 0.
+    uint32 combatRuleHealerStart = 0;
     // twow-repo#627 S7 help groups (QuestGroupPolicy.h, QuestGroupWorld.cpp); Enable: 0 off, 1 all, 2 cohort B, 3 cohort A.
     uint32 questGroupsEnable = 0;
     uint32 questGroupsScanSeconds = 60;
