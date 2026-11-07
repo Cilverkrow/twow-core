@@ -15,6 +15,7 @@
 #include "playerbot/DirectTargetDestinations.h"
 #include "playerbot/ProfessionTravelPolicy.h"   // twow-repo#333 Berufe P1-a / P1-b
 #include "playerbot/CohortPolicy.h"
+#include "playerbot/strategy/triggers/ProfessionUseTriggers.h"   // twow-repo#333 M2 Crafting.Cooking
 #include "playerbot/TravelMgr.h"    // P1-b2: the destinations' spawn points
 #include "playerbot/TravelNode.h"   // P1-b2: the travel graph
 #include "TrainerValues.h"
@@ -447,13 +448,16 @@ std::vector<int32> ai::PhaseOneProfessionTrainers(PlayerbotAI* ai, bool onlyUnle
     if (tradeskills == spellMap->end())
         return trainers;
 
+    // twow-repo#333 M2 Crafting.Cooking (owner list 07.11.2026, item 2): with the switch on for the bot cooking is a trip skill too.
+    bool const cooking = CraftingCookingFor(ai);
+
     // For tradeskill trainers the key is the skill line (TrainableSpellMapValue).
     for (auto const& [skill, spellTrainers] : tradeskills->second)
     {
-        if (!ai::profession_travel::IsPhaseOneSkill(skill))
+        if (!ai::profession_travel::IsTripSkill(skill, cooking))
             continue;
         // P1-n: the near trip only for a skill not learned yet.
-        if (onlyUnlearned && !ai::profession_travel::NearTripSkill(skill, ai->HasSkill(SkillType(skill))))
+        if (onlyUnlearned && !ai::profession_travel::NearTripSkill(skill, ai->HasSkill(SkillType(skill)), cooking))
             continue;
 
         for (auto const& [trainerSpell, entries] : spellTrainers)

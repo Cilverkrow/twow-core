@@ -4,6 +4,10 @@
 #include "playerbot/RandomPlayerbotMgr.h"
 #include "playerbot/ServerFacade.h"
 #include "playerbot/ProfessionUsePolicy.h"
+#include "playerbot/CohortPolicy.h"
+#include "Maps/GridNotifiers.h"
+#include "Maps/GridNotifiersImpl.h"
+#include "Maps/CellImpl.h"
 #include "playerbot/MaterialReservePolicy.h"
 #include "playerbot/strategy/values/CraftValues.h"
 
@@ -135,6 +139,30 @@ bool ai::IsRosterBotOnItsOwn(PlayerbotAI* ai)
     return bot && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster();
 }
 
+bool ai::CraftingCookingFor(PlayerbotAI* ai)
+{
+    if (!sPlayerbotAIConfig.craftingCooking)
+        return false;
+    Player* bot = ai->GetBot();
+    return bot && IsRosterBotOnItsOwn(ai) && ai::cohort::Applies(sPlayerbotAIConfig.craftingCooking, bot->GetGUIDLow());
+}
+
+bool ai::CookingFireNear(Player* bot)
+{
+    GameObject* fire = nullptr;
+    MaNGOS::GameObjectFocusCheck check(bot, kCookingFireFocus);
+    MaNGOS::GameObjectSearcher<MaNGOS::GameObjectFocusCheck> searcher(fire, check);
+    Cell::VisitGridObjects(bot, searcher, 10.0f);   // Spell::CheckCast's MAX_GAMEOBJECT_FOCUS_DISTANCE
+    return fire != nullptr;
+}
+
+bool ai::CanLightCampfire(Player* bot)
+{
+    SpellEntry const* fire = sServerFacade.LookupSpellInfo(kCampfireSpell);
+    return fire && bot->HasSpell(kCampfireSpell) && !bot->HasSpellCooldown(kCampfireSpell) &&
+        !(fire->Category && bot->HasSpellCategoryCooldown(fire->Category)) && HasCraftTools(fire, bot) && CraftableFromBags(fire, bot) > 0;
+}
+
 bool ai::IsReadyToCraft(PlayerbotAI* ai)
 {
     Player* bot = ai->GetBot();
@@ -190,6 +218,10 @@ bool ProfessionCraftTrigger::IsActive()
     int32 const failedSpell = realReagents ? AI_VALUE2(int, "manual int", "profession craft failed spell") : 0;
     bool const failedBackoff = realReagents && now < AI_VALUE2(time_t, "manual time", "profession craft failed until");
 
+    // twow-repo#333 M2 Crafting.Cooking (owner list 07.11.2026, item 2): under RealReagents a fire recipe (spell focus 4) is a
+    // candidate like any other when a fire is in reach or the bot can light its own campfire (the action lights it first).
+    bool const cookingFire = realReagents && CraftingCookingFor(ai) && (CookingFireNear(bot) || CanLightCampfire(bot));
+
     std::vector<profession_use::Recipe> recipes;
     for (uint32 spellId : AI_VALUE(std::vector<uint32>, "craft spells"))
     {
@@ -198,7 +230,7 @@ bool ProfessionCraftTrigger::IsActive()
             continue;
 
         profession_use::Recipe recipe;
-        recipe.needsFocus = spell->RequiresSpellFocus != 0;
+        recipe.needsFocus = spell->RequiresSpellFocus != 0 && !(cookingFire && spell->RequiresSpellFocus == kCookingFireFocus);
         recipe.givesSkillUp = !recipe.needsFocus && ShouldCraftSpellValue::SpellGivesSkillUp(spellId, bot);
         if (realReagents)
         {
