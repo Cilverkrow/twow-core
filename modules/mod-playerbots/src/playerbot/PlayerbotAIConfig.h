@@ -899,6 +899,10 @@ public:
     // A3 step 6 (ADR-0041, OB-00 06.11.2026): the group manager of roster bots on the world thread (GroupManagerPolicy.h,
     // GroupManager.cpp). Scaffold: no decision yet. 0 off, 1 all, 2 cohort B, 3 cohort A; other = 0 + error line.
     uint32 botGroupsManager = 0;
+    // A3 lever 2 (ADR-0041 amendment 4.2, OB-00 07.11.2026): the group write path - the membership changes (leave, accept,
+    // invite, leader) of in-scope bots run as world-thread ops (GroupOps.cpp). 0 off, 1 all, 2 cohort B, 3 cohort A; other = 0
+    // + error line.
+    uint32 botGroupsWritePath = 0;
     // A3 step 3 (ADR-0041, OB-00 06.11.2026): the per-bot supervisor (SupervisorPolicy.h, Supervisor.cpp). Scaffold: it only
     // counts its engine passes. 0 off, 1 all, 2 cohort B, 3 cohort A; other = 0 + error line.
     uint32 supervisor = 0;
