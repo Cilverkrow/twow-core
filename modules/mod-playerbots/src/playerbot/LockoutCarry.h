@@ -19,7 +19,13 @@ class Player;
 //     An ack on any other thread is not counted.
 //   - OnLogout: drops the note.
 // Not counted: an entry without a note (login inside the map, no far teleport before the ack), an ack off the world thread,
-// a leader that is not online.
+// a leader that is offline (a leader that is itself on a far teleport, out of world, is still read behind the gate).
+// Origin (review M1): the entry cannot see where the group's PERM bind came from. It counts a bind the bot leader carried in
+// (Group::Create, Group::_setLeader) and one the group earned in the current run (DungeonMap::PermBindAllPlayers binds the
+// group PERM at a boss kill with the leader inside), e.g. a released member running back in, a member who joins mid-run.
+// Rare undercounts (review I2): a teleport inside the ack before OnMapChanged (ProcessDelayedOperations) replaces the note,
+// so that entry is dropped; a far teleport to the same map id (homebind with TELE_TO_FORCE_MAP_CHANGE) is never noted; the
+// flight early return in the ack skips OnMapChanged and leaves a note that the next ack drops.
 namespace ai::lockout_carry
 {
 void NoteTeleport(Player* player, std::uint32_t mapId);

@@ -13,7 +13,10 @@ cmake_policy(VERSION 3.16)
 #   - the switch (default 1, string parse, only "0" off, echo, conf.dist line), the [Lockout] minute line field order;
 #   - leader_bind_carry (OB-00 07.11.2026, count only, both switch values): leader_carry_real / leader_carry_bot at the end of
 #     the line, counted only through LeaderBindCarry, the group's and the leader's binds read only behind the world-thread
-#     gate after the member's own check, the three PlayerScript hooks only note, count and forget (no behaviour change).
+#     gate after the member's own check, the three PlayerScript hooks only note, count and forget (no behaviour change);
+#     review fixes: the leader also when out of world (its own far teleport), the doc of the approximation (a group PERM
+#     bind earned in the run counts too), and the core timing (OnMapChanged after Map::Add and only in the ack,
+#     OnBeforeTeleport before the far branch).
 # Pure rules: t/lockout_policy_tests.cpp. Every check_* returns "" when it holds, else the reason; the negative probes at
 # the end reuse them on mutated text (the first ones are the negative test against the MANGOS_ASSERT path).
 if(NOT DEFINED PB_SOURCE_DIR)
@@ -232,6 +235,40 @@ function(check_core_assert map_cpp out)
     set(${out} "Map.cpp: the perm-mismatch MANGOS_ASSERT is gone" PARENT_SCOPE)
     return()
   endif()
+  set(${out} "" PARENT_SCOPE)
+endfunction()
+
+# leader_bind_carry core timing (review L2): OnMapChanged fires after the worldport ack's Map::Add (so after the core's bind on
+# entry), the ack is its only call site in src/game (so no login count, no stale note read elsewhere: map_changed_sites), and
+# OnBeforeTeleport fires in Player::TeleportTo before the far branch reads the binds and schedules the far teleport.
+function(check_core_hooks movement_cpp player_cpp map_changed_sites out)
+  region("${movement_cpp}" "void WorldSession::HandleMoveWorldportAckOpcode()\n{" "\n}\n" body)
+  if(body STREQUAL "")
+    set(${out} "MovementHandler.cpp: HandleMoveWorldportAckOpcode() not found" PARENT_SCOPE)
+    return()
+  endif()
+  order("${body}" "->Add(GetPlayer());" "ForEachEnabledHook(PLAYERHOOK_ON_MAP_CHANGED," "OnMapChanged after the worldport ack's Map::Add" r)
+  if(NOT r STREQUAL "")
+    set(${out} "${r}" PARENT_SCOPE)
+    return()
+  endif()
+  count_regex("${body}" "PLAYERHOOK_ON_MAP_CHANGED" n)
+  if(NOT n EQUAL 1 OR NOT map_changed_sites EQUAL 1)
+    set(${out} "PLAYERHOOK_ON_MAP_CHANGED: ${n} in the worldport ack, ${map_changed_sites} in src/game (1 and 1 expected: the ack is its only call site)" PARENT_SCOPE)
+    return()
+  endif()
+  region("${player_cpp}" "bool Player::TeleportTo(uint32 mapid, float x, float y, float z, float orientation, uint32 options)\n{" "\n}\n" tp)
+  if(tp STREQUAL "")
+    set(${out} "Player.cpp: Player::TeleportTo not found" PARENT_SCOPE)
+    return()
+  endif()
+  foreach(later "GetBoundInstanceSaveForSelfOrGroup(mapid);" "sMapMgr.ScheduleFarTeleport(this, data);")
+    order("${tp}" "ForEachEnabledHook(PLAYERHOOK_ON_BEFORE_TELEPORT," "${later}" "OnBeforeTeleport before the far branch" r)
+    if(NOT r STREQUAL "")
+      set(${out} "${r}" PARENT_SCOPE)
+      return()
+    endif()
+  endforeach()
   set(${out} "" PARENT_SCOPE)
 endfunction()
 
@@ -623,7 +660,7 @@ function(check_carry carry_h carry_cpp scripts conf_dist unit_cpp all_sources ou
     "    e.selfAfter = PlayerBindOn(player, mapId);\n    if (!lockout::EntryPermFromGroup(e.selfBefore, e.selfAfter, e.entered))\n        return;"
     "    if (!World::IsWorldThread())\n        return;"
     "    Group* group = player->GetGroup();"
-    "    Player* leader = e.memberIsLeader ? player : sObjectMgr.GetPlayer(leaderGuid);"
+    "    Player* leader = e.memberIsLeader ? player : ObjectAccessor::FindPlayerNotInWorld(leaderGuid);"
     "    e.leaderIsBot = !::IsRealPlayer(leader);"
     "    e.leaderOnM = PlayerBindOn(leader, mapId);"
     "    e.groupOnM = GroupBindOn(group, mapId);"
@@ -638,7 +675,7 @@ function(check_carry carry_h carry_cpp scripts conf_dist unit_cpp all_sources ou
   # Before the gate only the member's own data: no group, no leader, no other player.
   string(FIND "${entry}" "    if (!World::IsWorldThread())" gate)
   string(SUBSTRING "${entry}" 0 ${gate} before_gate)
-  foreach(word "GetGroup" "GroupBindOn(" "sObjectMgr" "leader" "IsRealPlayer")
+  foreach(word "GetGroup" "GroupBindOn(" "sObjectMgr" "ObjectAccessor" "leader" "IsRealPlayer")
     string(FIND "${before_gate}" "${word}" at)
     if(NOT at EQUAL -1)
       set(${out} "LockoutCarry.cpp OnEntry: ${word} before the world-thread gate" PARENT_SCOPE)
@@ -685,11 +722,25 @@ function(check_carry carry_h carry_cpp scripts conf_dist unit_cpp all_sources ou
       return()
     endif()
   endforeach()
+  # Review M1: the count names its approximation (a group PERM bind earned in the run counts too); review L1: only an offline
+  # leader is skipped, a leader on its own far teleport is still read.
   foreach(needle "# leader_bind_carry (OB-00 07.11.2026) is count only: no rule, no behaviour change, the same at 0 and 1"
-      "with the raid ADR, O7)" " split_entry= leader_carry_real= leader_carry_bot=`")
+      "with the raid ADR, O7)" " split_entry= leader_carry_real= leader_carry_bot=`"
+      "The origin of the group's PERM bind is not visible at entry, so both count"
+      "and one the group earned in the current run (a boss kill with the leader"
+      "an offline leader (a leader that is itself on a")
     string(FIND "${conf_dist}" "${needle}" at)
     if(at EQUAL -1)
       set(${out} "conf.dist: the leader_bind_carry doc lacks ${needle}" PARENT_SCOPE)
+      return()
+    endif()
+  endforeach()
+  foreach(needle "// Origin (review M1): the entry cannot see where the group's PERM bind came from."
+      "and one the group earned in the current run (DungeonMap::PermBindAllPlayers binds the"
+      "// a leader that is offline (a leader that is itself on a far teleport, out of world, is still read behind the gate).")
+    string(FIND "${carry_h}" "${needle}" at)
+    if(at EQUAL -1)
+      set(${out} "LockoutCarry.h: the leader_bind_carry doc lacks ${needle}" PARENT_SCOPE)
       return()
     endif()
   endforeach()
@@ -699,6 +750,7 @@ function(check_carry carry_h carry_cpp scripts conf_dist unit_cpp all_sources ou
       "        Require(!LeaderBindCarry(e), \"the leader itself is never counted\");"
       "        Require(!LeaderBindCarry(e), \"a real (or unknown) leader is not counted\");"
       "        Require(!LeaderBindCarry(e), \"the member's own pre-existing PERM bind on the copy is not counted\");"
+      "        Require(LeaderBindCarry(e), \"a group PERM bind earned in the run (released member, solo bind on the copy before): counted too\");"
       "                        Require(CoreChoice(before, group) == entered && !PermAssertWouldFire(before, entered),"
       "leader_carry_real=6 leader_carry_bot=7\",")
     string(FIND "${unit_cpp}" "${needle}" at)
@@ -729,6 +781,24 @@ if(NOT r STREQUAL "")
   message(FATAL_ERROR "${TAG}: ${r}")
 endif()
 check_core_assert("${map_cpp}" r)
+if(NOT r STREQUAL "")
+  message(FATAL_ERROR "${TAG}: ${r}")
+endif()
+# Call sites of PLAYERHOOK_ON_MAP_CHANGED in src/game (the enum in ScriptObjects.h is not one).
+file(GLOB_RECURSE core_game_files "${CORE_SOURCE_DIR}/src/game/*.cpp" "${CORE_SOURCE_DIR}/src/game/*.h")
+set(map_changed_sites 0)
+foreach(f IN LISTS core_game_files)
+  if(f MATCHES "/ScriptObjects\\.h$")
+    continue()
+  endif()
+  file(STRINGS "${f}" hits REGEX "PLAYERHOOK_ON_MAP_CHANGED")
+  if(NOT hits STREQUAL "")
+    string(REGEX MATCHALL "PLAYERHOOK_ON_MAP_CHANGED" m "${hits}")
+    list(LENGTH m n)
+    math(EXPR map_changed_sites "${map_changed_sites} + ${n}")
+  endif()
+endforeach()
+check_core_hooks("${movement_cpp}" "${player_cpp}" "${map_changed_sites}" r)
 if(NOT r STREQUAL "")
   message(FATAL_ERROR "${TAG}: ${r}")
 endif()
@@ -1047,5 +1117,41 @@ expect_caught("${r}" "conf.dist does not name leader_bind_carry as count only")
 string(REPLACE "        Require(!LeaderBindCarry(e), \"the member's own pre-existing PERM bind on the copy is not counted\");\n" "" m "${unit_cpp}")
 check_carry("${carry_h}" "${carry_cpp}" "${scripts}" "${conf_dist}" "${m}" "${all_sources}" r)
 expect_caught("${r}" "unit test without the pre-existing PERM bind case")
+
+# Review fixes (carry-review.md): M1 doc, L1 leader lookup, L2 core timing.
+string(REPLACE "The origin of the group's PERM bind is not visible at entry, so both count" "Only a carried bind counts" m "${conf_dist}")
+check_carry("${carry_h}" "${carry_cpp}" "${scripts}" "${m}" "${unit_cpp}" "${all_sources}" r)
+expect_caught("${r}" "conf.dist hides that a group PERM bind earned in the run counts too")
+
+string(REPLACE "// Origin (review M1): the entry cannot see where the group's PERM bind came from." "// Origin: carried binds only." m "${carry_h}")
+check_carry("${m}" "${carry_cpp}" "${scripts}" "${conf_dist}" "${unit_cpp}" "${all_sources}" r)
+expect_caught("${r}" "LockoutCarry.h hides that a group PERM bind earned in the run counts too")
+
+string(REPLACE "ObjectAccessor::FindPlayerNotInWorld(leaderGuid)" "sObjectMgr.GetPlayer(leaderGuid)" m "${carry_cpp}")
+check_carry("${carry_h}" "${m}" "${scripts}" "${conf_dist}" "${unit_cpp}" "${all_sources}" r)
+expect_caught("${r}" "the leader looked up in world only (a leader on its own far teleport missed)")
+
+string(REPLACE "    lockout::CarryEntry e;\n" "    lockout::CarryEntry e;\n    Player* early = ObjectAccessor::FindPlayerNotInWorld(ObjectGuid());\n" m "${carry_cpp}")
+check_carry("${carry_h}" "${m}" "${scripts}" "${conf_dist}" "${unit_cpp}" "${all_sources}" r)
+expect_caught("${r}" "another player looked up before the world-thread gate")
+
+set(map_changed_hook "    ScriptRegistry<PlayerScript>::ForEachEnabledHook(PLAYERHOOK_ON_MAP_CHANGED, [&](PlayerScript* script)\n    {\n        script->OnMapChanged(GetPlayer());\n    });\n")
+string(REPLACE "${map_changed_hook}" "" m "${movement_cpp}")
+string(REPLACE "    bool const _scAddOk = GetPlayer()->GetMap()->Add(GetPlayer());\n" "${map_changed_hook}    bool const _scAddOk = GetPlayer()->GetMap()->Add(GetPlayer());\n" m "${m}")
+check_core_hooks("${m}" "${player_cpp}" 1 r)
+expect_caught("${r}" "OnMapChanged moved before the worldport ack's Map::Add (permanent 0)")
+
+check_core_hooks("${movement_cpp}" "${player_cpp}" 2 r)
+expect_caught("${r}" "a second PLAYERHOOK_ON_MAP_CHANGED call site in src/game (e.g. at login)")
+
+set(before_tp_hook "    ScriptRegistry<PlayerScript>::ForEachEnabledHook(PLAYERHOOK_ON_BEFORE_TELEPORT, [&](PlayerScript* script)\n    {\n        script->OnBeforeTeleport(this, mapid, x, y, z, orientation);\n    });\n")
+string(REPLACE "${before_tp_hook}" "" m "${player_cpp}")
+string(REPLACE "        sMapMgr.ScheduleFarTeleport(this, data);\n" "        sMapMgr.ScheduleFarTeleport(this, data);\n${before_tp_hook}" m "${m}")
+check_core_hooks("${movement_cpp}" "${m}" 1 r)
+expect_caught("${r}" "OnBeforeTeleport moved after the far branch (stale note)")
+
+string(REPLACE "        Require(LeaderBindCarry(e), \"a group PERM bind earned in the run (released member, solo bind on the copy before): counted too\");\n" "" m "${unit_cpp}")
+check_carry("${carry_h}" "${carry_cpp}" "${scripts}" "${conf_dist}" "${m}" "${all_sources}" r)
+expect_caught("${r}" "unit test without the earned-in-run case")
 
 message(STATUS "${TAG}: OK")

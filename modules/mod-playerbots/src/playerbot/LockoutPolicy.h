@@ -70,6 +70,8 @@ inline bool SwitchOn(std::string const& raw)
 //     (EntryPermFromGroup; a member's own pre-existing PERM bind for the copy is therefore never counted);
 //   - the member is not the group leader and the leader is a bot;
 //   - the leader's own bind and the group's bind on M are both PERM binds on the entered copy.
+// The origin of the group's PERM bind is not an input: a bind the group earned in the current run (a boss kill with the leader
+// inside, DungeonMap::PermBindAllPlayers) looks the same and counts too (review M1, documented in conf.dist).
 struct CarryEntry
 {
     std::uint32_t entered = 0;    // instance id of the copy of M the member entered
