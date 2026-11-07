@@ -134,7 +134,7 @@ void RecordGrindDeath(PlayerbotAI* ai, Player* bot, Unit* killer)
         bot->GetGUIDLow(), bot->GetLevel(), killer->GetEntry(), killer->GetLevel(), sPlayerbotAIConfig.grindAvoidSeconds);
 }
 
-void RecordDangerMapDeath(Player* bot, Unit* killer, uint32 attackers)
+void RecordDangerMapDeath(Player* bot, Unit* killer, uint32 attackers, uint32 realKillerLevel)
 {
     // Hotfix 8.35 (twow-repo#544): a death without a target and without attackers (fall, drowning,
     // lava, fatigue) counts as a killer above every bot when CountEnvironmentDeaths is on.
@@ -155,6 +155,13 @@ void RecordDangerMapDeath(Player* bot, Unit* killer, uint32 attackers)
             bot->GetPositionZ());
     death.victimLevel = uint8(std::min<uint32>(255, bot->GetLevel()));
     death.attackers = uint8(std::min<uint32>(255, attackers));   // read only by bots with DangerMap.CountAddDeaths
+    // twow-repo#575 A3 step 4 S4-4 (Danger.Memory, key not 0): the highest living attacker; read only by DangerAt (QueryAt).
+    if (sPlayerbotAIConfig.dangerMemory)
+    {
+        death.realKillerLevel = environment ? danger_map::EnvironmentKillerLevel : uint8(std::min<uint32>(255, realKillerLevel));
+        if (death.realKillerLevel)
+            ai::danger_memory::SharedCounters().realKillerRecorded.fetch_add(1, std::memory_order_relaxed);
+    }
     danger_map::Instance().Record(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), death, params);
 
     // Always visible (BASIC), at most every ten minutes: size of the map.
@@ -2888,8 +2895,13 @@ void PlayerbotAI::OnDeath()
             // one of the two switches is on; one "all targets" read per death.
             // twow-repo#679 (switch audit #10c): CampBlock keeps the count per bot, so only a bot it applies to reads it (mode 2 = cohort B).
             // DangerMap.CountAddDeaths pools the deaths of ALL bots into the shared map that the cohort B bots read, so every bot still counts.
+            // twow-repo#575 A3 step 4 S4-4 (AiPlayerbot.Danger.Memory): the same set gives the real killer, the highest living attacker,
+            // for the shared map's new field (every bot's death while the key is not 0; only DangerAt reads it, the legacy readers
+            // keep the current target). With nobody alive the current target is the killer, as before.
             uint32 deathAttackers = 0;
-            if (ai::cohort::Applies(sPlayerbotAIConfig.destinationDeathsCampBlock, bot->GetGUIDLow()) || sPlayerbotAIConfig.dangerMapCountAddDeaths)
+            uint32 realKillerLevel = 0;
+            if (ai::cohort::Applies(sPlayerbotAIConfig.destinationDeathsCampBlock, bot->GetGUIDLow()) || sPlayerbotAIConfig.dangerMapCountAddDeaths ||
+                sPlayerbotAIConfig.dangerMemory)
             {
                 Unit* const deathTarget = AI_VALUE(Unit*, "current target");
                 std::list<ObjectGuid> const deathTargets = AI_VALUE_LAZY(std::list<ObjectGuid>, "all targets");
@@ -2900,9 +2912,19 @@ void PlayerbotAI::OnDeath()
                 for (uint64 const guid : ai::death_adds::MergeAdds(live, deathAdds, ai::death_adds::Fresh(deathAdds, WorldTimer::getMSTime()),
                          deathTarget ? deathTarget->GetObjectGuid().GetRawValue() : 0))
                     if (Unit* unit = GetUnit(ObjectGuid(guid)); unit && unit->IsAlive())
+                    {
                         ++deathAttackers;
+                        realKillerLevel = std::max<uint32>(realKillerLevel, unit->GetLevel());
+                    }
                 if (deathTarget && deathTarget->IsAlive())
+                {
                     ++deathAttackers;
+                    realKillerLevel = std::max<uint32>(realKillerLevel, deathTarget->GetLevel());
+                }
+                if (!realKillerLevel && deathTarget && deathTarget->GetTypeId() == TYPEID_UNIT)
+                    realKillerLevel = deathTarget->GetLevel();
+                if (!sPlayerbotAIConfig.dangerMemory)
+                    realKillerLevel = 0;
             }
 
             // twow-repo#656 (AiPlayerbot.Grind.SafePull): a death with 2+ living attackers (the target + the adds, as above) within
@@ -2943,7 +2965,7 @@ void PlayerbotAI::OnDeath()
             // #307: shared danger map. Every bot death to a mob in the open
             // world is pooled (roster or not); real players never feed it.
             if (sPlayerbotAIConfig.dangerMapEnabled && !IsRealPlayer() && !bot->GetMap()->IsDungeon())
-                RecordDangerMapDeath(bot, AI_VALUE(Unit*, "current target"), deathAttackers);
+                RecordDangerMapDeath(bot, AI_VALUE(Unit*, "current target"), deathAttackers, realKillerLevel);
 
             if (sPlayerbotAIConfig.grindAvoidMaxDeaths && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()))
                 RecordGrindDeath(this, bot, AI_VALUE(Unit*, "current target"));
@@ -2951,8 +2973,10 @@ void PlayerbotAI::OnDeath()
             // G4: a death loop at one spot (graveyard among mobs above the
             // bot) is counted apart from "death count", which XP resets.
             RecordDeathForLoop();
-            // twow-repo#575 A3 step 4 S4-1 (AiPlayerbot.Revive.CorpseRunFirst): own deaths for the loop rule at the corpse.
-            if (ai::cohort::Applies(sPlayerbotAIConfig.reviveCorpseRunFirst, bot->GetGUIDLow()))
+            // twow-repo#575 A3 step 4 S4-1 (AiPlayerbot.Revive.CorpseRunFirst): own deaths for the loop rule at the corpse;
+            // S4-4 (AiPlayerbot.Danger.Memory): the same ring is DangerAt's per-bot layer.
+            if (ai::cohort::Applies(sPlayerbotAIConfig.reviveCorpseRunFirst, bot->GetGUIDLow()) ||
+                ai::cohort::Applies(sPlayerbotAIConfig.dangerMemory, bot->GetGUIDLow()))
             {
                 ai::corpse_first::DeathMark mark;
                 mark.atSeconds = uint32(time(nullptr));
@@ -11691,4 +11715,43 @@ void PlayerbotAI::DrainDeferredLogs()
     }
     if (dropped)
         sLog.outBasic("[BotGroup] event=deferred_log_dropped bot=%u lines=%u", bot ? bot->GetGUIDLow() : 0u, dropped);
+}
+
+// twow-repo#575 A3 step 4 S4-4 (AiPlayerbot.Danger.Memory, DangerMemoryPolicy.h): one read function for the danger of a place.
+// Own deaths (the S4-1 ring, 30 min / 60 yd) and, with the danger map on, the shared cells at the point and its 8 neighbours by
+// the real killer (QueryAt: no start exclusion, design F4). The caller applies the switch and acts on Avoid; Caution is logged only.
+ai::danger_memory::Level PlayerbotAI::DangerAt(uint32 mapId, float x, float y, ai::danger_memory::Query query,
+    ai::danger_memory::SharedCellCache* cache)
+{
+    namespace dm = ai::danger_memory;
+    uint32 const now = uint32(time(nullptr));
+    uint32 const own = dm::OwnDeathsNear(corpseFirstDeaths, now, mapId, x, y);
+    uint32 shared = 0;
+    if (sPlayerbotAIConfig.dangerMapEnabled)
+    {
+        danger_map::Params const params = danger_map::ConfigParams();
+        danger_map::Cell const cell = danger_map::CellOf(mapId, x, y, params.cellSize);
+        if (!cache || !cache->Find(cell.map, cell.x, cell.y, shared))
+        {
+            shared = danger_map::Instance().QueryAt(mapId, x, y, bot->GetLevel(), now, params).cells;
+            if (cache)
+                cache->Put(cell.map, cell.x, cell.y, shared);
+        }
+    }
+    dm::Level const level = dm::Combine(own, shared);
+
+    dm::Counters& counters = dm::SharedCounters();
+    counters.Note(query, level, own, shared);
+    if (level != dm::Level::Safe && counters.LineAllowed())
+        sLog.outBasic("[Danger] bot=%u cohort=%c level_bot=%u q=%s map=%u x=%.0f y=%.0f level=%s own=%u shared=%u",
+            bot->GetGUIDLow(), ai::cohort::Letter(bot->GetGUIDLow()), bot->GetLevel(), dm::QueryName(query), mapId, x, y,
+            dm::LevelName(level), own, shared);
+    if (counters.LogDue(now))
+        sLog.outBasic("[DangerMin] target_avoid=%u arrive_avoid=%u grind_avoid=%u caution=%u own_avoid=%u shared_avoid=%u real_killer_recorded=%u",
+            counters.avoid[std::size_t(dm::Query::Target)].exchange(0, std::memory_order_relaxed),
+            counters.avoid[std::size_t(dm::Query::Arrive)].exchange(0, std::memory_order_relaxed),
+            counters.avoid[std::size_t(dm::Query::Grind)].exchange(0, std::memory_order_relaxed),
+            counters.caution.exchange(0, std::memory_order_relaxed), counters.ownAvoid.exchange(0, std::memory_order_relaxed),
+            counters.sharedAvoid.exchange(0, std::memory_order_relaxed), counters.realKillerRecorded.exchange(0, std::memory_order_relaxed));
+    return level;
 }

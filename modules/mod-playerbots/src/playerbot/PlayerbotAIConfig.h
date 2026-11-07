@@ -850,6 +850,9 @@ public:
     // level. Mode 0 off (default), 1 all, 2 cohort B (the map is shared, the cohort is applied per query).
     uint32 dangerMapCountAddDeaths = 0;
     uint32 dangerMapAddDeathMinAttackers = 3;
+    // twow-repo#575 A3 step 4 S4-4 (AiPlayerbot.Danger.Memory, DangerMemoryPolicy.h): cohort mode 0 off / 1 all / 2 B / 3 A;
+    // DangerAt (own deaths + shared cells by the real killer) for the travel target, the far-move arrival point and grind targets.
+    uint32 dangerMemory = 0;
     // #307: grind cap for low-level roster bots and per-bot avoidance of killers.
     uint32 grindCapLowLevelBelow = 0;     // 0 = off
     int32 grindCapLowLevelMargin = 2;

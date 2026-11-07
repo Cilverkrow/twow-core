@@ -87,7 +87,16 @@ bool FarMoveArrivalPoint(Player* bot, WorldPosition const& from, WorldPosition c
             point = WorldPosition(point.getMapId(), x, y, z, 0.0f);
     }
 
-    if (sPlayerbotAIConfig.dangerMapEnabled)
+    // twow-repo#575 A3 step 4 S4-4 (AiPlayerbot.Danger.Memory): DangerAt at the arrival point itself - own deaths and the shared
+    // cells there by the real killer. The legacy query below asks from == to, and Query skips the start cell and its neighbours,
+    // so it never saw anything (design F4); it stays for every other bot.
+    PlayerbotAI* const pointAi = GetBotAI(bot);
+    if (pointAi && ai::cohort::Applies(sPlayerbotAIConfig.dangerMemory, bot->GetGUIDLow()) && !pointAi->HasRealPlayerMaster())
+    {
+        if (pointAi->DangerAt(point.getMapId(), point.getX(), point.getY(), ai::danger_memory::Query::Arrive) == ai::danger_memory::Level::Avoid)
+            return false;
+    }
+    else if (sPlayerbotAIConfig.dangerMapEnabled)
     {
         // re-deaths at camps (DangerMap.CountAddDeaths): the add-death rule only for bots the switch applies to
         danger_map::Params const params = danger_map::ConfigParams(ai::cohort::Applies(sPlayerbotAIConfig.dangerMapCountAddDeaths, bot->GetGUIDLow()));
