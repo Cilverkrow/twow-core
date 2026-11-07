@@ -19,6 +19,7 @@
 #include "Battlegrounds/BattleGroundMgr.h"
 #include "playerbot/TankPathPolicy.h"
 #include "playerbot/CohortPolicy.h"
+#include "playerbot/CombatRule.h"   // A3 step 5: CombatRule.PriestOverlay
 #include "playerbot/SpecPathPolicy.h"
 #include "playerbot/TankKitPolicy.h"
 
@@ -814,7 +815,8 @@ void AiFactory::AddDefaultCombatStrategies(Player* player, PlayerbotAI* const fa
         // remove threat for now
         //engine->removeStrategy("threat");
 
-        combatEngine->ChangeStrategy(sPlayerbotAIConfig.randomBotCombatStrategies);
+        // A3 step 5 (CombatRule.PriestOverlay, default 0 = the overlay unchanged): a discipline / holy priest gets it without "+dps".
+        combatEngine->ChangeStrategy(ai::combat_rule::CombatOverlay(player, tab, sPlayerbotAIConfig.randomBotCombatStrategies));
     }
     else
     {

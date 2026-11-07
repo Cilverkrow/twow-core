@@ -2,6 +2,9 @@
 
 #include "playerbot/CombatRulePolicy.h"
 
+#include <string>
+
+class Player;
 class PlayerbotAI;
 
 // A3 step 5 (ADR-0041; OB-00 07.11.2026): the combat rule, the parts that read game state. The pure rules are in
@@ -13,6 +16,11 @@ namespace ai::combat_rule
 // or "offdps" in the combat engine). With AiPlayerbot.CombatRule.HealerStart on for the bot's cohort, a holy paladin or a
 // restoration druid passes as well. Called on the bot's thread.
 bool HealerMayAttack(PlayerbotAI* ai);
+
+// Part PriestOverlay: the overlay (AiPlayerbot.RandomBotCombatStrategies) AiFactory puts on a free bot's combat engine. With
+// AiPlayerbot.CombatRule.PriestOverlay on for the bot's cohort, a discipline or holy priest (tab 0/1) gets it without "+dps",
+// which would replace its tree with the shadow placeholder; everything else returns the overlay unchanged.
+std::string CombatOverlay(Player* player, int tab, std::string const& overlay);
 
 // One "[CombatRule] part=<Part>" line per minute and part that is on (increments); called from the minute report pass.
 void ReportCombatRule();
