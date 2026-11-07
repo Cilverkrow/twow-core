@@ -519,6 +519,7 @@ bool PlayerbotAIConfig::Initialize()
     botUpdateTrace = config.GetBoolDefault("AiPlayerbot.BotUpdateTrace", false);
     // twow-repo#597 (TICK-01): log-only extensions of [BotUpdateSlow] and [WorldBots], default 0.
     botUpdateTraceTick = config.GetBoolDefault("AiPlayerbot.BotUpdateTraceTick", false);
+    botUpdateTraceCohort = config.GetBoolDefault("AiPlayerbot.BotUpdateTraceCohort", false);   // A3 step 0 (e), twow-repo#601
     worldBotsHookTrace = config.GetBoolDefault("AiPlayerbot.WorldBotsHookTrace", false);
     botUpdateTraceTriggers = config.GetBoolDefault("AiPlayerbot.BotUpdateTraceTriggers", false);
     gatherFishingSkillCheck = config.GetBoolDefault("AiPlayerbot.Gather.FishingSkillCheck", false);
@@ -1907,6 +1908,7 @@ bool PlayerbotAIConfig::Initialize()
             {"BotGroups.OpQueueOpsPerTick", Value(botGroupsOpQueueOpsPerTick)},
             {"BotGroups.WorldThreadDefer", Value(botGroupsWorldThreadDefer)},
             {"BotUpdateTrace", Value(botUpdateTrace)},
+            {"BotUpdateTraceCohort", Value(botUpdateTraceCohort)},
             {"Buy.VendorTemplateItems", Value(buyVendorTemplateItems)},
             {"CastWait.Preparing", Value(castWaitPreparing)},
             {"CheatItem.Trace", Value(cheatItemTrace)},

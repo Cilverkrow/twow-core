@@ -40,7 +40,7 @@ string(FIND "${scripts}" "void OnUpdate(Player* player, uint32 diff) override" o
 if(on_update_at EQUAL -1)
   message(FATAL_ERROR "#541 BotUpdate: OnUpdate not found")
 endif()
-string(SUBSTRING "${scripts}" ${on_update_at} 1800 on_update)
+string(SUBSTRING "${scripts}" ${on_update_at} 2600 on_update)
 require_order("${on_update}" "if (!sPlayerbotAIConfig.botUpdateTrace)\n                    ai->UpdateAI(diff);" "auto const start = std::chrono::steady_clock::now();" "off path first, untimed")
 require_order("${on_update}" "auto const start = std::chrono::steady_clock::now();" "ai::bot_update::Global().Add(us," "timed call recorded")
 # The description (bot name, map, last action) is built only for slow calls, inside the recorder.
@@ -92,4 +92,36 @@ require_order("${report_fn}" "ai::bot_update::CountedSnapshot const pv = ai::bot
 # calls comes from the drained buckets, so a racing Add can never leave a call without its bucket (p99 = top edge).
 require_text("${counted_text}" "            s.time.buckets[b] = buckets[b].exchange(0, std::memory_order_relaxed);\n            s.time.calls += s.time.buckets[b];" "calls = sum of the drained buckets")
 
+
+# A3 step 0 (e) (OB-00 06.11.2026): AiPlayerbot.BotUpdateTraceCohort - two [BotUpdateCohort] lines (A, B) per minute, log only.
+require_text("${config_h}" "bool botUpdateTraceCohort = false;" "cohort switch member default off")
+require_text("${config_cpp}" "botUpdateTraceCohort = config.GetBoolDefault(\"AiPlayerbot.BotUpdateTraceCohort\", false);" "cohort config default off")
+require_text("${conf_dist}" "AiPlayerbot.BotUpdateTraceCohort = 0" "cohort documented key, default 0")
+require_text("${conf_dist}" "bucket lower bounds (calls >= 16.384 ms / >= 32.768 ms)" "old over10ms/over20ms fields clarified")
+# Cohort().Add only in the timed (else) branch, i.e. after the clock read: with BotUpdateTrace off there is no clock and no Add.
+require_order("${on_update}" "auto const start = std::chrono::steady_clock::now();" "if (sPlayerbotAIConfig.botUpdateTraceCohort)\n                        ai::bot_update::Cohort().Add(player->GetGUIDLow(), us);" "cohort recorded from the one measured time")
+require_order("${on_update}" "ai::bot_update::Global().Add(us," "ai::bot_update::Cohort().Add(player->GetGUIDLow(), us);" "cohort add after the realm add")
+string(REGEX MATCHALL "Cohort\(\)\.Add" cohort_adds "${on_update}")
+list(LENGTH cohort_adds cohort_adds_n)
+if(NOT cohort_adds_n EQUAL 1)
+  message(FATAL_ERROR "#601 BotUpdateCohort: exactly one Cohort().Add expected in OnUpdate, found ${cohort_adds_n}")
+endif()
+require_text("${rnd_mgr}" "\"[BotUpdateCohort] cohort=%c calls=%llu sum_us=%llu max_us=%llu over10ms=%llu over20ms=%llu p99_us=%llu\"" "cohort line with all 7 fields")
+string(FIND "${rnd_mgr}" "void ReportBotUpdate()" cohort_report_at)
+string(SUBSTRING "${rnd_mgr}" ${cohort_report_at} 6000 cohort_report_fn)
+require_order("${cohort_report_fn}" "    if (!tracing)\n    {\n        ai::bot_update::Cohort().Take();" "        tracing = true;" "switch-on edge drains the cohort recorder first")
+require_order("${cohort_report_fn}" "ai::bot_update::CohortSnapshot const cohorts = ai::bot_update::Cohort().Take();" "sLog.outBasic(\"[BotUpdate] calls=" "cohort window taken with the minute")
+require_order("${cohort_report_fn}" "sLog.outBasic(\"[BotUpdate] calls=" "if (sPlayerbotAIConfig.botUpdateTraceCohort)\n        for (std::size_t c = 0; c < ai::bot_update::CohortCount; ++c)" "cohort lines after the [BotUpdate] line")
+require_order("${cohort_report_fn}" "sLog.outBasic(\"[BotUpdateCohort]" "sLog.outBasic(\"[BotUpdateSlow] us=" "cohort lines before the slow lines")
+require_text("${cohort_report_fn}" "for (std::size_t c = 0; c < ai::bot_update::CohortCount; ++c)" "both cohorts every minute, also calls=0")
+# The cohort recorder is lock-free like the prevalidate one.
+string(FIND "${trace_h}" "class CohortRecorder" cohort_rec_at)
+string(SUBSTRING "${trace_h}" ${cohort_rec_at} -1 cohort_rec_text)
+foreach(forbidden "mutex" "lock_guard" "describe")
+  string(FIND "${cohort_rec_text}" "${forbidden}" forbidden_at)
+  if(NOT forbidden_at EQUAL -1)
+    message(FATAL_ERROR "#601 BotUpdateCohort: the cohort recorder must stay lock-free (${forbidden})")
+  endif()
+endforeach()
+require_text("${trace_h}" "return ai::cohort::InB(guidLow) ? 1 : 0;" "cohort from CohortPolicy")
 message(STATUS "bot_update_trace source contract passed")
