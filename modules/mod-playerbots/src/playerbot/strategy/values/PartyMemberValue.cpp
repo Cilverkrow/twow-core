@@ -61,7 +61,7 @@ Unit* PartyMemberValue::FindPartyMember(FindPlayerPredicate &predicate, bool ign
     {
         for (GroupReference *ref = group->GetFirstMember(); ref; ref = ref->next())
         {
-            if (!ref->getSource() || bot->GetMapId() != ref->getSource()->GetMapId()) continue;
+            if (!ref->getSource() || (ref->getSource() != bot && !SameMapObject(bot, ref->getSource()))) continue;   // twow-repo#697: same Map object, not only the map id
 
             if (ref->getSource() != bot)
             {
@@ -125,6 +125,10 @@ Unit* PartyMemberValue::FindPartyMember(FindPlayerPredicate &predicate, bool ign
         {
             continue;
         }
+
+        // twow-repo#697: IsHeal/IsTank below read the other bot's strategies; a player of another region is updated on another thread.
+        if (!SameMapObject(bot, player))
+            continue;
 
         if (ai->IsHeal(player))
         {

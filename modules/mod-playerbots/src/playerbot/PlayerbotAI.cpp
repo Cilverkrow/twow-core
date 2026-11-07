@@ -4554,7 +4554,7 @@ void PlayerbotAI::ResetStrategies(bool autoLoad)
 
 bool PlayerbotAI::IsRanged(Player* player, bool inGroup)
 {
-    PlayerbotAI* botAi = GetBotAI(player);
+    PlayerbotAI* botAi = GetBotAIOnMapOf(bot, player);   // twow-repo#697: another region's bot is not read
     if (botAi)
     {
         bool isRanged = botAi->ContainsStrategy(STRATEGY_TYPE_RANGED);
@@ -4836,7 +4836,7 @@ bool PlayerbotAI::IsInDeathLoop() const
 
 bool PlayerbotAI::IsTank(Player* player, bool inGroup)
 {
-    PlayerbotAI* botAi = GetBotAI(player);
+    PlayerbotAI* botAi = GetBotAIOnMapOf(bot, player);   // twow-repo#697: another region's bot is not read
     if (botAi)
     {
         bool isTank = botAi->ContainsStrategy(STRATEGY_TYPE_TANK);
@@ -4851,7 +4851,7 @@ bool PlayerbotAI::IsTank(Player* player, bool inGroup)
 
 bool PlayerbotAI::IsHeal(Player* player, bool inGroup)
 {
-    PlayerbotAI* botAi = GetBotAI(player);
+    PlayerbotAI* botAi = GetBotAIOnMapOf(bot, player);   // twow-repo#697: another region's bot is not read
     if (botAi)
     {
         bool isHeal = botAi->ContainsStrategy(STRATEGY_TYPE_HEAL);
