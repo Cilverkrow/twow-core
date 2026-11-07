@@ -35,6 +35,7 @@
 #include "playerbot/BotSlots.h"
 #include "playerbot/GroupOps.h"
 #include "playerbot/PacketTracePolicy.h"
+#include "playerbot/LockoutGuard.h"   // L1 (owner 07.11.2026): the [Lockout] minute line
 #include <array>
 #include <mutex>
 
@@ -104,6 +105,8 @@ class PlayerbotWorldScript : public WorldScript
 
             if (!sPlayerbotAIConfig.enabled)
                 return;
+
+            ai::lockout_guard::MinuteTick(diff);   // L1 (owner 07.11.2026): [Lockout] minute line, world thread
 
             // Remote admin commands, handed over by PlayerbotCommandServer
             // connection threads. This is the world thread, which is the whole

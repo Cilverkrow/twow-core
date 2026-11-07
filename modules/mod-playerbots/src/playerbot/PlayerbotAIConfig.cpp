@@ -18,6 +18,7 @@
 #include "playerbot/GroupManagerPolicy.h"   // A3 step 6: BotGroups.Manager mode
 #include "playerbot/SupervisorPolicy.h"   // A3 step 3: Supervisor mode
 #include "playerbot/QuestBookPolicy.h"   // A3 step 2: QuestBook mode
+#include "playerbot/LockoutPolicy.h"   // L1: BotGroups.ResetRaidsRealInviterOnly parse
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
@@ -883,6 +884,9 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[GroupMgr] config key=Manager value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", botGroupsManager);
         botGroupsManager = 0;
     }
+    // L1 (owner 07.11.2026): code default 1; only "0" is off, any other value is 1. Read as a string: GetIntDefault is atoi,
+    // which would turn a non-numeric value such as "on" into 0 (rollback).
+    botGroupsResetRaidsRealInviterOnly = ai::lockout::SwitchOn(config.GetStringDefault("AiPlayerbot.BotGroups.ResetRaidsRealInviterOnly", "1"));
     // A3 step 3 (ADR-0041): the per-bot supervisor (SupervisorPolicy.h, Supervisor.cpp); an unknown mode is off.
     supervisor = uint32(config.GetIntDefault("AiPlayerbot.Supervisor", 0));
     if (!ai::supervisor::ValidMode(supervisor))
@@ -1918,6 +1922,7 @@ bool PlayerbotAIConfig::Initialize()
             {"BotGroups.OpQueueAlertAgeSeconds", Value(botGroupsOpQueueAlertAgeSeconds)},
             {"BotGroups.OpQueueMaxDepth", Value(botGroupsOpQueueMaxDepth)},
             {"BotGroups.OpQueueOpsPerTick", Value(botGroupsOpQueueOpsPerTick)},
+            {"BotGroups.ResetRaidsRealInviterOnly", Value(botGroupsResetRaidsRealInviterOnly)},
             {"BotGroups.WorldThreadDefer", Value(botGroupsWorldThreadDefer)},
             {"BotUpdateTrace", Value(botUpdateTrace)},
             {"BotUpdateTraceCohort", Value(botUpdateTraceCohort)},

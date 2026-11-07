@@ -4469,6 +4469,22 @@ add_test(NAME release_veto
   COMMAND release_veto_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# L1 (owner 07.11.2026, AiPlayerbot.BotGroups.ResetRaidsRealInviterOnly): the pure lockout rules (LockoutPolicy.h; no game
+# header) - I0 perm-first invariant, LockSplit, ResetRaidsOnJoin, the switch parse, the minute line. The game side is pinned
+# by t/contracts.d/l1_lockout_source_contract_tests.cmake.
+add_executable(lockout_policy_tests
+  "${PB_MODULE_DIR}/t/lockout_policy_tests.cpp")
+
+target_include_directories(lockout_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(lockout_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME lockout_policy
+  COMMAND lockout_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # --------------------------------------------------------------------------
 # t/contracts.d -- source contracts that register themselves (OB-00 25.10.2026).
 #

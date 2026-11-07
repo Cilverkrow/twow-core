@@ -6,6 +6,8 @@
 #include "playerbot/BotGroupDiagnostics.h"
 #include "playerbot/GroupAiRefresh.h"
 #include "playerbot/GroupOpTiming.h"
+#include "playerbot/LockoutPolicy.h"   // L1 (owner 07.11.2026): BotGroups.ResetRaidsRealInviterOnly
+#include "playerbot/LockoutGuard.h"
 namespace ai
 {
     class AcceptInvitationAction : public Action
@@ -43,7 +45,26 @@ namespace ai
                 bot->UninviteFromGroup();
                 return false;
             }
-            
+
+            // L1 (owner 07.11.2026): S1 - a bot that keeps its raid binds on this accept (switch on, inviter a bot or a world
+            // manager) declines a leader who stands in another copy of a raid the bot is perm-bound to, exactly like the
+            // security decline. Only the bot's own binds and the inviter's scalar map and instance id are read.
+            if (sPlayerbotAIConfig.botGroupsResetRaidsRealInviterOnly)
+            {
+                bool const l1WorldManager = group_ai_refresh::IsWorldManagerSource(event.getSource());
+                bool const l1InviterReal = !l1WorldManager && ::IsRealPlayer(inviter);
+                if (!ai::lockout::ResetRaidsOnJoin(true, l1WorldManager, false, l1InviterReal) &&
+                    ai::lockout_guard::SplitToward(bot, inviter->GetMapId(), inviter->GetInstanceId()))
+                {
+                    ai::lockout_guard::Count(ai::lockout_guard::SplitDecline);
+                    WorldPacket data(SMSG_GROUP_DECLINE, 10);
+                    data << bot->GetName();
+                    sServerFacade.SendPacket(inviter, data);
+                    bot->UninviteFromGroup();
+                    return false;
+                }
+            }
+
             if (bot->isAFK())
                 bot->ToggleAFK();
 
@@ -145,7 +166,17 @@ namespace ai
 
             ai->TellPlayer(inviter, BOT_TEXT("hello"), PlayerbotSecurityLevel::PLAYERBOT_SECURITY_ALLOW_ALL, false);
 
-            ai->DoSpecificAction("reset raids", event, true);
+            // L1 (owner 07.11.2026): reset raids only on a real player's invite (switch 0: on every accept, as before). The
+            // source checks come first, so the posted tail on the bot's thread never reads the inviter's AI.
+            std::string const& l1Source = event.getSource();
+            bool const l1WorldManager = group_ai_refresh::IsWorldManagerSource(l1Source);
+            bool const l1JoinTail = l1Source == group_ai_refresh::JoinTailSource;
+            bool const l1InviterReal = !l1WorldManager && !l1JoinTail && ::IsRealPlayer(inviter);
+            bool const resetRaids = ai::lockout::ResetRaidsOnJoin(sPlayerbotAIConfig.botGroupsResetRaidsRealInviterOnly,
+                l1WorldManager, l1JoinTail, l1InviterReal);
+            ai::lockout_guard::CountJoin(resetRaids, l1InviterReal);
+            if (resetRaids)
+                ai->DoSpecificAction("reset raids", event, true);
             ai->DoSpecificAction("update gear", event, true);
         }
 
