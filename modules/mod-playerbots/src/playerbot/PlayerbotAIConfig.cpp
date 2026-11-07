@@ -17,6 +17,7 @@
 #include "playerbot/GroupOpPolicy.h"   // BOT-12: BotGroups.OpQueue clamps
 #include "playerbot/GroupManagerPolicy.h"   // A3 step 6: BotGroups.Manager mode
 #include "playerbot/SupervisorPolicy.h"   // A3 step 3: Supervisor mode
+#include "playerbot/QuestBookPolicy.h"   // A3 step 2: QuestBook mode
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
@@ -893,6 +894,17 @@ bool PlayerbotAIConfig::Initialize()
     combatRuleHealerStart = uint32(config.GetIntDefault("AiPlayerbot.CombatRule.HealerStart", 0));
     if (combatRuleHealerStart > 3)
         combatRuleHealerStart = 0;
+    // A3 step 2 (ADR-0041): the quest book core QB-K (QuestBookPolicy.h, QuestBook.cpp); an unknown mode is off.
+    questBook = uint32(config.GetIntDefault("AiPlayerbot.QuestBook", 0));
+    if (!ai::questbook::ValidMode(questBook))
+    {
+        sLog.outError("[QuestBook] config key=QuestBook value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", questBook);
+        questBook = 0;
+    }
+    questBookShadow = config.GetIntDefault("AiPlayerbot.QuestBook.Shadow", 0) != 0;
+    questBookAboveLevels = std::min<uint32>(10, uint32(std::max(0, config.GetIntDefault("AiPlayerbot.QuestBook.AboveLevels", 1))));
+    questBookStaleCompleteSeconds = std::clamp<uint32>(uint32(std::max(0, config.GetIntDefault("AiPlayerbot.QuestBook.StaleCompleteSeconds", 1800))), 60, 86400);
+    questBookExclude = ai::quest_feasibility::ParseQuestIdList(config.GetStringDefault("AiPlayerbot.QuestBook.Exclude", ""));
     questGroupsEnable = (uint32)config.GetIntDefault("AiPlayerbot.QuestGroups.Enable", 0);
     questGroupsScanSeconds = std::max<uint32>(10, config.GetIntDefault("AiPlayerbot.QuestGroups.ScanSeconds", 60));
     questGroupsScanSlices = std::min<uint32>(64, (uint32)config.GetIntDefault("AiPlayerbot.QuestGroups.ScanSlices", 0));
@@ -1966,6 +1978,11 @@ bool PlayerbotAIConfig::Initialize()
             {"ProfessionTraining.TurnInGateSkipSuppressed", Value(professionTrainingTurnInGateSkipSuppressed)},
             {"ProfessionUse.ToolBuy", Value(professionUseToolBuy)},
             {"ProfessionUse.Trace", Value(professionUseTrace)},
+            {"QuestBook", Value(questBook)},
+            {"QuestBook.AboveLevels", Value(questBookAboveLevels)},
+            {"QuestBook.Exclude.count", Value(uint32(questBookExclude.size()))},
+            {"QuestBook.Shadow", Value(questBookShadow)},
+            {"QuestBook.StaleCompleteSeconds", Value(questBookStaleCompleteSeconds)},
             {"QuestFeasibility.Blocklist.count", Value(uint32(questFeasibilityBlocklist.size()))},
             {"QuestFeasibility.BlocklistWhileNoCustomStarts.count", Value(uint32(questFeasibilityBlocklistWhileNoCustomStarts.size()))},
             {"QuestFeasibility.Enable", Value(questFeasibilityEnable)},
