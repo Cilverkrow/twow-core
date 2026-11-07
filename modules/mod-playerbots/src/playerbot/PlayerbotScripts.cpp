@@ -36,6 +36,7 @@
 #include "playerbot/GroupOps.h"
 #include "playerbot/PacketTracePolicy.h"
 #include "playerbot/LockoutGuard.h"   // L1 (owner 07.11.2026): the [Lockout] minute line
+#include "playerbot/LockoutCarry.h"   // leader_bind_carry (OB-00 07.11.2026): count only
 #include <array>
 #include <mutex>
 
@@ -438,6 +439,32 @@ class PlayerbotPlayerScript : public PlayerScript
                 SC_PHASE("Player::UpdatePlayerbotHooks/mgr.UpdateAI", player->GetName());
                 mgr->UpdateAI(diff);
             }
+        }
+
+        // leader_bind_carry (OB-00 07.11.2026, count only, both switch values): LockoutCarry.h. The note of a far teleport into
+        // a dungeon map, its use at the end of the worldport ack, its drop at logout. They read and count; they change nothing.
+        void OnBeforeTeleport(Player* player, uint32 mapId, float /*x*/, float /*y*/, float /*z*/, float /*orientation*/) override
+        {
+            if (!player || !sPlayerbotAIConfig.enabled)
+                return;
+
+            ai::lockout_carry::NoteTeleport(player, mapId);
+        }
+
+        void OnMapChanged(Player* player) override
+        {
+            if (!player || !sPlayerbotAIConfig.enabled)
+                return;
+
+            ai::lockout_carry::OnEntry(player);
+        }
+
+        void OnLogout(Player* player) override
+        {
+            if (!player)
+                return;
+
+            ai::lockout_carry::Forget(player);
         }
 };
 

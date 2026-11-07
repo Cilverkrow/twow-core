@@ -80,18 +80,87 @@ int main()
     Require(!SwitchOn("0") && !SwitchOn(" 0 ") && !SwitchOn("0\r"), "\"0\" is off");
     Require(SwitchOn("1") && SwitchOn("") && SwitchOn("on") && SwitchOn("2") && SwitchOn("off") && SwitchOn("00"), "anything else is on");
 
+    // leader_bind_carry (count only): EntryPermFromGroup truth table.
+    Require(EntryPermFromGroup({}, {7, true}, 7), "no bind before, PERM on the entered copy after: new at entry");
+    Require(EntryPermFromGroup({7, false}, {7, true}, 7), "a solo bind before, PERM after: new at entry");
+    Require(!EntryPermFromGroup({7, true}, {7, true}, 7), "own PERM bind on the copy before: never counted");
+    Require(!EntryPermFromGroup({9, true}, {7, true}, 7), "own PERM bind on another copy before: never counted");
+    Require(!EntryPermFromGroup({}, {7, false}, 7), "a non-PERM bind after: no carry");
+    Require(!EntryPermFromGroup({}, {9, true}, 7), "PERM on another copy after: no carry");
+    Require(!EntryPermFromGroup({}, {}, 0), "nothing: no carry");
+
+    // LeaderBindCarry: the counted case, then each condition taken away on its own.
+    CarryEntry carry;
+    carry.entered = 7;
+    carry.selfAfter = {7, true};
+    carry.leaderIsBot = true;
+    carry.leaderOnM = {7, true};
+    carry.groupOnM = {7, true};
+    Require(LeaderBindCarry(carry), "bot leader's carried PERM bind, member new on the copy: counted");
+    {
+        CarryEntry e = carry;
+        e.memberIsLeader = true;
+        Require(!LeaderBindCarry(e), "the leader itself is never counted");
+        e = carry;
+        e.leaderIsBot = false;
+        Require(!LeaderBindCarry(e), "a real (or unknown) leader is not counted");
+        e = carry;
+        e.selfBefore = {7, true};
+        Require(!LeaderBindCarry(e), "the member's own pre-existing PERM bind on the copy is not counted");
+        e = carry;
+        e.selfAfter = {7, false};
+        Require(!LeaderBindCarry(e), "no PERM bind after the entry: not counted");
+        e = carry;
+        e.groupOnM = {7, false};
+        Require(!LeaderBindCarry(e), "a non-PERM group bind: not counted");
+        e = carry;
+        e.groupOnM = {9, true};
+        Require(!LeaderBindCarry(e), "a group PERM bind on another copy: not counted");
+        e = carry;
+        e.leaderOnM = {};
+        Require(!LeaderBindCarry(e), "a leader without its own PERM bind: not counted");
+        e = carry;
+        e.leaderOnM = {9, true};
+        Require(!LeaderBindCarry(e), "a leader PERM-bound to another copy: not counted");
+        e = carry;
+        e.entered = 0;
+        Require(!LeaderBindCarry(e), "no entered copy: not counted");
+    }
+
+    // A counted carry is always the core's own choice from the group bind, and never the perm assert path (I0).
+    for (Bind const& before : selves)
+        for (Bind const& group : groups)
+            for (Bind const& after : selves)
+                for (std::uint32_t entered : {0u, 7u, 9u})
+                {
+                    CarryEntry e;
+                    e.entered = entered;
+                    e.selfBefore = before;
+                    e.selfAfter = after;
+                    e.leaderIsBot = true;
+                    e.leaderOnM = group;
+                    e.groupOnM = group;
+                    if (LeaderBindCarry(e))
+                        Require(CoreChoice(before, group) == entered && !PermAssertWouldFire(before, entered),
+                            "carry: the core took the group's PERM bind");
+                }
+
     // The minute line: field order fixed, printed only with a non-zero field.
     Counts c;
     Require(!c.Any(), "an empty minute prints nothing");
+    c.leaderCarryBot = 1;
+    Require(c.Any(), "a minute with only a carry prints");
     c.resetReal = 1;
     c.resetBot = 2;
     c.keepBot = 3;
     c.splitDecline = 4;
     c.splitEntry = 5;
+    c.leaderCarryReal = 6;
+    c.leaderCarryBot = 7;
     Require(c.Any(), "a counted minute prints");
-    Require(MinuteLine(true, c) == "[Lockout] minute mode=1 reset_real=1 reset_bot=2 keep_bot=3 split_decline=4 split_entry=5",
+    Require(MinuteLine(true, c) == "[Lockout] minute mode=1 reset_real=1 reset_bot=2 keep_bot=3 split_decline=4 split_entry=5 leader_carry_real=6 leader_carry_bot=7",
         "minute line format");
-    Require(MinuteLine(false, Counts()) == "[Lockout] minute mode=0 reset_real=0 reset_bot=0 keep_bot=0 split_decline=0 split_entry=0",
+    Require(MinuteLine(false, Counts()) == "[Lockout] minute mode=0 reset_real=0 reset_bot=0 keep_bot=0 split_decline=0 split_entry=0 leader_carry_real=0 leader_carry_bot=0",
         "minute line at switch 0");
 
     std::cout << "lockout_policy_tests passed\n";

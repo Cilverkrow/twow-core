@@ -9,7 +9,8 @@ class Player;
 //
 // Thread rule: the guard reads only the bot's own binds (Player::GetBoundInstance on the bot) and scalar ids of the other
 // player (GetMapId, GetInstanceId). It never reads Group::m_boundInstances or another player's binds: those std::maps are
-// written by other map threads.
+// written by other map threads. The two leader_bind_carry counters are bumped by LockoutCarry.cpp, which has its own
+// thread rule (LockoutCarry.h).
 namespace ai::lockout_guard
 {
 enum Counter
@@ -19,6 +20,8 @@ enum Counter
     KeepBot,
     SplitDecline,
     SplitEntry,
+    LeaderCarryReal,   // leader_bind_carry (LockoutCarry.cpp), the entering member a real player
+    LeaderCarryBot,    // leader_bind_carry (LockoutCarry.cpp), the entering member a bot
     kCounters,
 };
 
