@@ -79,7 +79,9 @@ require_text("${dist}" "#   [Crafting] kind=consumables event=use type=flask|eli
 require_text("${dist}" "#   [Crafting] kind=consumables event=imbue type=stone|oil slot=mainhand|offhand item= bot= level= cohort=" "dist: imbue line")
 require_text("${config_h}" "uint32 craftingConsumables = 0;" "config member, default 0")
 require_text("${config_cpp}" "craftingConsumables = config.GetIntDefault(\"AiPlayerbot.Crafting.Consumables\", 0);\n    if (craftingConsumables > 3)\n    {\n        sLog.outError(\"[Crafting] config key=Consumables value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)\", craftingConsumables);\n        craftingConsumables = 0;\n    }" "config read, > 3 = off")
-require_text("${config_cpp}" "            {\"CheatItem.Trace\", Value(cheatItemTrace)},\n            {\"Crafting.Consumables\", Value(craftingConsumables)},\n            {\"CustomRaceStartZones\"" "parsed mode in [ConfigEcho], sorted")
+# Later Crafting.* keys (Cooking, Survival, Fishing) sort between this entry and CustomRaceStartZones.
+require_text("${config_cpp}" "            {\"CheatItem.Trace\", Value(cheatItemTrace)},\n            {\"Crafting.Consumables\", Value(craftingConsumables)}," "parsed mode in [ConfigEcho], sorted after CheatItem.Trace")
+require_order("${config_cpp}" "{\"Crafting.Consumables\", Value(craftingConsumables)}," "{\"CustomRaceStartZones\"" "parsed mode in [ConfigEcho], sorted before CustomRaceStartZones")
 
 # 1. One helper: config first (the default costs nothing), roster bot on its own, cohort.
 require_text("${pu_h}" "bool CraftingConsumablesFor(PlayerbotAI* ai);" "(1) helper declared")
