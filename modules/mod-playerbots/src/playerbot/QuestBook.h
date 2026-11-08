@@ -35,6 +35,9 @@ enum class Count : std::uint8_t
     SourceCommon,    // QB-S: the chosen source is a common one
     SourceRegroup,   // QB-S: the choice differs from the old first-fit one
     OrderScored,     // QB-S: a fetch whose winners were put in XP-per-minute order
+    BundleRanked,    // QB-B: a fetch whose giver sites (two or more) were put in quests-per-second order
+    BundleRegroup,   // QB-B: the best site is not the first-fit one
+    BundleCapped,    // QB-B: a fetch with more than MaxSites giver sites (the rest followed unranked)
     Max
 };
 

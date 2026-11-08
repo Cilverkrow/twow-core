@@ -21,6 +21,7 @@
 #include "playerbot/GroupManagerPolicy.h"   // A3 step 6: BotGroups.Manager mode
 #include "playerbot/SupervisorPolicy.h"   // A3 step 3: Supervisor mode
 #include "playerbot/QuestBookPolicy.h"   // A3 step 2: QuestBook mode
+#include "playerbot/QuestBundlePolicy.h"   // A3 step 2 QB-B: QuestBook.BundleRadius clamp
 #include "playerbot/LockoutPolicy.h"   // L1: BotGroups.ResetRaidsRealInviterOnly parse
 #include "playerbot/LootChancePolicy.h"   // OB-00 08.11.: LootChance.GameObjectEntryFix / QuestRelation.GameObjectChanceDrops
 #include <cerrno>
@@ -960,6 +961,14 @@ bool PlayerbotAIConfig::Initialize()
     }
     questBookKillSeconds = std::clamp(config.GetFloatDefault("AiPlayerbot.QuestBook.KillSeconds", 12.0f), 1.0f, 120.0f);
     questBookSingleSpawnMargin = std::clamp(config.GetFloatDefault("AiPlayerbot.QuestBook.SingleSpawnMargin", 1.5f), 1.0f, 10.0f);
+    // A3 step 2 QB-B (QuestBundlePolicy.h): giver sites by quests per second; acts only where the quest book is active.
+    questBookBundle = uint32(config.GetIntDefault("AiPlayerbot.QuestBook.Bundle", 0));
+    if (!ai::questbook::ValidMode(questBookBundle))
+    {
+        sLog.outError("[QuestBook] config key=QuestBook.Bundle value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", questBookBundle);
+        questBookBundle = 0;
+    }
+    questBookBundleRadius = ai::questbundle::ClampRadius(config.GetIntDefault("AiPlayerbot.QuestBook.BundleRadius", 100));
     questGroupsEnable = (uint32)config.GetIntDefault("AiPlayerbot.QuestGroups.Enable", 0);
     questGroupsScanSeconds = std::max<uint32>(10, config.GetIntDefault("AiPlayerbot.QuestGroups.ScanSeconds", 60));
     questGroupsScanSlices = std::min<uint32>(64, (uint32)config.GetIntDefault("AiPlayerbot.QuestGroups.ScanSlices", 0));
@@ -2084,6 +2093,8 @@ bool PlayerbotAIConfig::Initialize()
             {"ProfessionUse.Trace", Value(professionUseTrace)},
             {"QuestBook", Value(questBook)},
             {"QuestBook.AboveLevels", Value(questBookAboveLevels)},
+            {"QuestBook.Bundle", Value(questBookBundle)},
+            {"QuestBook.BundleRadius", Value(questBookBundleRadius)},
             {"QuestBook.Exclude.count", Value(uint32(questBookExclude.size()))},
             {"QuestBook.KillSeconds", Value(questBookKillSeconds)},
             {"QuestBook.Shadow", Value(questBookShadow)},
