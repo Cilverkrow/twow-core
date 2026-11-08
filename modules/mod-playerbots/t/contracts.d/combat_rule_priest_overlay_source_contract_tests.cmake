@@ -45,7 +45,7 @@ function(check policy glue factory priest_ctx config_h config_cpp dist out_var)
   need("${dist}" "\nAiPlayerbot.CombatRule.PriestOverlay = 0\n" "dist key, default 0")
   need("${config_h}" "    uint32 combatRulePriestOverlay = 0;\n" "config member, default 0")
   need("${config_cpp}" "    combatRulePriestOverlay = uint32(config.GetIntDefault(\"AiPlayerbot.CombatRule.PriestOverlay\", 0));\n    if (combatRulePriestOverlay > 3)\n        combatRulePriestOverlay = 0;\n" "config read, > 3 = off")
-  need("${config_cpp}" "            {\"CombatRule.HealerStart\", Value(combatRuleHealerStart)},\n            {\"CombatRule.PriestOverlay\", Value(combatRulePriestOverlay)},\n            {\"CustomRaceStartZones\"" "in [ConfigEcho], sorted")
+  need("${config_cpp}" "            {\"CombatRule.HealerStart\", Value(combatRuleHealerStart)},\n            {\"CombatRule.PriestOverlay\", Value(combatRulePriestOverlay)},\n" "in [ConfigEcho], sorted after CombatRule.HealerStart (the key after it is not pinned: Crafting.Consumables, #908, or CombatRule.RestBeforePull, P3)")
 
   # 2. The policy: healing-tree priests only, exact-entry removal.
   need("${policy}" "constexpr std::uint32_t ClassPriest = 5;" "priest class id as in SharedDefines.h")
