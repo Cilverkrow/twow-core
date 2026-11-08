@@ -116,6 +116,9 @@ namespace ai
 		bool HasQuestSourceChoice() const { return questSourceChoice; }
 		std::vector<QuestSourceNeed> const& GetQuestSourceNeeds() const { return questSourceNeeds; }
 		float GetRunSpeed() const { return runSpeed; }
+		// A3 step 2 QB-B (AiPlayerbot.QuestBook.Bundle, default 0): bundle scoring applies to this bot (an active quest book in the
+		// Bundle cohort); read by the async quest fetch (ai::questbundle::RankQuestBundles) with the run speed. false for every other bot.
+		bool HasQuestBundle() const { return questBundle; }
 		// twow-repo#601 quest acceptance step 1b (TraceTravelDecisions): the drop counters of one traced giver fetch. Set only on the
 		// copy the async quest fetch job passes to GetPartitions, counted by QuestRelationTravelDestination::IsPossible in that job's
 		// thread and written by it; null everywhere else (no count).
@@ -136,6 +139,7 @@ namespace ai
 		uint32 questBookGreyLevel = 0;
 		uint32 questBookGuid = 0;        // the cohort of the [QuestBookMin] counters
 		bool questSourceChoice = false;  // A3 step 2 QB-S: SourceChoice applies to this bot (implies questBook)
+		bool questBundle = false;        // A3 step 2 QB-B: Bundle applies to this bot (implies questBook)
 		float runSpeed = 7.0f;
 		std::vector<QuestSourceNeed> questSourceNeeds;
 		uint16 currentSkill[MAX_SKILL_TYPE] = {0};

@@ -1748,6 +1748,20 @@ add_test(NAME questsource_policy
   COMMAND questsource_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# A3 step 2 quest book bundle scoring QB-B (QuestBundlePolicy.h, AiPlayerbot.QuestBook.Bundle).
+add_executable(questbundle_policy_tests
+  "${PB_MODULE_DIR}/t/questbundle_policy_tests.cpp")
+
+target_include_directories(questbundle_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(questbundle_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME questbundle_policy
+  COMMAND questbundle_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 add_executable(planner_policy_tests
   "${PB_MODULE_DIR}/t/planner_policy_tests.cpp")
 
