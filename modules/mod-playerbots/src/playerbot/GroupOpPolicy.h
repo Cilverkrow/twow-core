@@ -6,7 +6,8 @@
 #include <cstdint>
 #include <string>
 
-// BOT-12 (twow-repo#677, #628; OB-00 04.11.2026; AiPlayerbot.BotGroups.OpQueue, default 0): the group changes of free bots run
+// BOT-12 (twow-repo#677, #628; OB-00 04.11.2026; AiPlayerbot.BotGroups.OpQueue, default 1 since owner 08.11.2026, 0 = rollback):
+// the group changes of free bots run
 // on the world thread. ObjectMgr::m_GroupMap is an unlocked std::unordered_map and group ids come from a plain m_nextGuid++;
 // the core keeps "the group map changes only while the maps are idle" (player group opcodes are PACKET_PROCESS_WORLD), and the
 // bot actions broke it by calling the group handlers on their own map thread. With OpQueue on for a bot, its ad-hoc leaves and
@@ -97,8 +98,10 @@ inline LeaveTail LeaveTailOf(std::uint8_t reason)
 }
 
 // ---- the switch -----------------------------------------------------------------------------------------------------------
-// AiPlayerbot.BotGroups.OpQueue: 0 off (today, default), 1 all bots, 2 cohort B (odd low guid), 3 cohort A (even low guid).
-// Any other value is 0 (the loader writes one error line). The mode applies to the bots whose groups change: the leaver, and
+// AiPlayerbot.BotGroups.OpQueue: 0 off (rollback), 1 all bots (default since owner 08.11.2026), 2 cohort B (odd low guid),
+// 3 cohort A (even low guid).
+// The OpQueue loader maps any other value to 1 (one error line); SanitizeMode below maps it to 0 as a runtime guard only (the
+// WritePath loader maps it to 0). The mode applies to the bots whose groups change: the leaver, and
 // either bot of a join (JoinQueueApplies).
 inline bool ValidMode(std::uint32_t mode)
 {

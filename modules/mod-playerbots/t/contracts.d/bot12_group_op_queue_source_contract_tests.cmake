@@ -1,6 +1,7 @@
 cmake_policy(VERSION 3.16)
 # BOT-12 (OB-00 04.11.2026; twow-repo#677, #628; design cli-grp/crossmap/DESIGN-GROUPOPS-WORLDTHREAD-20261104.md 3 and 5, PR1):
-# AiPlayerbot.BotGroups.OpQueue (0 off = as before, 1 all, 2 cohort B, 3 cohort A). ObjectMgr::m_GroupMap is an unlocked map
+# AiPlayerbot.BotGroups.OpQueue (0 off = rollback, 1 all = default since owner 08.11.2026, 2 cohort B, 3 cohort A).
+# ObjectMgr::m_GroupMap is an unlocked map
 # and group ids come from a plain counter; with the switch on for a bot, its ad-hoc leaves and joins are queued (plain ops) and
 # run on the world thread with the maps idle. Pinned here:
 #   (a) the ad-hoc action path calls no group mutation when OpQueue applies - it enqueues (leave: CheckLeave -> EnqueueLeave
@@ -534,20 +535,33 @@ foreach(needle "std::string line = \"[GroupOps] minute\";" "AddField(line, \"mod
 endforeach()
 
 # (e) config: keys, defaults, clamps, echo order, documented.
+# Owner 08.11.2026 (BOT-12 v2 RESULT 24b75ea3): code default 1, 0 = rollback, an unknown value = 1 (one error line).
+set(OQ_LOAD "botGroupsOpQueue = uint32(config.GetIntDefault(\"AiPlayerbot.BotGroups.OpQueue\", 1));\n    if (!ai::group_ops::ValidMode(botGroupsOpQueue))\n    {\n        sLog.outError(\"[GroupOps] config key=OpQueue value=%u result=1 (0 off = rollback, 1 all, 2 cohort B, 3 cohort A)\", botGroupsOpQueue);\n        botGroupsOpQueue = 1;\n    }")
+function(check_oq_load cpp out)
+  string(FIND "${cpp}" "${OQ_LOAD}" at)
+  if(at EQUAL -1)
+    set(${out} "OpQueue load: default 1 / unknown = 1 missing" PARENT_SCOPE)
+  else()
+    set(${out} "" PARENT_SCOPE)
+  endif()
+endfunction()
+check_oq_load("${config_cpp}" r)
+fail_if("${r}")
 foreach(needle
-    "botGroupsOpQueue = uint32(config.GetIntDefault(\"AiPlayerbot.BotGroups.OpQueue\", 0));"
-    "if (!ai::group_ops::ValidMode(botGroupsOpQueue))"
     "botGroupsOpQueueOpsPerTick = ai::group_ops::ClampOpsPerTick(config.GetIntDefault(\"AiPlayerbot.BotGroups.OpQueueOpsPerTick\", 1));"
     "botGroupsOpQueueMaxDepth = ai::group_ops::ClampMaxDepth(config.GetIntDefault(\"AiPlayerbot.BotGroups.OpQueueMaxDepth\", 2048));"
     "botGroupsOpQueueAlertAgeSeconds = ai::group_ops::ClampAlertAgeSeconds(config.GetIntDefault(\"AiPlayerbot.BotGroups.OpQueueAlertAgeSeconds\", 60));"
     "            {\"BotGroups.LeaderOtherMapSeconds\", Value(botGroupsLeaderOtherMapSeconds)},\n            {\"BotGroups.Manager\", Value(botGroupsManager)},\n            {\"BotGroups.OpQueue\", Value(botGroupsOpQueue)},\n            {\"BotGroups.OpQueueAlertAgeSeconds\", Value(botGroupsOpQueueAlertAgeSeconds)},\n            {\"BotGroups.OpQueueMaxDepth\", Value(botGroupsOpQueueMaxDepth)},\n            {\"BotGroups.OpQueueOpsPerTick\", Value(botGroupsOpQueueOpsPerTick)},\n            {\"BotGroups.ResetRaidsRealInviterOnly\", Value(botGroupsResetRaidsRealInviterOnly)},\n            {\"BotGroups.WorldThreadDefer\"")
   require_text("${config_cpp}" "${needle}" "config")
 endforeach()
-foreach(needle "uint32 botGroupsOpQueue = 0;" "uint32 botGroupsOpQueueOpsPerTick = 1;" "uint32 botGroupsOpQueueMaxDepth = 2048;"
+foreach(needle "uint32 botGroupsOpQueue = 1;" "uint32 botGroupsOpQueueOpsPerTick = 1;" "uint32 botGroupsOpQueueMaxDepth = 2048;"
     "uint32 botGroupsOpQueueAlertAgeSeconds = 60;")
   require_text("${config_h}" "${needle}" "config member default")
 endforeach()
-foreach(needle "\nAiPlayerbot.BotGroups.OpQueue = 0\n" "\nAiPlayerbot.BotGroups.OpQueueOpsPerTick = 1\n"
+# Owner 08.11.2026: the queue is on by default (BEHAVIOUR CHANGE text, 0 = rollback, unknown = 1).
+foreach(needle "\nAiPlayerbot.BotGroups.OpQueue = 1\n" "\nAiPlayerbot.BotGroups.OpQueueOpsPerTick = 1\n"
+    "# BEHAVIOUR CHANGE, ON by default (owner 08.11.2026; BOT-12 v2 RESULT 24b75ea3"
+    "# ms), 0 = rollback. Mode (in-realm A/B" "Any other value acts like 1 (one error line\n# at load).\nAiPlayerbot.BotGroups.OpQueue = 1\n"
     "\nAiPlayerbot.BotGroups.OpQueueMaxDepth = 2048\n" "\nAiPlayerbot.BotGroups.OpQueueAlertAgeSeconds = 60\n"
     "# BOT-12 (twow-repo#677, #628; OB-00 04.11.2026): the world-thread group queue."
     "# Scope: only the ad-hoc ACTION path (AdHoc.WorldThread = 0)."
@@ -692,5 +706,12 @@ fail_if("${r}")
 string(REPLACE "    return heavyTaken ? 0u : ClampOpsPerTick(opsPerTick);" "    return ClampOpsPerTick(opsPerTick);" probe "${policy}")
 check_heavy("${adhoc}" "${s7}" "${probe}" r)
 expect_caught("OpsThisTick ignores the heavy tick" "${r}")
+# Owner default 1 (08.11.2026): the code default back to 0, or an unknown value off again.
+string(REPLACE "AiPlayerbot.BotGroups.OpQueue\", 1));" "AiPlayerbot.BotGroups.OpQueue\", 0));" probe "${config_cpp}")
+check_oq_load("${probe}" r)
+expect_caught("OpQueue code default 0" "${r}")
+string(REPLACE "        botGroupsOpQueue = 1;\n    }" "        botGroupsOpQueue = 0;\n    }" probe "${config_cpp}")
+check_oq_load("${probe}" r)
+expect_caught("OpQueue unknown value = 0" "${r}")
 
 message(STATUS "BOT12_GROUP_OP_QUEUE_SOURCE_CONTRACT=PASS")
