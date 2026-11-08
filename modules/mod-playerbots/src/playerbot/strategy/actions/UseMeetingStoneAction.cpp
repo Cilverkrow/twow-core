@@ -3,6 +3,7 @@
 #include "UseMeetingStoneAction.h"
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/ServerFacade.h"
+#include "playerbot/LockoutGuard.h"   // L1 (owner 07.11.2026): S3 split guard
 
 #include "Maps/GridNotifiers.h"
 #include "Maps/GridNotifiersImpl.h"
@@ -205,6 +206,16 @@ bool SummonAction::SummonUsingNpcs(Player* requester, Player *summoner, Player *
 
 bool SummonAction::Teleport(Player* requester, Player *summoner, Player *player)
 {
+    // L1 (owner 07.11.2026): S3 - the bot is not summoned into another copy of a raid it is perm-bound to (the summoner's
+    // map and instance id only). Same reply as a failed teleport below.
+    if (player == bot && summoner != player && sPlayerbotAIConfig.botGroupsResetRaidsRealInviterOnly &&
+        ai::lockout_guard::SplitToward(bot, summoner->GetMapId(), summoner->GetInstanceId()))
+    {
+        ai::lockout_guard::Count(ai::lockout_guard::SplitEntry);
+        ai->TellPlayerNoFacing(requester, "I cannot get to you from here");
+        return false;
+    }
+
     if (!summoner->IsBeingTeleported() && !player->IsBeingTeleported() && summoner != player)
     {
         float followAngle = GetFollowAngle();
