@@ -899,7 +899,7 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[Supervisor] config key=Supervisor value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", supervisor);
         supervisor = 0;
     }
-    // A3 step 5 (ADR-0041): the combat rule, parts HealerStart, PriestOverlay and RestBeforePull (CombatRulePolicy.h); an unknown
+    // A3 step 5 (ADR-0041): the combat rule, parts HealerStart, PriestOverlay, RestBeforePull and ProgressGuard (CombatRulePolicy.h); an unknown
     // mode is off.
     combatRuleHealerStart = uint32(config.GetIntDefault("AiPlayerbot.CombatRule.HealerStart", 0));
     if (combatRuleHealerStart > 3)
@@ -912,6 +912,14 @@ bool PlayerbotAIConfig::Initialize()
         combatRuleRestBeforePull = 0;
     combatRuleRestStartHp = ai::combat_rule::ClampStartHp(config.GetIntDefault("AiPlayerbot.CombatRule.RestStartHp", 60));
     combatRuleRestStartMana = ai::combat_rule::ClampStartMana(config.GetIntDefault("AiPlayerbot.CombatRule.RestStartMana", 40));
+    combatRuleProgressGuard = uint32(config.GetIntDefault("AiPlayerbot.CombatRule.ProgressGuard", 0));
+    if (combatRuleProgressGuard > 3)
+        combatRuleProgressGuard = 0;
+    combatRuleProgressDeadlineSeconds = ai::combat_rule::ClampProgressDeadline(config.GetIntDefault("AiPlayerbot.CombatRule.ProgressDeadlineSeconds", 15));
+    combatRuleProgressBreakSeconds = ai::combat_rule::ClampProgressBreak(config.GetIntDefault("AiPlayerbot.CombatRule.ProgressBreakSeconds", 45),
+        combatRuleProgressDeadlineSeconds);
+    combatRuleProgressBackoffMs = ai::combat_rule::ClampProgressBackoffMs(config.GetIntDefault("AiPlayerbot.CombatRule.ProgressBackoffMs", 1000));
+    combatRuleProgressIgnoreSeconds = ai::combat_rule::ClampProgressIgnore(config.GetIntDefault("AiPlayerbot.CombatRule.ProgressIgnoreSeconds", 120));
     // A3 step 2 (ADR-0041): the quest book core QB-K (QuestBookPolicy.h, QuestBook.cpp); an unknown mode is off.
     questBook = uint32(config.GetIntDefault("AiPlayerbot.QuestBook", 0));
     if (!ai::questbook::ValidMode(questBook))
@@ -1959,6 +1967,11 @@ bool PlayerbotAIConfig::Initialize()
             {"CheatItem.Trace", Value(cheatItemTrace)},
             {"CombatRule.HealerStart", Value(combatRuleHealerStart)},
             {"CombatRule.PriestOverlay", Value(combatRulePriestOverlay)},
+            {"CombatRule.ProgressBackoffMs", Value(combatRuleProgressBackoffMs)},
+            {"CombatRule.ProgressBreakSeconds", Value(combatRuleProgressBreakSeconds)},
+            {"CombatRule.ProgressDeadlineSeconds", Value(combatRuleProgressDeadlineSeconds)},
+            {"CombatRule.ProgressGuard", Value(combatRuleProgressGuard)},
+            {"CombatRule.ProgressIgnoreSeconds", Value(combatRuleProgressIgnoreSeconds)},
             {"CombatRule.RestBeforePull", Value(combatRuleRestBeforePull)},
             {"CombatRule.RestStartHp", Value(combatRuleRestStartHp)},
             {"CombatRule.RestStartMana", Value(combatRuleRestStartMana)},

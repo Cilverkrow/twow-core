@@ -918,6 +918,15 @@ public:
     uint32 combatRuleRestBeforePull = 0;
     uint32 combatRuleRestStartHp = 60;     // 1..99
     uint32 combatRuleRestStartMana = 40;   // 0..99, 0 = no mana rest
+    // ProgressGuard (A3 R8): in combat, progress is only damage to the target or a shrinking distance to it, per combat episode.
+    // Without progress for ProgressDeadlineSeconds the next pass waits ProgressBackoffMs; after ProgressBreakSeconds (and again every
+    // ProgressBreakSeconds) the target goes on the ignore list for ProgressIgnoreSeconds and is dropped. The counters run for both
+    // cohorts while the switch is on. 0 off (default), 1 all, 2 cohort B, 3 cohort A; other = 0.
+    uint32 combatRuleProgressGuard = 0;
+    uint32 combatRuleProgressDeadlineSeconds = 15;   // 5..300
+    uint32 combatRuleProgressBreakSeconds = 45;      // deadline..600
+    uint32 combatRuleProgressBackoffMs = 1000;       // 0..5000, 0 = no cadence backoff
+    uint32 combatRuleProgressIgnoreSeconds = 120;    // 10..600
     // A3 step 2 (ADR-0041, OB-00 07.11.2026): the quest book core QB-K (QuestBookPolicy.h, QuestBook.cpp). 0 off, 1 all, 2 cohort B,
     // 3 cohort A; other = 0 + error line. Shadow: the other roster bots keep a book that only writes the KPI lines.
     uint32 questBook = 0;
