@@ -62,6 +62,36 @@ int main()
         Require(!KeepZoneDefers(true, false, 0, 40) && !KeepZoneDefers(true, false, 12, 0), "unknown zone: kept");
     }
 
+    // 4) Package "start-zone rule complete" (StartZoneMinLevel.Complete): the switch, G1 follow, G3 leave clock, V2-a release push.
+    {
+        Require(CompleteOn(1) && !CompleteOn(0) && !CompleteOn(2) && !CompleteOn(-1), "switch: 1 on, everything else off");
+        Require(FollowDefers(true, true), "G1: held, leader outside the start zone: no follow");
+        Require(!FollowDefers(true, false) && !FollowDefers(false, true), "G1: leader inside, or not held: follow as before");
+
+        // G3: the refusal run and the leave after FollowLeaveSeconds of fresh refusals.
+        Require(NextRefusedSince(0, 0, 1000) == 1000, "G3: the first refusal starts the run");
+        Require(NextRefusedSince(1000, 1030, 1050) == 1000, "G3: a fresh refusal keeps the run");
+        Require(NextRefusedSince(1000, 1030, 1030 + RefusalFreshSeconds + 1) == 1030 + RefusalFreshSeconds + 1,
+            "G3: a stale last refusal starts a new run");
+        Require(!LeaveDue(1000, 1299, 1299, FollowLeaveSeconds), "G3: 299 s refused: stay");
+        Require(LeaveDue(1000, 1300, 1300, FollowLeaveSeconds), "G3: 300 s refused in a row: leave");
+        Require(!LeaveDue(1000, 1300, 1300 + RefusalFreshSeconds + 1, FollowLeaveSeconds), "G3: the refusals stopped: no leave");
+        Require(!LeaveDue(0, 1300, 1400, FollowLeaveSeconds) && !LeaveDue(1000, 0, 1400, FollowLeaveSeconds), "G3: no run: no leave");
+        Require(LeaveDue(0xFFFFFF00u, 0x0000002Cu, 0x0000002Cu, FollowLeaveSeconds), "G3: across the uint32 wrap");
+
+        // V2-a: the release window StartZoneMinLevel .. +2, only in the start zone, the push at least one prior failure.
+        Require(!InReleaseWindow(5, 4) && InReleaseWindow(5, 5) && InReleaseWindow(5, 7) && !InReleaseWindow(5, 8), "V2-a: L5-7");
+        Require(!InReleaseWindow(0, 5), "V2-a: StartZoneMinLevel 0: never");
+        Require(ReleasePush(true, true, 5, 6, true), "V2-a: on, applies, L6, in the start zone: push");
+        Require(!ReleasePush(false, true, 5, 6, true) && !ReleasePush(true, false, 5, 6, true), "V2-a: switch off or not selected");
+        Require(!ReleasePush(true, true, 5, 6, false), "V2-a: already out of the start zone: no push");
+        Require(PushedPriorFailures(true, 0) == 1 && PushedPriorFailures(true, -1) == 1, "V2-a: the push makes the first empty offer due");
+        Require(PushedPriorFailures(true, 3) == 3 && PushedPriorFailures(false, 0) == 0, "V2-a: no lowering, no push without it");
+
+        Require(LineDue(0, 5) && LineDue(1000, 1000) && !LineDue(1000, 999), "lines: once per window");
+        Require(GateLineSeconds == 600 && FollowLeaveSeconds == 300 && ReleasePushLevels == 3, "constants of the design note");
+    }
+
     std::cout << "zone_keep_policy_tests: all passed\n";
     return 0;
 }

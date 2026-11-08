@@ -1939,6 +1939,100 @@ void ai::zone_keep::NoteForcedHold(Player* bot, PlayerbotAI* botAI, char const* 
         bot->GetZoneId(), purpose, targetZone, StartZoneForcedHoldSeconds);
 }
 
+// Package "start-zone rule complete" (StartZoneMinLevel.Complete, OB-00 08.11.2026, ZoneKeepPolicy.h). The clocks are the bot's own
+// manual ints (bot thread), unix seconds.
+namespace
+{
+    constexpr char const* FollowRefusedSinceValue = "start zone follow refused since";
+    constexpr char const* FollowRefusedLastValue = "start zone follow refused last";
+    constexpr char const* FollowLineUntilValue = "start zone follow line until";
+    constexpr char const* FollowLineLeaderValue = "start zone follow line leader";
+    constexpr char const* CopyLineUntilValue = "start zone copy line until";
+
+    uint32 ZoneKeepClock(PlayerbotAI* botAI, char const* name)
+    {
+        return uint32(std::max(0, botAI->GetAiObjectContext()->GetValue<int>("manual int", name)->Get()));
+    }
+
+    void SetZoneKeepClock(PlayerbotAI* botAI, char const* name, uint32 value)
+    {
+        botAI->GetAiObjectContext()->GetValue<int>("manual int", name)->Set(int(value));
+    }
+}
+
+bool ai::zone_keep::CompleteHolds(Player* bot, PlayerbotAI* botAI)
+{
+    return sPlayerbotAIConfig.questFirstProgressionStartZoneComplete && ai::zone_keep::StartZoneHolds(bot, botAI);
+}
+
+bool ai::zone_keep::FollowGated(Player* bot, PlayerbotAI* botAI, Player* leader)
+{
+    if (!bot || !botAI || !leader || !ai::zone_keep::CompleteHolds(bot, botAI))
+        return false;
+    WorldPosition const leaderPos(leader);
+    uint32 const leaderZone = ai::zone_keep::OutsideStartZone(bot, &leaderPos);
+    if (!ai::zone_keep::FollowDefers(true, leaderZone != 0))
+    {
+        if (ZoneKeepClock(botAI, FollowRefusedSinceValue))
+            SetZoneKeepClock(botAI, FollowRefusedSinceValue, 0);
+        return false;
+    }
+    uint32 const now = uint32(time(nullptr));
+    SetZoneKeepClock(botAI, FollowRefusedSinceValue, ai::zone_keep::NextRefusedSince(ZoneKeepClock(botAI, FollowRefusedSinceValue),
+        ZoneKeepClock(botAI, FollowRefusedLastValue), now));
+    SetZoneKeepClock(botAI, FollowRefusedLastValue, now);
+    if (ai::zone_keep::LineDue(ZoneKeepClock(botAI, FollowLineUntilValue), now) ||
+        ZoneKeepClock(botAI, FollowLineLeaderValue) != leader->GetGUIDLow())
+    {
+        SetZoneKeepClock(botAI, FollowLineUntilValue, now + ai::zone_keep::GateLineSeconds);
+        SetZoneKeepClock(botAI, FollowLineLeaderValue, leader->GetGUIDLow());
+        sLog.outBasic("[ZoneKeep] state=follow_gate bot=%u level=%u zone=%u leader=%u leader_level=%u leader_zone=%u", bot->GetGUIDLow(),
+            bot->GetLevel(), bot->GetZoneId(), leader->GetGUIDLow(), leader->GetLevel(), leaderZone);
+    }
+    return true;
+}
+
+bool ai::zone_keep::GroupLeaveDue(Player* bot, PlayerbotAI* botAI, Player* leader)
+{
+    if (!bot || !botAI || !ai::zone_keep::CompleteHolds(bot, botAI))
+        return false;
+    uint32 const now = uint32(time(nullptr));
+    uint32 const since = ZoneKeepClock(botAI, FollowRefusedSinceValue);
+    if (!ai::zone_keep::LeaveDue(since, ZoneKeepClock(botAI, FollowRefusedLastValue), now, ai::zone_keep::FollowLeaveSeconds))
+        return false;
+    SetZoneKeepClock(botAI, FollowRefusedSinceValue, 0);
+    SetZoneKeepClock(botAI, FollowRefusedLastValue, 0);
+    sLog.outBasic("[ZoneKeep] state=group_leave bot=%u level=%u zone=%u leader=%u refused_s=%u", bot->GetGUIDLow(), bot->GetLevel(),
+        bot->GetZoneId(), leader ? leader->GetGUIDLow() : 0u, now - since);
+    return true;
+}
+
+void ai::zone_keep::NoteGroupCopyGate(Player* bot, PlayerbotAI* botAI, uint32 startZoneRejects, bool chosen)
+{
+    if (!startZoneRejects || !bot || !botAI || !ai::zone_keep::CompleteHolds(bot, botAI))
+        return;
+    uint32 const now = uint32(time(nullptr));
+    if (!ai::zone_keep::LineDue(ZoneKeepClock(botAI, CopyLineUntilValue), now))
+        return;
+    SetZoneKeepClock(botAI, CopyLineUntilValue, now + ai::zone_keep::GateLineSeconds);
+    sLog.outBasic("[ZoneKeep] state=group_copy_gate bot=%u level=%u zone=%u rejects=%u chosen=%u", bot->GetGUIDLow(), bot->GetLevel(),
+        bot->GetZoneId(), startZoneRejects, chosen ? 1u : 0u);
+}
+
+bool ai::zone_keep::ReleasePushApplies(Player* bot, PlayerbotAI* botAI)
+{
+    if (!bot || !botAI || !sPlayerbotAIConfig.questFirstProgressionStartZoneComplete)
+        return false;
+    bool const applies = ai::cohort::Applies(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevelCohort, bot->GetGUIDLow()) &&
+        sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !botAI->HasRealPlayerMaster();
+    PlayerInfo const* info = sObjectMgr.GetPlayerInfo(bot->getRace(), bot->getClass());
+    uint32 const createZone = info ? info->areaId : 0;
+    bool const customStarts = sPlayerbotAIConfig.customRaceStartZones;
+    bool const inStart = ai::zone_keep::StartZoneKnown(bot->getRace(), customStarts, createZone) &&
+        ai::zone_keep::InStartZone(bot->getRace(), customStarts, createZone, bot->GetZoneId());
+    return ai::zone_keep::ReleasePush(true, applies, sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevel, bot->GetLevel(), inStart);
+}
+
 void TravelTarget::NoteQuestObjectiveFailure()
 {
     QuestObjectiveTravelDestination const* objective = dynamic_cast<QuestObjectiveTravelDestination const*>(tDestination);

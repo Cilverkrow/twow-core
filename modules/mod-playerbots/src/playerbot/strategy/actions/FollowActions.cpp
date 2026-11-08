@@ -103,6 +103,15 @@ bool FollowAction::isUseful()
         }
     }
 
+    // twow-repo#601 owner rule R1, package "start-zone rule complete" G1 (AiPlayerbot.QuestFirstProgression.StartZoneMinLevel.Complete,
+    // OB-00 08.11.2026, ZoneKeepPolicy.h): a held bot (below StartZoneMinLevel, .Cohort, a roster bot without a real player master) does
+    // not follow a bot leader whose position is outside its start zone - the SZM repeat lost a held bot that way (far move origin=other).
+    // A real player's character is always followed. The switch first; the area lookup only for a held bot. Switch 0: nothing read.
+    if (followTarget && sPlayerbotAIConfig.questFirstProgressionStartZoneComplete && followTarget->IsPlayer() &&
+        !IsRealPlayerTarget(followTarget) &&
+        ai::zone_keep::FollowGated(bot, ai, static_cast<Player*>(followTarget)))
+        return false;
+
     Formation* formation = AI_VALUE(Formation*, "formation");
 
     if (followTarget && followTarget->IsPlayer() && !QuestFirstRosterFollowingRealMaster(ai))
