@@ -462,7 +462,7 @@ void PlayerbotAI::ObserveCombatProgress()
     // The old target died when the reading changed target or the combat ended: a kill.
     if (progressClock.target && progressClock.target != reading.target)
     {
-        Unit* const previous = GetUnit(ObjectGuid(progressClock.target));
+        Unit* const previous = ProgressUnitOnMap(ObjectGuid(progressClock.target));
         reading.previousTargetDied = previous && !previous->IsAlive();
     }
     ai::combat_rule::ProgressStep const step = ai::combat_rule::ObserveProgress(progressClock, reading,
@@ -492,6 +492,10 @@ void PlayerbotAI::ActOnCombatProgress()
 
     if (progressVerdict != ai::combat_rule::ProgressVerdict::Backoff && progressVerdict != ai::combat_rule::ProgressVerdict::Break)
         return;
+    // A3 step 5 P5 (OB-10 08.11. note (1)): no backoff or break on a pass without a current target (the retarget's own backoff is
+    // part TargetRule); the reading still counts that time.
+    if (!ai::combat_rule::ProgressMayAct(progressClock))
+        return;
     if (!ai::cohort::Applies(sPlayerbotAIConfig.combatRuleProgressGuard, bot->GetGUIDLow()) || ContainsStrategy(STRATEGY_TYPE_HEAL))
         return;
 
@@ -513,7 +517,7 @@ void PlayerbotAI::ActOnCombatProgress()
 void PlayerbotAI::BreakCombatLoop()
 {
     uint32 const nowMs = WorldTimer::getMSTime();
-    Unit* const target = progressClock.target ? GetUnit(ObjectGuid(progressClock.target)) : nullptr;
+    Unit* const target = progressClock.target ? ProgressUnitOnMap(ObjectGuid(progressClock.target)) : nullptr;
     if (target && target->IsAlive())
     {
         unreachableTargets.Add(progressClock.target, uint32(time(nullptr)), sPlayerbotAIConfig.combatRuleProgressIgnoreSeconds);
@@ -522,6 +526,11 @@ void PlayerbotAI::BreakCombatLoop()
     }
     ai::combat_rule::CountProgressAct(bot, ai::combat_rule::ProgressAct::Break);
 
+    // A3 step 5 P5 (CLI-Projekt / OB-00 08.11. point (1), log only): the event below replaces one the frame has not taken yet.
+    bool const supervised = sPlayerbotAIConfig.supervisor && ai::supervisor::Applies(sPlayerbotAIConfig.supervisor, bot->GetGUIDLow());
+    if (supervised && combatLoopPending)
+        ai::combat_rule::CountProgressAct(bot, ai::combat_rule::ProgressAct::LoopOverwrite);
+
     if (sPlayerbotAIConfig.supervisor && ai::supervisor::Applies(sPlayerbotAIConfig.supervisor, bot->GetGUIDLow()))
     {
         combatLoopEvent = ai::combat_rule::MakeCombatLoopEvent(bot, target ? target->GetEntry() : 0, nowMs,
@@ -529,6 +538,22 @@ void PlayerbotAI::BreakCombatLoop()
         combatLoopPending = true;
         ai::combat_rule::CountProgressAct(bot, ai::combat_rule::ProgressAct::LoopEvent);
     }
+}
+
+// A3 step 5 P5 (OB-10 08.11. note (2)): the guard's target lookup stays on the bot's own map. GetUnit finds a player through the
+// global player map and then reads its state from another map's thread; here a player counts only from this map's own player list.
+Unit* PlayerbotAI::ProgressUnitOnMap(ObjectGuid guid)
+{
+    Map* const map = guid ? bot->FindMap() : nullptr;
+    if (!map)
+        return nullptr;
+    if (!guid.IsPlayer())
+        return map->GetAnyTypeCreature(guid);
+    for (auto itr = map->GetPlayers().getFirst(); itr != nullptr; itr = itr->next())
+        if (Player* const player = itr->getSource())
+            if (player->GetObjectGuid() == guid)
+                return player;
+    return nullptr;
 }
 
 ai::supervisor::Supervisor* PlayerbotAI::EnsureSupervisor()

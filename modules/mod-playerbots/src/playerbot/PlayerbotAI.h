@@ -442,6 +442,8 @@ private:
     void ObserveCombatProgress();
     void ActOnCombatProgress();
     void BreakCombatLoop();
+    // A3 step 5 P5: the guard's target lookup on the bot's own map (a player only from this map's player list).
+    Unit* ProgressUnitOnMap(ObjectGuid guid);
     // A3 step 3 (ADR-0041, AiPlayerbot.Supervisor, default 0): the supervisor of this bot, made on the first engine pass the
     // switch applies to it.
     ai::supervisor::Supervisor* EnsureSupervisor();
@@ -1187,6 +1189,8 @@ public:
         combatLoopPending = false;
         return true;
     }
+    // A3 step 5 P5 (CombatRule.TargetRule): the "select new target" backoff of this bot (bot's thread only).
+    ai::combat_rule::TargetBackoff& TargetBackoffState() { return targetBackoff; }
     std::string GetTopValueNames() const { std::lock_guard<std::mutex> lock(valueNamesMutex); return topValueNames; }
     // #421 C: set on the bot's thread, taken and acted on by the world thread.
     bool TakeQuestRescueRequest() { return questRescueRequested.exchange(false); }
@@ -1432,6 +1436,7 @@ protected:
     bool progressBackoffPending = false;   // a ProgressGuard backoff wait is running
     bool combatLoopPending = false;   // a CombatLoop event waits for the supervisor's CombatGuard frame
     ai::supervisor::Event combatLoopEvent;
+    ai::combat_rule::TargetBackoff targetBackoff;   // A3 step 5 P5 (CombatRule.TargetRule): armed after an empty pick
     uint32 tankKitLevel = 0;   // twow-repo#602 (Rotation.TankKitFromLevel): the level the strategies were last built for; a crossing of the tank key level rebuilds them
     ObjectGuid losCacheGuid;   // twow-repo#602 (Rotation.LosCacheMs): the target of the cached line-of-sight verdict
     bool losCacheInLos = true;   // the cached verdict

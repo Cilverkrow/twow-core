@@ -418,6 +418,7 @@ struct ProgressGuardCounters
     std::atomic<std::uint64_t> woken[2] {};
     std::atomic<std::uint64_t> breaks[2] {};
     std::atomic<std::uint64_t> loopEvents[2] {};   // breaks that left a CombatLoop event for the supervisor (switch on for the bot)
+    std::atomic<std::uint64_t> loopOverwrites[2] {};   // of those, the event before was still waiting (not taken yet): it is replaced
     std::atomic<std::uint64_t> kills[2] {};
     std::atomic<std::uint64_t> killMs[2] {};
     std::atomic<std::uint64_t> cls[Bands][Classes][Fields][2] {};
@@ -426,6 +427,131 @@ struct ProgressGuardCounters
 inline ProgressGuardCounters& ProgressGuardGlobal()
 {
     static ProgressGuardCounters counters;
+    return counters;
+}
+
+// The guard acts (backoff, break) only on a reading with a current target: without one nothing can be damaged or approached, so
+// the clock would back off and break a pass that only waits for the retarget (OB-10 08.11. note (1); the retarget has its own
+// backoff in part TargetRule). The time still counts as combat time without progress.
+inline bool ProgressMayAct(ProgressClock const& c)
+{
+    return c.target != 0;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// Part TargetRule (AiPlayerbot.CombatRule.TargetRule; design A3-S5-PROGRESSGUARD-ENTWURF.md v1.1 §3, OB-00 08.11.2026 (a)).
+//
+// The "select new target" backoff. After a kill the bot keeps "has attackers" true while the dps/tank assist picks nothing from
+// "possible attack targets" (W24 pattern B: 580 FAILED in 29 s, RetargetEmptyPolicy.h). Each of those passes runs the trigger and the
+// action again. With the part on, an empty pick arms the backoff: the "invalid target" trigger stays quiet while the current target
+// is empty, until the attacker set changes, the bot takes damage or TargetBackoffMs pass. A current target ends the backoff. No
+// candidate cache: the target values already compute at most once per wall-clock second (Value.h, CalculatedValue::Get).
+
+struct TargetBackoff
+{
+    bool armed = false;
+    std::uint32_t sinceMs = 0;
+    std::uint64_t attackersKey = 0;
+    std::uint32_t health = 0;
+};
+
+enum class TargetBackoffVerdict : std::uint8_t
+{
+    Select = 0,       // not armed: the trigger checks as before
+    Skip,             // armed and nothing changed: the trigger stays quiet
+    WokenAttackers,   // the attacker set changed
+    WokenHit,         // the bot's health dropped since the empty pick
+    WokenTime,        // TargetBackoffMs passed
+};
+
+// An order-free key of the attacker set (raw guids): the sum of a 64-bit mix of each guid. Equal sets give equal keys.
+inline std::uint64_t MixGuid(std::uint64_t guid)
+{
+    std::uint64_t z = guid + 0x9E3779B97F4A7C15ull;
+    z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ull;
+    z = (z ^ (z >> 27)) * 0x94D049BB133111EBull;
+    return z ^ (z >> 31);
+}
+
+template <class Range>
+inline std::uint64_t AttackersKey(Range const& rawGuids)
+{
+    std::uint64_t key = 0;
+    for (std::uint64_t const guid : rawGuids)
+        key += MixGuid(guid);
+    return key;
+}
+
+inline void ArmTargetBackoff(TargetBackoff& b, std::uint32_t nowMs, std::uint64_t attackersKey, std::uint32_t health)
+{
+    b.armed = true;
+    b.sinceMs = nowMs;
+    b.attackersKey = attackersKey;
+    b.health = health;
+}
+
+// The check of an armed backoff while the current target is empty. A wake disarms it: the trigger checks as before on this pass.
+// Wrap-safe ms.
+inline TargetBackoffVerdict CheckTargetBackoff(TargetBackoff& b, std::uint32_t nowMs, std::uint64_t attackersKey, std::uint32_t health,
+    std::uint32_t backoffMs)
+{
+    if (!b.armed)
+        return TargetBackoffVerdict::Select;
+    TargetBackoffVerdict verdict = TargetBackoffVerdict::Skip;
+    if (attackersKey != b.attackersKey)
+        verdict = TargetBackoffVerdict::WokenAttackers;
+    else if (health < b.health)
+        verdict = TargetBackoffVerdict::WokenHit;
+    else if (std::uint32_t(nowMs - b.sinceMs) >= backoffMs)
+        verdict = TargetBackoffVerdict::WokenTime;
+    if (verdict != TargetBackoffVerdict::Skip)
+        b.armed = false;
+    return verdict;
+}
+
+// Clamp for the .dist key: TargetBackoffMs 250..10000 (2000).
+inline std::uint32_t ClampTargetBackoffMs(int value)
+{
+    return value < 250 ? 250u : (value > 10000 ? 10000u : std::uint32_t(value));
+}
+
+// The target values whose cost the "[CombatRule] part=TargetValues" line shows (OB-00 08.11.: descriptive, log only, no lever).
+enum class TargetValue : unsigned { Attackers = 0, PossibleAttackTargets, DpsTarget, TankTarget, InvalidTarget, Count };
+
+inline char const* TargetValueName(TargetValue v)
+{
+    switch (v)
+    {
+        case TargetValue::Attackers: return "attackers";
+        case TargetValue::PossibleAttackTargets: return "possible_attack_targets";
+        case TargetValue::DpsTarget: return "dps_target";
+        case TargetValue::TankTarget: return "tank_target";
+        case TargetValue::InvalidTarget: return "invalid_target";
+        case TargetValue::Count: break;
+    }
+    return "unknown";
+}
+
+// Per-minute counts for the "[CombatRule] part=TargetRule" and "part=TargetValues" lines (switch on), increments, index 0 = cohort A,
+// 1 = cohort B. Empty picks (armed), skipped trigger checks, wakes by cause, picks that ended an armed backoff; per target value the
+// number of computes and their time in us (both cohorts).
+struct TargetRuleCounters
+{
+    static constexpr unsigned Values = unsigned(TargetValue::Count);
+
+    std::atomic<std::uint64_t> failed[2] {};
+    std::atomic<std::uint64_t> skipped[2] {};
+    std::atomic<std::uint64_t> wokenAttackers[2] {};
+    std::atomic<std::uint64_t> wokenHit[2] {};
+    std::atomic<std::uint64_t> wokenTime[2] {};
+    std::atomic<std::uint64_t> wokenTarget[2] {};   // a current target came another way while armed
+    std::atomic<std::uint64_t> valueCalcs[Values][2] {};
+    std::atomic<std::uint64_t> valueUs[Values][2] {};
+};
+
+inline TargetRuleCounters& TargetRuleGlobal()
+{
+    static TargetRuleCounters counters;
     return counters;
 }
 }
