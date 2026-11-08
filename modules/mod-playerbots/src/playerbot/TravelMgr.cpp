@@ -1825,16 +1825,31 @@ namespace
         return uint64(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count());
     }
 
-    // The caller holds staleObjectiveMutex (publishes are therefore in store order).
+    // A snapshot is published (guarded by staleObjectiveMutex): with the switch 0 it is withdrawn at the next change of the marked set.
+    bool staleObjectiveSnapshotLive = false;
+
+    // The caller holds staleObjectiveMutex (publishes are therefore in store order). A reload 1 -> 0 -> 1 must not leave the readers
+    // on a snapshot that missed the marks and credits of the 0 phase (OB-10 review #958): with the switch 0 the first change of the
+    // marked set withdraws a published snapshot (null pointer, then the version), the readers fall back to the per-thread path until
+    // the next publish under 1. Without such a change the old snapshot still gives the same answers (untilMs is checked per lookup).
     void PublishStaleObjectiveSnapshot(uint32 nowMs)
     {
         if (!sPlayerbotAIConfig.questFirstProgressionStaleObjectiveFilterLockFree)
+        {
+            if (staleObjectiveSnapshotLive)
+            {
+                std::atomic_store_explicit(&staleObjectivePublished, std::shared_ptr<ai::stale_objective::Snapshot const>(), std::memory_order_release);
+                staleObjectivePublishVersion.fetch_add(1, std::memory_order_acq_rel);
+                staleObjectiveSnapshotLive = false;
+            }
             return;
+        }
         auto const start = std::chrono::steady_clock::now();
         std::shared_ptr<ai::stale_objective::Snapshot const> snapshot =
             std::make_shared<ai::stale_objective::Snapshot const>(ai::stale_objective::BuildSnapshot(staleObjectiveStore, nowMs));
         std::atomic_store_explicit(&staleObjectivePublished, std::move(snapshot), std::memory_order_release);
         staleObjectivePublishVersion.fetch_add(1, std::memory_order_acq_rel);
+        staleObjectiveSnapshotLive = true;
         staleObjectivePublishes.fetch_add(1, std::memory_order_relaxed);
         staleObjectivePublishUs.fetch_add(StaleObjectiveMicrosSince(start), std::memory_order_relaxed);
     }
