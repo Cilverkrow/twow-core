@@ -4,6 +4,7 @@
 #include "playerbot/PathFailPolicy.h"
 #include "playerbot/IslandGuardPolicy.h"   // twow-repo#575 A3 step 4 M-c: Path.IslandGuard loader clamps
 #include "playerbot/CorpseRunFirstPolicy.h"   // twow-repo#575 A3 step 4 S4-1: Revive.CorpseRunFirst loader clamps
+#include "playerbot/RepopDeadOnlyPolicy.h"    // twow-repo#575 A3 step 4 S4-2: Rescue.RepopDeadOnly loader clamp
 #include "playerbot/PosStuckPolicy.h"
 #include "playerbot/RoutePrecheckPolicy.h"
 #include "playerbot/AreaTeamPolicy.h"
@@ -19,6 +20,7 @@
 #include "playerbot/GroupManagerPolicy.h"   // A3 step 6: BotGroups.Manager mode
 #include "playerbot/SupervisorPolicy.h"   // A3 step 3: Supervisor mode
 #include "playerbot/QuestBookPolicy.h"   // A3 step 2: QuestBook mode
+#include "playerbot/LockoutPolicy.h"   // L1: BotGroups.ResetRaidsRealInviterOnly parse
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
@@ -43,6 +45,7 @@
 #include "playerbot/LevelGuardPolicy.h"   // twow-repo#601 cand4 lever (ii): config clamps + the startup grid
 #include "playerbot/R01CohortPolicy.h"
 #include "playerbot/LosCachePolicy.h"   // twow-repo#602 (Rotation.LosCacheMs): the read's bounds
+#include "playerbot/RescueHubPolicy.h"   // twow-repo#575 RG-a (QuestRescue.HomeHubs): the mode clamp
 
 #include <iostream>
 #include <numeric>
@@ -841,6 +844,7 @@ bool PlayerbotAIConfig::Initialize()
     grindCapLowLevelMargin = config.GetIntDefault("AiPlayerbot.GrindCap.LowLevelMargin", 2);
     questRescueIdleMinutes = config.GetIntDefault("AiPlayerbot.QuestRescue.IdleMinutes", 30);
     questRescueKeepRequestWhenFull = config.GetBoolDefault("AiPlayerbot.QuestRescue.KeepRequestWhenFull", false);
+    questRescueHomeHubs = ai::rescue_hub::ClampMode(config.GetIntDefault("AiPlayerbot.QuestRescue.HomeHubs", 0));
     grindAvoidMaxDeaths = config.GetIntDefault("AiPlayerbot.GrindAvoid.MaxDeaths", 0);
     grindAvoidWindowSeconds = std::max<uint32>(60, config.GetIntDefault("AiPlayerbot.GrindAvoid.WindowSeconds", 3600));
     grindAvoidSeconds = std::max<uint32>(60, config.GetIntDefault("AiPlayerbot.GrindAvoid.AvoidSeconds", 3600));
@@ -884,6 +888,9 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[GroupMgr] config key=Manager value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", botGroupsManager);
         botGroupsManager = 0;
     }
+    // L1 (owner 07.11.2026): code default 1; only "0" is off, any other value is 1. Read as a string: GetIntDefault is atoi,
+    // which would turn a non-numeric value such as "on" into 0 (rollback).
+    botGroupsResetRaidsRealInviterOnly = ai::lockout::SwitchOn(config.GetStringDefault("AiPlayerbot.BotGroups.ResetRaidsRealInviterOnly", "1"));
     // A3 lever 2 (ADR-0041): the group write path (GroupOpPolicy.h WritePathApplies); an unknown mode is off.
     botGroupsWritePath = uint32(config.GetIntDefault("AiPlayerbot.BotGroups.WritePath", 0));
     if (!ai::group_ops::ValidMode(botGroupsWritePath))
@@ -898,6 +905,10 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[Supervisor] config key=Supervisor value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", supervisor);
         supervisor = 0;
     }
+    // A3 step 5 (ADR-0041): the combat rule, part HealerStart (CombatRulePolicy.h); an unknown mode is off.
+    combatRuleHealerStart = uint32(config.GetIntDefault("AiPlayerbot.CombatRule.HealerStart", 0));
+    if (combatRuleHealerStart > 3)
+        combatRuleHealerStart = 0;
     // A3 step 2 (ADR-0041): the quest book core QB-K (QuestBookPolicy.h, QuestBook.cpp); an unknown mode is off.
     questBook = uint32(config.GetIntDefault("AiPlayerbot.QuestBook", 0));
     if (!ai::questbook::ValidMode(questBook))
@@ -1121,6 +1132,8 @@ bool PlayerbotAIConfig::Initialize()
     // twow-repo#575 A3 step 4 S4-1 (Revive.CorpseRunFirst): an unknown mode is off; MaxSeconds clamped to 120..1800 (CorpseRunFirstPolicy.h).
     reviveCorpseRunFirst = ai::corpse_first::ClampMode(config.GetIntDefault("AiPlayerbot.Revive.CorpseRunFirst", 0));
     reviveCorpseRunFirstMaxSeconds = ai::corpse_first::ClampMaxSeconds(config.GetIntDefault("AiPlayerbot.Revive.CorpseRunFirst.MaxSeconds", int(ai::corpse_first::DefaultMaxSeconds)));
+    // twow-repo#575 A3 step 4 S4-2 (Rescue.RepopDeadOnly): an unknown mode is off (RepopDeadOnlyPolicy.h).
+    rescueRepopDeadOnly = ai::repop_dead_only::ClampMode(config.GetIntDefault("AiPlayerbot.Rescue.RepopDeadOnly", 0));
     questFirstProgressionTurnInDeathRouteCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInDeathRouteCooldownSeconds", 3600));
     questFirstProgressionTurnInParkFailures = std::min<uint32>(255, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInParkFailures", 0));
     questFirstProgressionTurnInParkWindowSeconds = std::min<uint32>(DAY, std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInParkWindowSeconds", 3600)));
@@ -1957,6 +1970,7 @@ bool PlayerbotAIConfig::Initialize()
             {"BotGroups.OpQueueAlertAgeSeconds", Value(botGroupsOpQueueAlertAgeSeconds)},
             {"BotGroups.OpQueueMaxDepth", Value(botGroupsOpQueueMaxDepth)},
             {"BotGroups.OpQueueOpsPerTick", Value(botGroupsOpQueueOpsPerTick)},
+            {"BotGroups.ResetRaidsRealInviterOnly", Value(botGroupsResetRaidsRealInviterOnly)},
             {"BotGroups.WorldThreadDefer", Value(botGroupsWorldThreadDefer)},
             {"BotGroups.WritePath", Value(botGroupsWritePath)},
             {"BotUpdateTrace", Value(botUpdateTrace)},
@@ -1964,6 +1978,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Buy.VendorTemplateItems", Value(buyVendorTemplateItems)},
             {"CastWait.Preparing", Value(castWaitPreparing)},
             {"CheatItem.Trace", Value(cheatItemTrace)},
+            {"CombatRule.HealerStart", Value(combatRuleHealerStart)},
             {"Crafting.Consumables", Value(craftingConsumables)},
             {"Crafting.Cooking", Value(craftingCooking)},
             {"Crafting.Fishing", Value(craftingFishing)},
@@ -2070,7 +2085,9 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestLoop.RelationArriveRpgTarget", Value(questLoopRelationArriveRpgTarget)},
             {"QuestLoop.RelationWorkNoGrind", Value(questLoopRelationWorkNoGrind)},
             {"QuestLoop.TurnInWorkDeathNotRoute", Value(questLoopTurnInWorkDeathNotRoute)},
+            {"QuestRescue.HomeHubs", Value(questRescueHomeHubs)},
             {"QuestRescue.KeepRequestWhenFull", Value(questRescueKeepRequestWhenFull)},
+            {"Rescue.RepopDeadOnly", Value(rescueRepopDeadOnly)},
             {"Revive.CorpseRunFirst", Value(reviveCorpseRunFirst)},
             {"Revive.CorpseRunFirst.MaxSeconds", Value(reviveCorpseRunFirstMaxSeconds)},
             {"Revive.SpiritHealerFull", Value(reviveSpiritHealerFull)},

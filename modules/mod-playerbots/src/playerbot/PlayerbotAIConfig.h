@@ -864,6 +864,7 @@ public:
     // #421: rescue teleport after this many minutes without quest progress.
     uint32 questRescueIdleMinutes = 30;
     bool questRescueKeepRequestWhenFull = false;  // twow-repo#587: a pending rescue request stays with the bot while the global limit is used up
+    uint32 questRescueHomeHubs = 0;  // twow-repo#575 RG-a: the quest rescue's anchor table (own start-zone hub < L5, next zone L5-10; cohort modes)
     uint32 grindAvoidMaxDeaths = 0;       // 0 = off
     uint32 grindAvoidWindowSeconds = 3600;
     uint32 grindAvoidSeconds = 3600;
@@ -911,6 +912,10 @@ public:
     // A3 step 6 (ADR-0041, OB-00 06.11.2026): the group manager of roster bots on the world thread (GroupManagerPolicy.h,
     // GroupManager.cpp). Scaffold: no decision yet. 0 off, 1 all, 2 cohort B, 3 cohort A; other = 0 + error line.
     uint32 botGroupsManager = 0;
+    // L1 (owner 07.11.2026, owner-ordered: code default 1, 0 = rollback, any other value = 1): a bot resets its raid lockouts
+    // ("reset raids" in the accept tail) only on a real player's invite, and keeps out of another copy of a raid it is
+    // perm-bound to (LockoutPolicy.h, LockoutGuard.cpp). 0 = the old behaviour: reset raids on every accepted invite.
+    bool botGroupsResetRaidsRealInviterOnly = true;
     // A3 lever 2 (ADR-0041 amendment 4.2, OB-00 07.11.2026): the group write path - the membership changes (leave, accept,
     // invite, leader) of in-scope bots run as world-thread ops (GroupOps.cpp). 0 off, 1 all, 2 cohort B, 3 cohort A; other = 0
     // + error line.
@@ -918,6 +923,10 @@ public:
     // A3 step 3 (ADR-0041, OB-00 06.11.2026): the per-bot supervisor (SupervisorPolicy.h, Supervisor.cpp). Scaffold: it only
     // counts its engine passes. 0 off, 1 all, 2 cohort B, 3 cohort A; other = 0 + error line.
     uint32 supervisor = 0;
+    // A3 step 5 (ADR-0041, OB-00 07.11.2026): the combat rule (CombatRulePolicy.h, CombatRule.cpp), one switch per part.
+    // HealerStart: a holy paladin / restoration druid may attack like a healer with "offdps" (their contexts have no offdps
+    // creator, so the healer gate refused every attack). 0 off (default, the old rule), 1 all, 2 cohort B, 3 cohort A; other = 0.
+    uint32 combatRuleHealerStart = 0;
     // A3 step 2 (ADR-0041, OB-00 07.11.2026): the quest book core QB-K (QuestBookPolicy.h, QuestBook.cpp). 0 off, 1 all, 2 cohort B,
     // 3 cohort A; other = 0 + error line. Shadow: the other roster bots keep a book that only writes the KPI lines.
     uint32 questBook = 0;
@@ -1118,6 +1127,9 @@ public:
     // the reclaim at the corpse runs, the spirit healer only with a reason (no corpse, sickness, durability, loop, timeout).
     uint32 reviveCorpseRunFirst = 0;
     uint32 reviveCorpseRunFirstMaxSeconds = 600;
+    // twow-repo#575 A3 step 4 S4-2 (AiPlayerbot.Rescue.RepopDeadOnly, RepopDeadOnlyPolicy.h): cohort mode 0 off / 1 all / 2 B / 3 A;
+    // repop only for a dead bot; an alive bot without a usable hearthstone gets QuestRescue, else a reset.
+    uint32 rescueRepopDeadOnly = 0;
     uint32 questFirstProgressionTurnInDeathRouteCooldownSeconds = 3600;
     // twow-repo#485: a finished quest whose turn-in failed TurnInParkFailures times
     // within TurnInParkWindowSeconds is parked for TurnInParkSeconds (0 = off, the

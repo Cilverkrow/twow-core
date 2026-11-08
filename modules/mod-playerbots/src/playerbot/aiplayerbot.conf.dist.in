@@ -1219,6 +1219,13 @@ AiPlayerbot.QuestRescue.IdleMinutes = 30
 # stays with the bot for the next scan instead of being dropped. Matters for stranded bots (ZoneExit.StrandedRescueAfter),
 # which only ask again after more empty quest searches. 0 = as before (default).
 AiPlayerbot.QuestRescue.KeepRequestWhenFull = 0
+# twow-repo#575 RG-a (OB-00 08.11.2026): the quest rescue's first answer is an anchor table (RescueHubPolicy.h, OB-50 innkeeper
+# spawns): below L5 a bot goes to its race's start-zone hub (Goldshire, Kharanos, Dolanaar, Razor Hill, Brill, Bloodhoof; high elf
+# up to L9 Brinthilien / Alah'Thalas) instead of no target (R1) or another race's start point; night elves and undead L5-10 go to
+# the next zone on their home continent (Auberdine, The Sepulcher), unless StartZoneMinLevel still gates the level. No row or no
+# spawn left: the legacy targets as before. Logs [RescueHub] and [RescueHubMin].
+# Cohort mode: 0 = off (default), 1 = all bots, 2 = cohort B (odd guid), 3 = cohort A (even guid).
+AiPlayerbot.QuestRescue.HomeHubs = 0
 # A creature entry that killed the bot GrindAvoid.MaxDeaths times within
 # WindowSeconds is skipped as a grind target for AvoidSeconds. 0 = off.
 AiPlayerbot.GrindAvoid.MaxDeaths = 0
@@ -1355,6 +1362,40 @@ AiPlayerbot.BotGroups.OpQueueAlertAgeSeconds = 60
 # Mode (in-realm A/B, cohort parity): 0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid), 3 = only
 # cohort A (even low guid). Any other value acts like 0 (one error line at load).
 AiPlayerbot.BotGroups.Manager = 0
+# L1 (owner 07.11.2026, owner-ordered behaviour change): a bot resets its raid lockouts ("reset raids", which drops every bind
+# except the one of its current map, PERM included) only when a real player invites it. An invite by another bot or by a
+# bot-only world-thread group manager (ad-hoc, quest groups) keeps the bot's PERM raid binds; an accept run by the group op
+# queue (BOT-12, A3 lever 2 WritePath) checks its inviter like a direct accept. "Inviter" is the group
+# leader: a real assistant inviting into a bot-led raid counts as a bot invite (binds kept). 5-man dungeons carry no PERM
+# binds in this build, so in practice this concerns raid maps only.
+# The split guard (switch 1 only): a bot that keeps a PERM bind on raid map M declines an invite from a leader who stands in
+# another copy of M (S1), and does not relay an area trigger, a teleport command, a summon or .bot summon into another copy
+# of M toward a player on M (S3). It reads only the bot's own binds and the other player's map and instance id.
+# Timing: when the master walks through the entrance, the bot's area-trigger relay waits while the master is still on its
+# loading screen toward M (only a bot with a PERM bind on M), then checks the master's copy.
+# Blind spots: any other target not (yet) on M is not checked (the "teleport" command and the trigger reach do not wait);
+# core-only summons (ritual of summoning, meeting stones through the core) run no module code and cannot be vetoed - the core
+# still puts the bot into its own PERM copy (split group, no crash). The bot's own binds can be written by a group disband
+# on another map thread while the guard reads them (the core's own reads race the same way).
+# Out of scope: the GroupOps join decision (S2, follows with the GroupManager pairs), the dungeon-clear test-run unbinds, a bot
+# leader that keeps PERM A spreading A to members who enter (real players included; core behaviour, only counted, see
+# leader_bind_carry), counting a bot with a real master as "real", the sibling asserts in Map.cpp, a runtime core hook.
+# "debug do reset raids" by a master stays manual.
+# leader_bind_carry (OB-00 07.11.2026) is count only: no rule, no behaviour change, the same at 0 and 1 (the rule comes later
+# with the raid ADR, O7). One count per entry of a group member (not the leader) into a dungeon map M by a far teleport, where
+# the member had no own PERM bind on M at its teleport, the core PERM-bound it on entry to the copy of the group's PERM bind,
+# and the leader is a bot holding its own PERM bind on that copy. leader_carry_real = the entering member is a real player,
+# leader_carry_bot = a bot. The origin of the group's PERM bind is not visible at entry, so both count: a bind the bot
+# leader carried in (group create, leader change) and one the group earned in the current run (a boss kill with the leader
+# inside), e.g. a released member running back in or a member who joins mid-run.
+# Not counted: an entry at login, a worldport ack off the world thread, an offline leader (a leader that is itself on a
+# far teleport is still read).
+# 1 = on (default), 0 = the old behaviour (reset raids on every accepted invite, no split guard; rollback). Any other value
+# acts like 1. Line (increments of the minute, world thread, both values):
+# `[Lockout] minute mode=<0|1> reset_real= reset_bot= keep_bot= split_decline= split_entry= leader_carry_real= leader_carry_bot=`
+# It is printed only in a minute with a non-zero field: a missing minute means every field was 0. reset_bot counts only at
+# 0, keep_bot only at 1.
+AiPlayerbot.BotGroups.ResetRaidsRealInviterOnly = 1
 # A3 lever 2 (ADR-0041 amendment 4.2, OB-00 07.11.2026): the group write path. With the mode on for a bot, every group
 # membership change its own map thread would make runs as an op of the world-thread group queue above (OpQueueOpsPerTick,
 # OpQueueMaxDepth and the heavy-tick rule apply; the queue runs also with OpQueue = 0): its leaves ("leave", "party command",
@@ -1392,6 +1433,17 @@ AiPlayerbot.BotGroups.WritePath = 0
 # every value behaves like 0 today. Mode (in-realm A/B, cohort parity): 0 = off (default, rollback), 1 = every bot, 2 = only
 # cohort B (odd low guid), 3 = only cohort A (even low guid). Any other value acts like 0 (one error line at load).
 AiPlayerbot.Supervisor = 0
+# A3 step 5 (ADR-0041, OB-00 07.11.2026): the combat rule - one module that owns the combat decisions (who may start a fight,
+# rest before the pull, target choice, flee point, loop guard), one switch per part. Design: A3-S5-KAMPFREGEL-ENTWURF.md.
+# Part HealerStart (A3-AKTIONS-VERDRAHTUNG F2 (a)): the healer gate of attack my target / attack RTI target / attack anything
+# lets a bot with a heal strategy attack only with "offdps" in its combat engine. Only the priest and shaman contexts create
+# "offdps", so a holy paladin or a restoration druid that keeps its heal strategy (in a group; solo free bots switch to
+# retribution / balance) never starts a fight. With the part on, these two healers pass the gate like a healer with offdps.
+# Nothing else changes: no trigger, action, multiplier or heal priority. Minute line "[CombatRule] part=HealerStart mode=
+# asked=A/B lifted=A/B cls=" (gate checks the old rule refused, per cohort, and how many the part opened; increments).
+# Mode (in-realm A/B, cohort parity): 0 = off (default, rollback: the old rule), 1 = every bot, 2 = only cohort B (odd low
+# guid), 3 = only cohort A (even low guid). Any other value acts like 0.
+AiPlayerbot.CombatRule.HealerStart = 0
 # A3 step 2 (ADR-0041, OB-00 07.11.2026): the quest book core (QB-K). One book per roster bot on its own (no real player master)
 # answers accept, travel target and turn-in with one level window, one progress notion (credit per quest, not objective text) and
 # the QB5 exclusion list, and a complete quest ends the grind fallback (QB4). Where the switch does not apply, every old rule stays.
@@ -2010,6 +2062,14 @@ AiPlayerbot.Revive.PreferCorpseRun = 0
 AiPlayerbot.Revive.CorpseRunFirst = 0
 # Seconds dead after which the spirit healer is taken (120..1800).
 AiPlayerbot.Revive.CorpseRunFirst.MaxSeconds = 600
+# twow-repo#575 A3 step 4 S4-2 (OB-00 07.11.2026): repop only when dead. "unstuck" sent an ALIVE bot to repop for "move long
+# stuck" / "combat long stuck" whenever its hearthstone was not useful (e.g. the homebind zone above its level): a teleport
+# to the race start or homebind, a group leave, the travel target nulled. With the switch the repop is not useful for an alive
+# bot; instead it asks for QuestRescue (the level-matched hub teleport with its per-bot and global limits) and gets a reset
+# when the per-bot limit stops that. The hearthstone first, as before. A dead bot (ghost) and a bot led by a real player keep
+# the legacy repop. Logged as [Rescue] ... alive=1 (each fallback) and [RepopDeadOnlyMin] (per minute).
+# 0 = off (default), 1 = every bot, 2 = cohort B (odd guid), 3 = cohort A (even guid); any other value is off.
+AiPlayerbot.Rescue.RepopDeadOnly = 0
 AiPlayerbot.QuestFirstProgression.TurnInDeathRouteCooldownSeconds = 3600
 # twow-repo#485: a finished quest whose turn-in keeps failing is parked instead
 # of holding the bot. A failure of a roster bot on its own is: a stall (recovery

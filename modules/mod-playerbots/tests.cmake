@@ -2421,6 +2421,21 @@ add_test(NAME known_spell_nodes_policy
   COMMAND known_spell_nodes_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# A3 step 5 (ADR-0041; OB-00 07.11.2026): the combat rule, pure parts (CombatRulePolicy.h; part HealerStart, default 0);
+# contract in t/contracts.d.
+add_executable(combat_rule_policy_tests
+  "${PB_MODULE_DIR}/t/combat_rule_policy_tests.cpp")
+
+target_include_directories(combat_rule_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(combat_rule_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME combat_rule_policy
+  COMMAND combat_rule_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # twow-repo#601 R01 L1 (AiPlayerbot.ActivityTrace, owner decision D1 19.10.2026): [BotActivity] / [BotActivityMin].
 add_executable(bot_activity_policy_tests
   "${PB_MODULE_DIR}/t/bot_activity_policy_tests.cpp")
@@ -3319,6 +3334,21 @@ set_target_properties(corpse_run_first_policy_tests PROPERTIES
 
 add_test(NAME corpse_run_first_policy
   COMMAND corpse_run_first_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#575 A3 step 4 S4-2 (AiPlayerbot.Rescue.RepopDeadOnly, OB-00 07.11.2026): repop only when dead
+# (RepopDeadOnlyPolicy.h rules: the gate, the alive step, counters); source contract in t/contracts.d.
+add_executable(repop_dead_only_policy_tests
+  "${PB_MODULE_DIR}/t/repop_dead_only_policy_tests.cpp")
+
+target_include_directories(repop_dead_only_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(repop_dead_only_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME repop_dead_only_policy
+  COMMAND repop_dead_only_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
 # twow-repo#591 (PERF-AB-01): budget exemption for bots without a travel target, configurable limit.
@@ -4450,6 +4480,21 @@ add_test(NAME spirit_healer_revive_policy
   COMMAND spirit_healer_revive_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#575 RG-a (AiPlayerbot.QuestRescue.HomeHubs, OB-00 08.11.2026): the quest rescue's anchor table (RescueHubPolicy.h:
+# rows per race and level band, R1 gate for next_zone, counters); source contract in t/contracts.d.
+add_executable(rescue_hub_policy_tests
+  "${PB_MODULE_DIR}/t/rescue_hub_policy_tests.cpp")
+
+target_include_directories(rescue_hub_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(rescue_hub_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME rescue_hub_policy
+  COMMAND rescue_hub_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 add_test(NAME profession_travel_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
@@ -4482,6 +4527,22 @@ set_target_properties(release_veto_tests PROPERTIES
 
 add_test(NAME release_veto
   COMMAND release_veto_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# L1 (owner 07.11.2026, AiPlayerbot.BotGroups.ResetRaidsRealInviterOnly): the pure lockout rules (LockoutPolicy.h; no game
+# header) - I0 perm-first invariant, LockSplit, ResetRaidsOnJoin, the switch parse, the minute line. The game side is pinned
+# by t/contracts.d/l1_lockout_source_contract_tests.cmake.
+add_executable(lockout_policy_tests
+  "${PB_MODULE_DIR}/t/lockout_policy_tests.cpp")
+
+target_include_directories(lockout_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(lockout_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME lockout_policy
+  COMMAND lockout_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
 # --------------------------------------------------------------------------
