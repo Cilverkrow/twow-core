@@ -135,6 +135,86 @@ void CountRest(PlayerbotAI* ai, RestNeed need)
         c.restMana[cohort].fetch_add(1, std::memory_order_relaxed);
 }
 
+ProgressLimits ProgressLimitsFromConfig()
+{
+    ProgressLimits limits;
+    limits.deadlineMs = sPlayerbotAIConfig.combatRuleProgressDeadlineSeconds * 1000;
+    limits.breakMs = sPlayerbotAIConfig.combatRuleProgressBreakSeconds * 1000;
+    return limits;
+}
+
+void CountProgress(Player* bot, ProgressStep const& step)
+{
+    if (!step.episodeStarted && !step.combatMs && !step.kill)
+        return;
+    ProgressGuardCounters& c = ProgressGuardGlobal();
+    unsigned const cohort = CohortIndex(bot);
+    uint32 const cls = bot->getClass() < ProgressGuardCounters::Classes ? bot->getClass() : 0;
+    unsigned const band = ProgressBand(bot->GetLevel());
+    if (step.episodeStarted)
+        c.episodes[cohort].fetch_add(1, std::memory_order_relaxed);
+    if (step.combatMs)
+    {
+        c.combatMs[cohort].fetch_add(step.combatMs, std::memory_order_relaxed);
+        c.cls[band][cls][ProgressGuardCounters::CombatMs][cohort].fetch_add(step.combatMs, std::memory_order_relaxed);
+    }
+    if (step.noProgressMs)
+    {
+        c.noProgressMs[cohort].fetch_add(step.noProgressMs, std::memory_order_relaxed);
+        c.cls[band][cls][ProgressGuardCounters::NoProgressMs][cohort].fetch_add(step.noProgressMs, std::memory_order_relaxed);
+    }
+    if (step.longLoop)
+        c.longLoops[cohort].fetch_add(1, std::memory_order_relaxed);
+    if (step.kill)
+    {
+        c.kills[cohort].fetch_add(1, std::memory_order_relaxed);
+        c.killMs[cohort].fetch_add(step.killMs, std::memory_order_relaxed);
+        c.cls[band][cls][ProgressGuardCounters::Kills][cohort].fetch_add(1, std::memory_order_relaxed);
+        c.cls[band][cls][ProgressGuardCounters::KillMs][cohort].fetch_add(step.killMs, std::memory_order_relaxed);
+    }
+}
+
+void CountCombatPass(Player* bot, bool noOk, bool swing)
+{
+    ProgressGuardCounters& c = ProgressGuardGlobal();
+    unsigned const cohort = CohortIndex(bot);
+    uint32 const cls = bot->getClass() < ProgressGuardCounters::Classes ? bot->getClass() : 0;
+    unsigned const band = ProgressBand(bot->GetLevel());
+    c.cls[band][cls][ProgressGuardCounters::Passes][cohort].fetch_add(1, std::memory_order_relaxed);
+    if (noOk)
+        c.cls[band][cls][ProgressGuardCounters::NoOk][cohort].fetch_add(1, std::memory_order_relaxed);
+    if (noOk && swing)
+        c.cls[band][cls][ProgressGuardCounters::NoOkSwing][cohort].fetch_add(1, std::memory_order_relaxed);
+}
+
+void CountProgressAct(Player* bot, ProgressAct act)
+{
+    ProgressGuardCounters& c = ProgressGuardGlobal();
+    unsigned const cohort = CohortIndex(bot);
+    switch (act)
+    {
+        case ProgressAct::Backoff: c.backoffs[cohort].fetch_add(1, std::memory_order_relaxed); break;
+        case ProgressAct::Woken: c.woken[cohort].fetch_add(1, std::memory_order_relaxed); break;
+        case ProgressAct::Break: c.breaks[cohort].fetch_add(1, std::memory_order_relaxed); break;
+        case ProgressAct::LoopEvent: c.loopEvents[cohort].fetch_add(1, std::memory_order_relaxed); break;
+    }
+}
+
+ai::supervisor::Event MakeCombatLoopEvent(Player* bot, std::uint32_t targetEntry, std::uint32_t nowMs, std::uint32_t noProgressMs)
+{
+    ai::supervisor::Event event;
+    event.kind = ai::supervisor::EventKind::CombatLoop;
+    event.a = targetEntry;
+    event.b = noProgressMs / 1000;
+    event.mapId = bot->GetMapId();
+    event.x = bot->GetPositionX();
+    event.y = bot->GetPositionY();
+    event.z = bot->GetPositionZ();
+    event.atMs = nowMs;
+    event.source = std::uint8_t(ai::supervisor::Requester::CombatGuard);
+    return event;
+}
+
 namespace
 {
 unsigned long long Take(std::atomic<std::uint64_t>& counter)
@@ -209,6 +289,63 @@ void ReportRestBeforePull()
         sPlayerbotAIConfig.combatRuleRestBeforePull, sPlayerbotAIConfig.combatRuleRestStartHp, sPlayerbotAIConfig.combatRuleRestStartMana,
         v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8], v[9], v[10], v[11]);
 }
+
+// "[CombatRule] part=ProgressGuard mode= deadline_s= break_s= backoff_ms= ignore_s= episodes=A/B combat_ms=A/B noprog_ms=A/B
+// loops5m=A/B backoffs=A/B woken=A/B breaks=A/B loop_events=A/B kills=A/B kill_ms=A/B" and per level band with data
+// "[CombatRule] part=ProgressGuardCls mode= band= cls=<class>:<combat_ms A/B>/<noprog_ms A/B>/<kills A/B>/<kill_ms A/B>/<passes A/B>/
+// <no_ok A/B>/<no_ok_swing A/B>,..." - both cohorts (the measurement); backoffs, wakes, breaks and loop events only where it acts.
+void ReportProgressGuard()
+{
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (!sPlayerbotAIConfig.combatRuleProgressGuard || now < lastReport + 60)
+        return;
+    lastReport = now;
+    ProgressGuardCounters& c = ProgressGuardGlobal();
+    unsigned long long v[20];
+    std::atomic<std::uint64_t>* all[20] = { &c.episodes[0], &c.episodes[1], &c.combatMs[0], &c.combatMs[1], &c.noProgressMs[0],
+        &c.noProgressMs[1], &c.longLoops[0], &c.longLoops[1], &c.backoffs[0], &c.backoffs[1], &c.woken[0], &c.woken[1], &c.breaks[0],
+        &c.breaks[1], &c.loopEvents[0], &c.loopEvents[1], &c.kills[0], &c.kills[1], &c.killMs[0], &c.killMs[1] };
+    for (int i = 0; i < 20; ++i)
+        v[i] = Take(*all[i]);
+    sLog.outBasic("[CombatRule] part=ProgressGuard mode=%u deadline_s=%u break_s=%u backoff_ms=%u ignore_s=%u episodes=%llu/%llu "
+        "combat_ms=%llu/%llu noprog_ms=%llu/%llu loops5m=%llu/%llu backoffs=%llu/%llu woken=%llu/%llu breaks=%llu/%llu "
+        "loop_events=%llu/%llu kills=%llu/%llu kill_ms=%llu/%llu",
+        sPlayerbotAIConfig.combatRuleProgressGuard, sPlayerbotAIConfig.combatRuleProgressDeadlineSeconds,
+        sPlayerbotAIConfig.combatRuleProgressBreakSeconds, sPlayerbotAIConfig.combatRuleProgressBackoffMs,
+        sPlayerbotAIConfig.combatRuleProgressIgnoreSeconds, v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8], v[9], v[10], v[11],
+        v[12], v[13], v[14], v[15], v[16], v[17], v[18], v[19]);
+
+    for (unsigned band = 0; band < ProgressGuardCounters::Bands; ++band)
+    {
+        std::string classes;
+        for (unsigned cls = 0; cls < ProgressGuardCounters::Classes; ++cls)
+        {
+            unsigned long long f[ProgressGuardCounters::Fields][2];
+            bool any = false;
+            for (unsigned field = 0; field < ProgressGuardCounters::Fields; ++field)
+                for (unsigned cohort = 0; cohort < 2; ++cohort)
+                {
+                    f[field][cohort] = Take(c.cls[band][cls][field][cohort]);
+                    any = any || f[field][cohort];
+                }
+            if (!any)
+                continue;
+            if (!classes.empty())
+                classes += ',';
+            classes += std::to_string(cls) + ':';
+            for (unsigned field = 0; field < ProgressGuardCounters::Fields; ++field)
+            {
+                if (field)
+                    classes += '/';
+                classes += std::to_string(f[field][0]) + '/' + std::to_string(f[field][1]);
+            }
+        }
+        if (!classes.empty())
+            sLog.outBasic("[CombatRule] part=ProgressGuardCls mode=%u band=%u cls=%s", sPlayerbotAIConfig.combatRuleProgressGuard, band,
+                classes.c_str());
+    }
+}
 }
 
 void ReportCombatRule()
@@ -216,5 +353,6 @@ void ReportCombatRule()
     ReportHealerStart();
     ReportPriestOverlay();
     ReportRestBeforePull();
+    ReportProgressGuard();
 }
 }

@@ -1428,6 +1428,32 @@ AiPlayerbot.CombatRule.RestBeforePull = 0
 AiPlayerbot.CombatRule.RestStartHp = 60
 # RestBeforePull: no pull below this mana percent, bots with a mana pool only (0..99; default 40; 0 = no mana rest).
 AiPlayerbot.CombatRule.RestStartMana = 40
+# Part ProgressGuard (A3 §4.3 R8, OB-00 08.11.2026): a fight runs at the full rate only while it makes progress. Progress is only
+# damage to the target (its health drops) or a shrinking distance to it (1 yard below the best distance to that target); an action
+# with OK does not count. The clock runs per combat episode and does not restart on a target switch; the death of the target counts.
+# Without progress for ProgressDeadlineSeconds the next engine pass waits ProgressBackoffMs (not while casting, not below LowHealth,
+# not for a bot with a heal strategy or a real player master; the wait ends early on a target switch, damage to the target or low
+# health). After ProgressBreakSeconds without progress, and again every ProgressBreakSeconds, the guard breaks the loop: the target
+# goes on the bot's ignore list (the hotfix 8.2 list, read by the grind target, reach and - with Rotation.CastLosGate - the dps / tank
+# target) for ProgressIgnoreSeconds and is dropped as current target. The guard never moves the bot. With AiPlayerbot.Supervisor on
+# for the bot, a break also leaves one Event{CombatLoop} (source CombatGuard; a = target entry, b = seconds without progress) for the
+# supervisor's CombatGuard frame (PlayerbotAI::TakeCombatLoopEvent). Minute lines (both cohorts while the switch is on, increments):
+# "[CombatRule] part=ProgressGuard mode= deadline_s= break_s= backoff_ms= ignore_s= episodes=A/B combat_ms=A/B noprog_ms=A/B
+# loops5m=A/B backoffs=A/B woken=A/B breaks=A/B loop_events=A/B kills=A/B kill_ms=A/B" (noprog_ms = combat time more than 8 s after
+# the last damage or approach; loops5m = stretches of 5 min without progress; kill_ms = time-to-kill sums) and per level band
+# (0 = L1-9, 1 = L10-19, 2 = L20+) "[CombatRule] part=ProgressGuardCls mode= band= cls=<class>:<combat_ms A/B>/<noprog_ms A/B>/
+# <kills A/B>/<kill_ms A/B>/<passes A/B>/<no_ok A/B>/<no_ok_swing A/B>,..." (combat engine passes, passes without an OK action, and of
+# those the passes while the bot auto-attacks). Mode: 0 = off (default, rollback), 1 = every bot, 2 = only cohort B (odd low guid),
+# 3 = only cohort A (even low guid). Any other value acts like 0.
+AiPlayerbot.CombatRule.ProgressGuard = 0
+# ProgressGuard: seconds without progress before the backoff (5..300; default 15).
+AiPlayerbot.CombatRule.ProgressDeadlineSeconds = 15
+# ProgressGuard: seconds without progress before a break, and between breaks (ProgressDeadlineSeconds..600; default 45).
+AiPlayerbot.CombatRule.ProgressBreakSeconds = 45
+# ProgressGuard: wait of an engine pass during the backoff in ms (0..5000; default 1000; 0 = no cadence backoff).
+AiPlayerbot.CombatRule.ProgressBackoffMs = 1000
+# ProgressGuard: seconds a broken target stays on the ignore list (10..600; default 120).
+AiPlayerbot.CombatRule.ProgressIgnoreSeconds = 120
 # A3 step 2 (ADR-0041, OB-00 07.11.2026): the quest book core (QB-K). One book per roster bot on its own (no real player master)
 # answers accept, travel target and turn-in with one level window, one progress notion (credit per quest, not objective text) and
 # the QB5 exclusion list, and a complete quest ends the grind fallback (QB4). Where the switch does not apply, every old rule stays.

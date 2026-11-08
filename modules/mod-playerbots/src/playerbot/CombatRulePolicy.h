@@ -188,4 +188,244 @@ inline RestBeforePullCounters& RestBeforePullGlobal()
     static RestBeforePullCounters counters;
     return counters;
 }
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// Part ProgressGuard (AiPlayerbot.CombatRule.ProgressGuard; A3 §4.3 R8, A3-S5-KAMPFREGEL-ENTWURF T5, OB-00 08.11.2026).
+//
+// A fight runs at the full rate only while it makes progress. Progress is only damage to the target (its health drops) or a
+// shrinking distance to it (at least GainYards below the best distance to that target); an action with OK does not count, because
+// self buffs and short approach starts return OK in the middle of a loop. The clock runs per combat episode of the bot and does
+// not restart on a target switch. The death of the target counts as progress (and as a kill with its time-to-kill).
+// Without progress for DeadlineMs the bot backs off (the next pass waits BackoffMs); after BreakMs without progress, and again every
+// BreakMs, the guard breaks the loop: the target goes on the bot's ignore list (the hotfix 8.2 list) and is dropped. The guard never
+// moves the bot; switching the target or giving up the fight is the owner's decision (supervisor event CombatLoop, frame pair).
+// The clock observes both cohorts while the switch is on (the counters are the measurement); only the switch's cohort acts.
+
+enum class ProgressVerdict : std::uint8_t
+{
+    Off = 0,       // not in combat (no episode)
+    Progress = 1,  // damage, approach, kill or episode start
+    Quiet = 2,     // no progress, inside the deadline
+    Backoff = 3,   // no progress for DeadlineMs
+    Break = 4,     // no progress for BreakMs (again every BreakMs)
+};
+
+struct ProgressReading
+{
+    bool inCombat = false;            // the combat engine runs
+    std::uint32_t nowMs = 0;          // WorldTimer ms (wrap-safe differences)
+    std::uint64_t target = 0;         // current target guid, 0 = none
+    bool targetAlive = false;
+    std::uint32_t targetHealth = 0;   // absolute health of the target
+    float distance = 0.0f;            // combat-reach distance bot -> target
+    bool previousTargetDied = false;  // the target of the last reading is dead now (read when the target changed or combat ended)
+};
+
+struct ProgressLimits
+{
+    std::uint32_t deadlineMs = 15000;
+    std::uint32_t breakMs = 45000;
+    float gainYards = 1.0f;           // approach that counts
+    std::uint32_t windowMs = 8000;    // "combat time without damage and approach" counts beyond this gap (measure only)
+    std::uint32_t longMs = 300000;    // a stretch of 5 min without progress counts once as a long loop (A3 R8 acceptance)
+};
+
+struct ProgressClock
+{
+    bool active = false;
+    std::uint32_t episodeStartMs = 0;
+    std::uint32_t lastProgressMs = 0;
+    std::uint32_t lastSampleMs = 0;
+    bool broken = false;              // a break happened in this no-progress stretch
+    std::uint32_t lastBreakMs = 0;
+    bool longCounted = false;
+    std::uint64_t target = 0;
+    std::uint32_t targetHealth = 0;
+    float bestDistance = 0.0f;
+    std::uint32_t engageMs = 0;       // first reading of the current target
+    bool targetDead = false;          // the kill of the current target is counted
+};
+
+// What one reading means, for the counters.
+struct ProgressStep
+{
+    ProgressVerdict verdict = ProgressVerdict::Off;
+    bool episodeStarted = false;
+    bool episodeEnded = false;
+    std::uint32_t combatMs = 0;       // time since the last reading of this episode
+    std::uint32_t noProgressMs = 0;   // the part of combatMs beyond windowMs without progress
+    bool longLoop = false;            // this reading crossed longMs without progress (once per stretch)
+    bool kill = false;
+    std::uint32_t killMs = 0;         // time to kill: first reading of that target -> its death
+};
+
+inline void EngageTarget(ProgressClock& c, ProgressReading const& r)
+{
+    c.target = r.target;
+    c.targetHealth = r.targetHealth;
+    c.bestDistance = r.distance;
+    c.engageMs = r.nowMs;
+    c.targetDead = r.target != 0 && !r.targetAlive;
+}
+
+inline ProgressStep ObserveProgress(ProgressClock& c, ProgressReading const& r, ProgressLimits const& l)
+{
+    ProgressStep s;
+    if (!r.inCombat)
+    {
+        if (c.active)
+        {
+            s.episodeEnded = true;
+            s.combatMs = r.nowMs - c.lastSampleMs;
+            if (c.target && !c.targetDead && r.previousTargetDied)
+            {
+                s.kill = true;
+                s.killMs = r.nowMs - c.engageMs;
+            }
+        }
+        c = ProgressClock();
+        return s;
+    }
+    if (!c.active)
+    {
+        c = ProgressClock();
+        c.active = true;
+        c.episodeStartMs = c.lastProgressMs = c.lastSampleMs = r.nowMs;
+        EngageTarget(c, r);
+        s.episodeStarted = true;
+        s.verdict = ProgressVerdict::Progress;
+        return s;
+    }
+
+    s.combatMs = r.nowMs - c.lastSampleMs;
+    c.lastSampleMs = r.nowMs;
+    bool progress = false;
+    if (r.target != c.target)
+    {
+        // A target switch is no progress and does not restart the clock; the old target's death is a kill.
+        if (c.target && !c.targetDead && r.previousTargetDied)
+        {
+            s.kill = true;
+            s.killMs = r.nowMs - c.engageMs;
+            progress = true;
+        }
+        EngageTarget(c, r);
+    }
+    else if (r.target)
+    {
+        if (!r.targetAlive)
+        {
+            if (!c.targetDead)
+            {
+                c.targetDead = true;
+                s.kill = true;
+                s.killMs = r.nowMs - c.engageMs;
+                progress = true;
+            }
+        }
+        else
+        {
+            if (r.targetHealth < c.targetHealth)
+                progress = true;
+            if (r.distance + l.gainYards <= c.bestDistance)
+            {
+                progress = true;
+                c.bestDistance = r.distance;
+            }
+            c.targetHealth = r.targetHealth;   // regeneration raises the baseline; the next drop counts again
+        }
+    }
+
+    if (progress)
+    {
+        c.lastProgressMs = r.nowMs;
+        c.broken = false;
+        c.longCounted = false;
+        s.verdict = ProgressVerdict::Progress;
+        return s;
+    }
+
+    std::uint32_t const gap = r.nowMs - c.lastProgressMs;
+    if (gap > l.windowMs)
+        s.noProgressMs = gap - l.windowMs < s.combatMs ? gap - l.windowMs : s.combatMs;
+    if (gap >= l.longMs && !c.longCounted)
+    {
+        c.longCounted = true;
+        s.longLoop = true;
+    }
+    if (gap >= l.breakMs && (!c.broken || r.nowMs - c.lastBreakMs >= l.breakMs))
+    {
+        c.broken = true;
+        c.lastBreakMs = r.nowMs;
+        s.verdict = ProgressVerdict::Break;
+        return s;
+    }
+    s.verdict = gap >= l.deadlineMs ? ProgressVerdict::Backoff : ProgressVerdict::Quiet;
+    return s;
+}
+
+// A backoff wait ends early when the next reading could be progress or the bot gets low: the target changed, its health dropped,
+// or the bot's health fell below LowHealth.
+inline bool ProgressShouldWake(ProgressClock const& c, std::uint64_t target, std::uint32_t targetHealth, std::uint32_t healthPct,
+    std::uint32_t lowHealth)
+{
+    return target != c.target || targetHealth < c.targetHealth || healthPct < lowHealth;
+}
+
+// Clamps for the .dist keys: DeadlineSeconds 5..300 (15), BreakSeconds DeadlineSeconds..600 (45), BackoffMs 0..5000 (1000; 0 = no
+// cadence backoff), IgnoreSeconds 10..600 (120).
+inline std::uint32_t ClampProgressDeadline(int value)
+{
+    return value < 5 ? 5u : (value > 300 ? 300u : std::uint32_t(value));
+}
+
+inline std::uint32_t ClampProgressBreak(int value, std::uint32_t deadline)
+{
+    return value < int(deadline) ? deadline : (value > 600 ? 600u : std::uint32_t(value));
+}
+
+inline std::uint32_t ClampProgressBackoffMs(int value)
+{
+    return value < 0 ? 0u : (value > 5000 ? 5000u : std::uint32_t(value));
+}
+
+inline std::uint32_t ClampProgressIgnore(int value)
+{
+    return value < 10 ? 10u : (value > 600 ? 600u : std::uint32_t(value));
+}
+
+// Level band of the per-class cut: 0 = L1-9, 1 = L10-19, 2 = L20+.
+inline unsigned ProgressBand(std::uint32_t level)
+{
+    return level < 10 ? 0u : (level < 20 ? 1u : 2u);
+}
+
+// Per-minute counts for the "[CombatRule] part=ProgressGuard" lines (switch on), increments, index 0 = cohort A, 1 = cohort B.
+// Totals: combat episodes started, combat time, time without progress beyond the window, long loops, backoffs, early wakes, breaks,
+// CombatLoop events left for the supervisor, kills and their time-to-kill. Per band x class: the same times and kills, combat
+// passes, passes without an OK action, and of those the passes while the bot auto-attacks (swing).
+struct ProgressGuardCounters
+{
+    static constexpr unsigned Bands = 3;
+    static constexpr unsigned Classes = 12;
+    enum Field : unsigned { CombatMs = 0, NoProgressMs, Kills, KillMs, Passes, NoOk, NoOkSwing, Fields };
+
+    std::atomic<std::uint64_t> episodes[2] {};
+    std::atomic<std::uint64_t> combatMs[2] {};
+    std::atomic<std::uint64_t> noProgressMs[2] {};
+    std::atomic<std::uint64_t> longLoops[2] {};
+    std::atomic<std::uint64_t> backoffs[2] {};
+    std::atomic<std::uint64_t> woken[2] {};
+    std::atomic<std::uint64_t> breaks[2] {};
+    std::atomic<std::uint64_t> loopEvents[2] {};   // breaks that left a CombatLoop event for the supervisor (switch on for the bot)
+    std::atomic<std::uint64_t> kills[2] {};
+    std::atomic<std::uint64_t> killMs[2] {};
+    std::atomic<std::uint64_t> cls[Bands][Classes][Fields][2] {};
+};
+
+inline ProgressGuardCounters& ProgressGuardGlobal()
+{
+    static ProgressGuardCounters counters;
+    return counters;
+}
 }
