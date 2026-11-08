@@ -905,10 +905,13 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[Supervisor] config key=Supervisor value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", supervisor);
         supervisor = 0;
     }
-    // A3 step 5 (ADR-0041): the combat rule, part HealerStart (CombatRulePolicy.h); an unknown mode is off.
+    // A3 step 5 (ADR-0041): the combat rule, parts HealerStart and PriestOverlay (CombatRulePolicy.h); an unknown mode is off.
     combatRuleHealerStart = uint32(config.GetIntDefault("AiPlayerbot.CombatRule.HealerStart", 0));
     if (combatRuleHealerStart > 3)
         combatRuleHealerStart = 0;
+    combatRulePriestOverlay = uint32(config.GetIntDefault("AiPlayerbot.CombatRule.PriestOverlay", 0));
+    if (combatRulePriestOverlay > 3)
+        combatRulePriestOverlay = 0;
     // A3 step 2 (ADR-0041): the quest book core QB-K (QuestBookPolicy.h, QuestBook.cpp); an unknown mode is off.
     questBook = uint32(config.GetIntDefault("AiPlayerbot.QuestBook", 0));
     if (!ai::questbook::ValidMode(questBook))
@@ -1981,6 +1984,7 @@ bool PlayerbotAIConfig::Initialize()
             {"CastWait.Preparing", Value(castWaitPreparing)},
             {"CheatItem.Trace", Value(cheatItemTrace)},
             {"CombatRule.HealerStart", Value(combatRuleHealerStart)},
+            {"CombatRule.PriestOverlay", Value(combatRulePriestOverlay)},
             {"Crafting.Consumables", Value(craftingConsumables)},
             {"Crafting.Cooking", Value(craftingCooking)},
             {"Crafting.Survival", Value(craftingSurvival)},
