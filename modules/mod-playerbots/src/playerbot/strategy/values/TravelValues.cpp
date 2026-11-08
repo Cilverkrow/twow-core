@@ -451,14 +451,16 @@ std::vector<int32> ai::PhaseOneProfessionTrainers(PlayerbotAI* ai, bool onlyUnle
 
     // twow-repo#333 M2 Crafting.Cooking (owner list 07.11.2026, item 2): with the switch on for the bot cooking is a trip skill too.
     bool const cooking = CraftingCookingFor(ai);
+    // twow-repo#333 M2 Crafting.Survival (owner list 07.11.2026, item 3): with its switch on for the bot survival too.
+    bool const survival = CraftingSurvivalFor(ai);
 
     // For tradeskill trainers the key is the skill line (TrainableSpellMapValue).
     for (auto const& [skill, spellTrainers] : tradeskills->second)
     {
-        if (!ai::profession_travel::IsTripSkill(skill, cooking))
+        if (!ai::profession_travel::IsTripSkill(skill, cooking, survival))
             continue;
         // P1-n: the near trip only for a skill not learned yet.
-        if (onlyUnlearned && !ai::profession_travel::NearTripSkill(skill, ai->HasSkill(SkillType(skill)), cooking))
+        if (onlyUnlearned && !ai::profession_travel::NearTripSkill(skill, ai->HasSkill(SkillType(skill)), cooking, survival))
             continue;
 
         for (auto const& [trainerSpell, entries] : spellTrainers)
@@ -494,9 +496,12 @@ std::vector<int32> ai::PhaseOneProfessionTrainers(PlayerbotAI* ai, bool onlyUnle
 uint32 ai::MissingGatherTool(PlayerbotAI* ai)
 {
     Player* bot = ai->GetBot();
+    // twow-repo#333 M2 Crafting.Survival (owner list 07.11.2026, item 3): a survivalist with the switch on also needs the Whittle.
+    bool const survival = CraftingSurvivalFor(ai) && ai->HasSkill(SkillType(ai::profession_travel::kSurvival));
     return ai::profession_travel::MissingTool(
         ai->HasSkill(SKILL_MINING), bot->HasItemCount(ai::profession_travel::kMiningPick, 1),
-        ai->HasSkill(SKILL_SKINNING), bot->HasItemCount(ai::profession_travel::kSkinningKnife, 1));
+        ai->HasSkill(SKILL_SKINNING), bot->HasItemCount(ai::profession_travel::kSkinningKnife, 1),
+        survival, bot->HasItemCount(ai::profession_travel::kWhittle, 1));
 }
 
 std::vector<int32> ai::GatherToolVendors(PlayerbotAI* ai, uint32 tool)
