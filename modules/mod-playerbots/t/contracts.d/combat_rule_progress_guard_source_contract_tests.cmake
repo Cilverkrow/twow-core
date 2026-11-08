@@ -5,8 +5,8 @@
 # (target on the hotfix 8.2 ignore list, dropped as current target; with the supervisor on, one Event{CombatLoop} for its CombatGuard
 # frame, taken with PlayerbotAI::TakeCombatLoopEvent). The guard never moves the bot.
 # Pins: keys and clamps, [ConfigEcho] sorted, .dist; the pure clock (progress = health drop or 1 yd approach, no OK input, no restart
-# on a switch, regeneration no progress, kill, window / long loop, break every BreakMs, wrap-safe); the glue (reading before the pass,
-# both cohorts while on, nothing read while off; acts only for the cohort, not for heal strategies or a real player master, not while
+# on a switch, regeneration no progress, kill, window / long loop, break every BreakMs, wrap-safe); the glue (reading before the pass
+# and before the quest book / supervisor gate, both cohorts while on, nothing read while off; acts only for the cohort, not for heal strategies or a real player master, not while
 # casting or below LowHealth, never shortens another delay; wake on switch / damage / low health); the break (ignore list, current
 # target dropped, no movement call, event only with the supervisor on, no mailbox call); the minute lines only with the switch on.
 # Every check runs once on the real sources and once per negative probe.
@@ -88,7 +88,7 @@ function(check policy glue glue_h ai_cpp ai_h config_h config_cpp dist out_var)
   need("${policy}" "inline bool ProgressShouldWake(ProgressClock const& c, std::uint64_t target, std::uint32_t targetHealth, std::uint32_t healthPct,\n    std::uint32_t lowHealth)\n{\n    return target != c.target || targetHealth < c.targetHealth || healthPct < lowHealth;\n}" "wake on switch, damage, low health")
 
   # 3. The reading: before the pass (before the supervisor gate), both cohorts while on, nothing read while off.
-  need("${ai_cpp}" "        progressBackoffPending = false;\n        if (sPlayerbotAIConfig.combatRuleProgressGuard && !HasRealPlayerMaster())\n            ObserveCombatProgress();\n        else\n        {\n            progressVerdict = ai::combat_rule::ProgressVerdict::Off;\n            progressClock = ai::combat_rule::ProgressClock();\n        }\n\n        // A3 step 3 (ADR-0041, AiPlayerbot.Supervisor, default 0)" "reading before the supervisor gate, off = nothing read")
+  need("${ai_cpp}" "        progressBackoffPending = false;\n        if (sPlayerbotAIConfig.combatRuleProgressGuard && !HasRealPlayerMaster())\n            ObserveCombatProgress();\n        else\n        {\n            progressVerdict = ai::combat_rule::ProgressVerdict::Off;\n            progressClock = ai::combat_rule::ProgressClock();\n        }\n\n        // A3 step 2 (ADR-0041, AiPlayerbot.QuestBook, default 0)" "reading before the quest book and the supervisor gate (QB-K pins its block right before that gate), off = nothing read")
   region("${ai_cpp}" "void PlayerbotAI::ObserveCombatProgress()" "\n}\n" observe)
   need("${observe}" "    reading.inCombat = currentEngine == engines[(uint8)BotState::BOT_STATE_COMBAT];" "combat = the combat engine runs")
   need("${observe}" "            reading.distance = bot->GetDistance(target, false, DIST_CALC_COMBAT_REACH);" "combat-reach distance")
