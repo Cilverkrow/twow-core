@@ -910,8 +910,9 @@ public:
     uint32 botGroupsLeaderOtherMap = 0;
     uint32 botGroupsLeaderOtherMapSeconds = 120;   // 30..900
     // BOT-12 (twow-repo#677, #628; OB-00 04.11.2026): the ad-hoc leaves and joins of a free bot are queued and run on the world
-    // thread (GroupOps.cpp; ObjectMgr::m_GroupMap is not locked). 0 off, 1 all, 2 cohort B, 3 cohort A; other = 0 + error line.
-    uint32 botGroupsOpQueue = 0;
+    // thread (GroupOps.cpp; ObjectMgr::m_GroupMap is not locked). 0 off (rollback), 1 all (default, owner 08.11.2026),
+    // 2 cohort B, 3 cohort A; other = 1 + error line.
+    uint32 botGroupsOpQueue = 1;
     uint32 botGroupsOpQueueOpsPerTick = 1;          // ops per world tick, 1..16 (none in a tick with a manager group step)
     uint32 botGroupsOpQueueMaxDepth = 2048;         // 16..65536; a full queue refuses new ops (dropped_full)
     uint32 botGroupsOpQueueAlertAgeSeconds = 60;    // 5..3600; "[GroupOps] ALERT" when the oldest op is older

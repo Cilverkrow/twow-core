@@ -879,12 +879,13 @@ bool PlayerbotAIConfig::Initialize()
         botGroupsLeaderOtherMap = 0;
     }
     botGroupsLeaderOtherMapSeconds = std::min<uint32>(900, uint32(std::max<int32>(30, config.GetIntDefault("AiPlayerbot.BotGroups.LeaderOtherMapSeconds", 120))));
-    // BOT-12 (twow-repo#677, #628): the world-thread group queue (GroupOpPolicy.h); an unknown mode is off.
-    botGroupsOpQueue = uint32(config.GetIntDefault("AiPlayerbot.BotGroups.OpQueue", 0));
+    // BOT-12 (twow-repo#677, #628): the world-thread group queue (GroupOpPolicy.h). Owner 08.11.2026: ON by default (BOT-12 v2
+    // RESULT 24b75ea3), 0 = rollback; an unknown mode is the default (1).
+    botGroupsOpQueue = uint32(config.GetIntDefault("AiPlayerbot.BotGroups.OpQueue", 1));
     if (!ai::group_ops::ValidMode(botGroupsOpQueue))
     {
-        sLog.outError("[GroupOps] config key=OpQueue value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", botGroupsOpQueue);
-        botGroupsOpQueue = 0;
+        sLog.outError("[GroupOps] config key=OpQueue value=%u result=1 (0 off = rollback, 1 all, 2 cohort B, 3 cohort A)", botGroupsOpQueue);
+        botGroupsOpQueue = 1;
     }
     botGroupsOpQueueOpsPerTick = ai::group_ops::ClampOpsPerTick(config.GetIntDefault("AiPlayerbot.BotGroups.OpQueueOpsPerTick", 1));
     botGroupsOpQueueMaxDepth = ai::group_ops::ClampMaxDepth(config.GetIntDefault("AiPlayerbot.BotGroups.OpQueueMaxDepth", 2048));
