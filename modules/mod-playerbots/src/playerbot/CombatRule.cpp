@@ -41,6 +41,23 @@ bool HealerMayAttack(PlayerbotAI* ai)
     return lifted;
 }
 
+std::string CombatOverlay(Player* player, int tab, std::string const& overlay)
+{
+    uint32 const mode = sPlayerbotAIConfig.combatRulePriestOverlay;
+    // Part off, or no healing-tree priest: the overlay unchanged, nothing else is read.
+    if (!mode || !HealerPriest(player->getClass(), tab))
+        return overlay;
+
+    uint32 const guidLow = player->GetGUIDLow();
+    unsigned const cohort = ai::cohort::InB(guidLow) ? 1u : 0u;
+    PriestOverlayCounters& c = PriestOverlayGlobal();
+    c.engines[cohort].fetch_add(1, std::memory_order_relaxed);
+    if (!ai::cohort::Applies(mode, guidLow))
+        return overlay;
+    c.stripped[cohort].fetch_add(1, std::memory_order_relaxed);
+    return WithoutEntry(overlay, "+dps");
+}
+
 namespace
 {
 unsigned long long Take(std::atomic<std::uint64_t>& counter)
@@ -75,10 +92,29 @@ void ReportHealerStart()
     sLog.outBasic("[CombatRule] part=HealerStart mode=%u asked=%llu/%llu lifted=%llu/%llu cls=%s",
         sPlayerbotAIConfig.combatRuleHealerStart, askedA, askedB, liftedA, liftedB, classes.empty() ? "-" : classes.c_str());
 }
+
+// "[CombatRule] part=PriestOverlay mode= engines=A/B stripped=A/B" - combat engines of discipline / holy priests set up with the
+// overlay, per cohort, and how many got it without "+dps".
+void ReportPriestOverlay()
+{
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (!sPlayerbotAIConfig.combatRulePriestOverlay || now < lastReport + 60)
+        return;
+    lastReport = now;
+    PriestOverlayCounters& c = PriestOverlayGlobal();
+    unsigned long long const enginesA = Take(c.engines[0]);
+    unsigned long long const enginesB = Take(c.engines[1]);
+    unsigned long long const strippedA = Take(c.stripped[0]);
+    unsigned long long const strippedB = Take(c.stripped[1]);
+    sLog.outBasic("[CombatRule] part=PriestOverlay mode=%u engines=%llu/%llu stripped=%llu/%llu",
+        sPlayerbotAIConfig.combatRulePriestOverlay, enginesA, enginesB, strippedA, strippedB);
+}
 }
 
 void ReportCombatRule()
 {
     ReportHealerStart();
+    ReportPriestOverlay();
 }
 }

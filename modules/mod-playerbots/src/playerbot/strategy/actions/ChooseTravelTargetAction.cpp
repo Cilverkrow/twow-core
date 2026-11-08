@@ -7,6 +7,7 @@
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/GatherNodePolicy.h"
 #include "playerbot/strategy/values/TravelValues.h"
+#include "playerbot/QuestSource.h"   // A3 step 2 QB-S (AiPlayerbot.QuestBook.SourceChoice): source choice and order
 #include "playerbot/strategy/values/SharedValueContext.h"
 #include "playerbot/strategy/values/GuildValues.h"
 #include "playerbot/strategy/values/QuestValues.h"   // twow-repo#601 quest acceptance step 1b: DialogStatusValue::getDialogStatus
@@ -2020,6 +2021,9 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
 
                 target->SetTarget(destination, position);
                 hasTarget = true;
+                // A3 step 2 QB-S (AiPlayerbot.QuestBook.SourceChoice, default 0): one line per objective pick of a bot the switch
+                // applies to, with the load-time facts of the source. Every other bot: no line.
+                ai::questsource::NotePick(bot, ai, destination, position);
                 break;
             }
             else
@@ -3571,6 +3575,11 @@ bool RequestQuestTravelTargetAction::Execute(Event& event)
                 for (auto& [partition, points] : subList)
                     list[partition].insert(list[partition].end(), points.begin(), points.end());
             }
+
+            // A3 step 2 QB-S (AiPlayerbot.QuestBook.SourceChoice, default 0): one source per quest objective (least route + expected
+            // work), the chosen ones in XP-per-minute order, the others as a fallback in the farthest partition. Reads the bot-thread
+            // snapshot only. Every other bot: returns at once, the list stays as it is.
+            ai::questsource::RankQuestSources(list, travelInfo);
 
             // #421 B: widened search - quest hubs first (in this job, not on the map thread).
             if (hubsFirst)

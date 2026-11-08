@@ -1,5 +1,5 @@
 // A3 step 5 (ADR-0041; OB-00 07.11.2026): the combat rule, pure parts (CombatRulePolicy.h).
-// Part HealerStart (AiPlayerbot.CombatRule.HealerStart, default 0): the healer gate keeps the old rule unchanged and opens only
+// Parts HealerStart and PriestOverlay (default 0). HealerStart: the healer gate keeps the old rule unchanged and opens only
 // for a holy paladin or a restoration druid, and only where the part applies.
 #include <cstdlib>
 #include <iostream>
@@ -59,6 +59,25 @@ int main()
     c.lifted[1].fetch_add(2);
     Require(c.lifted[1].exchange(0) == 2 && c.lifted[1].load() == 0, "counters are increments");
     Require(ClassDruid < MaxClass, "the druid fits the class counters");
+
+    // Part PriestOverlay: discipline / holy priests only; exact-entry removal like Engine::ChangeStrategy (split on ',', no trim).
+    Require(HealerPriest(ClassPriest, 0) && HealerPriest(ClassPriest, 1), "discipline and holy priests");
+    Require(!HealerPriest(ClassPriest, 2), "shadow priest: +dps changes nothing");
+    Require(!HealerPriest(ClassPaladin, 0) && !HealerPriest(ClassDruid, 1), "other classes");
+    Require(WithoutEntry("+dps,+dps assist,-threat", "+dps") == "+dps assist,-threat", "the profile overlay loses only +dps");
+    Require(WithoutEntry("-threat,+custom::say", "+dps") == "-threat,+custom::say", "the code default has no +dps: unchanged");
+    Require(WithoutEntry("+dps assist", "+dps") == "+dps assist", "+dps assist is another entry");
+    Require(WithoutEntry("-threat,+dps", "+dps") == "-threat", "+dps at the end");
+    Require(WithoutEntry("+dps", "+dps") == "", "+dps alone");
+    Require(WithoutEntry("+dps,+dps,-threat", "+dps") == "-threat", "every +dps entry");
+    Require(WithoutEntry(" +dps,-threat", "+dps") == " +dps,-threat", "no trim: the engine would not trim either");
+    Require(WithoutEntry("", "+dps") == "", "empty overlay");
+    Require(WithoutEntry("a,,b", "+dps") == "a,,b", "empty entries kept");
+
+    PriestOverlayCounters& p = PriestOverlayGlobal();
+    Require(p.engines[0].load() == 0 && p.stripped[1].load() == 0, "overlay counters start at 0");
+    p.stripped[1].fetch_add(1);
+    Require(p.stripped[1].exchange(0) == 1 && p.stripped[1].load() == 0, "overlay counters are increments");
 
     std::cout << "combat_rule_policy_tests: ok\n";
     return 0;
