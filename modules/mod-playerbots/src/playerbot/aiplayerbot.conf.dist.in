@@ -3911,9 +3911,10 @@ AiPlayerbot.Rotation.NeverPossibleSkip = 1
 # of a questing bot's action time in the archived action logs). A node with alternatives keeps running (its IMPOSSIBLE pushes
 # them). The answer is cached per node and taken again after a learn, level-up or talent change, at least every 10 s, so a
 # spell learned now is tried on the next tick. "[KnownSpellNodes] mode= skipped= checked= recomputes= stamp_changes= cls=" once
-# a minute. 0 = every node is checked as before (default), 1 = every bot, 2 = only cohort B (odd low guid), 3 = only cohort A.
-# Any other value acts like 0.
-AiPlayerbot.Rotation.KnownSpellNodes = 0
+# a minute. 0 = every node is checked as before (rollback), 1 = every bot (default since owner 08.11.2026 after the A/B, KSN RESULT
+# ADOPT 5beb1182), 2 = only cohort B (odd low guid), 3 = only cohort A.
+# Any other value acts like 1.
+AiPlayerbot.Rotation.KnownSpellNodes = 1
 # twow-repo#602 ROT-01 (c) (hunter + adds analysis 25.10.2026, BEHAVIOUR CHANGE, enable only after A/B + owner go): the flee of a
 # bot without a real master is a chase of the enemy at the flee distance. Its angle was the bot's world angle to the enemy, but the
 # core adds the chase angle to the ENEMY's facing, so the flee point lay on an effectively random side of the mob (often across it

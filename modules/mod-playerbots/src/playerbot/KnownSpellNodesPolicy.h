@@ -6,7 +6,8 @@
 namespace ai::known_spell_nodes
 {
 // twow-repo#602 ROT-01 (owner 04.11.2026 "die fähigkeiten ab dem fähigen level"; AiPlayerbot.Rotation.KnownSpellNodes, default
-// 0). Archived action logs (84 bots, ~4.6 M ticks, notes/known-spells RESULT 04.11.2026): 11-51 % of a questing bot's action time
+// 1 since owner 08.11.2026 after the A/B, KSN RESULT ADOPT 5beb1182; 0 = rollback). Archived action logs (84 bots, ~4.6 M ticks,
+// notes/known-spells RESULT 04.11.2026): 11-51 % of a questing bot's action time
 // goes to spell actions that never once return OK - spells not learned yet (cone of cold below 26, mortal strike / mind flay
 // talents) and racials of other races (stoneform, war stomp, cannibalize, escape artist) - 0.5-0.8 ms per attempt, every tick,
 // even with Rotation.NeverPossibleSkip. With the switch Engine::ProcessTriggers skips a trigger node (no Check(), no push, no
