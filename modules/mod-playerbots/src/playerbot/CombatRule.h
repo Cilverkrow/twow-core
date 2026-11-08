@@ -54,6 +54,7 @@ enum class ProgressAct : std::uint8_t
     Woken = 1,
     Break = 2,
     LoopEvent = 3,
+    LoopOverwrite = 4,   // P5: the event before was still waiting and is replaced (log only)
 };
 
 void CountProgressAct(Player* bot, ProgressAct act);
@@ -62,6 +63,32 @@ void CountProgressAct(Player* bot, ProgressAct act);
 // Requester::CombatGuard, a = target entry, b = seconds without progress, the bot's map and position, atMs = WorldTimer ms. Plain
 // data (ADR-0039). The frame takes it with PlayerbotAI::TakeCombatLoopEvent on the bot's thread.
 ai::supervisor::Event MakeCombatLoopEvent(Player* bot, std::uint32_t targetEntry, std::uint32_t nowMs, std::uint32_t noProgressMs);
+
+// Part TargetRule (AiPlayerbot.CombatRule.TargetRule, default 0): the "select new target" backoff. The pick result of the dps/tank
+// assist in "select new target" (SelectNewTargetAction::TraceRetargetEmpty): an empty pick with attackers arms the backoff, a pick
+// ends it. Nothing is read with the part off, for a cohort it does not apply to, or for a bot with a real player as master.
+void NoteTargetPick(PlayerbotAI* ai, bool picked);
+
+// The "invalid target" trigger asks first: true = stay quiet on this pass (armed, the current target is empty and the attacker set,
+// the bot's health and TargetBackoffMs give no reason to pick again). A wake or a current target ends the backoff (false).
+bool TargetBackoffSkips(PlayerbotAI* ai);
+
+// The cost of one target value compute for the "[CombatRule] part=TargetValues" line: both cohorts while the part is on, nothing
+// otherwise (no clock read). Descriptive only (OB-00 08.11.): it decides whether a candidate cache comes back as its own pair.
+class TargetValueTimer
+{
+public:
+    TargetValueTimer(PlayerbotAI* ai, TargetValue value);
+    ~TargetValueTimer();
+    TargetValueTimer(TargetValueTimer const&) = delete;
+    TargetValueTimer& operator=(TargetValueTimer const&) = delete;
+
+private:
+    unsigned value_;
+    unsigned cohort_ = 0;
+    bool on_ = false;
+    std::uint64_t startUs_ = 0;
+};
 
 // One "[CombatRule] part=<Part>" line per minute and part that is on (increments); called from the minute report pass.
 void ReportCombatRule();

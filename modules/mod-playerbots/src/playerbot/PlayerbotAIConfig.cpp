@@ -22,6 +22,7 @@
 #include "playerbot/SupervisorPolicy.h"   // A3 step 3: Supervisor mode
 #include "playerbot/QuestBookPolicy.h"   // A3 step 2: QuestBook mode
 #include "playerbot/QuestBundlePolicy.h"   // A3 step 2 QB-B: QuestBook.BundleRadius clamp
+#include "playerbot/ZoneKeepPolicy.h"   // twow-repo#601 R1: StartZoneMinLevel.Complete parse
 #include "playerbot/LockoutPolicy.h"   // L1: BotGroups.ResetRaidsRealInviterOnly parse
 #include "playerbot/LootChancePolicy.h"   // OB-00 08.11.: LootChance.GameObjectEntryFix / QuestRelation.GameObjectChanceDrops
 #include <cerrno>
@@ -941,6 +942,10 @@ bool PlayerbotAIConfig::Initialize()
         combatRuleProgressDeadlineSeconds);
     combatRuleProgressBackoffMs = ai::combat_rule::ClampProgressBackoffMs(config.GetIntDefault("AiPlayerbot.CombatRule.ProgressBackoffMs", 1000));
     combatRuleProgressIgnoreSeconds = ai::combat_rule::ClampProgressIgnore(config.GetIntDefault("AiPlayerbot.CombatRule.ProgressIgnoreSeconds", 120));
+    combatRuleTargetRule = uint32(config.GetIntDefault("AiPlayerbot.CombatRule.TargetRule", 0));
+    if (combatRuleTargetRule > 3)
+        combatRuleTargetRule = 0;
+    combatRuleTargetBackoffMs = ai::combat_rule::ClampTargetBackoffMs(config.GetIntDefault("AiPlayerbot.CombatRule.TargetBackoffMs", 2000));
     // A3 step 2 (ADR-0041): the quest book core QB-K (QuestBookPolicy.h, QuestBook.cpp); an unknown mode is off.
     questBook = uint32(config.GetIntDefault("AiPlayerbot.QuestBook", 0));
     if (!ai::questbook::ValidMode(questBook))
@@ -1076,6 +1081,14 @@ bool PlayerbotAIConfig::Initialize()
     {
         sLog.outError("[ZoneKeep] config key=StartZoneMinLevel.Cohort value=%u result=1 (1 all, 2 cohort B, 3 cohort A)", questFirstProgressionStartZoneMinLevelCohort);
         questFirstProgressionStartZoneMinLevelCohort = 1;
+    }
+    // twow-repo#601 owner rule R1, package "start-zone rule complete" (OB-00 08.11.2026, ZoneKeepPolicy.h): 0 off (default and
+    // rollback), 1 on; any other value acts like 0. It acts only where StartZoneMinLevel holds the bot (.Cohort selection).
+    questFirstProgressionStartZoneComplete = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.StartZoneMinLevel.Complete", 0);
+    if (questFirstProgressionStartZoneComplete != 0 && !ai::zone_keep::CompleteOn(int32(questFirstProgressionStartZoneComplete)))
+    {
+        sLog.outError("[ZoneKeep] config key=StartZoneMinLevel.Complete value=%u result=off (0 off, 1 on)", questFirstProgressionStartZoneComplete);
+        questFirstProgressionStartZoneComplete = 0;
     }
     // twow-repo#601 S5a F4 (OB-00 24.10.2026): the backoff walk toward the next rung, 0 = off, 1..10.
     questFirstProgressionBandWalkAfterEmptySearches = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.BandWalkAfterEmptySearches", 0);
@@ -2037,6 +2050,8 @@ bool PlayerbotAIConfig::Initialize()
             {"CombatRule.RestBeforePull", Value(combatRuleRestBeforePull)},
             {"CombatRule.RestStartHp", Value(combatRuleRestStartHp)},
             {"CombatRule.RestStartMana", Value(combatRuleRestStartMana)},
+            {"CombatRule.TargetBackoffMs", Value(combatRuleTargetBackoffMs)},
+            {"CombatRule.TargetRule", Value(combatRuleTargetRule)},
             {"Crafting.Consumables", Value(craftingConsumables)},
             {"Crafting.Cooking", Value(craftingCooking)},
             {"Crafting.Fishing", Value(craftingFishing)},
@@ -2134,6 +2149,7 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestFirstProgression.StaleObjectiveFilter.WindowSeconds", Value(questFirstProgressionStaleObjectiveWindowSeconds)},
             {"QuestFirstProgression.StartZoneMinLevel", Value(questFirstProgressionStartZoneMinLevel)},
             {"QuestFirstProgression.StartZoneMinLevel.Cohort", Value(questFirstProgressionStartZoneMinLevelCohort)},
+            {"QuestFirstProgression.StartZoneMinLevel.Complete", Value(questFirstProgressionStartZoneComplete)},
             {"QuestFirstProgression.TransientCountsAfter", Value(questFirstProgressionTransientCountsAfter)},
             {"QuestFirstProgression.TurnInParkFailures", Value(questFirstProgressionTurnInParkFailures)},
             {"QuestGroups.Enable", Value(questGroupsEnable)},

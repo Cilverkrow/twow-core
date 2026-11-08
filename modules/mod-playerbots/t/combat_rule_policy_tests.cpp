@@ -2,6 +2,8 @@
 // Parts HealerStart, PriestOverlay and RestBeforePull (default 0). HealerStart: the healer gate keeps the old rule unchanged and opens only
 // for a holy paladin or a restoration druid, and only where the part applies. ProgressGuard (OB-00 08.11.2026, A3 R8): the combat
 // progress clock - progress only as damage or approach, per episode, backoff, break, kill and time-to-kill.
+// TargetRule (P5, OB-00 08.11.2026 (a)): the "select new target" backoff - order-free attacker key, wakes on a new attacker, a hit or the
+// time; and the guard acts only with a current target (OB-10 note (1)).
 #include <cstdlib>
 #include <iostream>
 
@@ -241,6 +243,63 @@ int main()
         Require(pc.breaks[1].load() == 0 && pc.cls[2][11][ProgressGuardCounters::NoOkSwing][1].load() == 0, "guard counters start at 0");
         pc.breaks[1].fetch_add(3);
         Require(pc.breaks[1].exchange(0) == 3 && pc.breaks[1].load() == 0, "guard counters are increments");
+        Require(pc.loopOverwrites[0].load() == 0, "overwrite counter starts at 0 (P5)");
+
+        // P5 (OB-10 08.11. note (1)): the guard acts only on a reading with a current target.
+        ProgressClock none;
+        Require(!ProgressMayAct(none), "no target: no backoff, no break");
+        none.target = 7;
+        Require(ProgressMayAct(none), "a target: the guard may act");
+    }
+
+    // Part TargetRule (P5): the "select new target" backoff.
+    {
+        std::uint64_t const ab[] = { 11, 22 };
+        std::uint64_t const ba[] = { 22, 11 };
+        std::uint64_t const abc[] = { 11, 22, 33 };
+        std::uint64_t const none[] = { 0 };
+        Require(AttackersKey(ab) == AttackersKey(ba), "the attacker key is order-free");
+        Require(AttackersKey(ab) != AttackersKey(abc), "a new attacker changes the key");
+        Require(AttackersKey(ab) != AttackersKey(none), "an empty set differs from a set");
+        Require(MixGuid(1) != MixGuid(2), "the mix separates neighbouring guids");
+
+        TargetBackoff b;
+        Require(CheckTargetBackoff(b, 0, 0, 100, 2000) == TargetBackoffVerdict::Select, "not armed: select as before");
+
+        ArmTargetBackoff(b, 1000, AttackersKey(ab), 500);
+        Require(b.armed, "an empty pick arms");
+        Require(CheckTargetBackoff(b, 1500, AttackersKey(ba), 500, 2000) == TargetBackoffVerdict::Skip && b.armed,
+            "same set, same health, before the time: skip and stay armed");
+        Require(CheckTargetBackoff(b, 1600, AttackersKey(ab), 520, 2000) == TargetBackoffVerdict::Skip, "regeneration is no hit");
+        Require(CheckTargetBackoff(b, 1700, AttackersKey(abc), 500, 2000) == TargetBackoffVerdict::WokenAttackers && !b.armed,
+            "a new attacker wakes and disarms");
+
+        ArmTargetBackoff(b, 1000, AttackersKey(ab), 500);
+        Require(CheckTargetBackoff(b, 1100, AttackersKey(ab), 499, 2000) == TargetBackoffVerdict::WokenHit && !b.armed, "a hit wakes");
+
+        ArmTargetBackoff(b, 1000, AttackersKey(ab), 500);
+        Require(CheckTargetBackoff(b, 2999, AttackersKey(ab), 500, 2000) == TargetBackoffVerdict::Skip, "1 ms before the time: skip");
+        Require(CheckTargetBackoff(b, 3000, AttackersKey(ab), 500, 2000) == TargetBackoffVerdict::WokenTime && !b.armed,
+            "TargetBackoffMs passed: wake");
+        Require(CheckTargetBackoff(b, 3001, AttackersKey(ab), 500, 2000) == TargetBackoffVerdict::Select, "after a wake: select again");
+
+        ArmTargetBackoff(b, 0xFFFFFF00u, AttackersKey(ab), 500);
+        Require(CheckTargetBackoff(b, 0x00000100u, AttackersKey(ab), 500, 2000) == TargetBackoffVerdict::Skip, "wrap-safe: 512 ms < 2000");
+        Require(CheckTargetBackoff(b, 0x00000800u, AttackersKey(ab), 500, 2000) == TargetBackoffVerdict::WokenTime, "wrap-safe: 2304 ms");
+
+        Require(ClampTargetBackoffMs(0) == 250 && ClampTargetBackoffMs(2000) == 2000 && ClampTargetBackoffMs(99999) == 10000,
+            "backoff 250..10000");
+        Require(std::string(TargetValueName(TargetValue::Attackers)) == "attackers" &&
+            std::string(TargetValueName(TargetValue::PossibleAttackTargets)) == "possible_attack_targets" &&
+            std::string(TargetValueName(TargetValue::DpsTarget)) == "dps_target" &&
+            std::string(TargetValueName(TargetValue::TankTarget)) == "tank_target" &&
+            std::string(TargetValueName(TargetValue::InvalidTarget)) == "invalid_target", "value names of the TargetValues line");
+        Require(TargetRuleCounters::Values == 5, "five target values");
+
+        TargetRuleCounters& tc = TargetRuleGlobal();
+        Require(tc.failed[0].load() == 0 && tc.valueUs[4][1].load() == 0, "target rule counters start at 0");
+        tc.skipped[1].fetch_add(4);
+        Require(tc.skipped[1].exchange(0) == 4 && tc.skipped[1].load() == 0, "target rule counters are increments");
     }
 
     std::cout << "combat_rule_policy_tests: ok\n";
