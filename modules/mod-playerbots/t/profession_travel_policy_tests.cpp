@@ -58,6 +58,25 @@ int main()
         Require(MissingTool(true, false, true, false, false, false) == MissingTool(true, false, true, false), "switch off: the old rule");
     }
 
+    // 1d) twow-repo#333 M2 Crafting.Fishing (owner list 07.11.2026, item 4): fishing is a trip skill only with its switch; the tool
+    //     trip buys a pole after pick, knife and Whittle; the purpose starts only in the quest-first gap and ends with it.
+    {
+        Require(!IsTripSkill(kFishing, true, true) && IsTripSkill(kFishing, false, false, true), "fishing: a trip skill only with its switch");
+        Require(NearTripSkill(kFishing, false, false, false, true) && !NearTripSkill(kFishing, true, false, false, true), "fishing near trip once");
+        Require(MissingTool(false, false, false, false, false, false, true, false) == kFishingPole, "a fisher without a pole: pole");
+        Require(MissingTool(false, false, false, false, false, false, true, true) == 0, "with a pole: no tool");
+        Require(MissingTool(false, false, false, false, true, false, true, false) == kWhittle, "the Whittle first");
+        Require(MissingTool(true, false, false, false, false, false, true, false) == kMiningPick, "the pick first");
+        Require(MissingTool(false, false, false, false, false, false, false, false) == 0, "switch off: no pole");
+        Require(FishingInGap(false, 100, 200, false, 0), "start in the gap");
+        Require(!FishingInGap(false, 200, 200, false, 0) && !FishingInGap(false, 100, 0, false, 0), "no start without the backoff");
+        Require(!FishingInGap(false, 100, 200, true, 0) && !FishingInGap(false, 100, 200, false, 300), "no start past a turn-in or band walk");
+        Require(FishingInGap(true, 200 + kHoldAfterBackoffSeconds - 1, 200, false, 0), "running: held until the backoff end + hold");
+        Require(!FishingInGap(true, 200 + kHoldAfterBackoffSeconds, 200, false, 0), "running: ends after the hold");
+        Require(!FishingInGap(true, 100, 0, false, 0), "running: a found quest route ends it");
+        Require(!FishingInGap(true, 100, 200, true, 0) && !FishingInGap(true, 100, 200, false, 300), "running: never past a turn-in or band walk");
+    }
+
     // 2) The quest-first gap: backoff running, no open turn-in, no band walk.
     {
         Require(InQuestGap(100, 200, false, 0), "gap while the backoff runs");

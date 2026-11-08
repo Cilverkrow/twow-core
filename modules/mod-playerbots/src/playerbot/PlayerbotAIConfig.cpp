@@ -6,6 +6,7 @@
 #include "playerbot/CorpseRunFirstPolicy.h"   // twow-repo#575 A3 step 4 S4-1: Revive.CorpseRunFirst loader clamps
 #include "playerbot/RepopDeadOnlyPolicy.h"    // twow-repo#575 A3 step 4 S4-2: Rescue.RepopDeadOnly loader clamp
 #include "playerbot/PosStuckPolicy.h"
+#include "playerbot/CombatRulePolicy.h"   // A3 step 5: CombatRule.RestStartHp / RestStartMana loader clamps
 #include "playerbot/RoutePrecheckPolicy.h"
 #include "playerbot/AreaTeamPolicy.h"
 #include "playerbot/BgFillPolicy.h"
@@ -912,13 +913,19 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[Supervisor] config key=Supervisor.Arbiter value=%u result=off (0 off, 1 shadow)", supervisorArbiter);
         supervisorArbiter = 0;
     }
-    // A3 step 5 (ADR-0041): the combat rule, parts HealerStart and PriestOverlay (CombatRulePolicy.h); an unknown mode is off.
+    // A3 step 5 (ADR-0041): the combat rule, parts HealerStart, PriestOverlay and RestBeforePull (CombatRulePolicy.h); an unknown
+    // mode is off.
     combatRuleHealerStart = uint32(config.GetIntDefault("AiPlayerbot.CombatRule.HealerStart", 0));
     if (combatRuleHealerStart > 3)
         combatRuleHealerStart = 0;
     combatRulePriestOverlay = uint32(config.GetIntDefault("AiPlayerbot.CombatRule.PriestOverlay", 0));
     if (combatRulePriestOverlay > 3)
         combatRulePriestOverlay = 0;
+    combatRuleRestBeforePull = uint32(config.GetIntDefault("AiPlayerbot.CombatRule.RestBeforePull", 0));
+    if (combatRuleRestBeforePull > 3)
+        combatRuleRestBeforePull = 0;
+    combatRuleRestStartHp = ai::combat_rule::ClampStartHp(config.GetIntDefault("AiPlayerbot.CombatRule.RestStartHp", 60));
+    combatRuleRestStartMana = ai::combat_rule::ClampStartMana(config.GetIntDefault("AiPlayerbot.CombatRule.RestStartMana", 40));
     // A3 step 2 (ADR-0041): the quest book core QB-K (QuestBookPolicy.h, QuestBook.cpp); an unknown mode is off.
     questBook = uint32(config.GetIntDefault("AiPlayerbot.QuestBook", 0));
     if (!ai::questbook::ValidMode(questBook))
@@ -1698,6 +1705,13 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[Crafting] config key=Survival value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", craftingSurvival);
         craftingSurvival = 0;
     }
+    // twow-repo#333 M2 Crafting.Fishing (owner list 07.11.2026, item 4): an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B, 3 cohort A).
+    craftingFishing = config.GetIntDefault("AiPlayerbot.Crafting.Fishing", 0);
+    if (craftingFishing > 3)
+    {
+        sLog.outError("[Crafting] config key=Fishing value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", craftingFishing);
+        craftingFishing = 0;
+    }
     professionUseToolBuy = config.GetIntDefault("AiPlayerbot.ProfessionUse.ToolBuy", 0);
     if (professionUseToolBuy > 2)
         professionUseToolBuy = 0;
@@ -1992,8 +2006,12 @@ bool PlayerbotAIConfig::Initialize()
             {"CheatItem.Trace", Value(cheatItemTrace)},
             {"CombatRule.HealerStart", Value(combatRuleHealerStart)},
             {"CombatRule.PriestOverlay", Value(combatRulePriestOverlay)},
+            {"CombatRule.RestBeforePull", Value(combatRuleRestBeforePull)},
+            {"CombatRule.RestStartHp", Value(combatRuleRestStartHp)},
+            {"CombatRule.RestStartMana", Value(combatRuleRestStartMana)},
             {"Crafting.Consumables", Value(craftingConsumables)},
             {"Crafting.Cooking", Value(craftingCooking)},
+            {"Crafting.Fishing", Value(craftingFishing)},
             {"Crafting.Survival", Value(craftingSurvival)},
             {"CustomRaceStartZones", Value(customRaceStartZones)},
             {"DangerMap.CountAddDeaths", Value(dangerMapCountAddDeaths)},

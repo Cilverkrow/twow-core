@@ -85,19 +85,19 @@ require_text("${helper}" "return bot && IsRosterBotOnItsOwn(ai) && ai::cohort::A
 
 # 2. The trips: survival only with the switch (pure rule), the one trainer list reads it once.
 require_text("${policy}" "constexpr std::uint32_t kSurvival = 142;" "(2) survival skill")
-require_text("${policy}" "inline bool IsTripSkill(std::uint32_t skill, bool cooking, bool survival = false)\n{\n    return IsPhaseOneSkill(skill) || (cooking && skill == kCooking) || (survival && skill == kSurvival);\n}" "(2) trip skill rule")
-require_text("${policy}" "inline bool NearTripSkill(std::uint32_t skill, bool hasSkill, bool cooking, bool survival = false)\n{\n    return IsTripSkill(skill, cooking, survival) && !hasSkill;\n}" "(2) near trip once")
+require_text("${policy}" "inline bool IsTripSkill(std::uint32_t skill, bool cooking, bool survival = false, bool fishing = false)\n{\n    return IsPhaseOneSkill(skill) || (cooking && skill == kCooking) || (survival && skill == kSurvival) ||\n        (fishing && skill == kFishing);\n}" "(2) trip skill rule (M2 Crafting.Fishing adds its flag)")
+require_text("${policy}" "inline bool NearTripSkill(std::uint32_t skill, bool hasSkill, bool cooking, bool survival = false, bool fishing = false)\n{\n    return IsTripSkill(skill, cooking, survival, fishing) && !hasSkill;\n}" "(2) near trip once")
 between("${travel}" "std::vector<int32> ai::PhaseOneProfessionTrainers(" "\n}\n" trainers)
 count_text("${trainers}" "CraftingSurvivalFor(ai)" 1 "(2) the switch read once per list")
-require_text("${trainers}" "if (!ai::profession_travel::IsTripSkill(skill, cooking, survival))" "(2) trip skill filter")
-require_text("${trainers}" "NearTripSkill(skill, ai->HasSkill(SkillType(skill)), cooking, survival)" "(2) near trip filter")
+require_text("${trainers}" "if (!ai::profession_travel::IsTripSkill(skill, cooking, survival, fishing))" "(2) trip skill filter")
+require_text("${trainers}" "NearTripSkill(skill, ai->HasSkill(SkillType(skill)), cooking, survival, fishing)" "(2) near trip filter")
 
 # 3. The tool: the Whittle after pick and knife, only for a survivalist with the switch on.
 require_text("${policy}" "constexpr std::uint32_t kWhittle = 42004;" "(3) Whittle")
 require_text("${policy}" "inline std::uint32_t MissingTool(bool mining, bool hasPick, bool skinning, bool hasKnife, bool survival, bool hasWhittle)\n{\n    if (std::uint32_t const gatherTool = MissingTool(mining, hasPick, skinning, hasKnife))\n        return gatherTool;\n    return survival && !hasWhittle ? kWhittle : 0;\n}" "(3) tool rule")
 between("${travel}" "uint32 ai::MissingGatherTool(PlayerbotAI* ai)" "\n}\n" tool)
 require_text("${tool}" "bool const survival = CraftingSurvivalFor(ai) && ai->HasSkill(SkillType(ai::profession_travel::kSurvival));" "(3) survivalist with the switch")
-require_text("${tool}" "survival, bot->HasItemCount(ai::profession_travel::kWhittle, 1));" "(3) Whittle in the bags")
+require_text("${tool}" "survival, bot->HasItemCount(ai::profession_travel::kWhittle, 1)" "(3) Whittle in the bags")
 
 # 4. The item usage: Whittle and Simple Wood are skill items of a survivalist with the switch (buy below one stack, then keep).
 require_text("${usage}" "return ai->HasSkill(SKILL_COOKING) || (ai->HasSkill(SKILL_SURVIVAL2) && CraftingSurvivalFor(ai));" "(4) Simple Wood")

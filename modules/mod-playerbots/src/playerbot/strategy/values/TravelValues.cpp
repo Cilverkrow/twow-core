@@ -454,14 +454,16 @@ std::vector<int32> ai::PhaseOneProfessionTrainers(PlayerbotAI* ai, bool onlyUnle
     bool const cooking = CraftingCookingFor(ai);
     // twow-repo#333 M2 Crafting.Survival (owner list 07.11.2026, item 3): with its switch on for the bot survival too.
     bool const survival = CraftingSurvivalFor(ai);
+    // twow-repo#333 M2 Crafting.Fishing (owner list 07.11.2026, item 4): and fishing with its switch.
+    bool const fishing = CraftingFishingFor(ai);
 
     // For tradeskill trainers the key is the skill line (TrainableSpellMapValue).
     for (auto const& [skill, spellTrainers] : tradeskills->second)
     {
-        if (!ai::profession_travel::IsTripSkill(skill, cooking, survival))
+        if (!ai::profession_travel::IsTripSkill(skill, cooking, survival, fishing))
             continue;
         // P1-n: the near trip only for a skill not learned yet.
-        if (onlyUnlearned && !ai::profession_travel::NearTripSkill(skill, ai->HasSkill(SkillType(skill)), cooking, survival))
+        if (onlyUnlearned && !ai::profession_travel::NearTripSkill(skill, ai->HasSkill(SkillType(skill)), cooking, survival, fishing))
             continue;
 
         for (auto const& [trainerSpell, entries] : spellTrainers)
@@ -499,10 +501,15 @@ uint32 ai::MissingGatherTool(PlayerbotAI* ai)
     Player* bot = ai->GetBot();
     // twow-repo#333 M2 Crafting.Survival (owner list 07.11.2026, item 3): a survivalist with the switch on also needs the Whittle.
     bool const survival = CraftingSurvivalFor(ai) && ai->HasSkill(SkillType(ai::profession_travel::kSurvival));
+    // twow-repo#333 M2 Crafting.Fishing (owner list 07.11.2026, item 4): a fisher with the switch on also needs a pole - any pole, the
+    // same list "can fish" reads (FishValues.cpp), read only for such a bot.
+    bool const fishing = CraftingFishingFor(ai) && ai->HasSkill(SKILL_FISHING);
+    bool const hasPole = fishing &&
+        !ai->GetAiObjectContext()->GetValue<std::list<Item*>>("inventory items", "fishing pole")->Get().empty();
     return ai::profession_travel::MissingTool(
         ai->HasSkill(SKILL_MINING), bot->HasItemCount(ai::profession_travel::kMiningPick, 1),
         ai->HasSkill(SKILL_SKINNING), bot->HasItemCount(ai::profession_travel::kSkinningKnife, 1),
-        survival, bot->HasItemCount(ai::profession_travel::kWhittle, 1));
+        survival, bot->HasItemCount(ai::profession_travel::kWhittle, 1), fishing, hasPole);
 }
 
 std::vector<int32> ai::GatherToolVendors(PlayerbotAI* ai, uint32 tool)
@@ -1248,6 +1255,20 @@ bool NeedTravelPurposeValue::Calculate()
     case TravelDestinationPurpose::GatherFishing:
         if (!AI_VALUE2(bool, "has strategy", "tfish"))
             return false;
+        // twow-repo#333 M2 Crafting.Fishing (owner list 07.11.2026, item 4): for the switch's bots fishing never outranks the quest
+        // flow - a purpose starts only in the quest-first gap and a running one ends with it (ProfessionTravelPolicy.h FishingInGap);
+        // no fishing trip without a pole (the tool trip buys it). The gap values are only read. Off: as before.
+        if (CraftingFishingFor(ai))
+        {
+            if (!AI_VALUE(bool, "can fish"))
+                return false;
+            ai::gather_purpose::State const& running = ai->GetGatherPurpose();
+            TravelTarget* travelTarget = AI_VALUE(TravelTarget*, "travel target");
+            if (!ai::profession_travel::FishingInGap(running.Active() && running.skill == SKILL_FISHING, uint32(time(nullptr)),
+                    uint32(std::max(0, AI_VALUE2(int, "manual int", "quest route backoff until"))),
+                    ProfessionTripTurnInWaiting(bot, travelTarget), travelTarget->GetBandTripEnd()))
+                return false;
+        }
     case TravelDestinationPurpose::GatherSkinning:
     case TravelDestinationPurpose::GatherMining:
     case TravelDestinationPurpose::GatherHerbalism:
@@ -1295,6 +1316,14 @@ bool NeedTravelPurposeValue::Calculate()
                 sLog.outBasic("[Purpose] state=start bot=%u level=%u profession=%s reason=skill_behind skill=%u target=%u budget_min=%u",
                     bot->GetGUIDLow(), bot->GetLevel(), ai::gather_purpose::ProfessionName(skill), value, target,
                     ai::gather_purpose::BudgetSeconds / 60);
+                // twow-repo#333 M2 Crafting.Fishing: one line per fishing purpose started in the gap (the rest of the backoff).
+                if (purpose == TravelDestinationPurpose::GatherFishing && CraftingFishingFor(ai))
+                {
+                    uint32 const backoffUntil = uint32(std::max(0, AI_VALUE2(int, "manual int", "quest route backoff until")));
+                    sLog.outBasic("[Crafting] kind=fishing event=start skill=%u target=%u backoff_s=%u bot=%u level=%u cohort=%c", value,
+                        target, backoffUntil > now ? backoffUntil - now : 0, bot->GetGUIDLow(), bot->GetLevel(),
+                        ai::cohort::Letter(bot->GetGUIDLow()));
+                }
                 return true;
             case ai::gather_purpose::Decision::Yes:
                 return true;

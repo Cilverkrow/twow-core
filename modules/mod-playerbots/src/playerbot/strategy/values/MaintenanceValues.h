@@ -4,6 +4,7 @@
 #include "BudgetValues.h"
 #include "playerbot/GroupBuffPolicy.h"
 #include "playerbot/RestGatePolicy.h"
+#include "playerbot/CombatRule.h"   // A3 step 5: CombatRule.RestBeforePull (should eat)
 
 namespace ai
 {
@@ -221,6 +222,11 @@ namespace ai
             // twow-repo#602 ROT-01 X1: while resting, eat up to the rest target instead of stopping at lowHealth.
             if (sPlayerbotAIConfig.rotationRestGate && AI_VALUE(bool, "rest gate"))
                 return AI_VALUE2(uint8, "health", "self target") < sPlayerbotAIConfig.rotationRestGateTargetHp;
+
+            // A3 step 5 (CombatRule.RestBeforePull, default 0): before the next pull the rule's rest node eats below its start HP too,
+            // with no lower bound (the part off: nothing is read).
+            if (sPlayerbotAIConfig.combatRuleRestBeforePull && ai::combat_rule::RestBeforePullNeed(ai) == ai::combat_rule::RestNeed::Health)
+                return true;
 
             if (AI_VALUE2(uint8, "health", "self target") >= sPlayerbotAIConfig.lowHealth)
                 return false;
