@@ -633,6 +633,12 @@ public:
     uint32 buffStrangerCooldownSeconds = 900;
     uint32 lootRoleWeights = 0;       // twow-repo#308 LOOT-ROLE-01: 1 = weight scale from the premade path from L1, quest reward by gain; 2 = and the owner stat table v2
     bool lootFeralFixedSpec = true;   // twow-repo#308 (owner 26.09.): bear/cat scale by the premade path, not a coin per check
+    // OB-00 08.11.2026 (bug fix: code default 1, 0 = rollback): "loot chance" of a game object reads its loot template; the old
+    // guid of a negative entry overflowed into the high guid, so every game object had chance 0 (LootChancePolicy.h).
+    uint32 lootChanceGameObjectEntryFix = 1;
+    // OB-00 08.11.2026 (lever, default 0): 1 = a game object whose drop of a quest objective item is above 5 percent becomes
+    // an objective of that quest as a creature does; 0 = only through a quest item, as before the fix (QuestValues.cpp).
+    uint32 questRelationGameObjectChanceDrops = 0;
     bool equipKeepWeaponsUnlessUpgrade = false;   // twow-repo#308 EQUIP-FLIP-01: hands come off only for a hand-item candidate in the bags
     bool equipAfterRollWon = false;   // twow-repo#341 (owner repro 25.10.): a won Need/Greed roll on a weapon, armour piece or bag runs "equip upgrades" (the core stores it without SMSG_ITEM_PUSH_RESULT)
     bool parkCellSourceStats = false;  // twow-repo#541 P2 D0: [CellSource] minute line - continent cells by source (real players / bots / active non-players)
