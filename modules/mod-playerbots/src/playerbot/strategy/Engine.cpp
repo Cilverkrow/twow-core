@@ -1001,7 +1001,7 @@ void Engine::ProcessTriggers(bool minimal)
         if (sPlayerbotAIConfig.perfEventTriggerSkip && !testMode && trigger->IsEventOnly() && !trigger->IsAlreadyTriggered())
             continue;
 
-        // twow-repo#602 (AiPlayerbot.Rotation.KnownSpellNodes, default 0): a node whose every handler is a spell the bot does not
+        // twow-repo#602 (AiPlayerbot.Rotation.KnownSpellNodes, default 1): a node whose every handler is a spell the bot does not
         // know, without alternatives, is not checked: its push could only end IMPOSSIBLE (KnownSpellNodesPolicy.h), also with a
         // set event flag (the reset loop below clears it). The answer is taken again after a learn, level-up or talent change.
         if (sPlayerbotAIConfig.rotationKnownSpellNodes && !testMode &&
