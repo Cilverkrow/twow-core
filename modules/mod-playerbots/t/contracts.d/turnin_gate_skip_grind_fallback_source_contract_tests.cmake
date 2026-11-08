@@ -101,7 +101,8 @@ require_order("${gate}" "if (finished && ProfessionTripGrindFallback(bot))" "ret
 require_text("${gate}" "if (tracedAt == 0 || now >= tracedAt + ai::profession_travel::kGrindFallbackTraceSeconds)" "(3) the proof line at most hourly")
 require_text("${gate}" "\"[ProfTravel] state=turnin_grind_fallback bot=%u level=%u quests=%u failures=%d\"" "(3) the proof line format")
 count_text("${travel_cpp}" "ProfessionTripGrindFallback(bot)" 1 "(3) one gate call")
-count_text("${travel_cpp}" "ProfessionTripTurnInWaiting(bot, " 4 "(3) the four turn_in users share the gate")
+# twow-repo#333 M2 Crafting.Fishing: the fishing gap guard (NeedTravelPurpose GatherFishing) is the fifth user of the same gate.
+count_text("${travel_cpp}" "ProfessionTripTurnInWaiting(bot, " 5 "(3) the five turn_in users share the gate")
 foreach(src request create)
   count_text("${${src}}" "professionTrainingTurnInGateSkipGrindFallback" 0 "(3) no switch read in ${src}")
 endforeach()

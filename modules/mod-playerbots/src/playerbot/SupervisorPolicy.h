@@ -452,4 +452,335 @@ inline std::size_t FormatPlanLine(char* buf, std::size_t n, PlanLine const& l)
         l.reason ? l.reason : "-", l.cands, alts[0], alts[1], alts[2], l.blocked, l.budgetMs);
     return Sanitize(buf, w, n);
 }
+
+// ---- arbiter shadow (A3 step 3, behaviour pair 1; AiPlayerbot.Supervisor.Arbiter, default 0) -------------------------------
+// Design: ws-00/projekt-durchleuchtung/A3-S3-ARBITER-SCHATTEN-ENTWURF.md v1.2 (OB-00 07.11.: E1-E4 a). The shadow only watches
+// the live travel target of a bot the supervisor runs for: one observer at the end of the status write, the steps of one engine
+// pass bundled into one record. A line is written only for an open target closed by a family that is not its own plan, for a
+// COOLDOWN expiry and for a writer without scope; every other bundle is only counted, once per minute and cohort
+// ([ArbiterMin]). The shadow writes nothing of the bot. 2 (enforcement) has no code yet, so every value above 1 is off.
+inline bool ValidArbiter(std::uint32_t value)
+{
+    return value <= 1;
+}
+
+// The travel status as numbers, in the order of the game's enum (TravelMgr.h TravelStatus, uint8), so this header stays free of
+// game types. SupervisorShadow.cpp asserts the order at compile time.
+constexpr std::uint8_t kStatusNone = 0;
+constexpr std::uint8_t kStatusPrepare = 1;
+constexpr std::uint8_t kStatusReady = 2;
+constexpr std::uint8_t kStatusTravel = 3;
+constexpr std::uint8_t kStatusWork = 4;
+constexpr std::uint8_t kStatusCooldown = 5;
+constexpr std::uint8_t kStatusExpired = 6;
+
+inline char const* StatusName(std::uint8_t status)
+{
+    switch (status)
+    {
+        case kStatusNone: return "NONE";
+        case kStatusPrepare: return "PREPARE";
+        case kStatusReady: return "READY";
+        case kStatusTravel: return "TRAVEL";
+        case kStatusWork: return "WORK";
+        case kStatusCooldown: return "COOLDOWN";
+        case kStatusExpired: return "EXPIRED";
+        default: break;
+    }
+    return "?";
+}
+
+// Open (design 4.4): READY, TRAVEL, WORK or COOLDOWN on a destination other than the null target. A COOLDOWN is no end for the
+// supervisor (CLI-Berufe).
+inline bool IsOpen(std::uint8_t status, bool nullDest)
+{
+    return !nullDest && (status == kStatusReady || status == kStatusTravel || status == kStatusWork || status == kStatusCooldown);
+}
+
+constexpr std::size_t kWriterIds = 10;
+
+inline char const* WriterName(WriterId writer)
+{
+    switch (writer)
+    {
+        case WriterId::Unknown: return "Unknown";
+        case WriterId::Select: return "Select";
+        case WriterId::Requester: return "Requester";
+        case WriterId::Execution: return "Execution";
+        case WriterId::Lifecycle: return "Lifecycle";
+        case WriterId::Manager: return "Manager";
+        case WriterId::GroupFollow: return "GroupFollow";
+        case WriterId::Command: return "Command";
+        case WriterId::Brain: return "Brain";
+        case WriterId::Test: return "Test";
+    }
+    return "Unknown";
+}
+
+// Design 4.4 point 1: an open target closed by one of these families gets a line. Lifecycle, Execution, Command and Test close
+// by plan and are only counted.
+inline bool CloserIsLine(WriterId writer)
+{
+    return writer == WriterId::Select || writer == WriterId::Requester || writer == WriterId::GroupFollow ||
+        writer == WriterId::Manager || writer == WriterId::Brain || writer == WriterId::Unknown;
+}
+
+constexpr std::size_t kPathSlots = 4;
+
+// The steps one engine pass made on the live target (design 4.2): opened by the first observed write after a tick, closed by the
+// next tick of the bot or by Release. The path keeps the first kPathSlots steps; steps counts on.
+struct Bundle
+{
+    std::uint32_t steps = 0;
+    std::uint8_t fromStatus = kStatusNone;
+    bool fromNull = true;
+    std::uint32_t fromSinceMs = 0;   // when the from-destination was set (game ms; compare by unsigned difference only)
+    std::uint8_t path[kPathSlots] = {};
+    bool pathNewDest[kPathSlots] = {};
+    std::uint8_t curStatus = kStatusNone;
+    bool curNull = true;
+    bool otherDest = false;          // the destination after the last step is not the from-destination
+    std::uint16_t writers = 0;       // one bit per WriterId
+    WriterId first = WriterId::Unknown;
+    bool hasCloser = false;          // the first step that left an open target
+    WriterId closer = WriterId::Unknown;
+    std::uint32_t closeAtMs = 0;
+    bool hasExpire = false;          // the first step into EXPIRED
+    std::uint8_t expireFrom = kStatusNone;
+    WriterId expireWriter = WriterId::Unknown;
+    std::uint32_t expireAtMs = 0;
+    bool toNone = false;             // a step into NONE
+    std::uint32_t lastAtMs = 0;
+    bool forced = false;             // the target's forced flag after the last step
+    bool gap = false;                // a write the shadow could not follow (no thread tag, another bot's thread) came first
+};
+
+inline void BundleStart(Bundle& b, std::uint8_t fromStatus, bool fromNull, std::uint32_t fromSinceMs)
+{
+    b = Bundle();
+    b.fromStatus = fromStatus;
+    b.fromNull = fromNull;
+    b.fromSinceMs = fromSinceMs;
+    b.curStatus = fromStatus;
+    b.curNull = fromNull;
+}
+
+// One observed status write. newDest: the destination differs from the one before this step; otherDest: from the bundle's
+// from-destination.
+inline void BundleStep(Bundle& b, std::uint8_t status, bool newDest, bool otherDest, bool nullDest, WriterId writer, bool forced,
+    bool gap, std::uint32_t nowMs)
+{
+    if (!b.hasCloser && IsOpen(b.curStatus, b.curNull) && (newDest || !IsOpen(status, nullDest)))
+    {
+        b.hasCloser = true;
+        b.closer = writer;
+        b.closeAtMs = nowMs;
+    }
+    if (!b.hasExpire && status == kStatusExpired && b.curStatus != kStatusExpired)
+    {
+        b.hasExpire = true;
+        b.expireFrom = newDest ? kStatusNone : b.curStatus;
+        b.expireWriter = writer;
+        b.expireAtMs = nowMs;
+    }
+    if (status == kStatusNone)
+        b.toNone = true;
+    if (b.steps < kPathSlots)
+    {
+        b.path[b.steps] = status;
+        b.pathNewDest[b.steps] = newDest;
+    }
+    if (b.steps == 0)
+        b.first = writer;
+    ++b.steps;
+    b.writers = std::uint16_t(b.writers | (1u << unsigned(writer)));
+    b.curStatus = status;
+    b.curNull = nullDest;
+    b.otherDest = otherDest;
+    b.forced = forced;
+    b.gap = b.gap || gap;
+    b.lastAtMs = nowMs;
+}
+
+struct BundleClass
+{
+    bool oldOpen = false;
+    bool closesOpen = false;
+    bool expireCooldown = false;
+    bool unknown = false;
+    WriterId family = WriterId::Unknown;   // the family the minute sum counts: the closer, else the first writer
+};
+
+inline BundleClass ClassifyBundle(Bundle const& b)
+{
+    BundleClass c;
+    c.oldOpen = IsOpen(b.fromStatus, b.fromNull);
+    bool const ends = b.otherDest || !IsOpen(b.curStatus, b.curNull);
+    c.closesOpen = c.oldOpen && ends && b.hasCloser && CloserIsLine(b.closer);
+    c.expireCooldown = b.hasExpire && b.expireFrom == kStatusCooldown;
+    c.unknown = (b.writers & (1u << unsigned(WriterId::Unknown))) != 0;
+    c.family = b.hasCloser ? b.closer : b.first;
+    return c;
+}
+
+// Which line a closed bundle gets (design 4.4): the expiry from COOLDOWN first, then a write line, else none (counted only).
+enum class LineKind : std::uint8_t
+{
+    None = 0,
+    Write = 1,
+    Expire = 2,
+};
+
+inline LineKind LineFor(BundleClass const& c)
+{
+    if (c.expireCooldown)
+        return LineKind::Expire;
+    if (c.closesOpen || c.unknown)
+        return LineKind::Write;
+    return LineKind::None;
+}
+
+// Design 4.5 reason table, from (writer, path) only. The exact reasons (work_death, relation_done ...) come with the family pairs.
+inline char const* ReasonFor(Bundle const& b)
+{
+    if (b.hasExpire && b.expireWriter == WriterId::Execution)
+    {
+        switch (b.expireFrom)
+        {
+            case kStatusCooldown: return "cooldown_end";
+            case kStatusReady: return "timeout_ready";
+            case kStatusTravel: return "timeout_travel";
+            case kStatusWork: return "timeout_work";
+            default: break;
+        }
+    }
+    if (b.toNone)
+        return "reset";
+    WriterId const writer = b.hasExpire ? b.expireWriter : (b.hasCloser ? b.closer : b.first);
+    if (writer == WriterId::Lifecycle)
+        return "lifecycle";
+    if (writer == WriterId::Manager)
+        return "manager";
+    return "other";
+}
+
+// The time the from-destination stood when the bundle left it (or expired it, or wrote last).
+inline std::uint32_t BundleAgeMs(Bundle const& b)
+{
+    std::uint32_t const at = b.hasCloser ? b.closeAtMs : (b.hasExpire ? b.expireAtMs : b.lastAtMs);
+    return at - b.fromSinceMs;
+}
+
+// "READY>*TRAVEL>READY": the from-status, then every kept step; '*' marks a new destination, ">.." a cut path.
+inline std::size_t FormatPath(char* buf, std::size_t n, Bundle const& b)
+{
+    if (n == 0)
+        return 0;
+    std::size_t len = Sanitize(buf, std::snprintf(buf, n, "%s", StatusName(b.fromStatus)), n);
+    std::size_t const kept = b.steps < kPathSlots ? std::size_t(b.steps) : kPathSlots;
+    for (std::size_t i = 0; i < kept && len + 1 < n; ++i)
+        len += Sanitize(buf + len, std::snprintf(buf + len, n - len, ">%s%s", b.pathNewDest[i] ? "*" : "", StatusName(b.path[i])),
+            n - len);
+    if (b.steps > kPathSlots && len + 1 < n)
+        len += Sanitize(buf + len, std::snprintf(buf + len, n - len, ">.."), n - len);
+    return len;
+}
+
+// "Select,Execution": the families of a bundle in WriterId order, "-" for none.
+inline std::size_t FormatWriters(char* buf, std::size_t n, std::uint16_t writers)
+{
+    if (n == 0)
+        return 0;
+    buf[0] = '\0';
+    std::size_t len = 0;
+    for (std::size_t i = 0; i < kWriterIds && len + 1 < n; ++i)
+        if (writers & (1u << unsigned(i)))
+            len += Sanitize(buf + len, std::snprintf(buf + len, n - len, "%s%s", len ? "," : "", WriterName(WriterId(i))), n - len);
+    if (len == 0)
+        len = Sanitize(buf, std::snprintf(buf, n, "-"), n);
+    return len;
+}
+
+// The bot and the destinations of a line; the destinations are "<short name>:<entry>:<quest id|0>", the null target "idle:0:0".
+struct ShadowLine
+{
+    std::uint32_t guid = 0;
+    char cohort = 'A';
+    char const* from = "-";
+    char const* to = "-";
+};
+
+inline std::size_t FormatWriteLine(char* buf, std::size_t n, ShadowLine const& l, Bundle const& b)
+{
+    if (n == 0)
+        return 0;
+    char path[96];
+    FormatPath(path, sizeof(path), b);
+    char writers[128];
+    FormatWriters(writers, sizeof(writers), b.writers);
+    BundleClass const c = ClassifyBundle(b);
+    int const w = std::snprintf(buf, n, "[Supervisor] bot=%u cohort=%c arbiter=1 ev=write writer=%s closer=%s writers=%s from=%s "
+        "to=%s path=%s steps=%u old_open=%u closes_open=%u forced=%u gap=%u age_ms=%u", l.guid, l.cohort, WriterName(b.first),
+        b.hasCloser ? WriterName(b.closer) : "-", writers, l.from ? l.from : "-", l.to ? l.to : "-", path, b.steps,
+        c.oldOpen ? 1u : 0u, c.closesOpen ? 1u : 0u, b.forced ? 1u : 0u, b.gap ? 1u : 0u, BundleAgeMs(b));
+    return Sanitize(buf, w, n);
+}
+
+// The expired destination is the from-destination (an expiry keeps the destination).
+inline std::size_t FormatExpireLine(char* buf, std::size_t n, ShadowLine const& l, Bundle const& b)
+{
+    if (n == 0)
+        return 0;
+    char path[96];
+    FormatPath(path, sizeof(path), b);
+    int const w = std::snprintf(buf, n, "[Supervisor] bot=%u cohort=%c arbiter=1 ev=expire writer=%s reason=%s dest=%s path=%s "
+        "gap=%u age_ms=%u", l.guid, l.cohort, WriterName(b.hasExpire ? b.expireWriter : b.first), ReasonFor(b),
+        l.from ? l.from : "-", path, b.gap ? 1u : 0u, BundleAgeMs(b));
+    return Sanitize(buf, w, n);
+}
+
+// The minute sum of one cohort. offthread_writes: writes on a thread without tag (not the map update, not the world hook, not
+// the console handler); cross_writes: a bot's map thread wrote another bot's target. Neither reads the other bot's supervisor
+// (its lifetime belongs to that bot's thread); the next tagged write of that bot carries gap=1.
+struct ArbiterMinute
+{
+    std::uint32_t bundles = 0;
+    std::uint32_t lines = 0;
+    std::uint32_t dropped = 0;
+    std::uint32_t unknown = 0;
+    std::uint32_t offthreadWrites = 0;
+    std::uint32_t crossWrites = 0;
+    std::uint32_t gaps = 0;
+    std::uint32_t closesOpen = 0;
+    std::uint32_t expireCooldown = 0;
+    std::uint32_t family[kWriterIds] = {};
+};
+
+inline void CountBundle(ArbiterMinute& m, Bundle const& b)
+{
+    BundleClass const c = ClassifyBundle(b);
+    ++m.bundles;
+    if (c.unknown)
+        ++m.unknown;
+    if (b.gap)
+        ++m.gaps;
+    if (c.closesOpen)
+        ++m.closesOpen;
+    if (c.expireCooldown)
+        ++m.expireCooldown;
+    ++m.family[std::size_t(c.family)];
+}
+
+inline std::size_t FormatArbiterMin(char* buf, std::size_t n, char cohort, ArbiterMinute const& m)
+{
+    if (n == 0)
+        return 0;
+    auto const f = [&m](WriterId id) { return m.family[std::size_t(id)]; };
+    int const w = std::snprintf(buf, n, "[ArbiterMin] cohort=%c bundles=%u lines=%u dropped=%u unknown=%u offthread_writes=%u "
+        "cross_writes=%u gaps=%u closes_open=%u expire_cooldown=%u sel=%u req=%u exe=%u life=%u mgr=%u grp=%u cmd=%u brain=%u test=%u",
+        cohort, m.bundles, m.lines, m.dropped, m.unknown, m.offthreadWrites, m.crossWrites, m.gaps, m.closesOpen, m.expireCooldown,
+        f(WriterId::Select), f(WriterId::Requester), f(WriterId::Execution), f(WriterId::Lifecycle), f(WriterId::Manager),
+        f(WriterId::GroupFollow), f(WriterId::Command), f(WriterId::Brain), f(WriterId::Test));
+    return Sanitize(buf, w, n);
+}
 }

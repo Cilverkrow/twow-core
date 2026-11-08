@@ -74,7 +74,8 @@ namespace ai
     class TravelTargetValue : public ManualSetValue<TravelTarget*>
     {
     public:
-        TravelTargetValue(PlayerbotAI* ai, std::string name = "travel target") : ManualSetValue<TravelTarget*>(ai, new TravelTarget(ai), name) {}
+        // A3 step 3 arbiter shadow: the one live target of the bot (Reset restores this same pointer, Value.h).
+        TravelTargetValue(PlayerbotAI* ai, std::string name = "travel target") : ManualSetValue<TravelTarget*>(ai, new TravelTarget(ai), name) { value->MarkLive(); }
         virtual ~TravelTargetValue() override { delete value; }
     };	
 

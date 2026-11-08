@@ -8,10 +8,12 @@
 #include "playerbot/MasterWaitPolicy.h"
 #include "playerbot/ReleaseVeto.h"   // twow-repo#629 G1 (DungeonClear.StayDeadInRun)
 #include "playerbot/TravelMgr.h"
+#include "playerbot/SupervisorShadow.h"   // A3 step 3 arbiter shadow: RepopAction's writer scope
 
 #include "playerbot/BotSlots.h"
 #include "playerbot/CorpseRunPolicy.h"
 #include "playerbot/CorpseRunFirstPolicy.h"   // twow-repo#575 A3 step 4 S4-1: Revive.CorpseRunFirst counters
+#include "playerbot/RepopDeadOnlyPolicy.h"    // twow-repo#575 A3 step 4 S4-2: Rescue.RepopDeadOnly gate
 #include "playerbot/StartZonePolicy.h"
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/RandomPlayerbotMgr.h"
@@ -217,6 +219,7 @@ namespace ai
     public:
         virtual bool Execute(Event& event) override
         {
+            ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::Lifecycle);
             Player* requester = event.getOwner() ? event.getOwner() : GetMaster();
 
             // twow-repo#575 A3 step 4 S4-1 (AiPlayerbot.Revive.CorpseRunFirst): a ghost with a corpse hit by "move long stuck" goes to
@@ -427,6 +430,12 @@ namespace ai
                 return false;
 
             if (ai->HasActivePlayerMaster())
+                return false;
+
+            // twow-repo#575 A3 step 4 S4-2 (AiPlayerbot.Rescue.RepopDeadOnly): repop only when dead. An alive bot is no longer
+            // teleported to its race start / homebind with a group leave; "unstuck" gives it QuestRescue or a reset instead.
+            if (ai::cohort::Applies(sPlayerbotAIConfig.rescueRepopDeadOnly, bot->GetGUIDLow()) &&
+                ai::repop_dead_only::BlocksRepop(bot->IsAlive(), ai->HasRealPlayerMaster()))
                 return false;
 
             return true;

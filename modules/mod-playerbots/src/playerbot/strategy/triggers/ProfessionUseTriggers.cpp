@@ -155,6 +155,22 @@ bool ai::CraftingCookingFor(PlayerbotAI* ai)
     return bot && IsRosterBotOnItsOwn(ai) && ai::cohort::Applies(sPlayerbotAIConfig.craftingCooking, bot->GetGUIDLow());
 }
 
+bool ai::CraftingSurvivalFor(PlayerbotAI* ai)
+{
+    if (!sPlayerbotAIConfig.craftingSurvival)
+        return false;
+    Player* bot = ai->GetBot();
+    return bot && IsRosterBotOnItsOwn(ai) && ai::cohort::Applies(sPlayerbotAIConfig.craftingSurvival, bot->GetGUIDLow());
+}
+
+bool ai::CraftingFishingFor(PlayerbotAI* ai)
+{
+    if (!sPlayerbotAIConfig.craftingFishing)
+        return false;
+    Player* bot = ai->GetBot();
+    return bot && IsRosterBotOnItsOwn(ai) && ai::cohort::Applies(sPlayerbotAIConfig.craftingFishing, bot->GetGUIDLow());
+}
+
 bool ai::CookingFireNear(Player* bot)
 {
     GameObject* fire = nullptr;

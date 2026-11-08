@@ -4,6 +4,7 @@
 #include "playerbot/PathFailPolicy.h"
 #include "playerbot/IslandGuardPolicy.h"   // twow-repo#575 A3 step 4 M-c: Path.IslandGuard loader clamps
 #include "playerbot/CorpseRunFirstPolicy.h"   // twow-repo#575 A3 step 4 S4-1: Revive.CorpseRunFirst loader clamps
+#include "playerbot/RepopDeadOnlyPolicy.h"    // twow-repo#575 A3 step 4 S4-2: Rescue.RepopDeadOnly loader clamp
 #include "playerbot/PosStuckPolicy.h"
 #include "playerbot/CombatRulePolicy.h"   // A3 step 5: CombatRule.RestStartHp / RestStartMana loader clamps
 #include "playerbot/RoutePrecheckPolicy.h"
@@ -20,6 +21,8 @@
 #include "playerbot/GroupManagerPolicy.h"   // A3 step 6: BotGroups.Manager mode
 #include "playerbot/SupervisorPolicy.h"   // A3 step 3: Supervisor mode
 #include "playerbot/QuestBookPolicy.h"   // A3 step 2: QuestBook mode
+#include "playerbot/LockoutPolicy.h"   // L1: BotGroups.ResetRaidsRealInviterOnly parse
+#include "playerbot/LootChancePolicy.h"   // OB-00 08.11.: LootChance.GameObjectEntryFix / QuestRelation.GameObjectChanceDrops
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
@@ -44,6 +47,7 @@
 #include "playerbot/LevelGuardPolicy.h"   // twow-repo#601 cand4 lever (ii): config clamps + the startup grid
 #include "playerbot/R01CohortPolicy.h"
 #include "playerbot/LosCachePolicy.h"   // twow-repo#602 (Rotation.LosCacheMs): the read's bounds
+#include "playerbot/RescueHubPolicy.h"   // twow-repo#575 RG-a (QuestRescue.HomeHubs): the mode clamp
 
 #include <iostream>
 #include <numeric>
@@ -505,6 +509,11 @@ bool PlayerbotAIConfig::Initialize()
     buffStrangerCooldownSeconds = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.Buff.StrangerCooldownSeconds", 900)));
     lootRoleWeights = std::min<uint32>(2, uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.Loot.RoleWeights", 0))));
     lootFeralFixedSpec = config.GetBoolDefault("AiPlayerbot.Loot.FeralFixedSpec", true);
+    // OB-00 08.11.2026 (bug fix: code default 1, 0 = rollback, an unknown value = 1): "loot chance" of a game object
+    // (LootChancePolicy.h). The lever QuestRelation.GameObjectChanceDrops keeps the quest relation rule (default 0, an unknown
+    // value = 0).
+    lootChanceGameObjectEntryFix = ai::loot_chance::FixOn(config.GetIntDefault("AiPlayerbot.LootChance.GameObjectEntryFix", 1)) ? 1 : 0;
+    questRelationGameObjectChanceDrops = ai::loot_chance::ChanceDropsOn(config.GetIntDefault("AiPlayerbot.QuestRelation.GameObjectChanceDrops", 0)) ? 1 : 0;
     equipKeepWeaponsUnlessUpgrade = config.GetBoolDefault("AiPlayerbot.Equip.KeepWeaponsUnlessUpgrade", false);
     equipAfterRollWon = config.GetBoolDefault("AiPlayerbot.Equip.AfterRollWon", false);   // twow-repo#341 (owner repro 25.10.)
     parkCellSourceStats = config.GetBoolDefault("AiPlayerbot.Park.CellSourceStats", false);
@@ -842,6 +851,7 @@ bool PlayerbotAIConfig::Initialize()
     grindCapLowLevelMargin = config.GetIntDefault("AiPlayerbot.GrindCap.LowLevelMargin", 2);
     questRescueIdleMinutes = config.GetIntDefault("AiPlayerbot.QuestRescue.IdleMinutes", 30);
     questRescueKeepRequestWhenFull = config.GetBoolDefault("AiPlayerbot.QuestRescue.KeepRequestWhenFull", false);
+    questRescueHomeHubs = ai::rescue_hub::ClampMode(config.GetIntDefault("AiPlayerbot.QuestRescue.HomeHubs", 0));
     grindAvoidMaxDeaths = config.GetIntDefault("AiPlayerbot.GrindAvoid.MaxDeaths", 0);
     grindAvoidWindowSeconds = std::max<uint32>(60, config.GetIntDefault("AiPlayerbot.GrindAvoid.WindowSeconds", 3600));
     grindAvoidSeconds = std::max<uint32>(60, config.GetIntDefault("AiPlayerbot.GrindAvoid.AvoidSeconds", 3600));
@@ -885,6 +895,9 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[GroupMgr] config key=Manager value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", botGroupsManager);
         botGroupsManager = 0;
     }
+    // L1 (owner 07.11.2026): code default 1; only "0" is off, any other value is 1. Read as a string: GetIntDefault is atoi,
+    // which would turn a non-numeric value such as "on" into 0 (rollback).
+    botGroupsResetRaidsRealInviterOnly = ai::lockout::SwitchOn(config.GetStringDefault("AiPlayerbot.BotGroups.ResetRaidsRealInviterOnly", "1"));
     // A3 lever 2 (ADR-0041): the group write path (GroupOpPolicy.h WritePathApplies); an unknown mode is off.
     botGroupsWritePath = uint32(config.GetIntDefault("AiPlayerbot.BotGroups.WritePath", 0));
     if (!ai::group_ops::ValidMode(botGroupsWritePath))
@@ -898,6 +911,13 @@ bool PlayerbotAIConfig::Initialize()
     {
         sLog.outError("[Supervisor] config key=Supervisor value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", supervisor);
         supervisor = 0;
+    }
+    // A3 step 3 behaviour pair 1 (SupervisorShadow.cpp): the arbiter shadow; 2 (enforcement) has no code yet, so above 1 is off.
+    supervisorArbiter = uint32(config.GetIntDefault("AiPlayerbot.Supervisor.Arbiter", 0));
+    if (!ai::supervisor::ValidArbiter(supervisorArbiter))
+    {
+        sLog.outError("[Supervisor] config key=Supervisor.Arbiter value=%u result=off (0 off, 1 shadow)", supervisorArbiter);
+        supervisorArbiter = 0;
     }
     // A3 step 5 (ADR-0041): the combat rule, parts HealerStart, PriestOverlay, RestBeforePull and ProgressGuard (CombatRulePolicy.h); an unknown
     // mode is off.
@@ -935,6 +955,15 @@ bool PlayerbotAIConfig::Initialize()
     questBookAboveLevels = std::min<uint32>(10, uint32(std::max(0, config.GetIntDefault("AiPlayerbot.QuestBook.AboveLevels", 1))));
     questBookStaleCompleteSeconds = std::clamp<uint32>(uint32(std::max(0, config.GetIntDefault("AiPlayerbot.QuestBook.StaleCompleteSeconds", 1800))), 60, 86400);
     questBookExclude = ai::quest_feasibility::ParseQuestIdList(config.GetStringDefault("AiPlayerbot.QuestBook.Exclude", ""));
+    // A3 step 2 QB-S (QuestSourcePolicy.h): source choice and quest order; acts only where the quest book is active.
+    questBookSourceChoice = uint32(config.GetIntDefault("AiPlayerbot.QuestBook.SourceChoice", 0));
+    if (!ai::questbook::ValidMode(questBookSourceChoice))
+    {
+        sLog.outError("[QuestBook] config key=QuestBook.SourceChoice value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", questBookSourceChoice);
+        questBookSourceChoice = 0;
+    }
+    questBookKillSeconds = std::clamp(config.GetFloatDefault("AiPlayerbot.QuestBook.KillSeconds", 12.0f), 1.0f, 120.0f);
+    questBookSingleSpawnMargin = std::clamp(config.GetFloatDefault("AiPlayerbot.QuestBook.SingleSpawnMargin", 1.5f), 1.0f, 10.0f);
     questGroupsEnable = (uint32)config.GetIntDefault("AiPlayerbot.QuestGroups.Enable", 0);
     questGroupsScanSeconds = std::max<uint32>(10, config.GetIntDefault("AiPlayerbot.QuestGroups.ScanSeconds", 60));
     questGroupsScanSlices = std::min<uint32>(64, (uint32)config.GetIntDefault("AiPlayerbot.QuestGroups.ScanSlices", 0));
@@ -1147,6 +1176,8 @@ bool PlayerbotAIConfig::Initialize()
     // twow-repo#575 A3 step 4 S4-1 (Revive.CorpseRunFirst): an unknown mode is off; MaxSeconds clamped to 120..1800 (CorpseRunFirstPolicy.h).
     reviveCorpseRunFirst = ai::corpse_first::ClampMode(config.GetIntDefault("AiPlayerbot.Revive.CorpseRunFirst", 0));
     reviveCorpseRunFirstMaxSeconds = ai::corpse_first::ClampMaxSeconds(config.GetIntDefault("AiPlayerbot.Revive.CorpseRunFirst.MaxSeconds", int(ai::corpse_first::DefaultMaxSeconds)));
+    // twow-repo#575 A3 step 4 S4-2 (Rescue.RepopDeadOnly): an unknown mode is off (RepopDeadOnlyPolicy.h).
+    rescueRepopDeadOnly = ai::repop_dead_only::ClampMode(config.GetIntDefault("AiPlayerbot.Rescue.RepopDeadOnly", 0));
     questFirstProgressionTurnInDeathRouteCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInDeathRouteCooldownSeconds", 3600));
     questFirstProgressionTurnInParkFailures = std::min<uint32>(255, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInParkFailures", 0));
     questFirstProgressionTurnInParkWindowSeconds = std::min<uint32>(DAY, std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInParkWindowSeconds", 3600)));
@@ -1685,6 +1716,20 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[Crafting] config key=Cooking value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", craftingCooking);
         craftingCooking = 0;
     }
+    // twow-repo#333 M2 Crafting.Survival (owner list 07.11.2026, item 3): an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B, 3 cohort A).
+    craftingSurvival = config.GetIntDefault("AiPlayerbot.Crafting.Survival", 0);
+    if (craftingSurvival > 3)
+    {
+        sLog.outError("[Crafting] config key=Survival value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", craftingSurvival);
+        craftingSurvival = 0;
+    }
+    // twow-repo#333 M2 Crafting.Fishing (owner list 07.11.2026, item 4): an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B, 3 cohort A).
+    craftingFishing = config.GetIntDefault("AiPlayerbot.Crafting.Fishing", 0);
+    if (craftingFishing > 3)
+    {
+        sLog.outError("[Crafting] config key=Fishing value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", craftingFishing);
+        craftingFishing = 0;
+    }
     professionUseToolBuy = config.GetIntDefault("AiPlayerbot.ProfessionUse.ToolBuy", 0);
     if (professionUseToolBuy > 2)
         professionUseToolBuy = 0;
@@ -1969,6 +2014,7 @@ bool PlayerbotAIConfig::Initialize()
             {"BotGroups.OpQueueAlertAgeSeconds", Value(botGroupsOpQueueAlertAgeSeconds)},
             {"BotGroups.OpQueueMaxDepth", Value(botGroupsOpQueueMaxDepth)},
             {"BotGroups.OpQueueOpsPerTick", Value(botGroupsOpQueueOpsPerTick)},
+            {"BotGroups.ResetRaidsRealInviterOnly", Value(botGroupsResetRaidsRealInviterOnly)},
             {"BotGroups.WorldThreadDefer", Value(botGroupsWorldThreadDefer)},
             {"BotGroups.WritePath", Value(botGroupsWritePath)},
             {"BotUpdateTrace", Value(botUpdateTrace)},
@@ -1990,6 +2036,8 @@ bool PlayerbotAIConfig::Initialize()
             {"CombatRule.TargetRule", Value(combatRuleTargetRule)},
             {"Crafting.Consumables", Value(craftingConsumables)},
             {"Crafting.Cooking", Value(craftingCooking)},
+            {"Crafting.Fishing", Value(craftingFishing)},
+            {"Crafting.Survival", Value(craftingSurvival)},
             {"CustomRaceStartZones", Value(customRaceStartZones)},
             {"DangerMap.CountAddDeaths", Value(dangerMapCountAddDeaths)},
             {"DeathLoop.Escape", Value(deathLoopEscape)},
@@ -2014,6 +2062,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Grind.SafePull.ReadyMana", Value(grindSafePullReadyMana)},
             {"LogInGroupOnly", Value(logInGroupOnly)},
             {"Loot.RoleWeights", Value(lootRoleWeights)},
+            {"LootChance.GameObjectEntryFix", Value(lootChanceGameObjectEntryFix)},
             {"Path.IslandGuard", Value(pathIslandGuard)},
             {"Path.IslandMaxPolys", Value(pathIslandMaxPolys)},
             {"Path.IslandSnapDz", Value(pathIslandSnapDz)},
@@ -2042,7 +2091,10 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestBook", Value(questBook)},
             {"QuestBook.AboveLevels", Value(questBookAboveLevels)},
             {"QuestBook.Exclude.count", Value(uint32(questBookExclude.size()))},
+            {"QuestBook.KillSeconds", Value(questBookKillSeconds)},
             {"QuestBook.Shadow", Value(questBookShadow)},
+            {"QuestBook.SingleSpawnMargin", Value(questBookSingleSpawnMargin)},
+            {"QuestBook.SourceChoice", Value(questBookSourceChoice)},
             {"QuestBook.StaleCompleteSeconds", Value(questBookStaleCompleteSeconds)},
             {"QuestFeasibility.Blocklist.count", Value(uint32(questFeasibilityBlocklist.size()))},
             {"QuestFeasibility.BlocklistWhileNoCustomStarts.count", Value(uint32(questFeasibilityBlocklistWhileNoCustomStarts.size()))},
@@ -2092,7 +2144,10 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestLoop.RelationArriveRpgTarget", Value(questLoopRelationArriveRpgTarget)},
             {"QuestLoop.RelationWorkNoGrind", Value(questLoopRelationWorkNoGrind)},
             {"QuestLoop.TurnInWorkDeathNotRoute", Value(questLoopTurnInWorkDeathNotRoute)},
+            {"QuestRelation.GameObjectChanceDrops", Value(questRelationGameObjectChanceDrops)},
+            {"QuestRescue.HomeHubs", Value(questRescueHomeHubs)},
             {"QuestRescue.KeepRequestWhenFull", Value(questRescueKeepRequestWhenFull)},
+            {"Rescue.RepopDeadOnly", Value(rescueRepopDeadOnly)},
             {"Revive.CorpseRunFirst", Value(reviveCorpseRunFirst)},
             {"Revive.CorpseRunFirst.MaxSeconds", Value(reviveCorpseRunFirstMaxSeconds)},
             {"Revive.SpiritHealerFull", Value(reviveSpiritHealerFull)},
@@ -2130,6 +2185,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Rotation.TankRoguePoison", Value(rotationTankRoguePoison)},
             {"Rpg.TurnInFirst", Value(rpgTurnInFirst)},
             {"Supervisor", Value(supervisor)},
+            {"Supervisor.Arbiter", Value(supervisorArbiter)},
             {"ThreadSafeTeleportAck", Value(threadSafeTeleportAck)},
             {"ThrownUsageFix", Value(thrownUsageFix)},
             {"Travel.ElevatorScanCache", Value(travelElevatorScanCache)},

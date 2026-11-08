@@ -1,4 +1,5 @@
 #include "playerbot/playerbot.h"
+#include "playerbot/SupervisorShadow.h"   // A3 step 3 arbiter shadow: writer scopes
 #include "StationCraftTrigger.h"
 #include "ProfessionUseTriggers.h"
 #include "playerbot/PlayerbotAIConfig.h"
@@ -12,6 +13,7 @@ using namespace ai;
 
 bool StationCraftTrigger::IsActive()
 {
+    ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::Lifecycle);
     // twow-repo#594 / P3-b: built at boot and switched on, ProfessionUse.Craft and RealReagents, a roster bot on its own.
     if (!direct_targets::StationCraftLive() || !sPlayerbotAIConfig.professionUseCraft ||
         !sPlayerbotAIConfig.professionUseRealReagents || !IsRosterBotOnItsOwn(ai))
