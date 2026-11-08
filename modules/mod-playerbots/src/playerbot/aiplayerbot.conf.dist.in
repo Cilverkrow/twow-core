@@ -1442,10 +1442,17 @@ AiPlayerbot.BotGroups.ResetRaidsRealInviterOnly = 1
 AiPlayerbot.BotGroups.WritePath = 0
 # A3 step 3 (ADR-0041 + amendment 2026-11-06, OB-00 06.11.2026): the per-bot supervisor - one owner of the bot's mode (quest,
 # grind, rest, group, rescue), and later of its travel target and tick cadence, with the activity planner ranking by value.
-# SCAFFOLD: the supervisor only counts its engine passes; it reads and writes nothing of the bot and writes no log line, so
-# every value behaves like 0 today. Mode (in-realm A/B, cohort parity): 0 = off (default, rollback), 1 = every bot, 2 = only
-# cohort B (odd low guid), 3 = only cohort A (even low guid). Any other value acts like 0 (one error line at load).
+# The supervisor counts its engine passes and decides nothing; it writes nothing of the bot, and without
+# AiPlayerbot.Supervisor.Arbiter it writes no log line. Mode (in-realm A/B, cohort parity): 0 = off (default, rollback),
+# 1 = every bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid). Any other value acts like 0 (one error
+# line at load).
 AiPlayerbot.Supervisor = 0
+# A3 step 3 behaviour pair 1 (OB-00 07.11.2026, E1-E4 a): the arbiter shadow. Works only where AiPlayerbot.Supervisor runs
+# (same cohort). It watches the bot's own travel target, bundles the writes of one engine pass and writes a [Supervisor]
+# ev=write / ev=expire line only for an open target closed by another family, a cooldown expiry or a writer without scope
+# (at most 300 lines per minute), plus one [ArbiterMin] sum per minute and cohort. It never writes the target or the bot.
+# 0 = off (default, rollback), 1 = shadow. Any other value acts like 0 (one error line at load; no enforcement yet).
+AiPlayerbot.Supervisor.Arbiter = 0
 # A3 step 5 (ADR-0041, OB-00 07.11.2026): the combat rule - one module that owns the combat decisions (who may start a fight,
 # rest before the pull, target choice, flee point, loop guard), one switch per part. Design: A3-S5-KAMPFREGEL-ENTWURF.md.
 # Part HealerStart (A3-AKTIONS-VERDRAHTUNG F2 (a)): the healer gate of attack my target / attack RTI target / attack anything

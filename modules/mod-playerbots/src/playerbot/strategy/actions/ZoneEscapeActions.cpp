@@ -1,4 +1,5 @@
 #include "playerbot/playerbot.h"
+#include "playerbot/SupervisorShadow.h"   // A3 step 3 arbiter shadow: writer scopes
 #include "ZoneEscapeActions.h"
 #include "playerbot/TravelMgr.h"
 #include "playerbot/PlayerbotAIConfig.h"
@@ -12,6 +13,7 @@ bool ZoneEscapeAction::Execute(Event& event)
     // twow-repo#333 finding 4: each run starts from the react delay, so neither the wait step's 5 s nor a hearthstone hold
     // carries over to a later travel step.
     SetDuration(sPlayerbotAIConfig.reactDelay);
+    ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::Lifecycle);
     zone_escape::Facts const facts = GatherZoneEscapeFacts(ai);
     zone_escape::Decision const decision = zone_escape::Decide(facts);
     if (decision.step == zone_escape::Step::None)

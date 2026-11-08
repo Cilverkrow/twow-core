@@ -926,9 +926,12 @@ public:
     // invite, leader) of in-scope bots run as world-thread ops (GroupOps.cpp). 0 off, 1 all, 2 cohort B, 3 cohort A; other = 0
     // + error line.
     uint32 botGroupsWritePath = 0;
-    // A3 step 3 (ADR-0041, OB-00 06.11.2026): the per-bot supervisor (SupervisorPolicy.h, Supervisor.cpp). Scaffold: it only
-    // counts its engine passes. 0 off, 1 all, 2 cohort B, 3 cohort A; other = 0 + error line.
+    // A3 step 3 (ADR-0041, OB-00 06.11.2026): the per-bot supervisor (SupervisorPolicy.h, Supervisor.cpp). It counts its engine
+    // passes and decides nothing. 0 off, 1 all, 2 cohort B, 3 cohort A; other = 0 + error line.
     uint32 supervisor = 0;
+    // A3 step 3 behaviour pair 1: the arbiter shadow (SupervisorShadow.cpp), only where the supervisor runs. 0 off, 1 shadow
+    // (watch and log, no write); other = 0 + error line (no enforcement code yet).
+    uint32 supervisorArbiter = 0;
     // A3 step 5 (ADR-0041, OB-00 07.11.2026): the combat rule (CombatRulePolicy.h, CombatRule.cpp), one switch per part.
     // HealerStart: a holy paladin / restoration druid may attack like a healer with "offdps" (their contexts have no offdps
     // creator, so the healer gate refused every attack). 0 off (default, the old rule), 1 all, 2 cohort B, 3 cohort A; other = 0.

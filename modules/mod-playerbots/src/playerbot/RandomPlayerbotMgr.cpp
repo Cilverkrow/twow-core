@@ -10,6 +10,7 @@
 
 #include "playerbot/playerbot.h"
 #include "playerbot/PlayerbotAIConfig.h"
+#include "playerbot/SupervisorShadow.h"   // A3 step 3 arbiter shadow: manager writer scopes, console thread tag
 #include "playerbot/PlayerbotFactory.h"
 #include "playerbot/PersistentRosterBagPolicy.h"
 #include "playerbot/PersistentRosterStarterOutfitPolicy.h"
@@ -3224,6 +3225,7 @@ void RandomPlayerbotMgr::CheckBgFill()
 // Every manager update, cheap: only the bots the fill queued (pending) or sent in (in_bg).
 void RandomPlayerbotMgr::UpdateBgFillMembers()
 {
+    ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::Manager);
     for (auto it = bgFillPending.begin(); it != bgFillPending.end();)
     {
         uint32 const guid = it->first;
@@ -6986,6 +6988,7 @@ void RandomPlayerbotMgr::Revive(Player* player)
 
 void RandomPlayerbotMgr::RandomTeleport(Player* bot, std::vector<WorldLocation> &locs, bool hearth, bool activeOnly)
 {
+    ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::Manager);
     if (bot->IsBeingTeleported())
         return;
 
@@ -7787,6 +7790,7 @@ std::vector<WorldLocation> RandomPlayerbotMgr::QuestRescueTargets(Player* bot)
 
 void RandomPlayerbotMgr::ProcessQuestRescues()
 {
+    ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::Manager);
     uint32 const now = uint32(time(nullptr));
     if (now - lastQuestRescueScan < 10)
         return;
@@ -8496,6 +8500,9 @@ void RandomPlayerbotMgr::SetValue(Player* bot, std::string type, uint32 value, s
 
 bool RandomPlayerbotMgr::HandlePlayerbotConsoleCommand(ChatHandler* handler, char const* args)
 {
+    // A3 step 3 arbiter shadow: console and GM chat run on the world thread (CLI-GRP 07.11. (i)); a tag already set stays.
+    ai::supervisor::ThreadTag const threadTag(ai::supervisor::ThreadKind::World, nullptr, true);
+    ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::Manager);
     if (!sPlayerbotAIConfig.enabled)
     {
         sLog.outError("Playerbot system is currently disabled!");
@@ -9383,6 +9390,7 @@ void RandomPlayerbotMgr::ChangeStrategy(Player* player)
 
 void RandomPlayerbotMgr::RandomTeleportForRpg(Player* bot, bool activeOnly)
 {
+    ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::Manager);
     uint32 race = bot->getRace();
     uint32 level = bot->GetLevel();
 
@@ -10301,6 +10309,7 @@ void RandomPlayerbotMgr::ReleaseParkSpot(ParkEntry const& entry)
 
 bool RandomPlayerbotMgr::ParkBot(Player* bot, std::string const& teleName, std::string& reason)
 {
+    ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::Manager);
     PlayerbotAI* ai = bot ? GetBotAI(bot) : nullptr;
     if (!ai)
     {

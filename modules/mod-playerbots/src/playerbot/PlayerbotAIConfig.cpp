@@ -912,6 +912,13 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[Supervisor] config key=Supervisor value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", supervisor);
         supervisor = 0;
     }
+    // A3 step 3 behaviour pair 1 (SupervisorShadow.cpp): the arbiter shadow; 2 (enforcement) has no code yet, so above 1 is off.
+    supervisorArbiter = uint32(config.GetIntDefault("AiPlayerbot.Supervisor.Arbiter", 0));
+    if (!ai::supervisor::ValidArbiter(supervisorArbiter))
+    {
+        sLog.outError("[Supervisor] config key=Supervisor.Arbiter value=%u result=off (0 off, 1 shadow)", supervisorArbiter);
+        supervisorArbiter = 0;
+    }
     // A3 step 5 (ADR-0041): the combat rule, parts HealerStart, PriestOverlay and RestBeforePull (CombatRulePolicy.h); an unknown
     // mode is off.
     combatRuleHealerStart = uint32(config.GetIntDefault("AiPlayerbot.CombatRule.HealerStart", 0));
@@ -2159,6 +2166,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Rotation.TankRoguePoison", Value(rotationTankRoguePoison)},
             {"Rpg.TurnInFirst", Value(rpgTurnInFirst)},
             {"Supervisor", Value(supervisor)},
+            {"Supervisor.Arbiter", Value(supervisorArbiter)},
             {"ThreadSafeTeleportAck", Value(threadSafeTeleportAck)},
             {"ThrownUsageFix", Value(thrownUsageFix)},
             {"Travel.ElevatorScanCache", Value(travelElevatorScanCache)},

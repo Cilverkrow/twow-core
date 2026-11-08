@@ -14,6 +14,7 @@
 #include "playerbot/QuestGroupWorld.h"   // twow-repo#627 S7 hooks (CLI-Deep): help-group members out of PosStuck, S3c, turn-in recovery
 #include "playerbot/AdhocGroupWorld.h"   // twow-repo#601 F5b: a bot-only group shares the kill credit (CLI-GRP 25.10.)
 #include "playerbot/CohortPolicy.h"
+#include "playerbot/SupervisorShadow.h"   // A3 step 3 arbiter shadow (AiPlayerbot.Supervisor.Arbiter): the observer in the status write
 #include "playerbot/ZoneKeepPolicy.h"      // twow-repo#601 owner rule R1 (StartZoneMinLevel, forced trip hold)
 #include "playerbot/RpgAreaLevelPolicy.h"
 #include "playerbot/ContestedObjectivePolicy.h"
@@ -1398,6 +1399,9 @@ void TravelTarget::SetStatus(TravelStatus status) {
     // a COOLDOWN at most that, 1 ms once ended (capped: a clock step back fails closed). bandTripEnd is 0 for every other target.
     if (bandTripEnd)
         statusTime = ai::quest_band::TripStatusMs(uint8(m_status), statusTime, bandTripEnd, uint32(time(nullptr)));
+
+    // A3 step 3 arbiter shadow (AiPlayerbot.Supervisor.Arbiter, default 0): watches the bot's own target only, writes nothing.
+    if (live_) ai::supervisor::ShadowObserve(ai, this);
 }
 
 bool TravelTarget::IsProgressAwareTurnIn() const
@@ -1555,6 +1559,7 @@ bool TravelTarget::IsActiveForDeathAttribution() const
 
 void TravelTarget::OnDeathOnTurnInRoute()
 {
+    ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::Lifecycle);
     // #307: a dropped or abandoned target (bot now grinding elsewhere) is not
     // blamed for later deaths.
     if (!IsActiveForDeathAttribution())
@@ -1605,6 +1610,7 @@ void TravelTarget::OnDeathOnTurnInRoute()
 
 void TravelTarget::OnDeathAtDestination()
 {
+    ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::Lifecycle);
     if (!IsActiveForDeathAttribution())
         return;
 
@@ -2518,6 +2524,7 @@ bool TravelTarget::ObservePosStuck()
 
 void TravelTarget::CheckStatus()
 {
+    ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::Execution);
     if (!IsActive())
         return;
 
@@ -2869,6 +2876,7 @@ TravelState TravelTarget::GetTravelState() {
 
 void TravelMgr::Clear()
 {
+    ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::Manager);
 #ifndef MANGOSBOT_ZERO
     sObjectAccessor.ExecuteOnAllPlayers([this](Player* plr) { TravelMgr::SetNullTravelTarget(plr); });
 #else

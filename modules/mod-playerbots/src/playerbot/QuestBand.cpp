@@ -1,4 +1,5 @@
 #include "playerbot/playerbot.h"
+#include "playerbot/SupervisorShadow.h"   // A3 step 3 arbiter shadow: writer scopes
 #include "playerbot/QuestBand.h"
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/PlayerbotAI.h"
@@ -492,6 +493,7 @@ bool ChooseTravelTargetAction::TryBandStep(Player* requester, TravelTarget* trav
 {
     if (!sPlayerbotAIConfig.questFirstProgressionBandLadder || !ai::quest_band::Built())
         return false;
+    ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::Select);
     // P3-a owns the fresh bots; a Z1b rescue asked for in this pass wins; a resumed choice is no empty search.
     if (!ai->InQuestBandScope() || freshBot || rescueRequested || chooseBudgetExceeded)
         return false;
@@ -669,6 +671,7 @@ bool ChooseTravelTargetAction::TryBandStep(Player* requester, TravelTarget* trav
 bool ChooseTravelTargetAction::StartBandWalk(Player* requester, TravelTarget* travelTarget, ai::quest_band::WalkPlan const& plan,
     uint32 walkEnd)
 {
+    ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::Select);
     namespace qb = ai::quest_band;
     uint32 const now = uint32(time(nullptr));
     HubTravelDestination* hub = plan.rung >= 0 ? qb::GetHub(uint32(plan.rung)) : nullptr;

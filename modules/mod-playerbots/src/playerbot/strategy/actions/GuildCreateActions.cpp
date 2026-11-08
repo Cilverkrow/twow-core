@@ -1,5 +1,6 @@
 
 #include "playerbot/playerbot.h"
+#include "playerbot/SupervisorShadow.h"   // A3 step 3 arbiter shadow: writer scopes
 #include "GuildCreateActions.h"
 #include "GuildAcceptAction.h"
 #include "playerbot/strategy/values/TravelValues.h"   // twow-repo#333 P1-ad: ProfessionTripOpenKind
@@ -1165,6 +1166,7 @@ bool PetitionOfferNearbyAction::Execute(Event& event)
 
 bool PetitionTurnInAction::Execute(Event& event)
 {
+    ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::Lifecycle);
     Player* requester = event.getOwner() ? event.getOwner() : GetMaster();
     std::list<ObjectGuid> vendors = ai->GetAiObjectContext()->GetValue<std::list<ObjectGuid> >("nearest npcs")->Get();
     bool vendored = false, result = false;
@@ -1466,6 +1468,7 @@ bool RosterGuildFoundTripAction::isUseful()
 
 bool RosterGuildFoundTripAction::Execute(Event& event)
 {
+    ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::Lifecycle);
     if (PetitionerNearby())
     {
         bool const sent = ai->DoSpecificAction("buy petition", event, true);
