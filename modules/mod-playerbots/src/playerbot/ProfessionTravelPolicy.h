@@ -25,6 +25,8 @@ constexpr std::uint32_t kHerbalism = 182;
 constexpr std::uint32_t kMining = 186;
 constexpr std::uint32_t kSkinning = 393;
 constexpr std::uint32_t kFirstAid = 129;
+// twow-repo#333 M2 Crafting.Cooking (owner list 07.11.2026, item 2): a trip skill only with the switch on for the bot.
+constexpr std::uint32_t kCooking = 185;
 
 constexpr std::uint32_t kMiningPick = 2901;
 constexpr std::uint32_t kSkinningKnife = 7005;
@@ -43,6 +45,13 @@ constexpr std::uint32_t kTripCooldownSeconds = 3600;
 inline bool IsPhaseOneSkill(std::uint32_t skill)
 {
     return skill == kHerbalism || skill == kMining || skill == kSkinning || skill == kFirstAid;
+}
+
+// twow-repo#333 M2 Crafting.Cooking (owner list 07.11.2026, item 2): with the switch on for the bot the trips also teach cooking;
+// off, the phase-one skills only.
+inline bool IsTripSkill(std::uint32_t skill, bool cooking)
+{
+    return IsPhaseOneSkill(skill) || (cooking && skill == kCooking);
 }
 
 // The quest-first gap (CLI-Deep 25.10.2026): the 8.1 quest route backoff runs (the last quest search found nothing),
@@ -151,6 +160,12 @@ constexpr std::uint32_t kMaxNearRadius = 1000;
 inline bool NearTripSkill(std::uint32_t skill, bool hasSkill)
 {
     return IsPhaseOneSkill(skill) && !hasSkill;
+}
+
+// twow-repo#333 M2 Crafting.Cooking: the same "once" rule for the trip skills of IsTripSkill.
+inline bool NearTripSkill(std::uint32_t skill, bool hasSkill, bool cooking)
+{
+    return IsTripSkill(skill, cooking) && !hasSkill;
 }
 
 inline bool WithinNearRadius(float distance, std::uint32_t nearRadius)
