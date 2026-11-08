@@ -60,6 +60,11 @@ bool AttackAnythingAction::isUseful()
     if (!ai::combat_rule::HealerMayAttack(ai))   // A3 step 5: the healer gate (CombatRule.HealerStart, default 0 = the old rule)
         return false;
 
+    // A3 step 5 (CombatRule.RestBeforePull, default 0 = no check): the pull bit - no pull while the rule says rest first, unless the
+    // target already fights the bot.
+    if (!ai::combat_rule::MayPull(ai, target))
+        return false;
+
     if(!target->IsPlayer() && bot->isInFront(target,target->GetAttackDistance(bot)*1.5f, M_PI_F*0.5f) && target->CanAttackOnSight(bot) && target->GetLevel() < bot->GetLevel() + 3.0) //Attack before being attacked.
         return true;
 
@@ -76,6 +81,7 @@ bool ai::AttackAnythingAction::isPossible()
 
 bool ai::AttackAnythingAction::Execute(Event& event)
 {
+    ai::combat_rule::CountPull(ai);   // A3 step 5 (CombatRule.RestBeforePull): pulls and their HP / mana, only with the part on
     // twow-repo#601 S2 diagnostic ([GrindPick], AiPlayerbot.BotUpdateTrace; OB-10 / OB-00 18.10.): the source of this
     // engagement as it was BEFORE the attack starts - AttackAction::Execute puts the bot on the target's attacker list at
     // once, so afterwards a plain grind or quest pull could look like attacker / victim (OB-10 re-check). Off: only this test.

@@ -1283,6 +1283,11 @@ void AiFactory::AddDefaultNonCombatStrategies(Player* player, PlayerbotAI* const
         sRandomPlayerbotMgr.IsPersistentRosterMember(player->GetGUIDLow()))
         nonCombatEngine->addStrategy("adhoc group");
 
+    // A3 step 5 (CombatRule.RestBeforePull, default 0): the combat rule's rest node, only for the bots the part applies to (with the part
+    // off no engine holds it).
+    if (ai::cohort::Applies(sPlayerbotAIConfig.combatRuleRestBeforePull, player->GetGUIDLow()) && !player->InBattleGround())
+        nonCombatEngine->addStrategy("combat rule");
+
     // twow-repo#333 M2 Crafting.Consumables (owner list 07.11.2026, item 1): elixirs, flasks, scrolls and buff food from the bags
     // for a roster bot on its own in the switch's cohort. Useless under the item cheat (UseConsumableAction::isUseful).
     if (!player->InBattleGround() && ai::CraftingConsumablesFor(facade))

@@ -930,6 +930,11 @@ public:
     // PriestOverlay: a discipline / holy priest gets the RandomBotCombatStrategies overlay without "+dps" (which swaps its tree for
     // the shadow placeholder). 0 off (default, overlay unchanged), 1 all, 2 cohort B, 3 cohort A; other = 0.
     uint32 combatRulePriestOverlay = 0;
+    // RestBeforePull: a solo free bot does not pull below RestStartHp (or RestStartMana with a mana pool) and eats / drinks first through
+    // the rule's rest node (strategy "combat rule", added only where the part applies). 0 off (default), 1 all, 2 cohort B, 3 cohort A.
+    uint32 combatRuleRestBeforePull = 0;
+    uint32 combatRuleRestStartHp = 60;     // 1..99
+    uint32 combatRuleRestStartMana = 40;   // 0..99, 0 = no mana rest
     // A3 step 2 (ADR-0041, OB-00 07.11.2026): the quest book core QB-K (QuestBookPolicy.h, QuestBook.cpp). 0 off, 1 all, 2 cohort B,
     // 3 cohort A; other = 0 + error line. Shadow: the other roster bots keep a book that only writes the KPI lines.
     uint32 questBook = 0;

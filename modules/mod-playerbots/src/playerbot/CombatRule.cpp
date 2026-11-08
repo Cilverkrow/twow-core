@@ -3,6 +3,7 @@
 #include "playerbot/CohortPolicy.h"
 #include "playerbot/PlayerbotAI.h"
 #include "playerbot/PlayerbotAIConfig.h"
+#include "playerbot/RandomPlayerbotMgr.h"
 #include "playerbot/strategy/Strategy.h"
 
 #include <ctime>
@@ -60,6 +61,82 @@ std::string CombatOverlay(Player* player, int tab, std::string const& overlay)
 
 namespace
 {
+// The solo free bots of the part (as RestGate's RestBot): no group, no real player or real master, free bot, not in a battleground.
+bool SoloFree(PlayerbotAI* ai, Player* bot)
+{
+    return !bot->GetGroup() && !ai->IsRealPlayer() && !ai->HasRealPlayerMaster() && sRandomPlayerbotMgr.IsFreeBot(bot) &&
+        !bot->InBattleGround() && bot->IsAlive();
+}
+
+unsigned CohortIndex(Player* bot)
+{
+    return ai::cohort::InB(bot->GetGUIDLow()) ? 1u : 0u;
+}
+}
+
+RestNeed RestBeforePullNeed(PlayerbotAI* ai)
+{
+    uint32 const mode = sPlayerbotAIConfig.combatRuleRestBeforePull;
+    if (!mode)
+        return RestNeed::None;
+    Player* const bot = ai->GetBot();
+    uint32 const guidLow = bot->GetGUIDLow();
+    // RestGate owns the rest of the bots it applies to; the two never act on the same bot.
+    if (!ai::cohort::Applies(mode, guidLow) || ai::cohort::Applies(sPlayerbotAIConfig.rotationRestGate, guidLow))
+        return RestNeed::None;
+
+    RestReading r;
+    r.soloFree = SoloFree(ai, bot);
+    r.inCombat = bot->IsInCombat();
+    r.attacked = !bot->getAttackers().empty();
+    r.hp = uint32(bot->GetHealthPercent());
+    r.manaPool = bot->HasMana() && bot->GetMaxPower(POWER_MANA) > 0;
+    r.mana = r.manaPool ? uint32(bot->GetPowerPercent(POWER_MANA)) : 100;
+    return RestBeforePull(r, sPlayerbotAIConfig.combatRuleRestStartHp, sPlayerbotAIConfig.combatRuleRestStartMana);
+}
+
+bool MayPull(PlayerbotAI* ai, Unit* target)
+{
+    if (!sPlayerbotAIConfig.combatRuleRestBeforePull)
+        return true;
+    RestNeed const need = RestBeforePullNeed(ai);
+    if (need == RestNeed::None)
+        return true;
+    Player* const bot = ai->GetBot();
+    bool const ok = MayPull(need, target && target->GetVictim() == bot);
+    if (!ok)
+        RestBeforePullGlobal().refused[CohortIndex(bot)].fetch_add(1, std::memory_order_relaxed);
+    return ok;
+}
+
+void CountPull(PlayerbotAI* ai)
+{
+    if (!sPlayerbotAIConfig.combatRuleRestBeforePull)
+        return;
+    Player* const bot = ai->GetBot();
+    if (!SoloFree(ai, bot))
+        return;
+    RestBeforePullCounters& c = RestBeforePullGlobal();
+    unsigned const cohort = CohortIndex(bot);
+    c.pulls[cohort].fetch_add(1, std::memory_order_relaxed);
+    if (uint32(bot->GetHealthPercent()) < sPlayerbotAIConfig.combatRuleRestStartHp)
+        c.pullsLowHp[cohort].fetch_add(1, std::memory_order_relaxed);
+    if (bot->HasMana() && bot->GetMaxPower(POWER_MANA) > 0 && uint32(bot->GetPowerPercent(POWER_MANA)) < sPlayerbotAIConfig.combatRuleRestStartMana)
+        c.pullsLowMana[cohort].fetch_add(1, std::memory_order_relaxed);
+}
+
+void CountRest(PlayerbotAI* ai, RestNeed need)
+{
+    RestBeforePullCounters& c = RestBeforePullGlobal();
+    unsigned const cohort = CohortIndex(ai->GetBot());
+    if (need == RestNeed::Health)
+        c.restHealth[cohort].fetch_add(1, std::memory_order_relaxed);
+    else if (need == RestNeed::Mana)
+        c.restMana[cohort].fetch_add(1, std::memory_order_relaxed);
+}
+
+namespace
+{
 unsigned long long Take(std::atomic<std::uint64_t>& counter)
 {
     return (unsigned long long)counter.exchange(0, std::memory_order_relaxed);
@@ -110,11 +187,34 @@ void ReportPriestOverlay()
     sLog.outBasic("[CombatRule] part=PriestOverlay mode=%u engines=%llu/%llu stripped=%llu/%llu",
         sPlayerbotAIConfig.combatRulePriestOverlay, enginesA, enginesB, strippedA, strippedB);
 }
+
+// "[CombatRule] part=RestBeforePull mode= start_hp= start_mana= pulls=A/B pulls_low_hp=A/B pulls_low_mana=A/B refused=A/B
+// rest_ticks_hp=A/B rest_ticks_mana=A/B" - pulls of solo free bots (both cohorts) and of those below the start values, pull checks
+// the part refused, ticks the rest node fired.
+void ReportRestBeforePull()
+{
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (!sPlayerbotAIConfig.combatRuleRestBeforePull || now < lastReport + 60)
+        return;
+    lastReport = now;
+    RestBeforePullCounters& c = RestBeforePullGlobal();
+    unsigned long long v[12];
+    std::atomic<std::uint64_t>* all[12] = { &c.pulls[0], &c.pulls[1], &c.pullsLowHp[0], &c.pullsLowHp[1], &c.pullsLowMana[0],
+        &c.pullsLowMana[1], &c.refused[0], &c.refused[1], &c.restHealth[0], &c.restHealth[1], &c.restMana[0], &c.restMana[1] };
+    for (int i = 0; i < 12; ++i)
+        v[i] = Take(*all[i]);
+    sLog.outBasic("[CombatRule] part=RestBeforePull mode=%u start_hp=%u start_mana=%u pulls=%llu/%llu pulls_low_hp=%llu/%llu "
+        "pulls_low_mana=%llu/%llu refused=%llu/%llu rest_ticks_hp=%llu/%llu rest_ticks_mana=%llu/%llu",
+        sPlayerbotAIConfig.combatRuleRestBeforePull, sPlayerbotAIConfig.combatRuleRestStartHp, sPlayerbotAIConfig.combatRuleRestStartMana,
+        v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8], v[9], v[10], v[11]);
+}
 }
 
 void ReportCombatRule()
 {
     ReportHealerStart();
     ReportPriestOverlay();
+    ReportRestBeforePull();
 }
 }
