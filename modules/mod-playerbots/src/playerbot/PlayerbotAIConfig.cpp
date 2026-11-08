@@ -1666,6 +1666,13 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[Crafting] config key=Survival value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", craftingSurvival);
         craftingSurvival = 0;
     }
+    // twow-repo#333 M2 Crafting.Fishing (owner list 07.11.2026, item 4): an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B, 3 cohort A).
+    craftingFishing = config.GetIntDefault("AiPlayerbot.Crafting.Fishing", 0);
+    if (craftingFishing > 3)
+    {
+        sLog.outError("[Crafting] config key=Fishing value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", craftingFishing);
+        craftingFishing = 0;
+    }
     professionUseToolBuy = config.GetIntDefault("AiPlayerbot.ProfessionUse.ToolBuy", 0);
     if (professionUseToolBuy > 2)
         professionUseToolBuy = 0;
@@ -1959,6 +1966,7 @@ bool PlayerbotAIConfig::Initialize()
             {"CheatItem.Trace", Value(cheatItemTrace)},
             {"Crafting.Consumables", Value(craftingConsumables)},
             {"Crafting.Cooking", Value(craftingCooking)},
+            {"Crafting.Fishing", Value(craftingFishing)},
             {"Crafting.Survival", Value(craftingSurvival)},
             {"CustomRaceStartZones", Value(customRaceStartZones)},
             {"DangerMap.CountAddDeaths", Value(dangerMapCountAddDeaths)},
