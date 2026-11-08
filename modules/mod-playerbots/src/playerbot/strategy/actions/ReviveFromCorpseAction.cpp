@@ -11,6 +11,8 @@
 #include "playerbot/RandomPlayerbotMgr.h"
 #include "playerbot/ShortcutPolicy.h"   // twow-repo#595 P4 S0: [Shortcut] counters
 #include "playerbot/SpiritHealerRevivePolicy.h"   // owner order 27.10.2026: Revive.SpiritHealerFull
+#include "playerbot/CohortPolicy.h"
+#include "playerbot/CorpseRunFirstPolicy.h"   // twow-repo#575 A3 step 4 S4-1: Revive.CorpseRunFirst
 
 using namespace ai;
 
@@ -67,6 +69,9 @@ bool ReviveFromCorpseAction::Execute(Event& event)
     // twow-repo#601/#602 G2 (AiPlayerbot.DeathLoop.FarEscape): a death soon after this revive counts as a short life.
     if (!sServerFacade.UnitIsDead(bot))
         ai->RecordReviveForLoop();
+    // twow-repo#575 A3 step 4 S4-1 (Revive.CorpseRunFirst): reclaims of the switch's bots, for [CorpseRunMin] reclaimed=.
+    if (!sServerFacade.UnitIsDead(bot) && ai::cohort::Applies(sPlayerbotAIConfig.reviveCorpseRunFirst, bot->GetGUIDLow()))
+        ai::corpse_first::SharedCounters().reclaimed.fetch_add(1, std::memory_order_relaxed);
 
     SET_AI_VALUE(bool, "corpse run", false);
     // Deliberately NOT resetting "death count" here. BestGraveyardValue only
@@ -341,6 +346,19 @@ bool FindCorpseAction::Execute(Event& event)
     }
 
     return moved;
+}
+
+// twow-repo#575 A3 step 4 S4-1 (AiPlayerbot.Revive.CorpseRunFirst, CorpseRunFirstPolicy.h): the dead engine always carries "stay"
+// (AiFactory: AddDefaultDeadStrategies), so the base MovementAction::isUseful (!stay) made this action USELESS for every bot
+// (A3 U4) and the ghost waited at its corpse for the spirit healer or a "move long stuck" repop. With the switch the reclaim is
+// useful for a ghost with a corpse (Execute keeps the reclaim delay and the wait for a dead master nearby). Not for a bot with an
+// active player master (its player decides, as before); every other bot keeps the old answer.
+bool ReviveFromCorpseAction::isUseful()
+{
+    if (ai::cohort::Applies(sPlayerbotAIConfig.reviveCorpseRunFirst, bot->GetGUIDLow()) && !ai->HasActivePlayerMaster())
+        return !bot->InBattleGround() && bot->GetCorpse();
+
+    return MovementAction::isUseful();
 }
 
 bool FindCorpseAction::isUseful()

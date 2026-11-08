@@ -3,8 +3,26 @@
 #include "playerbot/ServerFacade.h"
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/AiFactory.h"
+#include "playerbot/CohortPolicy.h"
+#include "playerbot/strategy/triggers/ProfessionUseTriggers.h"
 
 using namespace ai;
+
+namespace
+{
+    char const* ConsumableTypeName(ConsumableType type)
+    {
+        switch (type)
+        {
+        case ConsumableType::Flask:    return "flask";
+        case ConsumableType::Elixir:   return "elixir";
+        case ConsumableType::FoodBuff: return "food_buff";
+        case ConsumableType::Alcohol:  return "alcohol";
+        case ConsumableType::Scroll:   return "scroll";
+        default:                       return "other";
+        }
+    }
+}
 
 // Flasks vanilla
 const std::vector<uint32> UseConsumableAction::knownFlaskAuras = {
@@ -858,11 +876,27 @@ bool UseConsumableAction::Execute(Event& event)
         }
 
         if (selectedItemId)
+        {
+            selectedType = c.type;
             break;
+        }
     }
 
     if (!selectedItemId)
         return false;
 
-    return UseItemIdAction::Execute(event);
+    bool const used = UseItemIdAction::Execute(event);
+    // twow-repo#333 M2 Crafting.Consumables (owner list 07.11.2026, item 1): one line per started use (an attempt - the cast result
+    // is in the action log), only for the bots the switch applies to.
+    if (used && CraftingConsumablesFor(ai))
+        sLog.outBasic("[Crafting] kind=consumables event=use type=%s item=%u bot=%u level=%u cohort=%c", ConsumableTypeName(selectedType),
+            selectedItemId, bot->GetGUIDLow(), bot->GetLevel(), ai::cohort::Letter(bot->GetGUIDLow()));
+    return used;
+}
+
+bool UseConsumableAction::IsBuffConsumable(ItemPrototype const* proto) const
+{
+    ConsumableType type;
+    uint32 spellId;
+    return proto && bot->CanUseItem(proto) == EQUIP_ERR_OK && ClassifyConsumable(proto, type, spellId);
 }
