@@ -34,6 +34,16 @@ int main()
         Require(!IsPhaseOneSkill(171) && !IsPhaseOneSkill(164) && !IsPhaseOneSkill(0), "no craft trips in phase one");
     }
 
+    // 1b) twow-repo#333 M2 Crafting.Cooking (owner list 07.11.2026, item 2): cooking is a trip skill only with the switch on.
+    {
+        Require(!IsTripSkill(kCooking, false) && IsTripSkill(kCooking, true), "cooking: a trip skill only with the switch");
+        Require(IsTripSkill(kHerbalism, false) && IsTripSkill(kFirstAid, true), "the phase-one skills either way");
+        Require(!IsTripSkill(356, true) && !IsTripSkill(142, true) && !IsTripSkill(171, true), "no fishing, survival or crafts");
+        Require(NearTripSkill(kCooking, false, true) && !NearTripSkill(kCooking, true, true), "cooking near trip once");
+        Require(!NearTripSkill(kCooking, false, false), "switch off: no cooking near trip");
+        Require(NearTripSkill(kMining, false, false) == NearTripSkill(kMining, false), "switch off: the old near rule");
+    }
+
     // 2) The quest-first gap: backoff running, no open turn-in, no band walk.
     {
         Require(InQuestGap(100, 200, false, 0), "gap while the backoff runs");
