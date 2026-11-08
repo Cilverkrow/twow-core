@@ -1,4 +1,5 @@
 ﻿#include "playerbot/playerbot.h"
+#include "playerbot/SupervisorShadow.h"   // A3 step 3 arbiter shadow: writer scopes
 #include "WorldBuffTravelActions.h"
 #include "ChooseTravelTargetAction.h"
 #include "playerbot/TravelMgr.h"
@@ -477,6 +478,7 @@ void WorldBuffTravelApplyAction::AdvanceStep()
 
 bool WorldBuffTravelApplyAction::Execute(Event& event)
 {
+    ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::GroupFollow);
     uint8 rawStep = AI_VALUE(uint8, "world buff travel step");
     WorldBuffTravelStep step = static_cast<WorldBuffTravelStep>(rawStep);
 
@@ -511,6 +513,7 @@ bool WorldBuffTravelApplyAction::Execute(Event& event)
 
 bool WorldBuffTravelSetTargetAction::Execute(Event& event)
 {
+    ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::GroupFollow);
     uint8 rawStep = AI_VALUE(uint8, "world buff travel step");
     WorldBuffTravelStep step = static_cast<WorldBuffTravelStep>(rawStep);
 

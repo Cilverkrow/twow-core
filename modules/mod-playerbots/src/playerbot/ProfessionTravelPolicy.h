@@ -27,6 +27,12 @@ constexpr std::uint32_t kSkinning = 393;
 constexpr std::uint32_t kFirstAid = 129;
 // twow-repo#333 M2 Crafting.Cooking (owner list 07.11.2026, item 2): a trip skill only with the switch on for the bot.
 constexpr std::uint32_t kCooking = 185;
+// twow-repo#333 M2 Crafting.Survival (owner list 07.11.2026, item 3): Turtle Survival, a trip skill only with its switch; its tool.
+constexpr std::uint32_t kSurvival = 142;
+constexpr std::uint32_t kWhittle = 42004;
+// twow-repo#333 M2 Crafting.Fishing (owner list 07.11.2026, item 4): fishing, a trip skill only with its switch; its tool.
+constexpr std::uint32_t kFishing = 356;
+constexpr std::uint32_t kFishingPole = 6256;
 
 constexpr std::uint32_t kMiningPick = 2901;
 constexpr std::uint32_t kSkinningKnife = 7005;
@@ -49,9 +55,10 @@ inline bool IsPhaseOneSkill(std::uint32_t skill)
 
 // twow-repo#333 M2 Crafting.Cooking (owner list 07.11.2026, item 2): with the switch on for the bot the trips also teach cooking;
 // off, the phase-one skills only.
-inline bool IsTripSkill(std::uint32_t skill, bool cooking)
+inline bool IsTripSkill(std::uint32_t skill, bool cooking, bool survival = false, bool fishing = false)
 {
-    return IsPhaseOneSkill(skill) || (cooking && skill == kCooking);
+    return IsPhaseOneSkill(skill) || (cooking && skill == kCooking) || (survival && skill == kSurvival) ||
+        (fishing && skill == kFishing);
 }
 
 // The quest-first gap (CLI-Deep 25.10.2026): the 8.1 quest route backoff runs (the last quest search found nothing),
@@ -59,6 +66,17 @@ inline bool IsTripSkill(std::uint32_t skill, bool cooking)
 inline bool InQuestGap(std::uint32_t now, std::uint32_t backoffUntil, bool turnInWaiting, std::uint32_t bandTripEnd)
 {
     return now < backoffUntil && !turnInWaiting && bandTripEnd == 0;
+}
+
+// twow-repo#333 M2 Crafting.Fishing (owner list 07.11.2026, item 4; map: the fishing purpose 6.5 outranks the quest request 6.3 for
+// up to 30 min): with the switch on, a fishing purpose starts only in the quest-first gap, and a running one holds the travel need
+// until the backoff ended plus kHoldAfterBackoffSeconds - never past an open turn-in or into a band walk. A found quest route
+// (backoff 0) ends it at once.
+inline bool FishingInGap(bool running, std::uint32_t now, std::uint32_t backoffUntil, bool turnInWaiting, std::uint32_t bandTripEnd)
+{
+    if (!running)
+        return InQuestGap(now, backoffUntil, turnInWaiting, bandTripEnd);
+    return backoffUntil != 0 && now < backoffUntil + kHoldAfterBackoffSeconds && !turnInWaiting && bandTripEnd == 0;
 }
 
 // The hold end of a trip requested at `now` while the backoff runs until `backoffUntil`.
@@ -163,9 +181,9 @@ inline bool NearTripSkill(std::uint32_t skill, bool hasSkill)
 }
 
 // twow-repo#333 M2 Crafting.Cooking: the same "once" rule for the trip skills of IsTripSkill.
-inline bool NearTripSkill(std::uint32_t skill, bool hasSkill, bool cooking)
+inline bool NearTripSkill(std::uint32_t skill, bool hasSkill, bool cooking, bool survival = false, bool fishing = false)
 {
-    return IsTripSkill(skill, cooking) && !hasSkill;
+    return IsTripSkill(skill, cooking, survival, fishing) && !hasSkill;
 }
 
 inline bool WithinNearRadius(float distance, std::uint32_t nearRadius)
@@ -312,6 +330,25 @@ inline std::uint32_t MissingTool(bool mining, bool hasPick, bool skinning, bool 
     if (skinning && !hasKnife)
         return kSkinningKnife;
     return 0;
+}
+
+// twow-repo#333 M2 Crafting.Survival (owner list 07.11.2026, item 3): with the switch on for a survivalist the tool trip also buys
+// the Whittle (the tool of most survival recipes); pick and knife first, as before.
+inline std::uint32_t MissingTool(bool mining, bool hasPick, bool skinning, bool hasKnife, bool survival, bool hasWhittle)
+{
+    if (std::uint32_t const gatherTool = MissingTool(mining, hasPick, skinning, hasKnife))
+        return gatherTool;
+    return survival && !hasWhittle ? kWhittle : 0;
+}
+
+// twow-repo#333 M2 Crafting.Fishing (owner list 07.11.2026, item 4): with the switch on for a fisher the tool trip also buys the
+// Fishing Pole when the bags hold no pole at all; pick, knife and Whittle first.
+inline std::uint32_t MissingTool(bool mining, bool hasPick, bool skinning, bool hasKnife, bool survival, bool hasWhittle,
+    bool fishing, bool hasPole)
+{
+    if (std::uint32_t const tool = MissingTool(mining, hasPick, skinning, hasKnife, survival, hasWhittle))
+        return tool;
+    return fishing && !hasPole ? kFishingPole : 0;
 }
 
 // A gather purpose for this skill is useful only with its tool (the loot check LootObjectStack.cpp needs it anyway).

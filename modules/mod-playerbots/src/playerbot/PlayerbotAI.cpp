@@ -1406,6 +1406,8 @@ void PlayerbotAI::OnReturnFromBattleground(uint32 now)
 
 void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
 {
+    // A3 step 3 arbiter shadow (AiPlayerbot.Supervisor.Arbiter, default 0): writes on this thread belong to this bot.
+    ai::supervisor::ThreadTag const threadTag(ai::supervisor::ThreadKind::Bot, this);
     // twow-repo#563 (X1): before the park check, so a parked bot's inbox does not fill up.
     HandleQueuedBotPackets();
 
@@ -1589,6 +1591,8 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
                         skill == SKILL_MINING ? uint32(TravelDestinationPurpose::GatherMining) :
                         skill == SKILL_HERBALISM ? uint32(TravelDestinationPurpose::GatherHerbalism) :
                         uint32(TravelDestinationPurpose::GatherFishing);
+                    // A3 step 3 arbiter shadow (AiPlayerbot.Supervisor.Arbiter): the end of a gathering purpose is a lifecycle write.
+                    ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::Lifecycle);
                     TravelTarget* travelTarget = aiObjectContext->GetValue<TravelTarget*>("travel target")->Get();
                     if (travelTarget && travelTarget->GetDestination() &&
                         (uint32(travelTarget->GetDestination()->GetPurpose()) & gatherFlag))
@@ -2430,10 +2434,12 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
         }
 
         // A3 step 3 (ADR-0041, AiPlayerbot.Supervisor, default 0): the supervisor ticks once per engine pass (after the
-        // countdown, the reaction gate and the cast-delay returns, so it counts decision passes, not world ticks). Scaffold:
-        // Tick only counts. When the switch stops applying (reload to 0, other cohort) the instance is released and dropped.
+        // countdown, the reaction gate and the cast-delay returns, so it counts decision passes, not world ticks). Tick counts and,
+        // with AiPlayerbot.Supervisor.Arbiter = 1 (behaviour pair 1, default 0; only under the parent switch), runs the arbiter
+        // shadow, which only watches the travel target. When the switch stops applying (reload to 0, other cohort) the instance
+        // is released and dropped.
         if (sPlayerbotAIConfig.supervisor && ai::supervisor::Applies(sPlayerbotAIConfig.supervisor, bot->GetGUIDLow()))
-            EnsureSupervisor()->Tick(WorldTimer::getMSTime());
+            EnsureSupervisor()->Tick(WorldTimer::getMSTime(), sPlayerbotAIConfig.supervisorArbiter == 1);
         else if (supervisor_)
         {
             supervisor_->Release();
@@ -3438,6 +3444,8 @@ void PlayerbotAI::HandleTeleportAck()
 
 void PlayerbotAI::Reset(bool full)
 {
+    // A3 step 3 arbiter shadow: a reset is a lifecycle write unless a caller (the manager's teleport or rescue) named its family.
+    ai::supervisor::WriterScope const writerScope = ai::supervisor::WriterScope::IfEmpty(ai::supervisor::WriterId::Lifecycle);
     AiObjectContext* context = aiObjectContext;
 
     if (bot->IsTaxiFlying())

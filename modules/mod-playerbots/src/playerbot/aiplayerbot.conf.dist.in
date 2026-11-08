@@ -224,6 +224,19 @@ AiPlayerbot.Buff.StrangerCooldownSeconds = 900
 # premade path; 0 = a coin on every check (old).
 AiPlayerbot.Loot.RoleWeights = 0
 AiPlayerbot.Loot.FeralFixedSpec = 1
+# OB-00 08.11.2026 (BUG FIX: code default 1, 0 = rollback): the "loot chance" value of a game object. The drop map keeps a
+# game object entry negated; the value put that negative entry into the game object guid as it was, the entry ran into the
+# high guid bits, the guid was no game object guid and every game object had loot chance 0. With 1 it reads the game object's
+# loot template (LootChancePolicy.h). Readers: the quest relation rule below (unchanged by this key alone) and the debug
+# "loot" output. Mode: 0 = as before (rollback), 1 = fixed (default). Any other value acts like 1.
+AiPlayerbot.LootChance.GameObjectEntryFix = 1
+# OB-00 08.11.2026 (LEVER, default 0; only with a run-to-run quest measurement, never in the same run as another quest lever):
+# "entry quest relation" makes an entry that drops a quest objective item an objective of that quest when the item is a quest
+# item or its loot chance is above 5 percent. With the bug a game object came in only through a quest item. 0 keeps that rule
+# (quest travel as before the fix). 1 lets game objects in by chance as creatures: world DB 08.11. - 292 quests get new
+# objective destinations at 204 spawned chest / crate entries (e.g. quest 418 item 3174: 22 entries, 1429 spawns; quest 16
+# water 159 from crates). Any other value acts like 0.
+AiPlayerbot.QuestRelation.GameObjectChanceDrops = 0
 # twow-repo#308 EQUIP-FLIP-01: 1 = the equip-upgrade check (every looted weapon or armour piece) takes main and off hand
 # off only when a weapon, shield or held item in the bags is an equip candidate. 0 = on every run, as before (bots took
 # their weapons off and on after every loot). A re-equip of the old main or off hand is no EquipAction event either way.
@@ -1219,6 +1232,13 @@ AiPlayerbot.QuestRescue.IdleMinutes = 30
 # stays with the bot for the next scan instead of being dropped. Matters for stranded bots (ZoneExit.StrandedRescueAfter),
 # which only ask again after more empty quest searches. 0 = as before (default).
 AiPlayerbot.QuestRescue.KeepRequestWhenFull = 0
+# twow-repo#575 RG-a (OB-00 08.11.2026): the quest rescue's first answer is an anchor table (RescueHubPolicy.h, OB-50 innkeeper
+# spawns): below L5 a bot goes to its race's start-zone hub (Goldshire, Kharanos, Dolanaar, Razor Hill, Brill, Bloodhoof; high elf
+# up to L9 Brinthilien / Alah'Thalas) instead of no target (R1) or another race's start point; night elves and undead L5-10 go to
+# the next zone on their home continent (Auberdine, The Sepulcher), unless StartZoneMinLevel still gates the level. No row or no
+# spawn left: the legacy targets as before. Logs [RescueHub] and [RescueHubMin].
+# Cohort mode: 0 = off (default), 1 = all bots, 2 = cohort B (odd guid), 3 = cohort A (even guid).
+AiPlayerbot.QuestRescue.HomeHubs = 0
 # A creature entry that killed the bot GrindAvoid.MaxDeaths times within
 # WindowSeconds is skipped as a grind target for AvoidSeconds. 0 = off.
 AiPlayerbot.GrindAvoid.MaxDeaths = 0
@@ -1355,6 +1375,40 @@ AiPlayerbot.BotGroups.OpQueueAlertAgeSeconds = 60
 # Mode (in-realm A/B, cohort parity): 0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid), 3 = only
 # cohort A (even low guid). Any other value acts like 0 (one error line at load).
 AiPlayerbot.BotGroups.Manager = 0
+# L1 (owner 07.11.2026, owner-ordered behaviour change): a bot resets its raid lockouts ("reset raids", which drops every bind
+# except the one of its current map, PERM included) only when a real player invites it. An invite by another bot or by a
+# bot-only world-thread group manager (ad-hoc, quest groups) keeps the bot's PERM raid binds; an accept run by the group op
+# queue (BOT-12, A3 lever 2 WritePath) checks its inviter like a direct accept. "Inviter" is the group
+# leader: a real assistant inviting into a bot-led raid counts as a bot invite (binds kept). 5-man dungeons carry no PERM
+# binds in this build, so in practice this concerns raid maps only.
+# The split guard (switch 1 only): a bot that keeps a PERM bind on raid map M declines an invite from a leader who stands in
+# another copy of M (S1), and does not relay an area trigger, a teleport command, a summon or .bot summon into another copy
+# of M toward a player on M (S3). It reads only the bot's own binds and the other player's map and instance id.
+# Timing: when the master walks through the entrance, the bot's area-trigger relay waits while the master is still on its
+# loading screen toward M (only a bot with a PERM bind on M), then checks the master's copy.
+# Blind spots: any other target not (yet) on M is not checked (the "teleport" command and the trigger reach do not wait);
+# core-only summons (ritual of summoning, meeting stones through the core) run no module code and cannot be vetoed - the core
+# still puts the bot into its own PERM copy (split group, no crash). The bot's own binds can be written by a group disband
+# on another map thread while the guard reads them (the core's own reads race the same way).
+# Out of scope: the GroupOps join decision (S2, follows with the GroupManager pairs), the dungeon-clear test-run unbinds, a bot
+# leader that keeps PERM A spreading A to members who enter (real players included; core behaviour, only counted, see
+# leader_bind_carry), counting a bot with a real master as "real", the sibling asserts in Map.cpp, a runtime core hook.
+# "debug do reset raids" by a master stays manual.
+# leader_bind_carry (OB-00 07.11.2026) is count only: no rule, no behaviour change, the same at 0 and 1 (the rule comes later
+# with the raid ADR, O7). One count per entry of a group member (not the leader) into a dungeon map M by a far teleport, where
+# the member had no own PERM bind on M at its teleport, the core PERM-bound it on entry to the copy of the group's PERM bind,
+# and the leader is a bot holding its own PERM bind on that copy. leader_carry_real = the entering member is a real player,
+# leader_carry_bot = a bot. The origin of the group's PERM bind is not visible at entry, so both count: a bind the bot
+# leader carried in (group create, leader change) and one the group earned in the current run (a boss kill with the leader
+# inside), e.g. a released member running back in or a member who joins mid-run.
+# Not counted: an entry at login, a worldport ack off the world thread, an offline leader (a leader that is itself on a
+# far teleport is still read).
+# 1 = on (default), 0 = the old behaviour (reset raids on every accepted invite, no split guard; rollback). Any other value
+# acts like 1. Line (increments of the minute, world thread, both values):
+# `[Lockout] minute mode=<0|1> reset_real= reset_bot= keep_bot= split_decline= split_entry= leader_carry_real= leader_carry_bot=`
+# It is printed only in a minute with a non-zero field: a missing minute means every field was 0. reset_bot counts only at
+# 0, keep_bot only at 1.
+AiPlayerbot.BotGroups.ResetRaidsRealInviterOnly = 1
 # A3 lever 2 (ADR-0041 amendment 4.2, OB-00 07.11.2026): the group write path. With the mode on for a bot, every group
 # membership change its own map thread would make runs as an op of the world-thread group queue above (OpQueueOpsPerTick,
 # OpQueueMaxDepth and the heavy-tick rule apply; the queue runs also with OpQueue = 0): its leaves ("leave", "party command",
@@ -1388,10 +1442,17 @@ AiPlayerbot.BotGroups.Manager = 0
 AiPlayerbot.BotGroups.WritePath = 0
 # A3 step 3 (ADR-0041 + amendment 2026-11-06, OB-00 06.11.2026): the per-bot supervisor - one owner of the bot's mode (quest,
 # grind, rest, group, rescue), and later of its travel target and tick cadence, with the activity planner ranking by value.
-# SCAFFOLD: the supervisor only counts its engine passes; it reads and writes nothing of the bot and writes no log line, so
-# every value behaves like 0 today. Mode (in-realm A/B, cohort parity): 0 = off (default, rollback), 1 = every bot, 2 = only
-# cohort B (odd low guid), 3 = only cohort A (even low guid). Any other value acts like 0 (one error line at load).
+# The supervisor counts its engine passes and decides nothing; it writes nothing of the bot, and without
+# AiPlayerbot.Supervisor.Arbiter it writes no log line. Mode (in-realm A/B, cohort parity): 0 = off (default, rollback),
+# 1 = every bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid). Any other value acts like 0 (one error
+# line at load).
 AiPlayerbot.Supervisor = 0
+# A3 step 3 behaviour pair 1 (OB-00 07.11.2026, E1-E4 a): the arbiter shadow. Works only where AiPlayerbot.Supervisor runs
+# (same cohort). It watches the bot's own travel target, bundles the writes of one engine pass and writes a [Supervisor]
+# ev=write / ev=expire line only for an open target closed by another family, a cooldown expiry or a writer without scope
+# (at most 300 lines per minute), plus one [ArbiterMin] sum per minute and cohort. It never writes the target or the bot.
+# 0 = off (default, rollback), 1 = shadow. Any other value acts like 0 (one error line at load; no enforcement yet).
+AiPlayerbot.Supervisor.Arbiter = 0
 # A3 step 5 (ADR-0041, OB-00 07.11.2026): the combat rule - one module that owns the combat decisions (who may start a fight,
 # rest before the pull, target choice, flee point, loop guard), one switch per part. Design: A3-S5-KAMPFREGEL-ENTWURF.md.
 # Part HealerStart (A3-AKTIONS-VERDRAHTUNG F2 (a)): the healer gate of attack my target / attack RTI target / attack anything
@@ -1475,6 +1536,17 @@ AiPlayerbot.QuestBook.StaleCompleteSeconds = 1800
 # has a source, the list is versioned in the profile. The book neither accepts nor targets a listed quest; a complete listed quest
 # may still be turned in. Empty = none (default).
 AiPlayerbot.QuestBook.Exclude =
+# A3 step 2 QB-S: source choice and quest order, only where the quest book is active (QuestBook applies to the bot). Among the
+# sources of one quest objective the bot goes to the one with the least expected time (route + kills / drop chance x (kill time +
+# spawn spacing / run speed), never less than the respawn waits); a named or single source must be cheaper by SingleSpawnMargin.
+# The winners of all quests are ordered by XP per minute (quest xp + follow-up quest xp + the kills' xp over route + work).
+# Lines: `[QuestSource] ...` per pick, counters in `[QuestBookMin]`. 0 = off (default, rollback), 1 = all, 2 = cohort B (odd low
+# guid), 3 = cohort A (even low guid); any other value acts like 0.
+AiPlayerbot.QuestBook.SourceChoice = 0
+# One kill incl. loot in seconds, 1..120, default 12.
+AiPlayerbot.QuestBook.KillSeconds = 12
+# A named / single source wins only when it is this much cheaper than the cheapest common one, 1..10, default 1.5.
+AiPlayerbot.QuestBook.SingleSpawnMargin = 1.5
 
 # #627 S7 help groups (owner 18.10./23.10.2026): roster bots holding the same elite
 # quest (Type 1; with SuggestedPlayers = 1 also SuggestedPlayers >= 2; never
@@ -2072,6 +2144,14 @@ AiPlayerbot.Revive.PreferCorpseRun = 0
 AiPlayerbot.Revive.CorpseRunFirst = 0
 # Seconds dead after which the spirit healer is taken (120..1800).
 AiPlayerbot.Revive.CorpseRunFirst.MaxSeconds = 600
+# twow-repo#575 A3 step 4 S4-2 (OB-00 07.11.2026): repop only when dead. "unstuck" sent an ALIVE bot to repop for "move long
+# stuck" / "combat long stuck" whenever its hearthstone was not useful (e.g. the homebind zone above its level): a teleport
+# to the race start or homebind, a group leave, the travel target nulled. With the switch the repop is not useful for an alive
+# bot; instead it asks for QuestRescue (the level-matched hub teleport with its per-bot and global limits) and gets a reset
+# when the per-bot limit stops that. The hearthstone first, as before. A dead bot (ghost) and a bot led by a real player keep
+# the legacy repop. Logged as [Rescue] ... alive=1 (each fallback) and [RepopDeadOnlyMin] (per minute).
+# 0 = off (default), 1 = every bot, 2 = cohort B (odd guid), 3 = cohort A (even guid); any other value is off.
+AiPlayerbot.Rescue.RepopDeadOnly = 0
 AiPlayerbot.QuestFirstProgression.TurnInDeathRouteCooldownSeconds = 3600
 # twow-repo#485: a finished quest whose turn-in keeps failing is parked instead
 # of holding the bot. A failure of a roster bot on its own is: a stall (recovery
@@ -2300,6 +2380,29 @@ AiPlayerbot.Crafting.Consumables = 0
 #   [Crafting] kind=cooking event=cook spell= item= bot= level= cohort=
 #   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid); other values act like 0.
 AiPlayerbot.Crafting.Cooking = 0
+# twow-repo#333 M2 Crafting.Survival (owner list 07.11.2026, item 3, M2-ENTWURF §7; inventory: Turtle Survival only an allowed
+# secondary skill - no trip, no tool, never bought). For a roster bot on its own:
+#   - the profession trips (ProfessionTraining.Travel / NearRadius) also teach Survival (skill 142; Survivalist ranks at the
+#     Survival Trainers), like the phase-one skills;
+#   - a survivalist's tool trip (ProfessionUse.ToolBuy) also buys the Whittle 42004 (after pick and knife), and the item usage
+#     makes Whittle and Simple Wood 4470 "buy at a vendor" items for it;
+#   - its recipes go through the craft loop as before (ProfessionUse.Craft; focus recipes stay excluded). Cutting trees gives no
+#     skill-up in this core (Player.cpp, SKILL_SURVIVAL2 commented out), so there are no wood trips.
+# Line, one per started survival recipe:
+#   [Crafting] kind=survival event=craft spell= item= skill= bot= level= cohort=
+#   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid); other values act like 0.
+AiPlayerbot.Crafting.Survival = 0
+# twow-repo#333 M2 Crafting.Fishing (owner list 07.11.2026, item 4, M2-ENTWURF §7; inventory: fishing learned only at a random local
+# trainer, no pole trip, and the fishing purpose (6.5) outranks the quest request (6.3) for up to 30 min). For a roster bot on its own:
+#   - the profession trips (ProfessionTraining.Travel / NearRadius) also teach fishing (skill 356, Apprentice / Journeyman);
+#   - a fisher's tool trip (ProfessionUse.ToolBuy) also buys the Fishing Pole 6256 when the bags hold no pole (after pick, knife
+#     and Whittle);
+#   - its fishing purpose ("tfish") starts only in the quest-first gap (quest route backoff running, no open turn-in, no band walk)
+#     and holds only until the backoff ended plus 10 min; a found quest route ends it at once.
+# Line, one per started fishing purpose of the switch's bots:
+#   [Crafting] kind=fishing event=start skill= target= backoff_s= bot= level= cohort=
+#   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid); other values act like 0.
+AiPlayerbot.Crafting.Fishing = 0
 # Profession use (#333), persistent roster bots without a real-player master.
 # GatherDistance: passive gathering radius for such a bot on its own (herbs,
 # ore, skinning); 0 = GatheringDistance. The hostile check stays in force.

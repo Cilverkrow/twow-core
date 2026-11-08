@@ -232,6 +232,140 @@ void TestFormatters()
     Require(plan.find(" turnin=1 brain=0 reason=turnin_first cands=4 alt1=grind:3:4.50 alt2=- alt3=- blocked=0 budget_ms=0")
         != std::string::npos, "plan line tail");
 }
+
+// Behaviour pair 1 (AiPlayerbot.Supervisor.Arbiter): the arbiter shadow's pure rules.
+Bundle Steps(std::uint8_t fromStatus, bool fromNull, std::uint32_t fromSinceMs)
+{
+    Bundle b;
+    BundleStart(b, fromStatus, fromNull, fromSinceMs);
+    return b;
+}
+
+void TestArbiter()
+{
+    Require(ValidArbiter(0) && ValidArbiter(1), "arbiter 0 and 1 are valid");
+    Require(!ValidArbiter(2) && !ValidArbiter(0xFFFFFFFFu), "arbiter 2 (enforcement) and above are off");
+
+    Require(IsOpen(kStatusReady, false) && IsOpen(kStatusTravel, false) && IsOpen(kStatusWork, false), "ready, travel, work are open");
+    Require(IsOpen(kStatusCooldown, false), "a cooldown is no end");
+    Require(!IsOpen(kStatusNone, false) && !IsOpen(kStatusPrepare, false) && !IsOpen(kStatusExpired, false), "none, prepare, expired");
+    Require(!IsOpen(kStatusReady, true), "the null target is never open");
+    Require(std::string(StatusName(kStatusCooldown)) == "COOLDOWN" && std::string(StatusName(7)) == "?", "status names");
+    Require(std::string(WriterName(WriterId::GroupFollow)) == "GroupFollow" && std::string(WriterName(WriterId::Unknown)) == "Unknown",
+        "writer names");
+    Require(CloserIsLine(WriterId::Select) && CloserIsLine(WriterId::Requester) && CloserIsLine(WriterId::GroupFollow) &&
+        CloserIsLine(WriterId::Manager) && CloserIsLine(WriterId::Brain) && CloserIsLine(WriterId::Unknown), "line closers");
+    Require(!CloserIsLine(WriterId::Lifecycle) && !CloserIsLine(WriterId::Execution) && !CloserIsLine(WriterId::Command) &&
+        !CloserIsLine(WriterId::Test), "planned closers are only counted");
+
+    // A selection replaces an open travel target (setNewTarget: new destination, then READY).
+    Bundle sel = Steps(kStatusTravel, false, 0);
+    BundleStep(sel, kStatusTravel, true, true, false, WriterId::Select, false, false, 1000);
+    BundleStep(sel, kStatusReady, false, true, false, WriterId::Select, false, false, 1200);
+    BundleClass c = ClassifyBundle(sel);
+    Require(c.oldOpen && c.closesOpen && !c.expireCooldown && !c.unknown, "a selection closes an open target");
+    Require(c.family == WriterId::Select && LineFor(c) == LineKind::Write, "a write line for the selection");
+    Require(BundleAgeMs(sel) == 1000, "age at the leaving step");
+    char buf[512];
+    FormatPath(buf, sizeof(buf), sel);
+    Require(std::string(buf) == "TRAVEL>*TRAVEL>READY", "path with the new destination marked");
+
+    ShadowLine l;
+    l.guid = 7;
+    l.cohort = 'B';
+    l.from = "quest:100:783";
+    l.to = "quest:200:784";
+    std::size_t const wn = FormatWriteLine(buf, sizeof(buf), l, sel);
+    std::string const write(buf);
+    Require(wn == write.size(), "write line length");
+    Require(write == "[Supervisor] bot=7 cohort=B arbiter=1 ev=write writer=Select closer=Select writers=Select from=quest:100:783 "
+        "to=quest:200:784 path=TRAVEL>*TRAVEL>READY steps=2 old_open=1 closes_open=1 forced=0 gap=0 age_ms=1000", "write line");
+
+    // The execution ends its own work: counted only, reason timeout_work.
+    Bundle exe = Steps(kStatusWork, false, 0);
+    BundleStep(exe, kStatusExpired, false, false, false, WriterId::Execution, false, false, 50);
+    c = ClassifyBundle(exe);
+    Require(c.oldOpen && !c.closesOpen && !c.expireCooldown && LineFor(c) == LineKind::None, "a planned end is only counted");
+    Require(std::string(ReasonFor(exe)) == "timeout_work", "reason timeout_work");
+
+    // The silent path: COOLDOWN -> EXPIRED, any family.
+    Bundle cd = Steps(kStatusCooldown, false, 100);
+    BundleStep(cd, kStatusExpired, false, false, false, WriterId::Execution, true, true, 900);
+    c = ClassifyBundle(cd);
+    Require(c.expireCooldown && LineFor(c) == LineKind::Expire, "a cooldown expiry gets the expire line");
+    Require(std::string(ReasonFor(cd)) == "cooldown_end", "reason cooldown_end");
+    l.guid = 8;
+    l.cohort = 'A';
+    l.from = "rpg:5:0";
+    FormatExpireLine(buf, sizeof(buf), l, cd);
+    Require(std::string(buf) == "[Supervisor] bot=8 cohort=A arbiter=1 ev=expire writer=Execution reason=cooldown_end dest=rpg:5:0 "
+        "path=COOLDOWN>EXPIRED gap=1 age_ms=800", "expire line");
+    Bundle cdLife = Steps(kStatusCooldown, false, 0);
+    BundleStep(cdLife, kStatusExpired, false, false, false, WriterId::Lifecycle, false, false, 10);
+    Require(LineFor(ClassifyBundle(cdLife)) == LineKind::Expire && std::string(ReasonFor(cdLife)) == "lifecycle",
+        "a lifecycle cooldown expiry is a line too");
+
+    // The manager clears an open target to the null target: new destination TRAVEL, then NONE.
+    Bundle mgr = Steps(kStatusReady, false, 0);
+    BundleStep(mgr, kStatusTravel, true, true, true, WriterId::Manager, false, false, 5);
+    BundleStep(mgr, kStatusNone, false, true, true, WriterId::Manager, false, false, 5);
+    c = ClassifyBundle(mgr);
+    Require(c.closesOpen && LineFor(c) == LineKind::Write && std::string(ReasonFor(mgr)) == "reset", "the manager's reset");
+    FormatPath(buf, sizeof(buf), mgr);
+    Require(std::string(buf) == "READY>*TRAVEL>NONE", "reset path");
+
+    // A writer without scope is always a line; from the null target nothing is closed.
+    Bundle unk = Steps(kStatusNone, true, 0);
+    BundleStep(unk, kStatusTravel, true, true, false, WriterId::Unknown, false, false, 1);
+    c = ClassifyBundle(unk);
+    Require(!c.oldOpen && !c.closesOpen && c.unknown && LineFor(c) == LineKind::Write, "an unknown writer is a line");
+    Bundle idle = Steps(kStatusNone, true, 0);
+    BundleStep(idle, kStatusTravel, true, true, false, WriterId::Select, false, false, 1);
+    Require(LineFor(ClassifyBundle(idle)) == LineKind::None, "a selection from the null target is only counted");
+
+    // Several families, the cut path, the age across the clock wrap.
+    Bundle many = Steps(kStatusTravel, false, 0xFFFFFF00u);
+    BundleStep(many, kStatusWork, false, false, false, WriterId::Execution, false, false, 0xFFFFFF80u);
+    BundleStep(many, kStatusCooldown, false, false, false, WriterId::Execution, false, false, 0xFFFFFFF0u);
+    BundleStep(many, kStatusReady, true, true, false, WriterId::Select, false, false, 0x100u);
+    BundleStep(many, kStatusTravel, false, true, false, WriterId::Select, false, false, 0x101u);
+    BundleStep(many, kStatusWork, false, true, false, WriterId::Execution, false, false, 0x102u);
+    Require(many.steps == 5 && many.closer == WriterId::Select, "steps count on, the first leaving step closes");
+    Require(BundleAgeMs(many) == 0x200u, "age across the clock wrap");
+    FormatPath(buf, sizeof(buf), many);
+    Require(std::string(buf) == "TRAVEL>WORK>COOLDOWN>*READY>TRAVEL>..", "path cut at four steps");
+    FormatWriters(buf, sizeof(buf), many.writers);
+    Require(std::string(buf) == "Select,Execution", "writers in id order");
+    FormatWriters(buf, sizeof(buf), 0);
+    Require(std::string(buf) == "-", "no writer");
+
+    // The minute sum.
+    ArbiterMinute m;
+    CountBundle(m, sel);
+    CountBundle(m, exe);
+    CountBundle(m, cd);
+    CountBundle(m, unk);
+    m.lines = 3;
+    m.dropped = 1;
+    m.offthreadWrites = 2;
+    m.crossWrites = 4;
+    std::size_t const mn = FormatArbiterMin(buf, sizeof(buf), 'B', m);
+    std::string const min(buf);
+    Require(mn == min.size(), "minute line length");
+    Require(min == "[ArbiterMin] cohort=B bundles=4 lines=3 dropped=1 unknown=1 offthread_writes=2 cross_writes=4 gaps=1 closes_open=1 "
+        "expire_cooldown=1 sel=1 req=0 exe=2 life=0 mgr=0 grp=0 cmd=0 brain=0 test=0", "minute line");
+
+    // Buffers: cut and terminated, a zero buffer writes nothing, no line break survives.
+    char small[16];
+    Require(FormatWriteLine(small, sizeof(small), l, sel) == 15 && std::strlen(small) == 15, "a short buffer is cut");
+    Require(FormatExpireLine(small, 0, l, cd) == 0 && FormatArbiterMin(small, 0, 'A', m) == 0 && FormatPath(small, 0, sel) == 0,
+        "a zero buffer writes nothing");
+    l.from = "bad\nname\r";
+    FormatWriteLine(buf, sizeof(buf), l, sel);
+    std::string const clean(buf);
+    Require(clean.find('\n') == std::string::npos && clean.find('\r') == std::string::npos && clean.find("from=bad_name_ ") !=
+        std::string::npos, "line breaks become _");
+}
 }
 
 int main()
@@ -246,6 +380,7 @@ int main()
     TestTransitionsPassive();
     TestCadence();
     TestFormatters();
+    TestArbiter();
     std::cout << "supervisor_policy_tests: OK\n";
     return 0;
 }
