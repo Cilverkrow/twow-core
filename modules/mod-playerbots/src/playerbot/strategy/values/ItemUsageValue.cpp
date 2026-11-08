@@ -1077,7 +1077,10 @@ bool ItemUsageValue::IsItemNeededForSkill(ItemPrototype const* proto)
     case 4471: //Flint and Tinder
         return ai->HasSkill(SKILL_COOKING);
     case 4470: //Simple Wood
-        return ai->HasSkill(SKILL_COOKING);
+        // twow-repo#333 M2 Crafting.Survival (owner list 07.11.2026, item 3): also the wood of the survival recipes.
+        return ai->HasSkill(SKILL_COOKING) || (ai->HasSkill(SKILL_SURVIVAL2) && CraftingSurvivalFor(ai));
+    case 42004: //Whittle - twow-repo#333 M2 Crafting.Survival: the tool of most survival recipes
+        return ai->HasSkill(SKILL_SURVIVAL2) && CraftingSurvivalFor(ai);
     case 6256: //Fishing Rod
         return ai->HasSkill(SKILL_FISHING);
     }
