@@ -45,6 +45,7 @@
 #include "playerbot/LevelGuardPolicy.h"   // twow-repo#601 cand4 lever (ii): config clamps + the startup grid
 #include "playerbot/R01CohortPolicy.h"
 #include "playerbot/LosCachePolicy.h"   // twow-repo#602 (Rotation.LosCacheMs): the read's bounds
+#include "playerbot/RescueHubPolicy.h"   // twow-repo#575 RG-a (QuestRescue.HomeHubs): the mode clamp
 
 #include <iostream>
 #include <numeric>
@@ -843,6 +844,7 @@ bool PlayerbotAIConfig::Initialize()
     grindCapLowLevelMargin = config.GetIntDefault("AiPlayerbot.GrindCap.LowLevelMargin", 2);
     questRescueIdleMinutes = config.GetIntDefault("AiPlayerbot.QuestRescue.IdleMinutes", 30);
     questRescueKeepRequestWhenFull = config.GetBoolDefault("AiPlayerbot.QuestRescue.KeepRequestWhenFull", false);
+    questRescueHomeHubs = ai::rescue_hub::ClampMode(config.GetIntDefault("AiPlayerbot.QuestRescue.HomeHubs", 0));
     grindAvoidMaxDeaths = config.GetIntDefault("AiPlayerbot.GrindAvoid.MaxDeaths", 0);
     grindAvoidWindowSeconds = std::max<uint32>(60, config.GetIntDefault("AiPlayerbot.GrindAvoid.WindowSeconds", 3600));
     grindAvoidSeconds = std::max<uint32>(60, config.GetIntDefault("AiPlayerbot.GrindAvoid.AvoidSeconds", 3600));
@@ -910,6 +912,10 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[Supervisor] config key=Supervisor.Arbiter value=%u result=off (0 off, 1 shadow)", supervisorArbiter);
         supervisorArbiter = 0;
     }
+    // A3 step 5 (ADR-0041): the combat rule, part HealerStart (CombatRulePolicy.h); an unknown mode is off.
+    combatRuleHealerStart = uint32(config.GetIntDefault("AiPlayerbot.CombatRule.HealerStart", 0));
+    if (combatRuleHealerStart > 3)
+        combatRuleHealerStart = 0;
     // A3 step 2 (ADR-0041): the quest book core QB-K (QuestBookPolicy.h, QuestBook.cpp); an unknown mode is off.
     questBook = uint32(config.GetIntDefault("AiPlayerbot.QuestBook", 0));
     if (!ai::questbook::ValidMode(questBook))
@@ -1673,6 +1679,13 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[Crafting] config key=Cooking value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", craftingCooking);
         craftingCooking = 0;
     }
+    // twow-repo#333 M2 Crafting.Survival (owner list 07.11.2026, item 3): an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B, 3 cohort A).
+    craftingSurvival = config.GetIntDefault("AiPlayerbot.Crafting.Survival", 0);
+    if (craftingSurvival > 3)
+    {
+        sLog.outError("[Crafting] config key=Survival value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", craftingSurvival);
+        craftingSurvival = 0;
+    }
     professionUseToolBuy = config.GetIntDefault("AiPlayerbot.ProfessionUse.ToolBuy", 0);
     if (professionUseToolBuy > 2)
         professionUseToolBuy = 0;
@@ -1965,8 +1978,10 @@ bool PlayerbotAIConfig::Initialize()
             {"Buy.VendorTemplateItems", Value(buyVendorTemplateItems)},
             {"CastWait.Preparing", Value(castWaitPreparing)},
             {"CheatItem.Trace", Value(cheatItemTrace)},
+            {"CombatRule.HealerStart", Value(combatRuleHealerStart)},
             {"Crafting.Consumables", Value(craftingConsumables)},
             {"Crafting.Cooking", Value(craftingCooking)},
+            {"Crafting.Survival", Value(craftingSurvival)},
             {"CustomRaceStartZones", Value(customRaceStartZones)},
             {"DangerMap.CountAddDeaths", Value(dangerMapCountAddDeaths)},
             {"DeathLoop.Escape", Value(deathLoopEscape)},
@@ -2069,6 +2084,7 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestLoop.RelationArriveRpgTarget", Value(questLoopRelationArriveRpgTarget)},
             {"QuestLoop.RelationWorkNoGrind", Value(questLoopRelationWorkNoGrind)},
             {"QuestLoop.TurnInWorkDeathNotRoute", Value(questLoopTurnInWorkDeathNotRoute)},
+            {"QuestRescue.HomeHubs", Value(questRescueHomeHubs)},
             {"QuestRescue.KeepRequestWhenFull", Value(questRescueKeepRequestWhenFull)},
             {"Rescue.RepopDeadOnly", Value(rescueRepopDeadOnly)},
             {"Revive.CorpseRunFirst", Value(reviveCorpseRunFirst)},
