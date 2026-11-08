@@ -6,6 +6,7 @@
 #include "playerbot/strategy/values/PositionValue.h"
 #include "playerbot/strategy/values/AoeValues.h"
 #include "playerbot/CohortPolicy.h"
+#include "playerbot/CombatRule.h"   // A3 step 5 P5: CombatRule.TargetRule backoff
 #include "playerbot/DarkRuneGatePolicy.h"
 #include "playerbot/EmergencyLadderPolicy.h"
 #include "playerbot/EmergencyLadderTrace.h"
@@ -550,6 +551,9 @@ bool InvalidTargetTrigger::IsActive()
         ai::invalid_target::quiet.fetch_add(1, std::memory_order_relaxed);
         return false;
     }
+    // A3 step 5 P5 (CombatRule.TargetRule, default 0): after an empty pick, quiet until a new attacker, a hit or TargetBackoffMs.
+    if (ai::combat_rule::TargetBackoffSkips(ai))
+        return false;
 
     return AI_VALUE2(bool, "invalid target", "current target");
 }

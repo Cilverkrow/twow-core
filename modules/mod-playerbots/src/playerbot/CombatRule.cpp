@@ -6,7 +6,9 @@
 #include "playerbot/RandomPlayerbotMgr.h"
 #include "playerbot/strategy/Strategy.h"
 
+#include <chrono>
 #include <ctime>
+#include <list>
 #include <string>
 
 namespace ai::combat_rule
@@ -197,7 +199,98 @@ void CountProgressAct(Player* bot, ProgressAct act)
         case ProgressAct::Woken: c.woken[cohort].fetch_add(1, std::memory_order_relaxed); break;
         case ProgressAct::Break: c.breaks[cohort].fetch_add(1, std::memory_order_relaxed); break;
         case ProgressAct::LoopEvent: c.loopEvents[cohort].fetch_add(1, std::memory_order_relaxed); break;
+        case ProgressAct::LoopOverwrite: c.loopOverwrites[cohort].fetch_add(1, std::memory_order_relaxed); break;
     }
+}
+
+namespace
+{
+// Part TargetRule applies to the bot: switch on for its cohort, no real player as master (a player group retargets as before).
+bool TargetRuleApplies(PlayerbotAI* ai)
+{
+    return sPlayerbotAIConfig.combatRuleTargetRule && ai::cohort::Applies(sPlayerbotAIConfig.combatRuleTargetRule, ai->GetBot()->GetGUIDLow()) &&
+        !ai->HasRealPlayerMaster();
+}
+
+std::uint64_t CurrentAttackersKey(PlayerbotAI* ai)
+{
+    std::list<ObjectGuid> const attackers = ai->GetAiObjectContext()->GetValue<std::list<ObjectGuid>>("attackers")->Get();
+    std::uint64_t key = 0;
+    for (ObjectGuid const& guid : attackers)
+        key += MixGuid(guid.GetRawValue());
+    return key;
+}
+
+std::uint64_t NowUs()
+{
+    return std::uint64_t(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
+}
+}
+
+void NoteTargetPick(PlayerbotAI* ai, bool picked)
+{
+    if (!TargetRuleApplies(ai))
+        return;
+    TargetBackoff& b = ai->TargetBackoffState();
+    if (picked)
+    {
+        b.armed = false;
+        return;
+    }
+    Player* const bot = ai->GetBot();
+    ArmTargetBackoff(b, WorldTimer::getMSTime(), CurrentAttackersKey(ai), bot->GetHealth());
+    TargetRuleGlobal().failed[CohortIndex(bot)].fetch_add(1, std::memory_order_relaxed);
+}
+
+bool TargetBackoffSkips(PlayerbotAI* ai)
+{
+    TargetBackoff& b = ai->TargetBackoffState();
+    if (!b.armed)
+        return false;
+    Player* const bot = ai->GetBot();
+    TargetRuleCounters& c = TargetRuleGlobal();
+    unsigned const cohort = CohortIndex(bot);
+    // Switched off (reload) or a real player became master: the backoff ends without a wake count.
+    if (!TargetRuleApplies(ai))
+    {
+        b.armed = false;
+        return false;
+    }
+    if (ai->GetAiObjectContext()->GetValue<Unit*>("current target")->Get())
+    {
+        b.armed = false;
+        c.wokenTarget[cohort].fetch_add(1, std::memory_order_relaxed);
+        return false;
+    }
+    switch (CheckTargetBackoff(b, WorldTimer::getMSTime(), CurrentAttackersKey(ai), bot->GetHealth(), sPlayerbotAIConfig.combatRuleTargetBackoffMs))
+    {
+        case TargetBackoffVerdict::Skip:
+            c.skipped[cohort].fetch_add(1, std::memory_order_relaxed);
+            return true;
+        case TargetBackoffVerdict::WokenAttackers: c.wokenAttackers[cohort].fetch_add(1, std::memory_order_relaxed); break;
+        case TargetBackoffVerdict::WokenHit: c.wokenHit[cohort].fetch_add(1, std::memory_order_relaxed); break;
+        case TargetBackoffVerdict::WokenTime: c.wokenTime[cohort].fetch_add(1, std::memory_order_relaxed); break;
+        case TargetBackoffVerdict::Select: break;
+    }
+    return false;
+}
+
+TargetValueTimer::TargetValueTimer(PlayerbotAI* ai, TargetValue value) : value_(unsigned(value))
+{
+    if (!sPlayerbotAIConfig.combatRuleTargetRule || !ai || !ai->GetBot() || value_ >= TargetRuleCounters::Values)
+        return;
+    on_ = true;
+    cohort_ = CohortIndex(ai->GetBot());
+    startUs_ = NowUs();
+}
+
+TargetValueTimer::~TargetValueTimer()
+{
+    if (!on_)
+        return;
+    TargetRuleCounters& c = TargetRuleGlobal();
+    c.valueCalcs[value_][cohort_].fetch_add(1, std::memory_order_relaxed);
+    c.valueUs[value_][cohort_].fetch_add(NowUs() - startUs_, std::memory_order_relaxed);
 }
 
 ai::supervisor::Event MakeCombatLoopEvent(Player* bot, std::uint32_t targetEntry, std::uint32_t nowMs, std::uint32_t noProgressMs)
@@ -315,6 +408,11 @@ void ReportProgressGuard()
         sPlayerbotAIConfig.combatRuleProgressBreakSeconds, sPlayerbotAIConfig.combatRuleProgressBackoffMs,
         sPlayerbotAIConfig.combatRuleProgressIgnoreSeconds, v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8], v[9], v[10], v[11],
         v[12], v[13], v[14], v[15], v[16], v[17], v[18], v[19]);
+    // P5 (log only): the events that replaced one not yet taken, on its own line so the line above keeps its format.
+    unsigned long long const overwrites[2] = { Take(c.loopOverwrites[0]), Take(c.loopOverwrites[1]) };
+    if (overwrites[0] || overwrites[1])
+        sLog.outBasic("[CombatRule] part=ProgressGuardLoop mode=%u loop_overwrites=%llu/%llu", sPlayerbotAIConfig.combatRuleProgressGuard,
+            overwrites[0], overwrites[1]);
 
     for (unsigned band = 0; band < ProgressGuardCounters::Bands; ++band)
     {
@@ -346,6 +444,40 @@ void ReportProgressGuard()
                 classes.c_str());
     }
 }
+
+// "[CombatRule] part=TargetRule mode= backoff_ms= failed=A/B skipped=A/B woken_attackers=A/B woken_hit=A/B woken_time=A/B
+// woken_target=A/B" (empty picks that armed the backoff, quiet trigger checks, wakes by cause; only where it acts) and
+// "[CombatRule] part=TargetValues mode= <value>=<calcs A/B>/<us A/B>,..." (computes and their time of the target values, both cohorts;
+// descriptive, OB-00 08.11.).
+void ReportTargetRule()
+{
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (!sPlayerbotAIConfig.combatRuleTargetRule || now < lastReport + 60)
+        return;
+    lastReport = now;
+    TargetRuleCounters& c = TargetRuleGlobal();
+    unsigned long long v[12];
+    std::atomic<std::uint64_t>* all[12] = { &c.failed[0], &c.failed[1], &c.skipped[0], &c.skipped[1], &c.wokenAttackers[0],
+        &c.wokenAttackers[1], &c.wokenHit[0], &c.wokenHit[1], &c.wokenTime[0], &c.wokenTime[1], &c.wokenTarget[0], &c.wokenTarget[1] };
+    for (int i = 0; i < 12; ++i)
+        v[i] = Take(*all[i]);
+    sLog.outBasic("[CombatRule] part=TargetRule mode=%u backoff_ms=%u failed=%llu/%llu skipped=%llu/%llu woken_attackers=%llu/%llu "
+        "woken_hit=%llu/%llu woken_time=%llu/%llu woken_target=%llu/%llu", sPlayerbotAIConfig.combatRuleTargetRule,
+        sPlayerbotAIConfig.combatRuleTargetBackoffMs, v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8], v[9], v[10], v[11]);
+
+    std::string values;
+    for (unsigned value = 0; value < TargetRuleCounters::Values; ++value)
+    {
+        unsigned long long const calcs[2] = { Take(c.valueCalcs[value][0]), Take(c.valueCalcs[value][1]) };
+        unsigned long long const us[2] = { Take(c.valueUs[value][0]), Take(c.valueUs[value][1]) };
+        if (!values.empty())
+            values += ',';
+        values += std::string(TargetValueName(TargetValue(value))) + '=' + std::to_string(calcs[0]) + '/' + std::to_string(calcs[1]) + '/' +
+            std::to_string(us[0]) + '/' + std::to_string(us[1]);
+    }
+    sLog.outBasic("[CombatRule] part=TargetValues mode=%u values=%s", sPlayerbotAIConfig.combatRuleTargetRule, values.c_str());
+}
 }
 
 void ReportCombatRule()
@@ -354,5 +486,6 @@ void ReportCombatRule()
     ReportPriestOverlay();
     ReportRestBeforePull();
     ReportProgressGuard();
+    ReportTargetRule();
 }
 }

@@ -1,5 +1,6 @@
 
 #include "playerbot/playerbot.h"
+#include "playerbot/CombatRule.h"   // A3 step 5 P5: TargetValueTimer (CombatRule.TargetRule, log only)
 #include "PossibleAttackTargetsValue.h"
 #include "PossibleTargetsValue.h"
 
@@ -16,6 +17,7 @@ using namespace MaNGOS;
 
 std::list<ObjectGuid> PossibleAttackTargetsValue::Calculate()
 {
+    ai::combat_rule::TargetValueTimer const costTimer(ai, ai::combat_rule::TargetValue::PossibleAttackTargets);   // A3 step 5 P5: TargetValues line (log only)
     std::list<ObjectGuid> result;
     if (ai->AllowActivity(ALL_ACTIVITY))
     {

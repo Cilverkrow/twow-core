@@ -1515,6 +1515,20 @@ AiPlayerbot.CombatRule.ProgressBreakSeconds = 45
 AiPlayerbot.CombatRule.ProgressBackoffMs = 1000
 # ProgressGuard: seconds a broken target stays on the ignore list (10..600; default 120).
 AiPlayerbot.CombatRule.ProgressIgnoreSeconds = 120
+# ProgressGuard, since P5: "[CombatRule] part=ProgressGuardLoop mode= loop_overwrites=A/B" (only when > 0) counts CombatLoop events
+# that replaced one the frame had not taken yet (log only).
+# A3 step 5 P5 (ADR-0041, OB-00 08.11.2026 (a); design A3-S5-PROGRESSGUARD-ENTWURF.md v1.1 §3): CombatRule.TargetRule, the "select
+# new target" backoff. After a kill the bot can keep attackers while the dps/tank assist picks nothing (W24 pattern B), and then
+# "invalid target" -> "select new target" fails on every pass. With the switch on for the bot's cohort, an empty pick arms the backoff:
+# the "invalid target" trigger stays quiet while the current target is empty, until the attacker set changes, the bot takes damage
+# or TargetBackoffMs pass; a current target ends it. Not for a bot with a real player as master. Minute lines (switch on, increments):
+# "[CombatRule] part=TargetRule mode= backoff_ms= failed=A/B skipped=A/B woken_attackers=A/B woken_hit=A/B woken_time=A/B
+# woken_target=A/B" and "[CombatRule] part=TargetValues mode= values=<value>=<calcs A>/<calcs B>/<us A>/<us B>,..." (computes and time
+# of attackers, possible attack targets, dps target, tank target and invalid target, both cohorts; descriptive only). Mode: 0 = off
+# (default, rollback), 1 = every bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid). Any other value acts like 0.
+AiPlayerbot.CombatRule.TargetRule = 0
+# TargetRule: longest backoff after an empty pick in ms (250..10000; default 2000).
+AiPlayerbot.CombatRule.TargetBackoffMs = 2000
 # A3 step 2 (ADR-0041, OB-00 07.11.2026): the quest book core (QB-K). One book per roster bot on its own (no real player master)
 # answers accept, travel target and turn-in with one level window, one progress notion (credit per quest, not objective text) and
 # the QB5 exclusion list, and a complete quest ends the grind fallback (QB4). Where the switch does not apply, every old rule stays.
@@ -1807,6 +1821,18 @@ AiPlayerbot.QuestFirstProgression.StaleKeepZone.Seconds = 900
 #   (even low guid); other values act like 1. Without StartZoneMinLevel it does nothing.
 AiPlayerbot.QuestFirstProgression.StartZoneMinLevel = 0
 AiPlayerbot.QuestFirstProgression.StartZoneMinLevel.Cohort = 1
+# twow-repo#601 owner rule R1, package "start-zone rule complete" (OB-00 08.11.2026): it acts only on bots StartZoneMinLevel holds (the
+# .Cohort selection, roster bots without a real player master). 1 = on:
+#   G1: a held bot does not follow a bot leader whose position is outside its start zone ([ZoneKeep] state=follow_gate, once per bot and
+#       leader per 600 s). Bots led by a real player are never held.
+#   G2: a group copy of a member's travel target outside the start zone was already refused by the gate; with 1 a refused copy writes
+#       [ZoneKeep] state=group_copy_gate (once per bot per 600 s).
+#   G3: a held bot whose follow was refused for 300 s in a row leaves its group ([ZoneKeep] state=group_leave; the leave-far-away path,
+#       not ad-hoc or quest help groups, which have their own leave rules).
+#   V2-a: at the release (level StartZoneMinLevel .. StartZoneMinLevel + 2, still in its start zone) the bot's first empty quest offer
+#       counts as the band step at once instead of the second ([ZoneKeep] state=release_push; needs BandLadder).
+#   0 = off (default and rollback); other values act like 0. Without StartZoneMinLevel it does nothing.
+AiPlayerbot.QuestFirstProgression.StartZoneMinLevel.Complete = 0
 # twow-repo#601 quest acceptance lever (iv) (OB-00 28.10.2026, BUG FIX behind a switch, cli-quest-organic/quest-acceptance/STEP2.md):
 # the radius quest giver fetch of a quest route request (GiverRadius, the #421 B stages) asked TravelMgr for entry 0, but every
 # quest giver is filed under its quest id - so it never returned a giver. Givers reached the route choice only through the

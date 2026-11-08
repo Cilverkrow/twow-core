@@ -62,4 +62,73 @@ inline bool KeepZoneDefers(bool active, bool turnIn, std::uint32_t botZone, std:
 {
     return active && !turnIn && botZone != 0 && targetZone != 0 && targetZone != botZone;
 }
+
+// Package "start-zone rule complete" (OB-00 08.11.2026, AiPlayerbot.QuestFirstProgression.StartZoneMinLevel.Complete; design
+// ws-10/cli-quest-organic/r1/SZM-V2-RG-CAUSE-AND-GROUP-GATE-DESIGN-20261108.md). The SZM repeat (pin 2l) was INVALID: a held bot
+// (B, L3) followed a bot leader of the other cohort out of its start zone (FollowAction, a far move with origin=other). The gate
+// covered only the bot's own target choice, the band step and the rescue. V2 1.151: after the release at StartZoneMinLevel the bot
+// searched its used-up start zone (empty offers +31 % at L5-7) until a rescue or the second empty offer stepped it out.
+//   G1: a held bot does not follow a bot leader outside its start zone.
+//   G2: a group copy outside the start zone was already deferred by the gate (SetBestTarget); 1 only logs it.
+//   G3: after FollowLeaveSeconds of refused follow in a row the bot leaves its group.
+//   V2-a: in the release window the first empty offer counts as the band step (the step rule wants one prior failure).
+// 0 off (default and rollback), 1 on; any other value acts like 0.
+constexpr std::uint32_t FollowLeaveSeconds = 300;    // G3: refused follow in a row before the leave
+constexpr std::uint32_t RefusalFreshSeconds = 60;    // G3: the last refusal at most this old ("in a row")
+constexpr std::uint32_t GateLineSeconds = 600;       // follow_gate per bot and leader, group_copy_gate per bot
+constexpr std::uint32_t ReleasePushLevels = 3;       // V2-a: StartZoneMinLevel .. StartZoneMinLevel + 2 (owner goal 5-7)
+
+inline bool CompleteOn(std::int32_t value)
+{
+    return value == 1;
+}
+
+// G1: a held bot does not follow a leader whose position is outside its start zone (unknown zone: OutsideStartZone fails open).
+inline bool FollowDefers(bool held, bool leaderOutsideStart)
+{
+    return held && leaderOutsideStart;
+}
+
+// G3: refused since (start of the refusal run, 0 = none) and the last refusal (unix seconds); differences only.
+inline bool LeaveDue(std::uint32_t refusedSince, std::uint32_t lastRefusal, std::uint32_t now, std::uint32_t seconds)
+{
+    return refusedSince != 0 && lastRefusal != 0 && std::int32_t(now - refusedSince) >= std::int32_t(seconds) &&
+        std::int32_t(now - lastRefusal) <= std::int32_t(RefusalFreshSeconds);
+}
+
+// G3 (OB-00 (b) after OB-10's review of #948): never leave a group that has a real player in it, leader or not.
+inline bool LeaveAllowed(bool realPlayerMember)
+{
+    return !realPlayerMember;
+}
+
+// The refusal run: a refusal keeps the run while the last one is fresh; otherwise it starts a new run now.
+inline std::uint32_t NextRefusedSince(std::uint32_t refusedSince, std::uint32_t lastRefusal, std::uint32_t now)
+{
+    bool const fresh = refusedSince != 0 && lastRefusal != 0 && std::int32_t(now - lastRefusal) <= std::int32_t(RefusalFreshSeconds);
+    return fresh ? refusedSince : now;
+}
+
+// V2-a: the release window (StartZoneMinLevel 0: never).
+inline bool InReleaseWindow(std::uint32_t minLevel, std::uint32_t level)
+{
+    return minLevel != 0 && level >= minLevel && level < minLevel + ReleasePushLevels;
+}
+
+inline bool ReleasePush(bool on, bool applies, std::uint32_t minLevel, std::uint32_t level, bool inStartZone)
+{
+    return on && applies && inStartZone && InReleaseWindow(minLevel, level);
+}
+
+// The prior failures the band step reads: with the push at least one (QuestBandPolicy BandStepDue: emptyOffer && prior >= 1).
+inline std::int32_t PushedPriorFailures(bool push, std::int32_t prior)
+{
+    return push && prior < 1 ? 1 : prior;
+}
+
+// A line at most once per window (lineUntil unix seconds, 0 = none yet; differences only).
+inline bool LineDue(std::uint32_t lineUntil, std::uint32_t now)
+{
+    return lineUntil == 0 || std::int32_t(now - lineUntil) >= 0;
+}
 }
