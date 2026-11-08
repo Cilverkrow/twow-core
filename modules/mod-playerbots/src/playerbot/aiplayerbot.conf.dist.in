@@ -1358,9 +1358,11 @@ AiPlayerbot.BotGroups.LeaderOtherMapSeconds = 120
 # OpQueueAlertAgeSeconds. In queue mode "[BotGroup] kind=adhoc event=invite|leave ... via=queue" means queued (exec_*/stale_*
 # in the minute line count what ran), and the join's register line can come before its membership line (pair them by bot
 # and group, not by order).
-# Mode (in-realm A/B, cohort parity, of the leaver / either bot of a join): 0 = as before (default), 1 = every bot, 2 = only
-# cohort B (odd low guid), 3 = only cohort A (even low guid). Any other value acts like 0 (one error line at load).
-AiPlayerbot.BotGroups.OpQueue = 0
+# BEHAVIOUR CHANGE, ON by default (owner 08.11.2026; BOT-12 v2 RESULT 24b75ea3: MET, pooled tick p99 +0.40 ms, hi95 < 0.9
+# ms), 0 = rollback. Mode (in-realm A/B, cohort parity, of the leaver / either bot of a join): 0 = as before, 1 = every bot
+# (default), 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid). Any other value acts like 1 (one error line
+# at load).
+AiPlayerbot.BotGroups.OpQueue = 1
 # BOT-12: ops run per world tick (1..16; default 1). The heavy-tick rule above still applies.
 AiPlayerbot.BotGroups.OpQueueOpsPerTick = 1
 # BOT-12: the most ops the queue holds (16..65536; default 2048). A full queue refuses new ops (dropped_full_leave/join in the
