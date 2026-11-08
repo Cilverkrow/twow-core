@@ -224,6 +224,19 @@ AiPlayerbot.Buff.StrangerCooldownSeconds = 900
 # premade path; 0 = a coin on every check (old).
 AiPlayerbot.Loot.RoleWeights = 0
 AiPlayerbot.Loot.FeralFixedSpec = 1
+# OB-00 08.11.2026 (BUG FIX: code default 1, 0 = rollback): the "loot chance" value of a game object. The drop map keeps a
+# game object entry negated; the value put that negative entry into the game object guid as it was, the entry ran into the
+# high guid bits, the guid was no game object guid and every game object had loot chance 0. With 1 it reads the game object's
+# loot template (LootChancePolicy.h). Readers: the quest relation rule below (unchanged by this key alone) and the debug
+# "loot" output. Mode: 0 = as before (rollback), 1 = fixed (default). Any other value acts like 1.
+AiPlayerbot.LootChance.GameObjectEntryFix = 1
+# OB-00 08.11.2026 (LEVER, default 0; only with a run-to-run quest measurement, never in the same run as another quest lever):
+# "entry quest relation" makes an entry that drops a quest objective item an objective of that quest when the item is a quest
+# item or its loot chance is above 5 percent. With the bug a game object came in only through a quest item. 0 keeps that rule
+# (quest travel as before the fix). 1 lets game objects in by chance as creatures: world DB 08.11. - 292 quests get new
+# objective destinations at 204 spawned chest / crate entries (e.g. quest 418 item 3174: 22 entries, 1429 spawns; quest 16
+# water 159 from crates). Any other value acts like 0.
+AiPlayerbot.QuestRelation.GameObjectChanceDrops = 0
 # twow-repo#308 EQUIP-FLIP-01: 1 = the equip-upgrade check (every looted weapon or armour piece) takes main and off hand
 # off only when a weapon, shield or held item in the bags is an equip candidate. 0 = on every run, as before (bots took
 # their weapons off and on after every loot). A re-equip of the old main or off hand is no EquipAction event either way.
