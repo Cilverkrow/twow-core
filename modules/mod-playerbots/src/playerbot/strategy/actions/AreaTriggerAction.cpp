@@ -2,6 +2,7 @@
 #include "playerbot/playerbot.h"
 #include "AreaTriggerAction.h"
 #include "playerbot/PlayerbotAIConfig.h"
+#include "playerbot/LockoutGuard.h"   // L1 (owner 07.11.2026): S3 split guard
 
 using namespace ai;
 
@@ -29,6 +30,17 @@ bool ReachAreaTriggerAction::Execute(Event& event)
         p1.rpos(0);
         bot->GetSession()->HandleAreaTriggerOpcode(p1);
 
+        return true;
+    }
+
+    // L1 (owner 07.11.2026): S3 - no follow through a trigger into another copy of a raid the bot is perm-bound to, when
+    // the requester already stands on that map (its map and instance id only). When the master's own trigger feeds this
+    // action, the master is usually still on its far teleport (old map id), so this check rarely fires; the relay in
+    // AreaTriggerAction below (wait for the landing, then RelaySplit) is the effective one.
+    if (sPlayerbotAIConfig.botGroupsResetRaidsRealInviterOnly && ai::lockout_guard::RelaySplit(bot, triggerId, requester))
+    {
+        ai::lockout_guard::Count(ai::lockout_guard::SplitEntry);
+        ai->TellError(requester, "I won't follow: I am locked to another copy of this raid");
         return true;
     }
 
@@ -73,6 +85,22 @@ bool AreaTriggerAction::Execute(Event& event)
     AreaTrigger const* at = sObjectMgr.GetAreaTrigger(triggerId);
     if (!at)
         return true;
+
+    // L1 (owner 07.11.2026): S3 timing - while the master is still on its far teleport toward the trigger's raid map (its
+    // map and instance id are the old ones until it lands), a bot perm-bound to that map keeps the trigger and waits.
+    if (sPlayerbotAIConfig.botGroupsResetRaidsRealInviterOnly && ai::lockout_guard::RelayWait(bot, triggerId, GetMaster()))
+    {
+        movement.lastAreaTrigger = triggerId;
+        return false;
+    }
+
+    // L1 (owner 07.11.2026): S3 - the relay does not take the bot into another copy of a raid it is perm-bound to, when the
+    // master already stands on that map. No reply: this relay never replies on failure.
+    if (sPlayerbotAIConfig.botGroupsResetRaidsRealInviterOnly && ai::lockout_guard::RelaySplit(bot, triggerId, GetMaster()))
+    {
+        ai::lockout_guard::Count(ai::lockout_guard::SplitEntry);
+        return false;
+    }
 
     WorldPacket p(CMSG_AREATRIGGER);
     p << triggerId;
