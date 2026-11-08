@@ -77,7 +77,7 @@ require_text("${conf_dist}" "\nAiPlayerbot.QuestFirstProgression.StaleObjectiveF
 require_text("${policy}" "if (IsMarked(entry, nowMs) || failuresOut < params.failures || botsOut < params.bots)\n        return false;" "marks on failures + distinct bots, never renews")
 require_text("${policy}" "auto it = store.entries.lower_bound(Key{ questId, INT32_MIN });" "a credit drops its quest's keys")
 require_text("${policy}" "constexpr std::size_t MaxKeys = 2048;" "bounded store")
-require_text("${policy}" "if (store.entries.find(key) == store.entries.end())\n        MakeRoom(store, nowMs, params);" "room made before a new key")
+require_text("${policy}" "if (store.entries.find(key) == store.entries.end())\n        MakeRoom(store, nowMs, params, evictedMark);" "room made before a new key (an evicted mark is reported, StaleObjectiveFilter.LockFree)")
 forbid_text("${policy}" "#include \"" "a game header in the pure policy")
 
 # 3. The store: one mutex, the map operation inside the lock, the log line after it; the switch off returns at once.

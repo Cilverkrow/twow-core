@@ -1,4 +1,5 @@
 // twow-repo#581 (QUEST-LOOP-01): QL-1 failure memory per bot x quest with a window and a cooldown, QL-2 minimum cooldown.
+#include <algorithm>   // std::is_sorted (StaleObjectiveFilter.LockFree snapshot)
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
@@ -249,6 +250,55 @@ int main()
         for (std::uint32_t i = 0; i < 4; ++i)
             so::RecordFailure(wrap, elem, 50 + i, w + i * 100, p, f, b);
         Require(so::IsStale(wrap, elem, w + 1000) && so::IsStale(wrap, elem, 5000), "the world timer wrap keeps the mark");
+    }
+
+    // A3-GERUEST-L60 8.4 lever 3 (StaleObjectiveFilter.LockFree, CLI-Deep 08.11.2026): the published snapshot answers as the store.
+    {
+        namespace so = ai::stale_objective;
+        so::Params const one{ 1, 1, 3600000, 3600000 };   // the first failure marks
+        std::uint32_t const t = 2000000, h = 3600000;
+        std::uint32_t f = 0, b = 0;
+        so::Store s;
+        so::Key const a{ 500, 7 }, c{ 500, -9 }, d{ 77, 3 }, unmarked{ 900, 1 };
+        so::RecordFailure(s, a, 1, t, one, f, b);
+        so::RecordFailure(s, c, 2, t + 100, one, f, b);
+        so::RecordFailure(s, d, 3, t + 200, one, f, b);
+        so::RecordFailure(s, unmarked, 4, t, so::Params{}, f, b);   // 1 of 4 failures: no mark
+        so::Snapshot const snap = so::BuildSnapshot(s, t + 300);
+        Require(snap.size() == 3, "only marked keys are in the snapshot");
+        Require(std::is_sorted(snap.begin(), snap.end(), [](so::MarkedKey const& x, so::MarkedKey const& y) { return x.key < y.key; }),
+            "the snapshot is in key order");
+        for (std::uint32_t now : { t + 300, t + h - 1, t + h, t + h + 100, t + h + 199, t + h + 200, t + 2 * h })
+            for (so::Key const& k : { a, c, d, unmarked, so::Key{ 500, 8 }, so::Key{ 1, 1 } })
+                Require(so::SnapshotMarked(snap, k, now) == so::IsStale(s, k, now), "snapshot and store give the same answer");
+        Require(so::SnapshotMarked(snap, a, t + h - 1) && !so::SnapshotMarked(snap, a, t + h), "a mark that runs out ends in the snapshot too");
+        Require(!so::SnapshotMarked(so::Snapshot{}, a, t), "empty snapshot: nothing marked");
+
+        bool evicted = false;
+        Require(so::Credit(s, 500, t + 400) == 2, "credit ends both marks of quest 500");
+        so::Snapshot const after = so::BuildSnapshot(s, t + 400);
+        Require(after.size() == 1 && !so::SnapshotMarked(after, a, t + 400) && so::SnapshotMarked(after, d, t + 400),
+            "rebuilt after the credit: only the other quest stays");
+
+        so::Store full;
+        for (std::uint32_t i = 0; i < so::MaxKeys; ++i)
+            so::RecordFailure(full, so::Key{ 10000 + i, 1 }, 1, t + i, one, f, b, &evicted);
+        Require(!evicted && full.entries.size() == so::MaxKeys, "filling the store evicts nothing");
+        so::RecordFailure(full, so::Key{ 99999, 1 }, 1, t + so::MaxKeys, one, f, b, &evicted);
+        Require(evicted && full.entries.count(so::Key{ 10000, 1 }) == 0, "full of marks: the oldest mark is evicted and reported");
+
+        so::Store quiet;
+        evicted = false;
+        for (std::uint32_t i = 0; i < so::MaxKeys; ++i)
+            so::RecordFailure(quiet, so::Key{ 20000 + i, 1 }, 1, t + i, so::Params{}, f, b, &evicted);
+        so::RecordFailure(quiet, so::Key{ 99999, 1 }, 1, t + so::MaxKeys, so::Params{}, f, b, &evicted);
+        Require(!evicted && quiet.entries.size() == so::MaxKeys, "evicting an unmarked key reports nothing");
+
+        so::Store wrap;
+        std::uint32_t const w = 0xFFFFFF00u;
+        so::RecordFailure(wrap, a, 1, w, one, f, b);
+        so::Snapshot const ws = so::BuildSnapshot(wrap, w + 10);
+        Require(so::SnapshotMarked(ws, a, w + 1000) && so::SnapshotMarked(ws, a, 5000), "the world timer wrap keeps the mark in the snapshot");
     }
 
     std::cout << "quest_loop_policy_tests passed\n";
