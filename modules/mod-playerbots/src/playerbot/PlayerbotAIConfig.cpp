@@ -920,6 +920,10 @@ bool PlayerbotAIConfig::Initialize()
         combatRuleProgressDeadlineSeconds);
     combatRuleProgressBackoffMs = ai::combat_rule::ClampProgressBackoffMs(config.GetIntDefault("AiPlayerbot.CombatRule.ProgressBackoffMs", 1000));
     combatRuleProgressIgnoreSeconds = ai::combat_rule::ClampProgressIgnore(config.GetIntDefault("AiPlayerbot.CombatRule.ProgressIgnoreSeconds", 120));
+    combatRuleTargetRule = uint32(config.GetIntDefault("AiPlayerbot.CombatRule.TargetRule", 0));
+    if (combatRuleTargetRule > 3)
+        combatRuleTargetRule = 0;
+    combatRuleTargetBackoffMs = ai::combat_rule::ClampTargetBackoffMs(config.GetIntDefault("AiPlayerbot.CombatRule.TargetBackoffMs", 2000));
     // A3 step 2 (ADR-0041): the quest book core QB-K (QuestBookPolicy.h, QuestBook.cpp); an unknown mode is off.
     questBook = uint32(config.GetIntDefault("AiPlayerbot.QuestBook", 0));
     if (!ai::questbook::ValidMode(questBook))
@@ -1982,6 +1986,8 @@ bool PlayerbotAIConfig::Initialize()
             {"CombatRule.RestBeforePull", Value(combatRuleRestBeforePull)},
             {"CombatRule.RestStartHp", Value(combatRuleRestStartHp)},
             {"CombatRule.RestStartMana", Value(combatRuleRestStartMana)},
+            {"CombatRule.TargetBackoffMs", Value(combatRuleTargetBackoffMs)},
+            {"CombatRule.TargetRule", Value(combatRuleTargetRule)},
             {"Crafting.Consumables", Value(craftingConsumables)},
             {"Crafting.Cooking", Value(craftingCooking)},
             {"CustomRaceStartZones", Value(customRaceStartZones)},

@@ -1,5 +1,6 @@
 
 #include "playerbot/playerbot.h"
+#include "playerbot/CombatRule.h"   // A3 step 5 P5: TargetValueTimer (CombatRule.TargetRule, log only)
 #include "DpsTargetValue.h"
 #include "LeastHpTargetValue.h"
 
@@ -8,6 +9,7 @@ using namespace ai;
 
 Unit* DpsTargetValue::Calculate()
 {
+    ai::combat_rule::TargetValueTimer const costTimer(ai, ai::combat_rule::TargetValue::DpsTarget);   // A3 step 5 P5: TargetValues line (log only)
     Unit* rti = RtiTargetValue::Calculate();
     if (rti) return rti;
 

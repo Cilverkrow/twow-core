@@ -310,6 +310,7 @@ bool SelectNewTargetAction::Execute(Event& event)
 // if every attacker passes, the first one with reason=assist_none. fails= counts the empty picks since the bot's previous line.
 bool SelectNewTargetAction::TraceRetargetEmpty(bool picked)
 {
+    ai::combat_rule::NoteTargetPick(ai, picked);   // A3 step 5 P5 (CombatRule.TargetRule, default 0): an empty pick arms the backoff
     if (picked || !ai::retarget_empty::Applies(sPlayerbotAIConfig.rotationRetargetEmptyTrace, bot->GetGUIDLow()))
         return picked;
 
