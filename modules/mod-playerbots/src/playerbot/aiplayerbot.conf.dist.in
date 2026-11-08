@@ -1444,6 +1444,15 @@ AiPlayerbot.Supervisor = 0
 # Mode (in-realm A/B, cohort parity): 0 = off (default, rollback: the old rule), 1 = every bot, 2 = only cohort B (odd low
 # guid), 3 = only cohort A (even low guid). Any other value acts like 0.
 AiPlayerbot.CombatRule.HealerStart = 0
+# Part PriestOverlay (A3-AKTIONS-VERDRAHTUNG F1 (a)): AiPlayerbot.RandomBotCombatStrategies goes onto every free bot's combat
+# engine. Only the priest context creates "dps" (the shadow placeholder), and class strategies of one context replace each other,
+# so "+dps" turns every discipline / holy priest into a shadow priest (10-h action logs: mind flay is the combat default in 100 %
+# of priest combat ticks and impossible in 66 %). With the part on, a discipline / holy priest gets the overlay without the exact
+# entry "+dps"; it keeps its tree and its offdps ladder (smite, shadow word: pain, holy fire). "+dps assist" and all other entries
+# stay. Minute line "[CombatRule] part=PriestOverlay mode= engines=A/B stripped=A/B" (combat engines of those priests set up with
+# the overlay, per cohort, and how many got it without "+dps"; increments). Mode: 0 = off (default, rollback: the overlay as it
+# is), 1 = every bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid). Any other value acts like 0.
+AiPlayerbot.CombatRule.PriestOverlay = 0
 # A3 step 2 (ADR-0041, OB-00 07.11.2026): the quest book core (QB-K). One book per roster bot on its own (no real player master)
 # answers accept, travel target and turn-in with one level window, one progress notion (credit per quest, not objective text) and
 # the QB5 exclusion list, and a complete quest ends the grind fallback (QB4). Where the switch does not apply, every old rule stays.

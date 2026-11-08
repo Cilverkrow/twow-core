@@ -923,6 +923,9 @@ public:
     // HealerStart: a holy paladin / restoration druid may attack like a healer with "offdps" (their contexts have no offdps
     // creator, so the healer gate refused every attack). 0 off (default, the old rule), 1 all, 2 cohort B, 3 cohort A; other = 0.
     uint32 combatRuleHealerStart = 0;
+    // PriestOverlay: a discipline / holy priest gets the RandomBotCombatStrategies overlay without "+dps" (which swaps its tree for
+    // the shadow placeholder). 0 off (default, overlay unchanged), 1 all, 2 cohort B, 3 cohort A; other = 0.
+    uint32 combatRulePriestOverlay = 0;
     // A3 step 2 (ADR-0041, OB-00 07.11.2026): the quest book core QB-K (QuestBookPolicy.h, QuestBook.cpp). 0 off, 1 all, 2 cohort B,
     // 3 cohort A; other = 0 + error line. Shadow: the other roster bots keep a book that only writes the KPI lines.
     uint32 questBook = 0;
