@@ -1,10 +1,12 @@
 #pragma once
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
 #include <map>
 #include <utility>
+#include <vector>
 
 // twow-repo#601 cand4 (i) (AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter, CLI-Deep 29.10.2026; OB-00 after CLI-PATH's
 // far-travel-stuck/as-ab/RESULT-as-1-why.md): in cand4r-B 568 of 716 cohort-B deaths fell on quests no bot made progress on all run.
@@ -80,8 +82,9 @@ inline void CountWindow(Entry const& entry, std::uint32_t nowMs, std::uint32_t w
     }
 }
 
-// Room for one new key: unmarked keys untouched for a whole window go first, then the least recently touched key.
-inline void MakeRoom(Store& store, std::uint32_t nowMs, Params const& params)
+// Room for one new key: unmarked keys untouched for a whole window go first, then the least recently touched key. evictedMark (may
+// be null) is set when that key still had a mark (the LockFree snapshot must be published again).
+inline void MakeRoom(Store& store, std::uint32_t nowMs, Params const& params, bool* evictedMark = nullptr)
 {
     if (store.entries.size() < MaxKeys)
         return;
@@ -93,16 +96,18 @@ inline void MakeRoom(Store& store, std::uint32_t nowMs, Params const& params)
     for (auto it = store.entries.begin(); it != store.entries.end(); ++it)
         if (std::uint32_t(nowMs - it->second.lastTouchMs) > std::uint32_t(nowMs - oldest->second.lastTouchMs))
             oldest = it;
+    if (evictedMark && IsMarked(oldest->second, nowMs))
+        *evictedMark = true;
     store.entries.erase(oldest);
 }
 
 // One failure of bot at key. True when this failure sets a new mark; an existing mark is not extended. failuresOut / botsOut get the
-// window counts after the failure (for the mark line).
+// window counts after the failure (for the mark line). evictedMark: see MakeRoom.
 inline bool RecordFailure(Store& store, Key const& key, std::uint32_t bot, std::uint32_t nowMs, Params const& params,
-    std::uint32_t& failuresOut, std::uint32_t& botsOut)
+    std::uint32_t& failuresOut, std::uint32_t& botsOut, bool* evictedMark = nullptr)
 {
     if (store.entries.find(key) == store.entries.end())
-        MakeRoom(store, nowMs, params);
+        MakeRoom(store, nowMs, params, evictedMark);
     Entry& entry = store.entries[key];
     entry.recent[entry.next] = Failure{ bot, nowMs };
     entry.next = (entry.next + 1) % KeptFailures;
@@ -136,5 +141,33 @@ inline bool IsStale(Store const& store, Key const& key, std::uint32_t nowMs)
 {
     auto const it = store.entries.find(key);
     return it != store.entries.end() && IsMarked(it->second, nowMs);
+}
+
+// A3-GERUEST-L60 8.4 lever 3 (AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter.LockFree, CLI-Deep 08.11.2026): the marked keys
+// as one immutable list in key order. The writer builds it under the store lock whenever the marked set changed (a new mark, a credit
+// that ended marks, an evicted mark) and publishes it; readers search it without any lock. A mark that runs out stays in the list
+// until the next publish, so the lookup checks the mark end itself: same answers as IsStale on the store the list was built from.
+struct MarkedKey
+{
+    Key key;
+    std::uint32_t untilMs = 0;
+};
+using Snapshot = std::vector<MarkedKey>;
+
+// The keys marked at nowMs (the store is a std::map, so its order is the key order).
+inline Snapshot BuildSnapshot(Store const& store, std::uint32_t nowMs)
+{
+    Snapshot snapshot;
+    for (auto const& item : store.entries)
+        if (IsMarked(item.second, nowMs))
+            snapshot.push_back(MarkedKey{ item.first, item.second.markUntilMs });
+    return snapshot;
+}
+
+inline bool SnapshotMarked(Snapshot const& snapshot, Key const& key, std::uint32_t nowMs)
+{
+    auto const it = std::lower_bound(snapshot.begin(), snapshot.end(), key,
+        [](MarkedKey const& item, Key const& k) { return item.key < k; });
+    return it != snapshot.end() && it->key == key && std::int32_t(it->untilMs - nowMs) > 0;
 }
 }

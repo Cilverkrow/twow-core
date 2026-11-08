@@ -1050,6 +1050,14 @@ bool PlayerbotAIConfig::Initialize()
     questFirstProgressionStaleObjectiveBots = std::min<uint32>(8, uint32(std::max<int32>(1, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter.Bots", 3))));
     questFirstProgressionStaleObjectiveWindowSeconds = std::min<uint32>(86400, uint32(std::max<int32>(60, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter.WindowSeconds", 3600))));
     questFirstProgressionStaleObjectiveSeconds = std::min<uint32>(86400, uint32(std::max<int32>(60, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter.Seconds", 3600))));
+    // A3-GERUEST-L60 8.4 lever 3: 0 per-thread rebuild (default, rollback), 1 published snapshot; another value is 0.
+    questFirstProgressionStaleObjectiveFilterLockFree = uint32(config.GetIntDefault("AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter.LockFree", 0));
+    if (questFirstProgressionStaleObjectiveFilterLockFree > 1)
+    {
+        sLog.outError("[StaleObjective] config key=StaleObjectiveFilter.LockFree value=%u result=0 (0 per-thread rebuild, 1 published snapshot)",
+            questFirstProgressionStaleObjectiveFilterLockFree);
+        questFirstProgressionStaleObjectiveFilterLockFree = 0;
+    }
     // twow-repo#601 owner rule R1: StaleKeepZone, an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B, 3 cohort A); the
     // keep time 60 s .. 1 h. StartZoneMinLevel: 0 off, 2..60 (1 would gate nothing).
     questFirstProgressionStaleKeepZone = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.StaleKeepZone", 0);
@@ -2134,6 +2142,7 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestFirstProgression.StaleObjectiveFilter", Value(questFirstProgressionStaleObjectiveFilter)},
             {"QuestFirstProgression.StaleObjectiveFilter.Bots", Value(questFirstProgressionStaleObjectiveBots)},
             {"QuestFirstProgression.StaleObjectiveFilter.Failures", Value(questFirstProgressionStaleObjectiveFailures)},
+            {"QuestFirstProgression.StaleObjectiveFilter.LockFree", Value(questFirstProgressionStaleObjectiveFilterLockFree)},
             {"QuestFirstProgression.StaleObjectiveFilter.Seconds", Value(questFirstProgressionStaleObjectiveSeconds)},
             {"QuestFirstProgression.StaleObjectiveFilter.WindowSeconds", Value(questFirstProgressionStaleObjectiveWindowSeconds)},
             {"QuestFirstProgression.StartZoneMinLevel", Value(questFirstProgressionStartZoneMinLevel)},
