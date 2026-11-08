@@ -564,6 +564,10 @@ public:
     // main hand instead of selling them; 0 off (default), 1 all, 2 cohort B (odd guid), 3 cohort A (even guid). No effect under the
     // item cheat (use consumable is useless there, nothing is kept).
     uint32 craftingConsumables = 0;
+    // twow-repo#333 M2 Crafting.Cooking (owner list 07.11.2026, item 2; M2-ENTWURF §7): a roster bot on its own also learns cooking by
+    // the profession trips, cooks the fire recipes (spell focus 4) of the craft loop and lights its own campfire (spell 818) for them;
+    // 0 off (default), 1 all, 2 cohort B (odd guid), 3 cohort A (even guid). The craft part needs ProfessionUse.RealReagents.
+    uint32 craftingCooking = 0;
     uint32 professionUseToolBuy = 0;
     // twow-repo#333 P1-z (OB-00 31.10.2026, bug fix: code default 1, 0 = rollback, 2 cohort B): BuyAction "vendor" also reads the
     // vendor template items (creature_template.vendor_id), as the player's buy, the by-name buy and the vendor map already do.

@@ -148,6 +148,10 @@ int main()
         Require(b.Seq(7) == 0 && !b.Bump(0), "empty book; quest 0 is no quest");
         Require(b.Bump(7) && b.Bump(7) && b.Seq(7) == 2, "two credits");
         Require(b.Reset(7) && b.Seq(7) == 0, "accept resets to 0");
+        Require(b.Bump(8) && b.Track(8) && b.Seq(8) == 1, "a credit before the first snapshot is kept (OB-10 #910 note 2)");
+        Require(b.Track(9) && b.Seq(9) == 0 && !b.Track(0), "a new quest is tracked from 0; quest 0 is no quest");
+        b.Forget(8);
+        b.Forget(9);
         b.Forget(7);
         Require(b.Used() == 0, "forget frees the slot");
         for (std::uint32_t q = 1; q <= CreditBook::Slots; ++q)
