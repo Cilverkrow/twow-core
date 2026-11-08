@@ -926,6 +926,9 @@ public:
     // HealerStart: a holy paladin / restoration druid may attack like a healer with "offdps" (their contexts have no offdps
     // creator, so the healer gate refused every attack). 0 off (default, the old rule), 1 all, 2 cohort B, 3 cohort A; other = 0.
     uint32 combatRuleHealerStart = 0;
+    // PriestOverlay: a discipline / holy priest gets the RandomBotCombatStrategies overlay without "+dps" (which swaps its tree for
+    // the shadow placeholder). 0 off (default, overlay unchanged), 1 all, 2 cohort B, 3 cohort A; other = 0.
+    uint32 combatRulePriestOverlay = 0;
     // A3 step 2 (ADR-0041, OB-00 07.11.2026): the quest book core QB-K (QuestBookPolicy.h, QuestBook.cpp). 0 off, 1 all, 2 cohort B,
     // 3 cohort A; other = 0 + error line. Shadow: the other roster bots keep a book that only writes the KPI lines.
     uint32 questBook = 0;
@@ -933,6 +936,11 @@ public:
     uint32 questBookAboveLevels = 1;              // the one level window: a quest at most this above the bot
     uint32 questBookStaleCompleteSeconds = 1800;  // QB4 KPI: complete, not turned in for this long
     std::set<uint32> questBookExclude;            // QB5 permanent list (OB-00 07.11. D1 (a)); read only after the load
+    // A3 step 2 QB-S (QuestSourcePolicy.h): source choice and quest order where the quest book is active. 0 off, 1 all, 2 cohort B,
+    // 3 cohort A; other = 0 + error line.
+    uint32 questBookSourceChoice = 0;
+    float questBookKillSeconds = 12.0f;           // one kill incl. loot, for the expected work at a source
+    float questBookSingleSpawnMargin = 1.5f;      // a named / single source must be this much cheaper than a common one
     // twow-repo#627 S7 help groups (QuestGroupPolicy.h, QuestGroupWorld.cpp); Enable: 0 off, 1 all, 2 cohort B, 3 cohort A.
     uint32 questGroupsEnable = 0;
     uint32 questGroupsScanSeconds = 60;

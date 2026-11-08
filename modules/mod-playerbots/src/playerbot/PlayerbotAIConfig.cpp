@@ -912,10 +912,13 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[Supervisor] config key=Supervisor.Arbiter value=%u result=off (0 off, 1 shadow)", supervisorArbiter);
         supervisorArbiter = 0;
     }
-    // A3 step 5 (ADR-0041): the combat rule, part HealerStart (CombatRulePolicy.h); an unknown mode is off.
+    // A3 step 5 (ADR-0041): the combat rule, parts HealerStart and PriestOverlay (CombatRulePolicy.h); an unknown mode is off.
     combatRuleHealerStart = uint32(config.GetIntDefault("AiPlayerbot.CombatRule.HealerStart", 0));
     if (combatRuleHealerStart > 3)
         combatRuleHealerStart = 0;
+    combatRulePriestOverlay = uint32(config.GetIntDefault("AiPlayerbot.CombatRule.PriestOverlay", 0));
+    if (combatRulePriestOverlay > 3)
+        combatRulePriestOverlay = 0;
     // A3 step 2 (ADR-0041): the quest book core QB-K (QuestBookPolicy.h, QuestBook.cpp); an unknown mode is off.
     questBook = uint32(config.GetIntDefault("AiPlayerbot.QuestBook", 0));
     if (!ai::questbook::ValidMode(questBook))
@@ -927,6 +930,15 @@ bool PlayerbotAIConfig::Initialize()
     questBookAboveLevels = std::min<uint32>(10, uint32(std::max(0, config.GetIntDefault("AiPlayerbot.QuestBook.AboveLevels", 1))));
     questBookStaleCompleteSeconds = std::clamp<uint32>(uint32(std::max(0, config.GetIntDefault("AiPlayerbot.QuestBook.StaleCompleteSeconds", 1800))), 60, 86400);
     questBookExclude = ai::quest_feasibility::ParseQuestIdList(config.GetStringDefault("AiPlayerbot.QuestBook.Exclude", ""));
+    // A3 step 2 QB-S (QuestSourcePolicy.h): source choice and quest order; acts only where the quest book is active.
+    questBookSourceChoice = uint32(config.GetIntDefault("AiPlayerbot.QuestBook.SourceChoice", 0));
+    if (!ai::questbook::ValidMode(questBookSourceChoice))
+    {
+        sLog.outError("[QuestBook] config key=QuestBook.SourceChoice value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", questBookSourceChoice);
+        questBookSourceChoice = 0;
+    }
+    questBookKillSeconds = std::clamp(config.GetFloatDefault("AiPlayerbot.QuestBook.KillSeconds", 12.0f), 1.0f, 120.0f);
+    questBookSingleSpawnMargin = std::clamp(config.GetFloatDefault("AiPlayerbot.QuestBook.SingleSpawnMargin", 1.5f), 1.0f, 10.0f);
     questGroupsEnable = (uint32)config.GetIntDefault("AiPlayerbot.QuestGroups.Enable", 0);
     questGroupsScanSeconds = std::max<uint32>(10, config.GetIntDefault("AiPlayerbot.QuestGroups.ScanSeconds", 60));
     questGroupsScanSlices = std::min<uint32>(64, (uint32)config.GetIntDefault("AiPlayerbot.QuestGroups.ScanSlices", 0));
@@ -1979,6 +1991,7 @@ bool PlayerbotAIConfig::Initialize()
             {"CastWait.Preparing", Value(castWaitPreparing)},
             {"CheatItem.Trace", Value(cheatItemTrace)},
             {"CombatRule.HealerStart", Value(combatRuleHealerStart)},
+            {"CombatRule.PriestOverlay", Value(combatRulePriestOverlay)},
             {"Crafting.Consumables", Value(craftingConsumables)},
             {"Crafting.Cooking", Value(craftingCooking)},
             {"Crafting.Survival", Value(craftingSurvival)},
@@ -2034,7 +2047,10 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestBook", Value(questBook)},
             {"QuestBook.AboveLevels", Value(questBookAboveLevels)},
             {"QuestBook.Exclude.count", Value(uint32(questBookExclude.size()))},
+            {"QuestBook.KillSeconds", Value(questBookKillSeconds)},
             {"QuestBook.Shadow", Value(questBookShadow)},
+            {"QuestBook.SingleSpawnMargin", Value(questBookSingleSpawnMargin)},
+            {"QuestBook.SourceChoice", Value(questBookSourceChoice)},
             {"QuestBook.StaleCompleteSeconds", Value(questBookStaleCompleteSeconds)},
             {"QuestFeasibility.Blocklist.count", Value(uint32(questFeasibilityBlocklist.size()))},
             {"QuestFeasibility.BlocklistWhileNoCustomStarts.count", Value(uint32(questFeasibilityBlocklistWhileNoCustomStarts.size()))},
