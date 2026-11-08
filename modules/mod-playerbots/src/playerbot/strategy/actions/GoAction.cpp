@@ -1,5 +1,6 @@
 
 #include "playerbot/playerbot.h"
+#include "playerbot/SupervisorShadow.h"   // A3 step 3 arbiter shadow: writer scopes
 #include "GoAction.h"
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/ServerFacade.h"
@@ -606,6 +607,7 @@ bool GoAction::TellHowToGo(TravelDestination* dest, Player* requester) const
 
 bool GoAction::TravelTo(TravelDestination* dest, Player* requester) const
 {
+    ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::Command);
     TravelTarget* target = AI_VALUE(TravelTarget*, "travel target");
     WorldPosition botPos = WorldPosition(bot);
     if (dest)

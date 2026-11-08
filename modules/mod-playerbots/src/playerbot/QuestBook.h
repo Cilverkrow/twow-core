@@ -31,6 +31,10 @@ enum class Count : std::uint8_t
     CompleteStale,
     LeftLog,
     CreditDropped,
+    SourceSingle,    // QB-S: the chosen source of an objective is named / single
+    SourceCommon,    // QB-S: the chosen source is a common one
+    SourceRegroup,   // QB-S: the choice differs from the old first-fit one
+    OrderScored,     // QB-S: a fetch whose winners were put in XP-per-minute order
     Max
 };
 

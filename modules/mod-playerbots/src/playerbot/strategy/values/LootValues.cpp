@@ -2,6 +2,7 @@
 #include "SharedValueContext.h"
 #include "LootValues.h"
 #include "playerbot/strategy/actions/LootAction.h"
+#include "playerbot/LootChancePolicy.h"   // OB-00 08.11.: LootChance.GameObjectEntryFix
 
 using namespace ai;
 
@@ -329,7 +330,7 @@ float LootChanceValue::Calculate()
 	if (entry > 0)
 		lTemplateA = DropMapValue::GetLootTemplate(ObjectGuid(HIGHGUID_UNIT, entry, uint32(1)), LOOT_CORPSE);
 	else
-		lTemplateA = DropMapValue::GetLootTemplate(ObjectGuid(HIGHGUID_GAMEOBJECT, entry, uint32(1)), LOOT_CORPSE);
+		lTemplateA = DropMapValue::GetLootTemplate(ObjectGuid(HIGHGUID_GAMEOBJECT, ai::loot_chance::TemplateEntry(entry, sPlayerbotAIConfig.lootChanceGameObjectEntryFix != 0), uint32(1)), LOOT_CORPSE);
 
 	if (lTemplateA)
 	{

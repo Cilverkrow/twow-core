@@ -1,11 +1,13 @@
 
 #include "playerbot/playerbot.h"
+#include "playerbot/SupervisorShadow.h"   // A3 step 3 arbiter shadow: writer scopes
 #include "playerbot/LootObjectStack.h"
 #include "ChooseTravelTargetAction.h"
 #include "playerbot/BotUpdateTrace.h"   // OB-10 18.10.: NowUs/SinceUs/Prevalidate for "TIME:prevalidate" and [PreValidate]
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/GatherNodePolicy.h"
 #include "playerbot/strategy/values/TravelValues.h"
+#include "playerbot/QuestSource.h"   // A3 step 2 QB-S (AiPlayerbot.QuestBook.SourceChoice): source choice and order
 #include "playerbot/strategy/values/SharedValueContext.h"
 #include "playerbot/strategy/values/GuildValues.h"
 #include "playerbot/strategy/values/QuestValues.h"   // twow-repo#601 quest acceptance step 1b: DialogStatusValue::getDialogStatus
@@ -893,6 +895,7 @@ inline std::string GetTravelPurposeName(std::string purpose)
 
 bool ChooseTravelTargetAction::Execute(Event& event)
 {
+    ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::Select);
     TravelTarget* travelTarget = AI_VALUE(TravelTarget*, "travel target");
 
     if(travelTarget->GetStatus() != TravelStatus::TRAVEL_STATUS_PREPARE)
@@ -1434,6 +1437,8 @@ bool ChooseTravelTargetAction::isUseful()
 
 void ChooseTravelTargetAction::setNewTarget(Player* requester, TravelTarget* newTarget, TravelTarget* oldTarget)
 {
+    // A3 step 3 arbiter shadow: every module caller has its own scope; an empty stack here is the bot brain's override.
+    ai::supervisor::WriterScope const writerScope = ai::supervisor::WriterScope::IfEmpty(ai::supervisor::WriterId::Brain);
     if (CanFreeMoveValue::CanFreeMoveTo(ai, newTarget->GetPosStr()))
         ReportTravelTarget(bot, requester, newTarget, oldTarget);
 
@@ -2016,6 +2021,9 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
 
                 target->SetTarget(destination, position);
                 hasTarget = true;
+                // A3 step 2 QB-S (AiPlayerbot.QuestBook.SourceChoice, default 0): one line per objective pick of a bot the switch
+                // applies to, with the load-time facts of the source. Every other bot: no line.
+                ai::questsource::NotePick(bot, ai, destination, position);
                 break;
             }
             else
@@ -2179,6 +2187,7 @@ DestinationList ChooseTravelTargetAction::FindDestination(PlayerTravelInfo info,
 
 bool ChooseGroupTravelTargetAction::Execute(Event& event)
 {
+    ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::GroupFollow);
     std::vector<ObjectGuid> groupPlayers;
 
     Group* group = bot->GetGroup();
@@ -2321,6 +2330,7 @@ bool ChooseGroupTravelTargetAction::isUseful()
 
 bool RefreshTravelTargetAction::Execute(Event& event)
 {
+    ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::Select);
     TravelTarget* target = AI_VALUE(TravelTarget*, "travel target");
 
     TravelDestination* oldDestination = target->GetDestination();
@@ -2444,6 +2454,7 @@ bool RefreshTravelTargetAction::isUseful()
 
 bool ResetTargetAction::Execute(Event& event)
 {
+    ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::Select);
     TravelTarget* oldTarget = AI_VALUE(TravelTarget*, "travel target");
 
     context->ClearValues("no active travel destinations");
@@ -2476,6 +2487,7 @@ bool ResetTargetAction::isUseful()
 
 bool RequestTravelTargetAction::Execute(Event& event)
 {
+    ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::Requester);
     // #416: no new destination job while the parking lot is full.
     if (!FutureDestinations::MayStart())
         return false;
@@ -2629,6 +2641,7 @@ bool RequestTravelTargetAction::isAllowed() const
 
 bool RequestNamedTravelTargetAction::Execute(Event& event)
 {
+    ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::Requester);
     // #416: no new destination job while the parking lot is full.
     if (!FutureDestinations::MayStart())
         return false;
@@ -3279,6 +3292,7 @@ bool RequestNamedTravelTargetAction::isAllowed() const
 
 bool RequestQuestTravelTargetAction::Execute(Event& event)
 {
+    ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::Requester);
     // #416: no new destination job while the parking lot is full.
     if (!FutureDestinations::MayStart())
         return false;
@@ -3561,6 +3575,11 @@ bool RequestQuestTravelTargetAction::Execute(Event& event)
                 for (auto& [partition, points] : subList)
                     list[partition].insert(list[partition].end(), points.begin(), points.end());
             }
+
+            // A3 step 2 QB-S (AiPlayerbot.QuestBook.SourceChoice, default 0): one source per quest objective (least route + expected
+            // work), the chosen ones in XP-per-minute order, the others as a fallback in the farthest partition. Reads the bot-thread
+            // snapshot only. Every other bot: returns at once, the list stays as it is.
+            ai::questsource::RankQuestSources(list, travelInfo);
 
             // #421 B: widened search - quest hubs first (in this job, not on the map thread).
             if (hubsFirst)
