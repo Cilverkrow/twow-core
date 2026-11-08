@@ -21,6 +21,7 @@
 #include "playerbot/GroupManagerPolicy.h"   // A3 step 6: BotGroups.Manager mode
 #include "playerbot/SupervisorPolicy.h"   // A3 step 3: Supervisor mode
 #include "playerbot/QuestBookPolicy.h"   // A3 step 2: QuestBook mode
+#include "playerbot/ZoneKeepPolicy.h"   // twow-repo#601 R1: StartZoneMinLevel.Complete parse
 #include "playerbot/LockoutPolicy.h"   // L1: BotGroups.ResetRaidsRealInviterOnly parse
 #include <cerrno>
 #include <cstdlib>
@@ -1046,6 +1047,14 @@ bool PlayerbotAIConfig::Initialize()
     {
         sLog.outError("[ZoneKeep] config key=StartZoneMinLevel.Cohort value=%u result=1 (1 all, 2 cohort B, 3 cohort A)", questFirstProgressionStartZoneMinLevelCohort);
         questFirstProgressionStartZoneMinLevelCohort = 1;
+    }
+    // twow-repo#601 owner rule R1, package "start-zone rule complete" (OB-00 08.11.2026, ZoneKeepPolicy.h): 0 off (default and
+    // rollback), 1 on; any other value acts like 0. It acts only where StartZoneMinLevel holds the bot (.Cohort selection).
+    questFirstProgressionStartZoneComplete = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.StartZoneMinLevel.Complete", 0);
+    if (questFirstProgressionStartZoneComplete != 0 && !ai::zone_keep::CompleteOn(int32(questFirstProgressionStartZoneComplete)))
+    {
+        sLog.outError("[ZoneKeep] config key=StartZoneMinLevel.Complete value=%u result=off (0 off, 1 on)", questFirstProgressionStartZoneComplete);
+        questFirstProgressionStartZoneComplete = 0;
     }
     // twow-repo#601 S5a F4 (OB-00 24.10.2026): the backoff walk toward the next rung, 0 = off, 1..10.
     questFirstProgressionBandWalkAfterEmptySearches = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.BandWalkAfterEmptySearches", 0);
@@ -2096,6 +2105,7 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestFirstProgression.StaleObjectiveFilter.WindowSeconds", Value(questFirstProgressionStaleObjectiveWindowSeconds)},
             {"QuestFirstProgression.StartZoneMinLevel", Value(questFirstProgressionStartZoneMinLevel)},
             {"QuestFirstProgression.StartZoneMinLevel.Cohort", Value(questFirstProgressionStartZoneMinLevelCohort)},
+            {"QuestFirstProgression.StartZoneMinLevel.Complete", Value(questFirstProgressionStartZoneComplete)},
             {"QuestFirstProgression.TransientCountsAfter", Value(questFirstProgressionTransientCountsAfter)},
             {"QuestFirstProgression.TurnInParkFailures", Value(questFirstProgressionTurnInParkFailures)},
             {"QuestGroups.Enable", Value(questGroupsEnable)},

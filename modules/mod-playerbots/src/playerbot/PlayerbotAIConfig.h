@@ -1051,6 +1051,11 @@ public:
     // 2 cohort B, 3 cohort A.
     uint32 questFirstProgressionStartZoneMinLevel = 0;
     uint32 questFirstProgressionStartZoneMinLevelCohort = 1;
+    // twow-repo#601 owner rule R1, package "start-zone rule complete" (OB-00 08.11.2026, ZoneKeepPolicy.h): 1 = a held bot (below
+    // StartZoneMinLevel, .Cohort) does not follow a bot leader outside its start zone (G1), logs a refused group copy (G2), leaves its
+    // group after FollowLeaveSeconds of refused follow (G3), and at the release (level StartZoneMinLevel .. +2, still in its start zone)
+    // its first empty offer counts as the band step (V2-a). 0 = off (default and rollback).
+    uint32 questFirstProgressionStartZoneComplete = 0;
     // twow-repo#601 S5a F4 (OB-00 24.10.2026, owner D1 "rumstehen ist keine Option"): from this many quest searches in a row
     // without a route on (the F1 streak), a search that does not step walks toward the rung the step would take until the
     // route backoff ends. 0 = off (default), 1..10; other values act like 0.
