@@ -1433,6 +1433,17 @@ AiPlayerbot.BotGroups.WritePath = 0
 # every value behaves like 0 today. Mode (in-realm A/B, cohort parity): 0 = off (default, rollback), 1 = every bot, 2 = only
 # cohort B (odd low guid), 3 = only cohort A (even low guid). Any other value acts like 0 (one error line at load).
 AiPlayerbot.Supervisor = 0
+# A3 step 5 (ADR-0041, OB-00 07.11.2026): the combat rule - one module that owns the combat decisions (who may start a fight,
+# rest before the pull, target choice, flee point, loop guard), one switch per part. Design: A3-S5-KAMPFREGEL-ENTWURF.md.
+# Part HealerStart (A3-AKTIONS-VERDRAHTUNG F2 (a)): the healer gate of attack my target / attack RTI target / attack anything
+# lets a bot with a heal strategy attack only with "offdps" in its combat engine. Only the priest and shaman contexts create
+# "offdps", so a holy paladin or a restoration druid that keeps its heal strategy (in a group; solo free bots switch to
+# retribution / balance) never starts a fight. With the part on, these two healers pass the gate like a healer with offdps.
+# Nothing else changes: no trigger, action, multiplier or heal priority. Minute line "[CombatRule] part=HealerStart mode=
+# asked=A/B lifted=A/B cls=" (gate checks the old rule refused, per cohort, and how many the part opened; increments).
+# Mode (in-realm A/B, cohort parity): 0 = off (default, rollback: the old rule), 1 = every bot, 2 = only cohort B (odd low
+# guid), 3 = only cohort A (even low guid). Any other value acts like 0.
+AiPlayerbot.CombatRule.HealerStart = 0
 # A3 step 2 (ADR-0041, OB-00 07.11.2026): the quest book core (QB-K). One book per roster bot on its own (no real player master)
 # answers accept, travel target and turn-in with one level window, one progress notion (credit per quest, not objective text) and
 # the QB5 exclusion list, and a complete quest ends the grind fallback (QB4). Where the switch does not apply, every old rule stays.
