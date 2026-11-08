@@ -15,6 +15,7 @@
 #include "playerbot/AdhocGroupWorld.h"   // twow-repo#601 F5b: a bot-only group shares the kill credit (CLI-GRP 25.10.)
 #include "playerbot/CohortPolicy.h"
 #include "playerbot/ZoneKeepPolicy.h"      // twow-repo#601 owner rule R1 (StartZoneMinLevel, forced trip hold)
+#include "Group/Group.h"                     // twow-repo#601 R1 package G3: no leave from a group with a real player
 #include "playerbot/RpgAreaLevelPolicy.h"
 #include "playerbot/ContestedObjectivePolicy.h"
 #include "playerbot/StaleObjectivePolicy.h"   // twow-repo#601 cand4 (i) StaleObjectiveFilter
@@ -1999,6 +2000,19 @@ bool ai::zone_keep::GroupLeaveDue(Player* bot, PlayerbotAI* botAI, Player* leade
     uint32 const now = uint32(time(nullptr));
     uint32 const since = ZoneKeepClock(botAI, FollowRefusedSinceValue);
     if (!ai::zone_keep::LeaveDue(since, ZoneKeepClock(botAI, FollowRefusedLastValue), now, ai::zone_keep::FollowLeaveSeconds))
+        return false;
+    // OB-00 (b) after OB-10's review of #948: a group with a real player in it - also as a member who is not the leader - is never
+    // left by this rule (a player's character, or a bot a real player plays: PlayerbotAI::IsRealPlayer).
+    bool realPlayerMember = false;
+    if (Group* group = bot->GetGroup())
+        for (GroupReference* ref = group->GetFirstMember(); ref && !realPlayerMember; ref = ref->next())
+            if (Player* member = ref->getSource())
+                if (member != bot)
+                {
+                    PlayerbotAI* const memberAi = GetBotAI(member);
+                    realPlayerMember = !memberAi || memberAi->IsRealPlayer();
+                }
+    if (!ai::zone_keep::LeaveAllowed(realPlayerMember))
         return false;
     SetZoneKeepClock(botAI, FollowRefusedSinceValue, 0);
     SetZoneKeepClock(botAI, FollowRefusedLastValue, 0);

@@ -96,6 +96,12 @@ inline bool LeaveDue(std::uint32_t refusedSince, std::uint32_t lastRefusal, std:
         std::int32_t(now - lastRefusal) <= std::int32_t(RefusalFreshSeconds);
 }
 
+// G3 (OB-00 (b) after OB-10's review of #948): never leave a group that has a real player in it, leader or not.
+inline bool LeaveAllowed(bool realPlayerMember)
+{
+    return !realPlayerMember;
+}
+
 // The refusal run: a refusal keeps the run while the last one is fresh; otherwise it starts a new run now.
 inline std::uint32_t NextRefusedSince(std::uint32_t refusedSince, std::uint32_t lastRefusal, std::uint32_t now)
 {
