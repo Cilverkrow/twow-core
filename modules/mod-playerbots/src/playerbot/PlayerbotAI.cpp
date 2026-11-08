@@ -469,6 +469,7 @@ void PlayerbotAI::ObserveCombatProgress()
         ai::combat_rule::ProgressLimitsFromConfig());
     progressVerdict = step.verdict;
     ai::combat_rule::CountProgress(bot, step);
+    ai::combat_rule::CountProgressBot(bot, progressBotTotals, step);   // P6: the bot's own line (log only)
 }
 
 // A3 step 5 (AiPlayerbot.CombatRule.ProgressGuard): after the pass. Counts the combat pass (without OK, and of those while the bot
@@ -489,6 +490,7 @@ void PlayerbotAI::ActOnCombatProgress()
             bot->GetCurrentSpell(CURRENT_AUTOREPEAT_SPELL) != nullptr);
     }
     ai::combat_rule::CountCombatPass(bot, combatIdleTick, swing);
+    ai::combat_rule::CountCombatPassBot(bot, progressBotTotals, combatIdleTick, swing);   // P6 (log only)
 
     if (progressVerdict != ai::combat_rule::ProgressVerdict::Backoff && progressVerdict != ai::combat_rule::ProgressVerdict::Break)
         return;
