@@ -11,6 +11,7 @@
 #include "PlayerbotDbStore.h"
 #include "playerbot/PlayerbotFactory.h"
 #include "playerbot/TeleportAckThreadPolicy.h"
+#include "playerbot/LockoutGuard.h"   // L1 (owner 07.11.2026): S3 split guard at .bot summon
 #include "playerbot/RandomPlayerbotFactory.h"
 #include "playerbot/RandomPlayerbotMgr.h"
 #include "playerbot/ServerFacade.h"
@@ -2703,6 +2704,14 @@ std::string PlayerbotHolder::HandleBotSummon(Player* bot, Player* master, const 
         return "Bot is in BG / BG queue.";
     if (bot->GetMap() && bot->GetMap()->Instanceable() && bot->GetMap() != master->GetMap())
         return "Bot is in an instance — can't pull cross-instance.";
+    // L1 (owner 07.11.2026): S3 - no pull into another copy of a raid the bot is perm-bound to (the master's map and
+    // instance id only; the core would put the bot into its own copy).
+    if (sPlayerbotAIConfig.botGroupsResetRaidsRealInviterOnly &&
+        ai::lockout_guard::SplitToward(bot, master->GetMapId(), master->GetInstanceId()))
+    {
+        ai::lockout_guard::Count(ai::lockout_guard::SplitEntry);
+        return "Bot is locked to another copy of this raid — can't pull.";
+    }
 
     SC_LOG("HandleBotSummon teleport bot=%s -> master=%s map=%u pos=%.1f,%.1f,%.1f",
            bot->GetName(), master->GetName(),

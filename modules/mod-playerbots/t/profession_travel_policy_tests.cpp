@@ -44,6 +44,20 @@ int main()
         Require(NearTripSkill(kMining, false, false) == NearTripSkill(kMining, false), "switch off: the old near rule");
     }
 
+    // 1c) twow-repo#333 M2 Crafting.Survival (owner list 07.11.2026, item 3): survival is a trip skill only with its switch; the tool
+    //     trip buys the Whittle after pick and knife.
+    {
+        Require(!IsTripSkill(kSurvival, true) && IsTripSkill(kSurvival, false, true), "survival: a trip skill only with its switch");
+        Require(NearTripSkill(kSurvival, false, false, true) && !NearTripSkill(kSurvival, true, false, true), "survival near trip once");
+        Require(IsTripSkill(kCooking, true, true) && !IsTripSkill(kCooking, false, true), "the cooking flag stays its own");
+        Require(MissingTool(false, false, false, false, true, false) == kWhittle, "a survivalist without a Whittle: Whittle");
+        Require(MissingTool(false, false, false, false, true, true) == 0, "with a Whittle: no tool");
+        Require(MissingTool(true, false, false, false, true, false) == kMiningPick, "the pick first");
+        Require(MissingTool(false, false, true, false, true, false) == kSkinningKnife, "the knife first");
+        Require(MissingTool(false, false, false, false, false, false) == 0, "switch off: no Whittle");
+        Require(MissingTool(true, false, true, false, false, false) == MissingTool(true, false, true, false), "switch off: the old rule");
+    }
+
     // 2) The quest-first gap: backoff running, no open turn-in, no band walk.
     {
         Require(InQuestGap(100, 200, false, 0), "gap while the backoff runs");

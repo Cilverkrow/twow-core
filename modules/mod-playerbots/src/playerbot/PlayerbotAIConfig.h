@@ -568,6 +568,10 @@ public:
     // the profession trips, cooks the fire recipes (spell focus 4) of the craft loop and lights its own campfire (spell 818) for them;
     // 0 off (default), 1 all, 2 cohort B (odd guid), 3 cohort A (even guid). The craft part needs ProfessionUse.RealReagents.
     uint32 craftingCooking = 0;
+    // twow-repo#333 M2 Crafting.Survival (owner list 07.11.2026, item 3; M2-ENTWURF §7): a roster bot on its own also learns Turtle
+    // Survival (skill 142) by the profession trips, its tool trip buys the Whittle and vendors sell it Whittle and Simple Wood (item
+    // usage SKILL); the craft loop crafts its recipes as before. 0 off (default), 1 all, 2 cohort B (odd guid), 3 cohort A (even guid).
+    uint32 craftingSurvival = 0;
     uint32 professionUseToolBuy = 0;
     // twow-repo#333 P1-z (OB-00 31.10.2026, bug fix: code default 1, 0 = rollback, 2 cohort B): BuyAction "vendor" also reads the
     // vendor template items (creature_template.vendor_id), as the player's buy, the by-name buy and the vendor map already do.
@@ -856,6 +860,7 @@ public:
     // #421: rescue teleport after this many minutes without quest progress.
     uint32 questRescueIdleMinutes = 30;
     bool questRescueKeepRequestWhenFull = false;  // twow-repo#587: a pending rescue request stays with the bot while the global limit is used up
+    uint32 questRescueHomeHubs = 0;  // twow-repo#575 RG-a: the quest rescue's anchor table (own start-zone hub < L5, next zone L5-10; cohort modes)
     uint32 grindAvoidMaxDeaths = 0;       // 0 = off
     uint32 grindAvoidWindowSeconds = 3600;
     uint32 grindAvoidSeconds = 3600;
@@ -903,6 +908,10 @@ public:
     // A3 step 6 (ADR-0041, OB-00 06.11.2026): the group manager of roster bots on the world thread (GroupManagerPolicy.h,
     // GroupManager.cpp). Scaffold: no decision yet. 0 off, 1 all, 2 cohort B, 3 cohort A; other = 0 + error line.
     uint32 botGroupsManager = 0;
+    // L1 (owner 07.11.2026, owner-ordered: code default 1, 0 = rollback, any other value = 1): a bot resets its raid lockouts
+    // ("reset raids" in the accept tail) only on a real player's invite, and keeps out of another copy of a raid it is
+    // perm-bound to (LockoutPolicy.h, LockoutGuard.cpp). 0 = the old behaviour: reset raids on every accepted invite.
+    bool botGroupsResetRaidsRealInviterOnly = true;
     // A3 lever 2 (ADR-0041 amendment 4.2, OB-00 07.11.2026): the group write path - the membership changes (leave, accept,
     // invite, leader) of in-scope bots run as world-thread ops (GroupOps.cpp). 0 off, 1 all, 2 cohort B, 3 cohort A; other = 0
     // + error line.
@@ -929,6 +938,11 @@ public:
     uint32 questBookAboveLevels = 1;              // the one level window: a quest at most this above the bot
     uint32 questBookStaleCompleteSeconds = 1800;  // QB4 KPI: complete, not turned in for this long
     std::set<uint32> questBookExclude;            // QB5 permanent list (OB-00 07.11. D1 (a)); read only after the load
+    // A3 step 2 QB-S (QuestSourcePolicy.h): source choice and quest order where the quest book is active. 0 off, 1 all, 2 cohort B,
+    // 3 cohort A; other = 0 + error line.
+    uint32 questBookSourceChoice = 0;
+    float questBookKillSeconds = 12.0f;           // one kill incl. loot, for the expected work at a source
+    float questBookSingleSpawnMargin = 1.5f;      // a named / single source must be this much cheaper than a common one
     // twow-repo#627 S7 help groups (QuestGroupPolicy.h, QuestGroupWorld.cpp); Enable: 0 off, 1 all, 2 cohort B, 3 cohort A.
     uint32 questGroupsEnable = 0;
     uint32 questGroupsScanSeconds = 60;
@@ -1122,6 +1136,9 @@ public:
     // the reclaim at the corpse runs, the spirit healer only with a reason (no corpse, sickness, durability, loop, timeout).
     uint32 reviveCorpseRunFirst = 0;
     uint32 reviveCorpseRunFirstMaxSeconds = 600;
+    // twow-repo#575 A3 step 4 S4-2 (AiPlayerbot.Rescue.RepopDeadOnly, RepopDeadOnlyPolicy.h): cohort mode 0 off / 1 all / 2 B / 3 A;
+    // repop only for a dead bot; an alive bot without a usable hearthstone gets QuestRescue, else a reset.
+    uint32 rescueRepopDeadOnly = 0;
     uint32 questFirstProgressionTurnInDeathRouteCooldownSeconds = 3600;
     // twow-repo#485: a finished quest whose turn-in failed TurnInParkFailures times
     // within TurnInParkWindowSeconds is parked for TurnInParkSeconds (0 = off, the
