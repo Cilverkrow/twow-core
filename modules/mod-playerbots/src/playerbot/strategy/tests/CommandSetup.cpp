@@ -1,4 +1,5 @@
 #include "playerbot/playerbot.h"
+#include "playerbot/SupervisorShadow.h"   // A3 step 3 arbiter shadow: writer scopes
 #include "CommandSetup.h"
 #include "playerbot/WorldPosition.h"
 #include "playerbot/TravelMgr.h"
@@ -141,6 +142,7 @@ TestResult CommandSetupClearMobs::Execute(const std::string& params, Player* bot
 TestResult CommandSetupSetDestination::Execute(const std::string& params, Player* bot,
                     PlayerbotAI* ai, TestContext& ctx, std::string& message)
 {
+    ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::Test);
     std::string dest = params;
     if (params.find("destination ") == 0)
         dest = params.substr(std::string("destination ").length());

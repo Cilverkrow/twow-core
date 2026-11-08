@@ -35,6 +35,9 @@
 #include "playerbot/BotSlots.h"
 #include "playerbot/GroupOps.h"
 #include "playerbot/PacketTracePolicy.h"
+#include "playerbot/LockoutGuard.h"   // L1 (owner 07.11.2026): the [Lockout] minute line
+#include "playerbot/LockoutCarry.h"   // leader_bind_carry (OB-00 07.11.2026): count only
+#include "playerbot/SupervisorShadow.h"   // A3 step 3 arbiter shadow: the world hook's thread tag
 #include <array>
 #include <mutex>
 
@@ -97,6 +100,8 @@ class PlayerbotWorldScript : public WorldScript
         // Was World::UpdatePlayerbotsTick(diff).
         void OnUpdate(uint32 diff) override
         {
+            // A3 step 3 arbiter shadow (AiPlayerbot.Supervisor.Arbiter): writes here run with all maps idle.
+            ai::supervisor::ThreadTag const threadTag(ai::supervisor::ThreadKind::World, nullptr);
             // twow-repo#676 (BOT-HOLDER-FARACK-01): the far-teleport acks the master holders queued during sMapMgr.Update run
             // here, with all maps idle (WORLDHOOK_ON_UPDATE comes after sMapMgr.Update; see GroupOps.cpp for the chain). Before
             // the enabled check, so a queued bot is never left mid-teleport; an empty queue is one atomic load.
@@ -104,6 +109,8 @@ class PlayerbotWorldScript : public WorldScript
 
             if (!sPlayerbotAIConfig.enabled)
                 return;
+
+            ai::lockout_guard::MinuteTick(diff);   // L1 (owner 07.11.2026): [Lockout] minute line, world thread
 
             // Remote admin commands, handed over by PlayerbotCommandServer
             // connection threads. This is the world thread, which is the whole
@@ -435,6 +442,32 @@ class PlayerbotPlayerScript : public PlayerScript
                 SC_PHASE("Player::UpdatePlayerbotHooks/mgr.UpdateAI", player->GetName());
                 mgr->UpdateAI(diff);
             }
+        }
+
+        // leader_bind_carry (OB-00 07.11.2026, count only, both switch values): LockoutCarry.h. The note of a far teleport into
+        // a dungeon map, its use at the end of the worldport ack, its drop at logout. They read and count; they change nothing.
+        void OnBeforeTeleport(Player* player, uint32 mapId, float /*x*/, float /*y*/, float /*z*/, float /*orientation*/) override
+        {
+            if (!player || !sPlayerbotAIConfig.enabled)
+                return;
+
+            ai::lockout_carry::NoteTeleport(player, mapId);
+        }
+
+        void OnMapChanged(Player* player) override
+        {
+            if (!player || !sPlayerbotAIConfig.enabled)
+                return;
+
+            ai::lockout_carry::OnEntry(player);
+        }
+
+        void OnLogout(Player* player) override
+        {
+            if (!player)
+                return;
+
+            ai::lockout_carry::Forget(player);
         }
 };
 

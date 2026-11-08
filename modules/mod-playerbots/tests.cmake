@@ -1307,6 +1307,20 @@ add_test(NAME shaman_weapon_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/shaman_weapon_source_contract_tests.cmake")
 
+# OB-00 08.11.2026: loot chance of a game object - a game object guid without high guid overflow, and the quest relation lever.
+add_executable(loot_chance_policy_tests
+  "${PB_MODULE_DIR}/t/loot_chance_policy_tests.cpp")
+
+target_include_directories(loot_chance_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(loot_chance_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME loot_chance_policy
+  COMMAND loot_chance_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # #416 (7.3): area levels without a world creature scan at runtime.
 add_executable(area_level_policy_tests
   "${PB_MODULE_DIR}/t/area_level_policy_tests.cpp")
@@ -1718,6 +1732,20 @@ set_target_properties(questbook_policy_tests PROPERTIES
 
 add_test(NAME questbook_policy
   COMMAND questbook_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# A3 step 2 quest book source choice and order QB-S (QuestSourcePolicy.h, AiPlayerbot.QuestBook.SourceChoice).
+add_executable(questsource_policy_tests
+  "${PB_MODULE_DIR}/t/questsource_policy_tests.cpp")
+
+target_include_directories(questsource_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(questsource_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME questsource_policy
+  COMMAND questsource_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
 add_executable(planner_policy_tests
@@ -3335,6 +3363,21 @@ add_test(NAME corpse_run_first_policy
   COMMAND corpse_run_first_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#575 A3 step 4 S4-2 (AiPlayerbot.Rescue.RepopDeadOnly, OB-00 07.11.2026): repop only when dead
+# (RepopDeadOnlyPolicy.h rules: the gate, the alive step, counters); source contract in t/contracts.d.
+add_executable(repop_dead_only_policy_tests
+  "${PB_MODULE_DIR}/t/repop_dead_only_policy_tests.cpp")
+
+target_include_directories(repop_dead_only_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(repop_dead_only_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME repop_dead_only_policy
+  COMMAND repop_dead_only_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # twow-repo#591 (PERF-AB-01): budget exemption for bots without a travel target, configurable limit.
 add_test(NAME budget_start_source_contract
   COMMAND "${CMAKE_COMMAND}"
@@ -4464,6 +4507,21 @@ add_test(NAME spirit_healer_revive_policy
   COMMAND spirit_healer_revive_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#575 RG-a (AiPlayerbot.QuestRescue.HomeHubs, OB-00 08.11.2026): the quest rescue's anchor table (RescueHubPolicy.h:
+# rows per race and level band, R1 gate for next_zone, counters); source contract in t/contracts.d.
+add_executable(rescue_hub_policy_tests
+  "${PB_MODULE_DIR}/t/rescue_hub_policy_tests.cpp")
+
+target_include_directories(rescue_hub_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(rescue_hub_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME rescue_hub_policy
+  COMMAND rescue_hub_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 add_test(NAME profession_travel_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
@@ -4496,6 +4554,22 @@ set_target_properties(release_veto_tests PROPERTIES
 
 add_test(NAME release_veto
   COMMAND release_veto_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# L1 (owner 07.11.2026, AiPlayerbot.BotGroups.ResetRaidsRealInviterOnly): the pure lockout rules (LockoutPolicy.h; no game
+# header) - I0 perm-first invariant, LockSplit, ResetRaidsOnJoin, the switch parse, the minute line. The game side is pinned
+# by t/contracts.d/l1_lockout_source_contract_tests.cmake.
+add_executable(lockout_policy_tests
+  "${PB_MODULE_DIR}/t/lockout_policy_tests.cpp")
+
+target_include_directories(lockout_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(lockout_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME lockout_policy
+  COMMAND lockout_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
 # --------------------------------------------------------------------------

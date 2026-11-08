@@ -14,6 +14,7 @@
 #include "playerbot/QuestGroupWorld.h"   // twow-repo#627 S7 hooks (CLI-Deep): help-group members out of PosStuck, S3c, turn-in recovery
 #include "playerbot/AdhocGroupWorld.h"   // twow-repo#601 F5b: a bot-only group shares the kill credit (CLI-GRP 25.10.)
 #include "playerbot/CohortPolicy.h"
+#include "playerbot/SupervisorShadow.h"   // A3 step 3 arbiter shadow (AiPlayerbot.Supervisor.Arbiter): the observer in the status write
 #include "playerbot/ZoneKeepPolicy.h"      // twow-repo#601 owner rule R1 (StartZoneMinLevel, forced trip hold)
 #include "playerbot/RpgAreaLevelPolicy.h"
 #include "playerbot/ContestedObjectivePolicy.h"
@@ -22,6 +23,8 @@
 #include <algorithm>
 #include <atomic>
 #include <vector>
+#include <cmath>           // A3 step 2 QB-S: std::sqrt / std::round in SourceStatsOf
+#include <unordered_map>   // A3 step 2 QB-S: the per-entry spawn cache at load
 #include <iomanip>
 
 #include "playerbot/strategy/values/SharedValueContext.h"
@@ -151,6 +154,37 @@ PlayerTravelInfo::PlayerTravelInfo(Player* player, bool gapGrind)
     questBook = ai->ActiveQuestBook() != nullptr;
     questBookGreyLevel = questBook ? MaNGOS::XP::GetGrayLevel(level) : 0;
     questBookGuid = questBook ? player->GetGUIDLow() : 0;
+
+    // A3 step 2 QB-S (AiPlayerbot.QuestBook.SourceChoice, default 0): the needs and XP of the quests in the log, here on the bot
+    // thread; the async quest fetch ranks the sources by them. Every other bot: false / empty, nothing is read.
+    questSourceChoice = questBook && sPlayerbotAIConfig.questBookSourceChoice &&
+        ai::questbook::Applies(sPlayerbotAIConfig.questBookSourceChoice, player->GetGUIDLow());
+    if (questSourceChoice)
+    {
+        runSpeed = player->GetSpeed(MOVE_RUN);
+        for (auto const& [questId, status] : player->getQuestStatusMap())
+        {
+            if (status.m_rewarded || status.m_status != QUEST_STATUS_INCOMPLETE)
+                continue;
+            Quest const* quest = sObjectMgr.GetQuestTemplate(questId);
+            if (!quest)
+                continue;
+            QuestSourceNeed need;
+            need.questId = questId;
+            for (int i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
+            {
+                if (quest->ReqCreatureOrGOCount[i] > status.m_creatureOrGOcount[i])
+                    need.needKill[i] = uint16(std::min<uint32>(quest->ReqCreatureOrGOCount[i] - status.m_creatureOrGOcount[i], 0xFFFF));
+                if (quest->ReqItemCount[i] > status.m_itemcount[i])
+                    need.needItem[i] = uint16(std::min<uint32>(quest->ReqItemCount[i] - status.m_itemcount[i], 0xFFFF));
+            }
+            need.xp = quest->XPValue(player);
+            if (uint32 const next = quest->GetNextQuestInChain())
+                if (Quest const* followUp = sObjectMgr.GetQuestTemplate(next))
+                    need.followUpXp = followUp->XPValue(player);
+            questSourceNeeds.push_back(need);
+        }
+    }
 
     // twow-repo#333 P1-v (AiPlayerbot.Travel.RpgAreaLevelFromSpawn): the RPG area level bit, here on the bot thread; read by
     // RpgTravelDestination::IsPossible only as a value. Mode 0: false for every bot, as before.
@@ -1365,6 +1399,9 @@ void TravelTarget::SetStatus(TravelStatus status) {
     // a COOLDOWN at most that, 1 ms once ended (capped: a clock step back fails closed). bandTripEnd is 0 for every other target.
     if (bandTripEnd)
         statusTime = ai::quest_band::TripStatusMs(uint8(m_status), statusTime, bandTripEnd, uint32(time(nullptr)));
+
+    // A3 step 3 arbiter shadow (AiPlayerbot.Supervisor.Arbiter, default 0): watches the bot's own target only, writes nothing.
+    if (live_) ai::supervisor::ShadowObserve(ai, this);
 }
 
 bool TravelTarget::IsProgressAwareTurnIn() const
@@ -1522,6 +1559,7 @@ bool TravelTarget::IsActiveForDeathAttribution() const
 
 void TravelTarget::OnDeathOnTurnInRoute()
 {
+    ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::Lifecycle);
     // #307: a dropped or abandoned target (bot now grinding elsewhere) is not
     // blamed for later deaths.
     if (!IsActiveForDeathAttribution())
@@ -1572,6 +1610,7 @@ void TravelTarget::OnDeathOnTurnInRoute()
 
 void TravelTarget::OnDeathAtDestination()
 {
+    ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::Lifecycle);
     if (!IsActiveForDeathAttribution())
         return;
 
@@ -1952,6 +1991,96 @@ static uint32 SpawnRespawnSeconds(WorldPosition const* point)
     if (GameObjectData const* data = spawn->GetGameObjectData())
         return data->spawntimesecsmin > 0 ? uint32(data->spawntimesecsmin) : 0;
     return 0;
+}
+
+// A3 step 2 QB-S: the drop chance (percent) of itemId in the loot of a game object entry; 0 = unknown. The shared "loot chance" value
+// cannot be used for game objects: it passes the negative travel entry into ObjectGuid(HIGHGUID_GAMEOBJECT, entry, 1), the entry
+// then overflows into the high guid bits, IsGameObject() fails and it returns 0 for every game object. That value is left as it is
+// (QuestValues reads it for every bot); this lookup is the same walk over the template with the positive entry.
+static float GameObjectLootChance(uint32 goEntry, uint32 itemId)
+{
+    LootTemplateAccess const* t = DropMapValue::GetLootTemplate(ObjectGuid(HIGHGUID_GAMEOBJECT, goEntry, uint32(1)), LOOT_CORPSE);
+    if (!t)
+        return 0.0f;
+    for (LootStoreItem const& item : t->Entries)
+        if (item.itemid == itemId)
+            return item.chance;
+    for (LootLootGroupAccess const& group : t->Groups)
+    {
+        for (LootStoreItem const& item : group.ExplicitlyChanced)
+            if (item.itemid == itemId)
+                return item.chance;
+        for (LootStoreItem const& item : group.EqualChanced)
+            if (item.itemid == itemId)
+                return item.chance ? item.chance : 100.0f / float(group.EqualChanced.size());
+    }
+    return 0.0f;
+}
+
+// A3 step 2 QB-S (AiPlayerbot.QuestBook.SourceChoice): the static facts of one quest objective source, filled at load (world thread)
+// and read only afterwards. The spawn part (count, shortest respawn, mean nearest-neighbour spacing over at most 64 spawns of a map,
+// named) is per entry and cached; kill target, vendor and drop chance are per objective. Data only: nothing reads them while
+// SourceChoice is 0. One objective slot carries a kill target (ReqCreatureOrGOId) and an item (ReqItemId) under the same bit.
+static ai::questsource::Stats SourceStatsOf(int32 entry, QuestObjectiveTravelDestination const* objective,
+    std::vector<WorldPosition*> const& points, std::unordered_map<int32, ai::questsource::Stats>& spawnCache)
+{
+    auto it = spawnCache.find(entry);
+    if (it == spawnCache.end())
+    {
+        ai::questsource::Stats s;
+        s.spawns = uint16(std::min<size_t>(points.size(), 0xFFFF));
+        uint32 respawn = 0;
+        for (WorldPosition const* point : points)
+            if (uint32 const r = SpawnRespawnSeconds(point))
+                respawn = respawn ? std::min(respawn, r) : r;
+        s.respawnSec = uint16(std::min<uint32>(respawn, 0xFFFF));
+        size_t const n = std::min<size_t>(points.size(), 64);
+        float sum = 0.0f;
+        uint32 counted = 0;
+        for (size_t i = 0; i < n; ++i)
+        {
+            float best = -1.0f;
+            for (size_t j = 0; j < n; ++j)
+            {
+                if (j == i || points[j]->getMapId() != points[i]->getMapId())
+                    continue;
+                float const d = points[i]->sqDistance(*points[j]);
+                if (best < 0.0f || d < best)
+                    best = d;
+            }
+            if (best >= 0.0f)
+            {
+                sum += std::sqrt(best);
+                ++counted;
+            }
+        }
+        s.spacingYd = counted ? uint16(std::min(sum / float(counted), 65535.0f)) : 0;
+        s.named = points.size() <= 2;
+        if (entry > 0)
+            if (CreatureInfo const* info = sObjectMgr.GetCreatureTemplate(uint32(entry)))
+            {
+                s.named = s.named || info->rank == CREATURE_ELITE_RARE || info->rank == CREATURE_ELITE_RAREELITE ||
+                    info->rank == CREATURE_ELITE_WORLDBOSS;
+                s.mobLevel = uint8(std::min<uint32>((info->level_min + info->level_max) / 2, 255));
+            }
+        it = spawnCache.emplace(entry, s).first;
+    }
+
+    ai::questsource::Stats s = it->second;
+    Quest const* quest = sObjectMgr.GetQuestTemplate(objective->GetQuestId());
+    uint8 const index = objective->GetObjective();
+    if (!quest || index >= QUEST_OBJECTIVES_COUNT)
+        return s;
+    s.killTarget = quest->ReqCreatureOrGOId[index] == entry;
+    if (s.killTarget || !quest->ReqItemId[index])
+        return s;   // chance 100: every kill / use counts
+    float const chance = entry < 0 ? GameObjectLootChance(uint32(-entry), quest->ReqItemId[index])
+        : GAI_VALUE2(float, "loot chance", std::to_string(entry) + " " + std::to_string(quest->ReqItemId[index]));
+    s.chancePct = chance >= 100.0f ? 100 : chance > 0.0f ? uint8(std::max(1.0f, std::round(chance))) : 0;   // 0 = unknown
+    if (!s.chancePct && entry > 0)
+        if (CreatureInfo const* info = sObjectMgr.GetCreatureTemplate(uint32(entry)))
+            s.vendor = (info->npc_flags & UNIT_NPC_FLAG_VENDOR) != 0;
+    return s;
 }
 
 bool TravelTarget::IsInactiveReselectMarked(TravelDestination const* destination) const
@@ -2395,6 +2524,7 @@ bool TravelTarget::ObservePosStuck()
 
 void TravelTarget::CheckStatus()
 {
+    ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::Execution);
     if (!IsActive())
         return;
 
@@ -2746,6 +2876,7 @@ TravelState TravelTarget::GetTravelState() {
 
 void TravelMgr::Clear()
 {
+    ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::Manager);
 #ifndef MANGOSBOT_ZERO
     sObjectAccessor.ExecuteOnAllPlayers([this](Player* plr) { TravelMgr::SetNullTravelTarget(plr); });
 #else
@@ -3241,6 +3372,9 @@ void TravelMgr::LoadQuestTravelTable()
     EntryQuestRelationMap eMap = GAI_VALUE(EntryQuestRelationMap, "entry quest relation");
 
     sLog.outString("Creating travel destinations.");
+    std::unordered_map<int32, ai::questsource::Stats> sourceSpawnStats;   // A3 step 2 QB-S: per entry, load only
+    uint32 sourceStatsSet = 0;
+    uint32 const sourceStatsStartMs = WorldTimer::getMSTime();
 
     BarGoLink bar(eMap.size());
 
@@ -3285,6 +3419,7 @@ void TravelMgr::LoadQuestTravelTable()
                 bool const skipScriptOnly = sPlayerbotAIConfig.questFirstProgressionSkipScriptOnlyQuestTakers && entry < 0;
                 uint32 scriptOnlyPoints = 0;
                 ai::start_zone::StartTeam const startTeam = StartZoneTeamOf(guidpMap.at(entry), locs);
+                std::vector<WorldPosition*> sourcePoints;   // A3 step 2 QB-S: the spawns an objective of this entry keeps
 
                 for (auto& guidP : guidpMap.at(entry))
                 {
@@ -3297,6 +3432,7 @@ void TravelMgr::LoadQuestTravelTable()
                         continue;
 
                     pointsMap.insert(std::make_pair(guidP.GetRawValue(), guidP));
+                    sourcePoints.push_back(&pointsMap.at(guidP.GetRawValue()));
 
                     GameObjectData const* goData = skipScriptOnly ? guidP.GetGameObjectData() : nullptr;
                     bool const scriptOnly = goData && goData->spawntimesecsmin < 0;
@@ -3317,6 +3453,13 @@ void TravelMgr::LoadQuestTravelTable()
                         ++scriptOnlyPoints;
                 }
 
+                for (auto tLoc : locs)
+                    if (QuestObjectiveTravelDestination* objective = dynamic_cast<QuestObjectiveTravelDestination*>(tLoc))
+                    {
+                        objective->SetSourceStats(SourceStatsOf(entry, objective, sourcePoints, sourceSpawnStats));
+                        ++sourceStatsSet;
+                    }
+
                 // Startup only: one line per affected quest and game object.
                 if (scriptOnlyPoints)
                     sLog.outBasic("[QuestFirstRoute] state=taker_script_only quest=%u entry=%d skipped_points=%u",
@@ -3324,6 +3467,10 @@ void TravelMgr::LoadQuestTravelTable()
             }
         }
     }
+
+    // A3 step 2 QB-S: one startup line - how many objective sources got their facts, and the time it took.
+    sLog.outBasic("[QuestSourceLoad] destinations=%u entries=%u ms=%u", sourceStatsSet, uint32(sourceSpawnStats.size()),
+        WorldTimer::getMSTimeDiffToNow(sourceStatsStartMs));
 
     sLog.outString("Loading all travel locations.");
 

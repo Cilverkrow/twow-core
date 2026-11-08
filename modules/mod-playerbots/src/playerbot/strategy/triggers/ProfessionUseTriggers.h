@@ -17,6 +17,10 @@ namespace ai
     // twow-repo#333 M2 Crafting.Cooking (owner list 07.11.2026, item 2): the switch is on for this bot - a roster bot on its own
     // in the switch's cohort (CohortPolicy.h). The config check first, so the default costs nothing.
     bool CraftingCookingFor(PlayerbotAI* ai);
+    // twow-repo#333 M2 Crafting.Survival (owner list 07.11.2026, item 3): the same for its switch.
+    bool CraftingSurvivalFor(PlayerbotAI* ai);
+    // twow-repo#333 M2 Crafting.Fishing (owner list 07.11.2026, item 4): the same for its switch.
+    bool CraftingFishingFor(PlayerbotAI* ai);
 
     // The cooking fire: spell focus 4 (Basic Campfire GO 29784, any fire counts as in Spell::CheckCast), lit by Basic Campfire 818
     // (learned with cooking; reagent Simple Wood 4470, tool Flint and Tinder 4471, category cooldown).

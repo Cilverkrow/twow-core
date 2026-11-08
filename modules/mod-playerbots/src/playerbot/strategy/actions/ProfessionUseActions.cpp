@@ -131,6 +131,12 @@ bool ProfessionCraftAction::Execute(Event& event)
             if (cooking)
                 sLog.outBasic("[Crafting] kind=cooking event=cook spell=%u item=%u bot=%u level=%u cohort=%c", spellId,
                     uint32(spell->EffectItemType[0]), bot->GetGUIDLow(), bot->GetLevel(), ai::cohort::Letter(bot->GetGUIDLow()));
+            // twow-repo#333 M2 Crafting.Survival (owner list 07.11.2026, item 3): one line per started survival recipe (the skill
+            // line the trigger picked it for) of the switch's bots.
+            if (AI_VALUE2(int, "manual int", "profession craft last skill") == int(SKILL_SURVIVAL2) && CraftingSurvivalFor(ai))
+                sLog.outBasic("[Crafting] kind=survival event=craft spell=%u item=%u skill=%u bot=%u level=%u cohort=%c", spellId,
+                    uint32(spell->EffectItemType[0]), uint32(bot->GetSkillValuePure(SKILL_SURVIVAL2)), bot->GetGUIDLow(), bot->GetLevel(),
+                    ai::cohort::Letter(bot->GetGUIDLow()));
         }
         return ok;
     }
