@@ -2404,6 +2404,17 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
             }
         }
 
+        // A3 step 5 (ADR-0041, AiPlayerbot.CombatRule.ProgressGuard, default 0): one reading of the combat progress clock per engine
+        // pass (A3 R8), for both cohorts while the switch is on; the pass tail acts on it. Off: nothing is read.
+        progressBackoffPending = false;
+        if (sPlayerbotAIConfig.combatRuleProgressGuard && !HasRealPlayerMaster())
+            ObserveCombatProgress();
+        else
+        {
+            progressVerdict = ai::combat_rule::ProgressVerdict::Off;
+            progressClock = ai::combat_rule::ProgressClock();
+        }
+
         // A3 step 2 (ADR-0041, AiPlayerbot.QuestBook, default 0): the quest book watches the log once per engine pass (a snapshot
         // at most every 5 s). Active for a roster bot on its own in the switch's cohort; with QuestBook.Shadow the other roster
         // bots keep a shadow book (KPI lines only, no caller asks it). Otherwise the instance is released and dropped.
@@ -2416,17 +2427,6 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
                 questBook_->Release();
                 questBook_.reset();
             }
-        }
-
-        // A3 step 5 (ADR-0041, AiPlayerbot.CombatRule.ProgressGuard, default 0): one reading of the combat progress clock per engine
-        // pass (A3 R8), for both cohorts while the switch is on; the pass tail acts on it. Off: nothing is read.
-        progressBackoffPending = false;
-        if (sPlayerbotAIConfig.combatRuleProgressGuard && !HasRealPlayerMaster())
-            ObserveCombatProgress();
-        else
-        {
-            progressVerdict = ai::combat_rule::ProgressVerdict::Off;
-            progressClock = ai::combat_rule::ProgressClock();
         }
 
         // A3 step 3 (ADR-0041, AiPlayerbot.Supervisor, default 0): the supervisor ticks once per engine pass (after the
