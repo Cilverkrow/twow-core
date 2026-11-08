@@ -1205,6 +1205,16 @@ AiPlayerbot.DangerMap.CountEnvironmentDeaths = 0
 #   AddDeathMinAttackers 2..16 (default 3: >= 2 is 99 % of all add deaths, >= 3 is 63 %).
 AiPlayerbot.DangerMap.CountAddDeaths = 0
 AiPlayerbot.DangerMap.AddDeathMinAttackers = 3
+# twow-repo#575 A3 step 4 S4-4 (OB-00 07.11.2026): danger memory per place, one read function DangerAt. A place is "avoid" for a
+# bot after 2 of its own deaths within 30 min and 60 yd (the bot's death ring, not cleared by repop), or when the shared danger
+# map has a dangerous cell at the point or its 8 neighbours, judged by the REAL killer (the highest living attacker at the death)
+# instead of the bot's current target. One own death = "caution" (logged only). Readers for the switch's bots (roster bots on
+# their own): the travel target (an avoided destination is deferred like the danger map's), the far-move arrival point (the old
+# check queried from == to and never saw anything) and grind targets (a mob standing in an avoided place is skipped). The shared
+# part needs AiPlayerbot.DangerMap.Enabled = 1; the legacy danger map readers are unchanged. Logged as [Danger] (avoid/caution,
+# at most 20 lines per minute) and [DangerMin] (per minute).
+# 0 = off (default), 1 = every bot, 2 = cohort B (odd guid), 3 = cohort A (even guid); any other value is off.
+AiPlayerbot.Danger.Memory = 0
 # Grinding of persistent roster bots without a real-player master (#307).
 # Below GrindCap.LowLevelBelow a bot attacks mobs at most LowLevelMargin levels
 # above itself (otherwise 4). 0 = off.

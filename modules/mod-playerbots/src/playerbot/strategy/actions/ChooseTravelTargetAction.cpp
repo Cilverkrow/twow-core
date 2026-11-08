@@ -592,6 +592,14 @@ PostActiveDeferral PostActiveDeferralOf(PlayerbotAI* ai, Player* bot, TravelTarg
             return PostActiveDeferral::DangerMap;
     }
 
+    // twow-repo#575 A3 step 4 S4-4 (AiPlayerbot.Danger.Memory): the destination itself through DangerAt - own deaths there and the
+    // shared cells by the real killer. An avoided place is deferred like the danger map's (it ages out); the legacy query above
+    // stays. Same population: roster bots on their own, not forced, same map.
+    if (!target->IsForced() && position && ai::cohort::Applies(sPlayerbotAIConfig.dangerMemory, bot->GetGUIDLow()) &&
+        UsesQuestFirstProgression(bot) && !ai->HasRealPlayerMaster() && position->getMapId() == bot->GetMapId() &&
+        ai->DangerAt(position->getMapId(), position->getX(), position->getY(), ai::danger_memory::Query::Target) == ai::danger_memory::Level::Avoid)
+        return PostActiveDeferral::DangerMap;
+
     // twow-repo#601 cand4 lever (ii) (AiPlayerbot.RosterFarMove.LevelGuard, LevelGuardPolicy.h): a destination with a spawn
     // hostile to the bot's side within Radius yd whose level_max is >= bot level + Margin is deferred, so the main loop takes
     // another one. Any destination purpose except quest givers / takers (OB-00 31.10.: a turn-in or pick-up is progress, its

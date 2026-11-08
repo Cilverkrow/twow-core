@@ -20,6 +20,7 @@
 #include "playerbot/BotSlots.h"
 #include "playerbot/DeathLoopPolicy.h"
 #include "playerbot/CorpseRunFirstPolicy.h"   // twow-repo#575 A3 step 4 S4-1: own deaths for Revive.CorpseRunFirst
+#include "playerbot/DangerMemoryPolicy.h"   // twow-repo#575 A3 step 4 S4-4: DangerAt (Danger.Memory)
 #include "playerbot/DeathAddsPolicy.h"
 #include "playerbot/SafePullPolicy.h"   // twow-repo#656 (Grind.SafePull): the last pick, read at the death
 #include "playerbot/CastWaitPolicy.h"
@@ -808,6 +809,11 @@ public:
     // decision already logged for the current death (one [CorpseRun] line per death and reason). Bot's own thread only.
     ai::corpse_first::Ring const& GetCorpseFirstDeaths() const { return corpseFirstDeaths; }
     void RecordCorpseFirstDeath(ai::corpse_first::DeathMark const& mark) { ai::corpse_first::Record(corpseFirstDeaths, mark); }
+    // twow-repo#575 A3 step 4 S4-4 (AiPlayerbot.Danger.Memory): the danger level of a place for this bot - own deaths (the ring above,
+    // 30 min / 60 yd) and the shared danger map cells at the point by the real killer (DangerMap::QueryAt). Bot's own thread only.
+    // Counts and logs ([Danger], [DangerMin]); the caller applies the switch.
+    ai::danger_memory::Level DangerAt(uint32 mapId, float x, float y, ai::danger_memory::Query query,
+        ai::danger_memory::SharedCellCache* cache = nullptr);
     // 0 = this decision is already logged for this death, 1 = the first decision of this death, 2 = the decision changed.
     uint32 MarkCorpseFirstDecision(uint32 deathAt, ai::corpse_first::Reason reason)
     {

@@ -198,6 +198,10 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
     bool const safeScored = ai::safe_pull::Computes(safeMode) && !assistCount && !group && !bot->InBattleGround() &&
         !ai->HasRealPlayerMaster() && sRandomPlayerbotMgr.IsFreeBot(bot);
     std::vector<NeighbourCandidate> safeCandidates;
+    // twow-repo#575 A3 step 4 S4-4 (AiPlayerbot.Danger.Memory): a roster bot on its own skips a mob standing in a place DangerAt
+    // calls "avoid" (own deaths there, or a shared cell by the real killer). The shared answer is kept per cell for this pass.
+    bool const dangerMemoryGrind = rosterOnItsOwn && ai::cohort::Applies(sPlayerbotAIConfig.dangerMemory, bot->GetGUIDLow());
+    ai::danger_memory::SharedCellCache dangerCells;
 
     for (std::list<ObjectGuid>::iterator tIter = targets.begin(); tIter != targets.end(); tIter++)
     {
@@ -296,6 +300,14 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
             grind_cap::Avoids().IsAvoided(bot->GetGUIDLow(), unit->GetEntry(), uint32(now)))
         {
             logGrind(unit, "ignored (killed this bot repeatedly).");
+            continue;
+        }
+
+        if (dangerMemoryGrind && !unit->GetObjectGuid().IsPlayer() &&
+            ai->DangerAt(unit->GetMapId(), unit->GetPositionX(), unit->GetPositionY(), ai::danger_memory::Query::Grind, &dangerCells) ==
+                ai::danger_memory::Level::Avoid)
+        {
+            logGrind(unit, "ignored (danger memory: avoided place).");
             continue;
         }
 

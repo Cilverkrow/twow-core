@@ -3336,6 +3336,21 @@ add_test(NAME repop_dead_only_policy
   COMMAND repop_dead_only_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#575 A3 step 4 S4-4 (AiPlayerbot.Danger.Memory, OB-00 07.11.2026): danger memory per place (DangerMemoryPolicy.h rules,
+# DangerMap::QueryAt - design F4, real killer); source contract in t/contracts.d.
+add_executable(danger_memory_policy_tests
+  "${PB_MODULE_DIR}/t/danger_memory_policy_tests.cpp")
+
+target_include_directories(danger_memory_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(danger_memory_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME danger_memory_policy
+  COMMAND danger_memory_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # twow-repo#591 (PERF-AB-01): budget exemption for bots without a travel target, configurable limit.
 add_test(NAME budget_start_source_contract
   COMMAND "${CMAKE_COMMAND}"
