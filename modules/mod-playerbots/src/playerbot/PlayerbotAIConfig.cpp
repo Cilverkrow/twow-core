@@ -658,9 +658,9 @@ bool PlayerbotAIConfig::Initialize()
     rotationNeverPossibleSkip = config.GetIntDefault("AiPlayerbot.Rotation.NeverPossibleSkip", 1);   // twow-repo#602 failure census v3
     if (rotationNeverPossibleSkip > 2)
         rotationNeverPossibleSkip = 1;   // an unknown mode is the default (0 off = rollback, 1 all, 2 cohort B)
-    rotationKnownSpellNodes = config.GetIntDefault("AiPlayerbot.Rotation.KnownSpellNodes", 0);   // twow-repo#602 known-spell nodes
+    rotationKnownSpellNodes = config.GetIntDefault("AiPlayerbot.Rotation.KnownSpellNodes", 1);   // twow-repo#602 known-spell nodes
     if (rotationKnownSpellNodes > 3)
-        rotationKnownSpellNodes = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B, 3 cohort A)
+        rotationKnownSpellNodes = 1;   // an unknown mode is the default (0 off = rollback, 1 all, 2 cohort B, 3 cohort A)
     rotationFleeAway = config.GetIntDefault("AiPlayerbot.Rotation.FleeAway", 0);   // twow-repo#602 (c)
     if (rotationFleeAway > 2)
         rotationFleeAway = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
