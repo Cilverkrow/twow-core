@@ -572,6 +572,10 @@ public:
     // Survival (skill 142) by the profession trips, its tool trip buys the Whittle and vendors sell it Whittle and Simple Wood (item
     // usage SKILL); the craft loop crafts its recipes as before. 0 off (default), 1 all, 2 cohort B (odd guid), 3 cohort A (even guid).
     uint32 craftingSurvival = 0;
+    // twow-repo#333 M2 Crafting.Fishing (owner list 07.11.2026, item 4; M2-ENTWURF §7): a roster bot on its own also learns fishing by
+    // the profession trips and its tool trip buys a Fishing Pole; its fishing purpose starts only in the quest-first gap (and ends
+    // with it). 0 off (default), 1 all, 2 cohort B (odd guid), 3 cohort A (even guid).
+    uint32 craftingFishing = 0;
     uint32 professionUseToolBuy = 0;
     // twow-repo#333 P1-z (OB-00 31.10.2026, bug fix: code default 1, 0 = rollback, 2 cohort B): BuyAction "vendor" also reads the
     // vendor template items (creature_template.vendor_id), as the player's buy, the by-name buy and the vendor map already do.
