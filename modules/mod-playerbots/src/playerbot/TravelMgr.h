@@ -794,6 +794,19 @@ namespace ai
 		// A held forced trip: one [ZoneKeep] state=forced_hold line, then no forced trip request for ForcedHoldSeconds (no retry loop).
 		bool ForcedHoldActive(PlayerbotAI* botAI);
 		void NoteForcedHold(Player* bot, PlayerbotAI* botAI, char const* purpose, uint32 targetZone);
+		// Package "start-zone rule complete" (AiPlayerbot.QuestFirstProgression.StartZoneMinLevel.Complete, OB-00 08.11.2026,
+		// ZoneKeepPolicy.h). Every helper is false / does nothing with the switch 0.
+		// The switch on and StartZoneHolds.
+		bool CompleteHolds(Player* bot, PlayerbotAI* botAI);
+		// G1: true = the held bot must not follow this bot leader (outside its start zone); keeps the refusal run for G3 and writes
+		// [ZoneKeep] state=follow_gate at most once per bot and leader per GateLineSeconds. False clears the run.
+		bool FollowGated(Player* bot, PlayerbotAI* botAI, Player* leader);
+		// G3: the refusal run reached FollowLeaveSeconds - one [ZoneKeep] state=group_leave line, the run is cleared.
+		bool GroupLeaveDue(Player* bot, PlayerbotAI* botAI, Player* leader);
+		// G2: a group target choice deferred member targets outside the start zone - [ZoneKeep] state=group_copy_gate per GateLineSeconds.
+		void NoteGroupCopyGate(Player* bot, PlayerbotAI* botAI, uint32 startZoneRejects, bool chosen);
+		// V2-a: the release window (StartZoneMinLevel .. +2) in the .Cohort selection, a roster bot on its own, still in its start zone.
+		bool ReleasePushApplies(Player* bot, PlayerbotAI* botAI);
 	}
 }
 

@@ -6,6 +6,7 @@
 #include "playerbot/AdhocGroupPolicy.h"
 #include "playerbot/QuestGroupWorld.h"
 #include "playerbot/GroupOps.h"   // A3 lever 2: BotGroups.WritePath
+#include "playerbot/TravelMgr.h"   // twow-repo#601 R1 package G3: ai::zone_keep::GroupLeaveDue
 
 namespace ai
 {
@@ -158,6 +159,13 @@ namespace ai
             if (!ai->IsSafe(member))
                 return false;
         }
+
+        // twow-repo#601 owner rule R1, package "start-zone rule complete" G3 (StartZoneMinLevel.Complete, OB-00 08.11.2026,
+        // ZoneKeepPolicy.h): a held bot whose follow of its bot leader was refused (G1, FollowActions.cpp) for FollowLeaveSeconds in a
+        // row leaves the group here (Execute: Leave(group master), the normal leave). Ad-hoc and quest help groups returned above -
+        // their managers have their own leave rules. Switch 0: nothing read.
+        if (sPlayerbotAIConfig.questFirstProgressionStartZoneComplete && ai::zone_keep::GroupLeaveDue(bot, ai, groupMaster))
+            return true;
 
         if (!sPlayerbotAIConfig.randomBotGroupNearby)
             return true;

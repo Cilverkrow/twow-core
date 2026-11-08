@@ -2296,9 +2296,15 @@ bool ChooseGroupTravelTargetAction::Execute(Event& event)
 
     TravelTarget newTarget = TravelTarget(ai);
 
-    if (!SetBestTarget(requester, &newTarget, travelList))
+    // twow-repo#601 owner rule R1, package "start-zone rule complete" G2 (StartZoneMinLevel.Complete, OB-00 08.11.2026): SetBestTarget
+    // already defers a member target outside a held bot's start zone (PostActiveDeferralOf, PostActiveDeferral::StartZone, counted in
+    // lastRejects.startZone, which SetBestTarget resets). The package only logs it: [ZoneKeep] state=group_copy_gate. Switch 0: no line.
+    bool const groupTargetChosen = SetBestTarget(requester, &newTarget, travelList);
+    if (sPlayerbotAIConfig.questFirstProgressionStartZoneComplete)
+        ai::zone_keep::NoteGroupCopyGate(bot, ai, lastRejects.startZone, groupTargetChosen);
+    if (!groupTargetChosen)
         return false;
-    
+
     newTarget.SetGroupCopy(playerDesitnations[newTarget.GetDestination()]);
 
     setNewTarget(requester, &newTarget, oldTarget);

@@ -10,6 +10,8 @@
 #include "playerbot/QuestFeasibilityPolicy.h"
 #include "playerbot/QuestGroupWorld.h"     // twow-repo#627 S7 hook: the queue age for the band log gate
 #include "playerbot/QuestSearchPolicy.h"
+#include "playerbot/TravelMgr.h"          // twow-repo#601 R1 package V2-a: ai::zone_keep::ReleasePushApplies
+#include "playerbot/ZoneKeepPolicy.h"     // twow-repo#601 R1 package V2-a: PushedPriorFailures
 #include "playerbot/strategy/actions/ChooseTravelTargetAction.h"
 #include "Database/DBCStores.h"
 
@@ -555,8 +557,20 @@ bool ChooseTravelTargetAction::TryBandStep(Player* requester, TravelTarget* trav
     // by a found route or a band step).
     facts.emptyStreak = uint32(std::max(0, AI_VALUE2(int, "manual int", qb::BandEmptyStreakValue)));
     facts.streakSteps = sPlayerbotAIConfig.questFirstProgressionBandStepAfterEmptySearches;
+    // twow-repo#601 owner rule R1, package "start-zone rule complete" V2-a (StartZoneMinLevel.Complete, OB-00 08.11.2026,
+    // ZoneKeepPolicy.h): in the release window (StartZoneMinLevel .. +2, still in its start zone) the bot's first empty offer counts
+    // as the band step - the step rule wants one prior failure. The SZM repeat: the released bot searched its used-up start zone
+    // (empty offers +31 % at L5-7) until a rescue or the second empty offer. One line when the push changed the input.
+    int32 const priorBeforePush = facts.priorFailures;
+    bool const releasePush = sPlayerbotAIConfig.questFirstProgressionStartZoneComplete && facts.emptyOffer &&
+        ai::zone_keep::ReleasePushApplies(bot, ai);
+    facts.priorFailures = ai::zone_keep::PushedPriorFailures(releasePush, facts.priorFailures);
 
     qb::StepVerdict const verdict = qb::BandStepDue(facts);
+    if (releasePush && facts.priorFailures != priorBeforePush)
+        sLog.outBasic("[ZoneKeep] state=release_push bot=%u level=%u zone=%u prior=%d verdict=%s", bot->GetGUIDLow(), bot->GetLevel(),
+            bot->GetZoneId(), priorBeforePush, verdict == qb::StepVerdict::Due ? "due" :
+                verdict == qb::StepVerdict::SkipLogFull ? "skip_log_full" : "not_due");
     // F4 (BandWalkAfterEmptySearches): no step yet, but a walk is due - the same rung choice below, no step; the caller starts
     // the walk once the backoff is set (StartBandWalk).
     // GrindMode 1 fills the backoff with its gap grind trip: no walk there.
