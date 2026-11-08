@@ -72,12 +72,13 @@ void QuestBook::Observe(std::uint32_t nowMs)
         if (std::uint32_t const questId = bot->GetQuestSlotQuestId(slot))
             now[n++] = questId;
 
-    // A quest seen for the first time: its credit starts at 0 (every accept path, without a hook in each).
+    // A quest seen for the first time: tracked from 0 (every accept path, without a hook in each), keeping a credit that came in
+    // before this snapshot (the book forgets a quest when it leaves the log, so a kept count belongs to this accept).
     for (std::size_t i = 0; i < n; ++i)
     {
         if (Find(now[i]))
             continue;
-        credits_.Reset(now[i]);
+        credits_.Track(now[i]);
         if (Watch* w = Find(0))
         {
             *w = Watch{};
