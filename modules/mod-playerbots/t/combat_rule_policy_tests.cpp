@@ -302,6 +302,47 @@ int main()
         Require(tc.skipped[1].exchange(0) == 4 && tc.skipped[1].load() == 0, "target rule counters are increments");
     }
 
+    // P6: per-bot totals of the ProgressGuardBot line (10-minute wall-clock blocks, flush on a later block or a band change).
+    {
+        Require(ProgressBotBlockSeconds == 600, "10-minute blocks");
+        Require(ProgressBotBlock(1794142764) == 1794142200 && ProgressBotBlock(1794142200) == 1794142200 &&
+            ProgressBotBlock(1794142799) == 1794142200, "block = start of the 10-minute wall-clock block");
+
+        ProgressBotTotals t;
+        Require(ProgressBotEmpty(t) && !ProgressBotFlushDue(t, 600, 0) && !ProgressBotFlushDue(t, 1200, 2),
+            "empty totals are never written");
+
+        ProgressStep none;
+        AddProgressBotStep(t, 600, 0, none);
+        Require(ProgressBotEmpty(t) && t.block == 0, "a reading without combat time or kill adds nothing");
+
+        ProgressStep s;
+        s.combatMs = 400;
+        s.noProgressMs = 150;
+        AddProgressBotStep(t, 600, 0, s);
+        Require(t.block == 600 && t.band == 0 && t.combatMs == 400 && t.noProgressMs == 150 && t.kills == 0, "combat time added");
+        ProgressStep k;
+        k.combatMs = 100;
+        k.kill = true;
+        k.killMs = 9000;
+        AddProgressBotStep(t, 600, 0, k);
+        Require(t.combatMs == 500 && t.kills == 1 && t.killMs == 9000, "a kill adds one kill and its time");
+
+        AddProgressBotPass(t, 600, 0, false, false);
+        AddProgressBotPass(t, 600, 0, true, false);
+        AddProgressBotPass(t, 600, 0, true, true);
+        AddProgressBotPass(t, 600, 0, false, true);
+        Require(t.passes == 4 && t.noOk == 2 && t.noOkSwing == 1, "passes, without OK, and of those while swinging");
+
+        Require(!ProgressBotFlushDue(t, 600, 0), "same block and band: keep adding");
+        Require(ProgressBotFlushDue(t, 1200, 0), "a later block: write first");
+        Require(ProgressBotFlushDue(t, 600, 1), "a band change: write first");
+
+        ProgressBotTotals p;
+        AddProgressBotPass(p, 1200, 1, false, false);
+        Require(!ProgressBotEmpty(p) && p.block == 1200 && p.band == 1 && p.combatMs == 0, "a pass alone opens a block");
+    }
+
     std::cout << "combat_rule_policy_tests: ok\n";
     return 0;
 }

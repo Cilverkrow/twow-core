@@ -728,7 +728,7 @@ public:
     uint32 rotationOomBackoffDelayMs = 1000;  // ... the wait after such a pass (ends early when the mana is back or the health low)
     uint32 rotationMeleeSkipAttacking = 1;  // twow-repo#602 (failure census 27.10., OB-00: code default 1, 0 = rollback): the default "melee" action is USELESS while the bot already attacks its current target, faces it and its pet is on it (MeleeSkipPolicy.h); 0 off, 1 all, 2 cohort B
     uint32 rotationNeverPossibleSkip = 1;  // twow-repo#602 (failure census v3 28.10., OB-00: code default 1, 0 = rollback): a spell action whose spell the bot does not know is IMPOSSIBLE at once and pushes no reach prerequisite (NeverPossiblePolicy.h); 0 off, 1 all, 2 cohort B
-    uint32 rotationKnownSpellNodes = 0;  // twow-repo#602 (owner 04.11.2026, OB-00 plan OK): the engine does not check a trigger node whose every handler is a spell the bot does not know, without alternatives (KnownSpellNodesPolicy.h); 0 off, 1 all, 2 cohort B, 3 cohort A
+    uint32 rotationKnownSpellNodes = 1;  // twow-repo#602 (owner 04.11.2026, OB-00 plan OK; default 1 since owner 08.11.2026 after the A/B): the engine does not check a trigger node whose every handler is a spell the bot does not know, without alternatives (KnownSpellNodesPolicy.h); 0 off (rollback), 1 all (default), 2 cohort B, 3 cohort A
     bool rotationMeleeFleeBreakRanged = false;  // twow-repo#602 (step 2, 21.10.): the same hold for ranged bots (cohort from Rotation.MeleeFleeBreak); kite triggers untouched
     uint32 rotationFleeAway = 0;  // twow-repo#602 (c) (hunter + adds analysis 25.10.): flee chase angle relative to the enemy's facing, a kept chase (1 s), hunter flee only in the dead zone while the pet holds the enemy (FleeAwayPolicy.h); 0 off, 1 all, 2 cohort B
     uint32 rotationFleeAwayScope = 0;  // twow-repo#602 (c) scope (hunter restart 26.10.): which bots of Rotation.FleeAway's cohort get it; 0 every bot (as before), 1 hunters, 2 hunters + bots with a living pet out
@@ -910,8 +910,9 @@ public:
     uint32 botGroupsLeaderOtherMap = 0;
     uint32 botGroupsLeaderOtherMapSeconds = 120;   // 30..900
     // BOT-12 (twow-repo#677, #628; OB-00 04.11.2026): the ad-hoc leaves and joins of a free bot are queued and run on the world
-    // thread (GroupOps.cpp; ObjectMgr::m_GroupMap is not locked). 0 off, 1 all, 2 cohort B, 3 cohort A; other = 0 + error line.
-    uint32 botGroupsOpQueue = 0;
+    // thread (GroupOps.cpp; ObjectMgr::m_GroupMap is not locked). 0 off (rollback), 1 all (default, owner 08.11.2026),
+    // 2 cohort B, 3 cohort A; other = 1 + error line.
+    uint32 botGroupsOpQueue = 1;
     uint32 botGroupsOpQueueOpsPerTick = 1;          // ops per world tick, 1..16 (none in a tick with a manager group step)
     uint32 botGroupsOpQueueMaxDepth = 2048;         // 16..65536; a full queue refuses new ops (dropped_full)
     uint32 botGroupsOpQueueAlertAgeSeconds = 60;    // 5..3600; "[GroupOps] ALERT" when the oldest op is older
@@ -971,6 +972,10 @@ public:
     uint32 questBookSourceChoice = 0;
     float questBookKillSeconds = 12.0f;           // one kill incl. loot, for the expected work at a source
     float questBookSingleSpawnMargin = 1.5f;      // a named / single source must be this much cheaper than a common one
+    // A3 step 2 QB-B (QuestBundlePolicy.h): giver sites by quests per second where the quest book is active. 0 off, 1 all, 2 cohort B,
+    // 3 cohort A; other = 0 + error line. BundleRadius 30..300 yd: the area that counts as one bundle.
+    uint32 questBookBundle = 0;
+    uint32 questBookBundleRadius = 100;
     // twow-repo#627 S7 help groups (QuestGroupPolicy.h, QuestGroupWorld.cpp); Enable: 0 off, 1 all, 2 cohort B, 3 cohort A.
     uint32 questGroupsEnable = 0;
     uint32 questGroupsScanSeconds = 60;

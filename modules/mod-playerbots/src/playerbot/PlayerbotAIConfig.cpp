@@ -21,6 +21,7 @@
 #include "playerbot/GroupManagerPolicy.h"   // A3 step 6: BotGroups.Manager mode
 #include "playerbot/SupervisorPolicy.h"   // A3 step 3: Supervisor mode
 #include "playerbot/QuestBookPolicy.h"   // A3 step 2: QuestBook mode
+#include "playerbot/QuestBundlePolicy.h"   // A3 step 2 QB-B: QuestBook.BundleRadius clamp
 #include "playerbot/ZoneKeepPolicy.h"   // twow-repo#601 R1: StartZoneMinLevel.Complete parse
 #include "playerbot/LockoutPolicy.h"   // L1: BotGroups.ResetRaidsRealInviterOnly parse
 #include "playerbot/LootChancePolicy.h"   // OB-00 08.11.: LootChance.GameObjectEntryFix / QuestRelation.GameObjectChanceDrops
@@ -659,9 +660,9 @@ bool PlayerbotAIConfig::Initialize()
     rotationNeverPossibleSkip = config.GetIntDefault("AiPlayerbot.Rotation.NeverPossibleSkip", 1);   // twow-repo#602 failure census v3
     if (rotationNeverPossibleSkip > 2)
         rotationNeverPossibleSkip = 1;   // an unknown mode is the default (0 off = rollback, 1 all, 2 cohort B)
-    rotationKnownSpellNodes = config.GetIntDefault("AiPlayerbot.Rotation.KnownSpellNodes", 0);   // twow-repo#602 known-spell nodes
+    rotationKnownSpellNodes = config.GetIntDefault("AiPlayerbot.Rotation.KnownSpellNodes", 1);   // twow-repo#602 known-spell nodes
     if (rotationKnownSpellNodes > 3)
-        rotationKnownSpellNodes = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B, 3 cohort A)
+        rotationKnownSpellNodes = 1;   // an unknown mode is the default (0 off = rollback, 1 all, 2 cohort B, 3 cohort A)
     rotationFleeAway = config.GetIntDefault("AiPlayerbot.Rotation.FleeAway", 0);   // twow-repo#602 (c)
     if (rotationFleeAway > 2)
         rotationFleeAway = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
@@ -879,12 +880,13 @@ bool PlayerbotAIConfig::Initialize()
         botGroupsLeaderOtherMap = 0;
     }
     botGroupsLeaderOtherMapSeconds = std::min<uint32>(900, uint32(std::max<int32>(30, config.GetIntDefault("AiPlayerbot.BotGroups.LeaderOtherMapSeconds", 120))));
-    // BOT-12 (twow-repo#677, #628): the world-thread group queue (GroupOpPolicy.h); an unknown mode is off.
-    botGroupsOpQueue = uint32(config.GetIntDefault("AiPlayerbot.BotGroups.OpQueue", 0));
+    // BOT-12 (twow-repo#677, #628): the world-thread group queue (GroupOpPolicy.h). Owner 08.11.2026: ON by default (BOT-12 v2
+    // RESULT 24b75ea3), 0 = rollback; an unknown mode is the default (1).
+    botGroupsOpQueue = uint32(config.GetIntDefault("AiPlayerbot.BotGroups.OpQueue", 1));
     if (!ai::group_ops::ValidMode(botGroupsOpQueue))
     {
-        sLog.outError("[GroupOps] config key=OpQueue value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", botGroupsOpQueue);
-        botGroupsOpQueue = 0;
+        sLog.outError("[GroupOps] config key=OpQueue value=%u result=1 (0 off = rollback, 1 all, 2 cohort B, 3 cohort A)", botGroupsOpQueue);
+        botGroupsOpQueue = 1;
     }
     botGroupsOpQueueOpsPerTick = ai::group_ops::ClampOpsPerTick(config.GetIntDefault("AiPlayerbot.BotGroups.OpQueueOpsPerTick", 1));
     botGroupsOpQueueMaxDepth = ai::group_ops::ClampMaxDepth(config.GetIntDefault("AiPlayerbot.BotGroups.OpQueueMaxDepth", 2048));
@@ -965,6 +967,14 @@ bool PlayerbotAIConfig::Initialize()
     }
     questBookKillSeconds = std::clamp(config.GetFloatDefault("AiPlayerbot.QuestBook.KillSeconds", 12.0f), 1.0f, 120.0f);
     questBookSingleSpawnMargin = std::clamp(config.GetFloatDefault("AiPlayerbot.QuestBook.SingleSpawnMargin", 1.5f), 1.0f, 10.0f);
+    // A3 step 2 QB-B (QuestBundlePolicy.h): giver sites by quests per second; acts only where the quest book is active.
+    questBookBundle = uint32(config.GetIntDefault("AiPlayerbot.QuestBook.Bundle", 0));
+    if (!ai::questbook::ValidMode(questBookBundle))
+    {
+        sLog.outError("[QuestBook] config key=QuestBook.Bundle value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", questBookBundle);
+        questBookBundle = 0;
+    }
+    questBookBundleRadius = ai::questbundle::ClampRadius(config.GetIntDefault("AiPlayerbot.QuestBook.BundleRadius", 100));
     questGroupsEnable = (uint32)config.GetIntDefault("AiPlayerbot.QuestGroups.Enable", 0);
     questGroupsScanSeconds = std::max<uint32>(10, config.GetIntDefault("AiPlayerbot.QuestGroups.ScanSeconds", 60));
     questGroupsScanSlices = std::min<uint32>(64, (uint32)config.GetIntDefault("AiPlayerbot.QuestGroups.ScanSlices", 0));
@@ -2107,6 +2117,8 @@ bool PlayerbotAIConfig::Initialize()
             {"ProfessionUse.Trace", Value(professionUseTrace)},
             {"QuestBook", Value(questBook)},
             {"QuestBook.AboveLevels", Value(questBookAboveLevels)},
+            {"QuestBook.Bundle", Value(questBookBundle)},
+            {"QuestBook.BundleRadius", Value(questBookBundleRadius)},
             {"QuestBook.Exclude.count", Value(uint32(questBookExclude.size()))},
             {"QuestBook.KillSeconds", Value(questBookKillSeconds)},
             {"QuestBook.Shadow", Value(questBookShadow)},

@@ -1358,9 +1358,11 @@ AiPlayerbot.BotGroups.LeaderOtherMapSeconds = 120
 # OpQueueAlertAgeSeconds. In queue mode "[BotGroup] kind=adhoc event=invite|leave ... via=queue" means queued (exec_*/stale_*
 # in the minute line count what ran), and the join's register line can come before its membership line (pair them by bot
 # and group, not by order).
-# Mode (in-realm A/B, cohort parity, of the leaver / either bot of a join): 0 = as before (default), 1 = every bot, 2 = only
-# cohort B (odd low guid), 3 = only cohort A (even low guid). Any other value acts like 0 (one error line at load).
-AiPlayerbot.BotGroups.OpQueue = 0
+# BEHAVIOUR CHANGE, ON by default (owner 08.11.2026; BOT-12 v2 RESULT 24b75ea3: MET, pooled tick p99 +0.40 ms, hi95 < 0.9
+# ms), 0 = rollback. Mode (in-realm A/B, cohort parity, of the leaver / either bot of a join): 0 = as before, 1 = every bot
+# (default), 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid). Any other value acts like 1 (one error line
+# at load).
+AiPlayerbot.BotGroups.OpQueue = 1
 # BOT-12: ops run per world tick (1..16; default 1). The heavy-tick rule above still applies.
 AiPlayerbot.BotGroups.OpQueueOpsPerTick = 1
 # BOT-12: the most ops the queue holds (16..65536; default 2048). A full queue refuses new ops (dropped_full_leave/join in the
@@ -1506,6 +1508,10 @@ AiPlayerbot.CombatRule.RestStartMana = 40
 # <kills A/B>/<kill_ms A/B>/<passes A/B>/<no_ok A/B>/<no_ok_swing A/B>,..." (combat engine passes, passes without an OK action, and of
 # those the passes while the bot auto-attacks). Mode: 0 = off (default, rollback), 1 = every bot, 2 = only cohort B (odd low guid),
 # 3 = only cohort A (even low guid). Any other value acts like 0.
+# Per bot (P6, log only, for the PREREG's bot-cluster bootstrap): "[CombatRule] part=ProgressGuardBot mode= block= guid= cohort=
+# cls= band= combat_ms= noprog_ms= kills= kill_ms= passes= no_ok= no_ok_swing=", one line per bot and 10-minute wall-clock block
+# (block = its start, unix seconds) and on a band change, written by the bot's first reading after it; at most ~1,200 lines per
+# hour for 200 bots in combat.
 AiPlayerbot.CombatRule.ProgressGuard = 0
 # ProgressGuard: seconds without progress before the backoff (5..300; default 15).
 AiPlayerbot.CombatRule.ProgressDeadlineSeconds = 15
@@ -1561,6 +1567,16 @@ AiPlayerbot.QuestBook.SourceChoice = 0
 AiPlayerbot.QuestBook.KillSeconds = 12
 # A named / single source wins only when it is this much cheaper than the cheapest common one, 1..10, default 1.5.
 AiPlayerbot.QuestBook.SingleSpawnMargin = 1.5
+# A3 step 2 QB-B: quest givers by bundle, only where the quest book is active (QuestBook applies to the bot). A giver site (the
+# position of a giver spawn) scores its bundle - the distinct offerable quests of all givers on the same map within BundleRadius -
+# per second: bundle / (route + 20 s per quest). The giver sites go in that order (ties keep the nearest-first order), after the
+# turn-ins and objectives; with one site or none nothing changes. A lone giver at 100 yd and three quests at 300 yd tie, three at
+# 250 yd win. Lines: `[QuestBundle] ...` per giver pick, counters bundle_ranked / bundle_regroup / bundle_capped in
+# `[QuestBookMin]`. 0 = off (default, rollback), 1 = all, 2 = cohort B (odd low guid), 3 = cohort A (even low guid); any other
+# value acts like 0.
+AiPlayerbot.QuestBook.Bundle = 0
+# The area that counts as one bundle, in yards (2D), 30..300, default 100.
+AiPlayerbot.QuestBook.BundleRadius = 100
 
 # #627 S7 help groups (owner 18.10./23.10.2026): roster bots holding the same elite
 # quest (Type 1; with SuggestedPlayers = 1 also SuggestedPlayers >= 2; never
@@ -3919,9 +3935,10 @@ AiPlayerbot.Rotation.NeverPossibleSkip = 1
 # of a questing bot's action time in the archived action logs). A node with alternatives keeps running (its IMPOSSIBLE pushes
 # them). The answer is cached per node and taken again after a learn, level-up or talent change, at least every 10 s, so a
 # spell learned now is tried on the next tick. "[KnownSpellNodes] mode= skipped= checked= recomputes= stamp_changes= cls=" once
-# a minute. 0 = every node is checked as before (default), 1 = every bot, 2 = only cohort B (odd low guid), 3 = only cohort A.
-# Any other value acts like 0.
-AiPlayerbot.Rotation.KnownSpellNodes = 0
+# a minute. 0 = every node is checked as before (rollback), 1 = every bot (default since owner 08.11.2026 after the A/B, KSN RESULT
+# ADOPT 5beb1182), 2 = only cohort B (odd low guid), 3 = only cohort A.
+# Any other value acts like 1.
+AiPlayerbot.Rotation.KnownSpellNodes = 1
 # twow-repo#602 ROT-01 (c) (hunter + adds analysis 25.10.2026, BEHAVIOUR CHANGE, enable only after A/B + owner go): the flee of a
 # bot without a real master is a chase of the enemy at the flee distance. Its angle was the bot's world angle to the enemy, but the
 # core adds the chase angle to the ENEMY's facing, so the flee point lay on an effectively random side of the mob (often across it
