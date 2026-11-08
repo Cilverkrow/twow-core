@@ -1465,6 +1465,17 @@ AiPlayerbot.QuestBook.StaleCompleteSeconds = 1800
 # has a source, the list is versioned in the profile. The book neither accepts nor targets a listed quest; a complete listed quest
 # may still be turned in. Empty = none (default).
 AiPlayerbot.QuestBook.Exclude =
+# A3 step 2 QB-S: source choice and quest order, only where the quest book is active (QuestBook applies to the bot). Among the
+# sources of one quest objective the bot goes to the one with the least expected time (route + kills / drop chance x (kill time +
+# spawn spacing / run speed), never less than the respawn waits); a named or single source must be cheaper by SingleSpawnMargin.
+# The winners of all quests are ordered by XP per minute (quest xp + follow-up quest xp + the kills' xp over route + work).
+# Lines: `[QuestSource] ...` per pick, counters in `[QuestBookMin]`. 0 = off (default, rollback), 1 = all, 2 = cohort B (odd low
+# guid), 3 = cohort A (even low guid); any other value acts like 0.
+AiPlayerbot.QuestBook.SourceChoice = 0
+# One kill incl. loot in seconds, 1..120, default 12.
+AiPlayerbot.QuestBook.KillSeconds = 12
+# A named / single source wins only when it is this much cheaper than the cheapest common one, 1..10, default 1.5.
+AiPlayerbot.QuestBook.SingleSpawnMargin = 1.5
 
 # #627 S7 help groups (owner 18.10./23.10.2026): roster bots holding the same elite
 # quest (Type 1; with SuggestedPlayers = 1 also SuggestedPlayers >= 2; never
