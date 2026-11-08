@@ -1,5 +1,5 @@
 // A3 step 5 (ADR-0041; OB-00 07.11.2026): the combat rule, pure parts (CombatRulePolicy.h).
-// Parts HealerStart and PriestOverlay (default 0). HealerStart: the healer gate keeps the old rule unchanged and opens only
+// Parts HealerStart, PriestOverlay and RestBeforePull (default 0). HealerStart: the healer gate keeps the old rule unchanged and opens only
 // for a holy paladin or a restoration druid, and only where the part applies.
 #include <cstdlib>
 #include <iostream>
@@ -78,6 +78,47 @@ int main()
     Require(p.engines[0].load() == 0 && p.stripped[1].load() == 0, "overlay counters start at 0");
     p.stripped[1].fetch_add(1);
     Require(p.stripped[1].exchange(0) == 1 && p.stripped[1].load() == 0, "overlay counters are increments");
+
+    // Part RestBeforePull: solo free bots out of combat, health first, mana only with a pool, the pull bit.
+    RestReading r;
+    r.soloFree = true;
+    r.hp = 59;
+    Require(RestBeforePull(r, 60, 40) == RestNeed::Health, "HP below start: rest for health");
+    r.hp = 10;
+    Require(RestBeforePull(r, 60, 40) == RestNeed::Health, "no lower bound (the < 20 % gap)");
+    r.hp = 60;
+    Require(RestBeforePull(r, 60, 40) == RestNeed::None, "HP at start: no rest");
+    r.manaPool = true;
+    r.mana = 39;
+    Require(RestBeforePull(r, 60, 40) == RestNeed::Mana, "mana below start with a pool: rest for mana");
+    r.hp = 30;
+    Require(RestBeforePull(r, 60, 40) == RestNeed::Health, "health before mana");
+    r.hp = 90;
+    Require(RestBeforePull(r, 60, 0) == RestNeed::None, "StartMana 0: no mana rest");
+    r.manaPool = false;
+    Require(RestBeforePull(r, 60, 40) == RestNeed::None, "no mana pool (cat / bear form, warrior, rogue): no mana rest");
+    r.hp = 20;
+    RestReading inCombat = r;
+    inCombat.inCombat = true;
+    Require(RestBeforePull(inCombat, 60, 40) == RestNeed::None, "in combat: the rule does not rest");
+    RestReading attacked = r;
+    attacked.attacked = true;
+    Require(RestBeforePull(attacked, 60, 40) == RestNeed::None, "attacked: no rest");
+    RestReading grouped = r;
+    grouped.soloFree = false;
+    Require(RestBeforePull(grouped, 60, 40) == RestNeed::None, "group / real player / battleground: not the part's bot");
+
+    Require(MayPull(RestNeed::None, false), "no rest needed: may pull");
+    Require(!MayPull(RestNeed::Health, false) && !MayPull(RestNeed::Mana, false), "rest needed: no pull");
+    Require(MayPull(RestNeed::Health, true), "a target that fights the bot is always taken");
+
+    Require(ClampStartHp(0) == 1 && ClampStartHp(60) == 60 && ClampStartHp(150) == 99, "StartHp 1..99");
+    Require(ClampStartMana(-5) == 0 && ClampStartMana(40) == 40 && ClampStartMana(100) == 99, "StartMana 0..99");
+
+    RestBeforePullCounters& rc = RestBeforePullGlobal();
+    Require(rc.pulls[0].load() == 0 && rc.refused[1].load() == 0 && rc.restMana[1].load() == 0, "rest counters start at 0");
+    rc.refused[1].fetch_add(4);
+    Require(rc.refused[1].exchange(0) == 4 && rc.refused[1].load() == 0, "rest counters are increments");
 
     std::cout << "combat_rule_policy_tests: ok\n";
     return 0;
