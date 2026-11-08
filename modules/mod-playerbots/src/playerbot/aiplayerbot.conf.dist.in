@@ -1219,6 +1219,13 @@ AiPlayerbot.QuestRescue.IdleMinutes = 30
 # stays with the bot for the next scan instead of being dropped. Matters for stranded bots (ZoneExit.StrandedRescueAfter),
 # which only ask again after more empty quest searches. 0 = as before (default).
 AiPlayerbot.QuestRescue.KeepRequestWhenFull = 0
+# twow-repo#575 RG-a (OB-00 08.11.2026): the quest rescue's first answer is an anchor table (RescueHubPolicy.h, OB-50 innkeeper
+# spawns): below L5 a bot goes to its race's start-zone hub (Goldshire, Kharanos, Dolanaar, Razor Hill, Brill, Bloodhoof; high elf
+# up to L9 Brinthilien / Alah'Thalas) instead of no target (R1) or another race's start point; night elves and undead L5-10 go to
+# the next zone on their home continent (Auberdine, The Sepulcher), unless StartZoneMinLevel still gates the level. No row or no
+# spawn left: the legacy targets as before. Logs [RescueHub] and [RescueHubMin].
+# Cohort mode: 0 = off (default), 1 = all bots, 2 = cohort B (odd guid), 3 = cohort A (even guid).
+AiPlayerbot.QuestRescue.HomeHubs = 0
 # A creature entry that killed the bot GrindAvoid.MaxDeaths times within
 # WindowSeconds is skipped as a grind target for AvoidSeconds. 0 = off.
 AiPlayerbot.GrindAvoid.MaxDeaths = 0
