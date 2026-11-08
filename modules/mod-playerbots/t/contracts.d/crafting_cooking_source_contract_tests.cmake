@@ -95,13 +95,13 @@ require_text("${light}" "!(fire->Category && bot->HasSpellCategoryCooldown(fire-
 
 # 2. The trips: cooking only with the switch (pure rule), the one trainer list reads it once.
 require_text("${policy}" "constexpr std::uint32_t kCooking = 185;" "(2) cooking skill")
-require_text("${policy}" "inline bool IsTripSkill(std::uint32_t skill, bool cooking, bool survival = false)\n{\n    return IsPhaseOneSkill(skill) || (cooking && skill == kCooking) || (survival && skill == kSurvival);\n}" "(2) trip skill rule (M2 Crafting.Survival adds its flag)")
-require_text("${policy}" "inline bool NearTripSkill(std::uint32_t skill, bool hasSkill, bool cooking, bool survival = false)\n{\n    return IsTripSkill(skill, cooking, survival) && !hasSkill;\n}" "(2) near trip once")
+require_text("${policy}" "inline bool IsTripSkill(std::uint32_t skill, bool cooking, bool survival = false, bool fishing = false)\n{\n    return IsPhaseOneSkill(skill) || (cooking && skill == kCooking) || (survival && skill == kSurvival) ||\n        (fishing && skill == kFishing);\n}" "(2) trip skill rule (M2 Crafting.Survival / .Fishing add their flags)")
+require_text("${policy}" "inline bool NearTripSkill(std::uint32_t skill, bool hasSkill, bool cooking, bool survival = false, bool fishing = false)\n{\n    return IsTripSkill(skill, cooking, survival, fishing) && !hasSkill;\n}" "(2) near trip once")
 require_text("${policy}" "inline bool IsPhaseOneSkill(std::uint32_t skill)\n{\n    return skill == kHerbalism || skill == kMining || skill == kSkinning || skill == kFirstAid;\n}" "(2) phase one unchanged")
 between("${travel}" "std::vector<int32> ai::PhaseOneProfessionTrainers(PlayerbotAI* ai, bool onlyUnlearned)" "\n}\n" trainers)
 require_text("${trainers}" "    bool const cooking = CraftingCookingFor(ai);\n" "(2) switch read once")
-require_text("${trainers}" "if (!ai::profession_travel::IsTripSkill(skill, cooking, survival))" "(2) trip skill filter")
-require_text("${trainers}" "NearTripSkill(skill, ai->HasSkill(SkillType(skill)), cooking, survival)" "(2) near trip filter")
+require_text("${trainers}" "if (!ai::profession_travel::IsTripSkill(skill, cooking, survival, fishing))" "(2) trip skill filter")
+require_text("${trainers}" "NearTripSkill(skill, ai->HasSkill(SkillType(skill)), cooking, survival, fishing)" "(2) near trip filter")
 count_text("${trainers}" "IsPhaseOneSkill(" 0 "(2) no direct phase-one filter left")
 
 # 3. The trigger: under RealReagents, a fire recipe needs no focus when a fire is near or can be lit; every other focus stays.
