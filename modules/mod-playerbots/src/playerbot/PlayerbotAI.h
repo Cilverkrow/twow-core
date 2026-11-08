@@ -26,6 +26,8 @@
 #include "playerbot/TeleportCastPolicy.h"
 #include "playerbot/BotSavePolicy.h"
 #include "playerbot/StallGuardPolicy.h"
+#include "playerbot/CombatRulePolicy.h"   // A3 step 5 (CombatRule.ProgressGuard): the combat progress clock
+#include "playerbot/SupervisorPolicy.h"   // A3 step 5: the CombatLoop event a ProgressGuard break leaves (plain data)
 #include <atomic>
 #include <functional>
 #include <mutex>
@@ -435,6 +437,11 @@ private:
     void StretchCombatIdle();
     // twow-repo#602 ROT-01 3c-B: idle out-of-mana combat pass -> wait DelayMs (AiPlayerbot.Rotation.OomBackoff).
     void BackoffOutOfMana(bool yieldSetDelay, bool minimal);
+    // A3 step 5 (AiPlayerbot.CombatRule.ProgressGuard, default 0; A3 R8): one reading of the combat progress clock per engine pass,
+    // the acts after the pass (count, backoff wait, break) and the break itself.
+    void ObserveCombatProgress();
+    void ActOnCombatProgress();
+    void BreakCombatLoop();
     // A3 step 3 (ADR-0041, AiPlayerbot.Supervisor, default 0): the supervisor of this bot, made on the first engine pass the
     // switch applies to it.
     ai::supervisor::Supervisor* EnsureSupervisor();
@@ -1173,6 +1180,16 @@ public:
     // target entirely (attack/pull/old target, selection, swing), so its combat ends and follow resumes (ReachDropPolicy.h).
     void DropUnreachableEngagement(Unit* target);
     bool IsUnreachableTarget(ObjectGuid guid) const { return unreachableTargets.Ignored(guid.GetRawValue(), uint32(time(nullptr))); }
+    // A3 step 5 (CombatRule.ProgressGuard): the CombatLoop event a break left for the supervisor (switch on for the bot), taken once.
+    // The interface for the CombatGuard frame (Supervisor.CombatGuard, CLI-Projekt); call it on the bot's thread.
+    bool TakeCombatLoopEvent(ai::supervisor::Event& out)
+    {
+        if (!combatLoopPending)
+            return false;
+        out = combatLoopEvent;
+        combatLoopPending = false;
+        return true;
+    }
     std::string GetTopValueNames() const { std::lock_guard<std::mutex> lock(valueNamesMutex); return topValueNames; }
     // #421 C: set on the bot's thread, taken and acted on by the world thread.
     bool TakeQuestRescueRequest() { return questRescueRequested.exchange(false); }
@@ -1413,6 +1430,11 @@ protected:
     bool combatIdleTick = false;   // twow-repo#541 (audit A17): last DoNextAction ran the combat engine and executed nothing
     ObjectGuid combatIdleVictim;   // twow-repo#541 (audit A17): victim of a pending stretched wait (empty = none)
     bool oomBackoffPending = false;   // twow-repo#602 ROT-01 3c-B: an out-of-mana backoff wait is running
+    ai::combat_rule::ProgressClock progressClock;   // A3 step 5 (CombatRule.ProgressGuard): the combat progress clock (R8)
+    ai::combat_rule::ProgressVerdict progressVerdict = ai::combat_rule::ProgressVerdict::Off;   // this pass's reading
+    bool progressBackoffPending = false;   // a ProgressGuard backoff wait is running
+    bool combatLoopPending = false;   // a CombatLoop event waits for the supervisor's CombatGuard frame
+    ai::supervisor::Event combatLoopEvent;
     uint32 tankKitLevel = 0;   // twow-repo#602 (Rotation.TankKitFromLevel): the level the strategies were last built for; a crossing of the tank key level rebuilds them
     ObjectGuid losCacheGuid;   // twow-repo#602 (Rotation.LosCacheMs): the target of the cached line-of-sight verdict
     bool losCacheInLos = true;   // the cached verdict

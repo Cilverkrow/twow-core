@@ -23,6 +23,7 @@
 #include "playerbot/ProfessionUsePolicy.h"   // twow-repo#333 M2-T: the [ProfCount] created line
 #include "playerbot/TeleportAckThreadPolicy.h"   // twow-repo#563 X5 (ThreadSafeTeleportAck)
 #include "playerbot/Supervisor.h"   // A3 step 3 (AiPlayerbot.Supervisor): the per-bot supervisor scaffold
+#include "playerbot/CombatRule.h"   // A3 step 5 (AiPlayerbot.CombatRule.ProgressGuard): limits, counters, CombatLoop event
 #include "playerbot/QuestBook.h"    // A3 step 2 (AiPlayerbot.QuestBook): the per-bot quest book core
 #include "Maps/PathFinder.h"
 #include <stdarg.h>
@@ -438,6 +439,96 @@ void PlayerbotAI::BackoffOutOfMana(bool yieldSetDelay, bool minimal)
     aiInternalUpdateDelay = sPlayerbotAIConfig.rotationOomBackoffDelayMs;
     oomBackoffPending = true;
     ai::oom_backoff::backoffs.fetch_add(1, std::memory_order_relaxed);
+}
+
+// A3 step 5 (AiPlayerbot.CombatRule.ProgressGuard, default 0; A3 §4.3 R8, CombatRulePolicy.h): one reading of the combat progress
+// clock per engine pass, before the pass, for both cohorts while the switch is on. Progress is only damage to the current target or
+// a shrinking distance to it; the clock runs per combat episode and keeps running over a target switch. Own bot and own context only.
+void PlayerbotAI::ObserveCombatProgress()
+{
+    ai::combat_rule::ProgressReading reading;
+    reading.inCombat = currentEngine == engines[(uint8)BotState::BOT_STATE_COMBAT];
+    reading.nowMs = WorldTimer::getMSTime();
+    if (reading.inCombat)
+    {
+        if (Unit* const target = aiObjectContext->GetValue<Unit*>("current target")->Get())
+        {
+            reading.target = target->GetObjectGuid().GetRawValue();
+            reading.targetAlive = target->IsAlive();
+            reading.targetHealth = target->GetHealth();
+            reading.distance = bot->GetDistance(target, false, DIST_CALC_COMBAT_REACH);
+        }
+    }
+    // The old target died when the reading changed target or the combat ended: a kill.
+    if (progressClock.target && progressClock.target != reading.target)
+    {
+        Unit* const previous = GetUnit(ObjectGuid(progressClock.target));
+        reading.previousTargetDied = previous && !previous->IsAlive();
+    }
+    ai::combat_rule::ProgressStep const step = ai::combat_rule::ObserveProgress(progressClock, reading,
+        ai::combat_rule::ProgressLimitsFromConfig());
+    progressVerdict = step.verdict;
+    ai::combat_rule::CountProgress(bot, step);
+}
+
+// A3 step 5 (AiPlayerbot.CombatRule.ProgressGuard): after the pass. Counts the combat pass (without OK, and of those while the bot
+// auto-attacks) for both cohorts; for the switch's cohort, without progress past the deadline the next pass waits ProgressBackoffMs
+// (not while casting, not below LowHealth, never shorter than a delay someone else set) and past the break time the loop is broken.
+// A bot with a heal strategy is only counted (its progress is not damage to its own target).
+void PlayerbotAI::ActOnCombatProgress()
+{
+    // The DoNextAction tail can switch engines (ResetStrategies) after the engine call: count and act only on a combat pass.
+    if (currentEngine != engines[(uint8)BotState::BOT_STATE_COMBAT])
+        return;
+
+    bool swing = false;
+    if (combatIdleTick)
+    {
+        Unit* const victim = bot->GetVictim();
+        swing = victim && ((bot->hasUnitState(UNIT_STAT_MELEE_ATTACKING) && bot->CanReachWithMeleeAutoAttack(victim)) ||
+            bot->GetCurrentSpell(CURRENT_AUTOREPEAT_SPELL) != nullptr);
+    }
+    ai::combat_rule::CountCombatPass(bot, combatIdleTick, swing);
+
+    if (progressVerdict != ai::combat_rule::ProgressVerdict::Backoff && progressVerdict != ai::combat_rule::ProgressVerdict::Break)
+        return;
+    if (!ai::cohort::Applies(sPlayerbotAIConfig.combatRuleProgressGuard, bot->GetGUIDLow()) || ContainsStrategy(STRATEGY_TYPE_HEAL))
+        return;
+
+    if (progressVerdict == ai::combat_rule::ProgressVerdict::Break)
+        BreakCombatLoop();
+
+    uint32 const backoffMs = sPlayerbotAIConfig.combatRuleProgressBackoffMs;
+    if (!backoffMs || bot->IsNonMeleeSpellCasted(true, false, true) || uint32(bot->GetHealthPercent()) < sPlayerbotAIConfig.lowHealth ||
+        aiInternalUpdateDelay >= backoffMs)
+        return;
+    aiInternalUpdateDelay = backoffMs;
+    progressBackoffPending = true;
+    ai::combat_rule::CountProgressAct(bot, ai::combat_rule::ProgressAct::Backoff);
+}
+
+// A3 step 5 (AiPlayerbot.CombatRule.ProgressGuard): the break of a loop without progress. The target goes on the ignore list of
+// hotfix 8.2 for ProgressIgnoreSeconds and is dropped as current target; the guard moves nothing. With the supervisor on for the bot,
+// one CombatLoop event waits for its CombatGuard frame (switch the target or give up the fight is the owner's decision, A3 R8).
+void PlayerbotAI::BreakCombatLoop()
+{
+    uint32 const nowMs = WorldTimer::getMSTime();
+    Unit* const target = progressClock.target ? GetUnit(ObjectGuid(progressClock.target)) : nullptr;
+    if (target && target->IsAlive())
+    {
+        unreachableTargets.Add(progressClock.target, uint32(time(nullptr)), sPlayerbotAIConfig.combatRuleProgressIgnoreSeconds);
+        if (aiObjectContext->GetValue<Unit*>("current target")->Get() == target)
+            aiObjectContext->GetValue<Unit*>("current target")->Set(nullptr);
+    }
+    ai::combat_rule::CountProgressAct(bot, ai::combat_rule::ProgressAct::Break);
+
+    if (sPlayerbotAIConfig.supervisor && ai::supervisor::Applies(sPlayerbotAIConfig.supervisor, bot->GetGUIDLow()))
+    {
+        combatLoopEvent = ai::combat_rule::MakeCombatLoopEvent(bot, target ? target->GetEntry() : 0, nowMs,
+            nowMs - progressClock.lastProgressMs);
+        combatLoopPending = true;
+        ai::combat_rule::CountProgressAct(bot, ai::combat_rule::ProgressAct::LoopEvent);
+    }
 }
 
 ai::supervisor::Supervisor* PlayerbotAI::EnsureSupervisor()
@@ -1845,6 +1936,23 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
         }
     }
 
+    // A3 step 5 (AiPlayerbot.CombatRule.ProgressGuard): a progress backoff ends as soon as the target changed, it took damage or the
+    // bot's health dropped below LowHealth.
+    if (progressBackoffPending)
+    {
+        Unit* const target = aiObjectContext->GetValue<Unit*>("current target")->Get();
+        if (ai::combat_rule::ProgressShouldWake(progressClock, target ? target->GetObjectGuid().GetRawValue() : 0,
+            target ? target->GetHealth() : 0, uint32(bot->GetHealthPercent()), sPlayerbotAIConfig.lowHealth))
+        {
+            progressBackoffPending = false;
+            if (aiInternalUpdateDelay && aiInternalUpdateDelay <= sPlayerbotAIConfig.combatRuleProgressBackoffMs)
+            {
+                ResetAIInternalUpdateDelay();
+                ai::combat_rule::CountProgressAct(bot, ai::combat_rule::ProgressAct::Woken);
+            }
+        }
+    }
+
     // cancel logout in combat
     if (bot->IsStunnedByLogout() || bot->GetSession()->isLogingOut())
     {
@@ -2300,6 +2408,17 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
             }
         }
 
+        // A3 step 5 (ADR-0041, AiPlayerbot.CombatRule.ProgressGuard, default 0): one reading of the combat progress clock per engine
+        // pass (A3 R8), for both cohorts while the switch is on; the pass tail acts on it. Off: nothing is read.
+        progressBackoffPending = false;
+        if (sPlayerbotAIConfig.combatRuleProgressGuard && !HasRealPlayerMaster())
+            ObserveCombatProgress();
+        else
+        {
+            progressVerdict = ai::combat_rule::ProgressVerdict::Off;
+            progressClock = ai::combat_rule::ProgressClock();
+        }
+
         // A3 step 2 (ADR-0041, AiPlayerbot.QuestBook, default 0): the quest book watches the log once per engine pass (a snapshot
         // at most every 5 s). Active for a roster bot on its own in the switch's cohort; with QuestBook.Shadow the other roster
         // bots keep a shadow book (KPI lines only, no caller asks it). Otherwise the instance is released and dropped.
@@ -2354,6 +2473,11 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
         // an action while the bot is out of mana waits DelayMs instead of ReactDelay.
         if (sPlayerbotAIConfig.rotationOomBackoff && !HasRealPlayerMaster())
             BackoffOutOfMana(yieldSetDelay, min);
+
+        // A3 step 5 (AiPlayerbot.CombatRule.ProgressGuard, default 0): counts the combat pass and, for the switch's cohort, acts on
+        // this pass's progress reading (backoff wait, break).
+        if (sPlayerbotAIConfig.combatRuleProgressGuard && !HasRealPlayerMaster())
+            ActOnCombatProgress();
     }
     SC_PHASE("UpdateAI.exit", bot ? bot->GetName() : "(null)");
 }

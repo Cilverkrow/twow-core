@@ -1,6 +1,7 @@
 #pragma once
 
 #include "playerbot/CombatRulePolicy.h"
+#include "playerbot/SupervisorPolicy.h"
 
 #include <string>
 
@@ -36,6 +37,31 @@ void CountPull(PlayerbotAI* ai);
 
 // The rest node fired (counted per tick while the part is on).
 void CountRest(PlayerbotAI* ai, RestNeed need);
+
+// Part ProgressGuard (A3 R8): the clock itself is PlayerbotAI::progressClock, read once per engine pass (ObserveCombatProgress) and
+// acted on after the pass (ActOnCombatProgress). These are its config limits and counters.
+ProgressLimits ProgressLimitsFromConfig();
+
+// One clock reading (both cohorts while the switch is on): episodes, combat time, time without progress, long loops, kills.
+void CountProgress(Player* bot, ProgressStep const& step);
+
+// One combat engine pass: without an OK action, and of those while the bot auto-attacks (swing).
+void CountCombatPass(Player* bot, bool noOk, bool swing);
+
+enum class ProgressAct : std::uint8_t
+{
+    Backoff = 0,
+    Woken = 1,
+    Break = 2,
+    LoopEvent = 3,
+};
+
+void CountProgressAct(Player* bot, ProgressAct act);
+
+// The event a break leaves for the supervisor's CombatGuard frame (R8 "then an event to the owner"): kind CombatLoop, source
+// Requester::CombatGuard, a = target entry, b = seconds without progress, the bot's map and position, atMs = WorldTimer ms. Plain
+// data (ADR-0039). The frame takes it with PlayerbotAI::TakeCombatLoopEvent on the bot's thread.
+ai::supervisor::Event MakeCombatLoopEvent(Player* bot, std::uint32_t targetEntry, std::uint32_t nowMs, std::uint32_t noProgressMs);
 
 // One "[CombatRule] part=<Part>" line per minute and part that is on (increments); called from the minute report pass.
 void ReportCombatRule();
