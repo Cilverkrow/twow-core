@@ -1,6 +1,7 @@
 #pragma once
 
 #include "playerbot/SupervisorPolicy.h"
+#include "playerbot/SupervisorShadow.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -9,8 +10,9 @@ class PlayerbotAI;
 
 // A3 step 3 (ADR-0041 + amendment 2026-11-06, OB-00 06.11.2026; AiPlayerbot.Supervisor, default 0): one supervisor per bot, on
 // the bot's map thread (PlayerbotAI::UpdateAI, in the engine pass). Design: ws-00/projekt-durchleuchtung/A3-S3-ENTWURF.md
-// (c98e6ded). SCAFFOLD: the instance exists only while the switch applies to the bot, and Tick only counts the engine passes.
-// It reads and writes nothing of the bot: no travel target, no status, no delay, no strategy, no log line. Mode changes (via
+// (c98e6ded). The instance exists only while the switch applies to the bot; Tick counts the engine passes and, with
+// AiPlayerbot.Supervisor.Arbiter = 1 (behaviour pair 1, default 0), runs the arbiter shadow, which only watches the live travel
+// target (SupervisorShadow.h). It writes nothing of the bot: no travel target, no status, no delay, no strategy. Mode changes (via
 // SupervisorPolicy::Decide), the arbiter on the travel target, the cadence floor and the decision lines come in their own pairs,
 // each behind this switch and each with its own A/B (ADR-0041 rules 1 and 3); legacy writers are deleted only after adoption.
 namespace ai::supervisor
@@ -37,23 +39,28 @@ public:
     Supervisor(Supervisor const&) = delete;
     Supervisor& operator=(Supervisor const&) = delete;
 
-    // Once per engine pass while the switch applies (scaffold: the bare counter).
-    void Tick(std::uint32_t nowMs);
+    // Once per engine pass while the switch applies: the counter, then the arbiter shadow (shadowOn = AiPlayerbot.Supervisor.Arbiter
+    // is 1, read at the gate) closes the bundle of the pass before. Nothing is written to the bot.
+    void Tick(std::uint32_t nowMs, bool shadowOn);
 
-    // The switch no longer applies (reload 1 -> 0, or the bot left the cohort): leave the travel target as it is. The caller
-    // drops the instance right after.
+    // The switch no longer applies (reload 1 -> 0, or the bot left the cohort): leave the travel target as it is; the shadow
+    // closes its open bundle. The caller drops the instance right after.
     void Release();
 
     std::uint64_t Ticks() const { return ticks_; }
     Mode CurrentMode() const { return mode_; }
     Phase CurrentPhase() const { return phase_; }
 
+    // Behaviour pair 1: the arbiter shadow of this bot (SupervisorShadow.h; used under its file-local mutex only).
+    ShadowState& Shadow() { return shadow_; }
+
 private:
-    [[maybe_unused]] PlayerbotAI* ai_;   // read from the first behaviour pair on
+    PlayerbotAI* ai_;
     Mode mode_ = Mode::Passive;
     Phase phase_ = Phase::Plan;
     std::uint64_t ticks_ = 0;
     [[maybe_unused]] TargetMemory memory_[kTargetMemorySlots];
+    ShadowState shadow_;
 };
 
 // The module-wide mailbox (design section 1.10), keyed by the bot's low guid: other threads (the group manager on the world

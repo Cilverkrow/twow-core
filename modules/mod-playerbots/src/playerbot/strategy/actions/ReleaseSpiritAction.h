@@ -8,6 +8,7 @@
 #include "playerbot/MasterWaitPolicy.h"
 #include "playerbot/ReleaseVeto.h"   // twow-repo#629 G1 (DungeonClear.StayDeadInRun)
 #include "playerbot/TravelMgr.h"
+#include "playerbot/SupervisorShadow.h"   // A3 step 3 arbiter shadow: RepopAction's writer scope
 
 #include "playerbot/BotSlots.h"
 #include "playerbot/CorpseRunPolicy.h"
@@ -218,6 +219,7 @@ namespace ai
     public:
         virtual bool Execute(Event& event) override
         {
+            ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::Lifecycle);
             Player* requester = event.getOwner() ? event.getOwner() : GetMaster();
 
             // twow-repo#575 A3 step 4 S4-1 (AiPlayerbot.Revive.CorpseRunFirst): a ghost with a corpse hit by "move long stuck" goes to

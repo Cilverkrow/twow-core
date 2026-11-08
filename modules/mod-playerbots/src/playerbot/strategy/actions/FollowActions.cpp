@@ -1,5 +1,6 @@
 
 #include "playerbot/playerbot.h"
+#include "playerbot/SupervisorShadow.h"   // A3 step 3 arbiter shadow: writer scopes
 #include "FollowActions.h"
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/ServerFacade.h"
@@ -46,6 +47,7 @@ bool IsRealPlayerTarget(Unit* target)
 
 bool FollowAction::Execute(Event& event)
 {
+    ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::GroupFollow);
     bool moved = false;
     Unit* followTarget = AI_VALUE(Unit*, "follow target");
     Formation* formation = AI_VALUE(Formation*, "formation");

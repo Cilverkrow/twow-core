@@ -8,8 +8,11 @@ cmake_policy(VERSION 3.16)
 #   - the pure headers (SupervisorPolicy.h, PlannerPolicy.h) name no game header and read no config; <cstdio> only in
 #     SupervisorPolicy.h, for std::snprintf in the two pure line formatters (decision F2 a: no log line in the scaffold);
 #   - the supervisor writes nothing of the bot: no travel-target writer, no delay setter, no strategy change, no teleport, no
-#     log call; Tick is the bare counter; the mailbox is declared only and nothing calls it; ~Supervisor is out of line.
-# The pair that gives the supervisor its first behaviour changes this check on purpose, together with its own A/B.
+#     log call; Tick starts with the counter; the mailbox is declared only and nothing calls it; ~Supervisor is out of line.
+# Behaviour pair 1 (AiPlayerbot.Supervisor.Arbiter, the arbiter shadow; OB-00 07.11.2026 E1-E4 a, owner OK 08.11.2026) changed
+# this check on purpose: Tick takes shadowOn from the gate and hands the pass to the shadow, Release lets the shadow close its
+# bundle, ~Supervisor drops the shadow state (no line, no bot access); the shadow itself lives in SupervisorShadow.*, pinned by a3s3_arbiter_shadow_source_contract_tests.cmake. The word
+# ban below still holds for Supervisor.h/.cpp: no writer, no config read, no log call there.
 # Prepared ratchet (NOT armed here): the count of direct travel-target writer calls (SetTarget|SetStatus|SetNullTravelTarget)
 # in the module is printed; the writer-deletion pairs (step 8) arm it at "<= the count of their base".
 # Pure rules: t/supervisor_policy_tests.cpp, t/planner_policy_tests.cpp. Every check_* returns "" when it holds, else the
@@ -69,7 +72,7 @@ function(check_switch config_h config_cpp conf_dist out)
       "supervisor = uint32(config.GetIntDefault(\"AiPlayerbot.Supervisor\", 0));"
       "if (!ai::supervisor::ValidMode(supervisor))"
       "        supervisor = 0;"
-      "            {\"Rpg.TurnInFirst\", Value(rpgTurnInFirst)},\n            {\"Supervisor\", Value(supervisor)},\n            {\"ThreadSafeTeleportAck\"")
+      "            {\"Rpg.TurnInFirst\", Value(rpgTurnInFirst)},\n            {\"Supervisor\", Value(supervisor)},\n            {\"Supervisor.Arbiter\"")
     string(FIND "${config_cpp}" "${needle}" at)
     if(at EQUAL -1)
       set(${out} "PlayerbotAIConfig.cpp: missing ${needle}" PARENT_SCOPE)
@@ -91,7 +94,7 @@ endfunction()
 
 # ---- the one tick --------------------------------------------------------------------------------------------------------
 set(SCPHASE "        SC_PHASE(\"UpdateAI.UpdateAIInternal\", bot ? bot->GetName() : \"(null)\");")
-set(GATE "        if (sPlayerbotAIConfig.supervisor && ai::supervisor::Applies(sPlayerbotAIConfig.supervisor, bot->GetGUIDLow()))\n            EnsureSupervisor()->Tick(WorldTimer::getMSTime());\n        else if (supervisor_)\n        {\n            supervisor_->Release();\n            supervisor_.reset();\n        }\n\n${SCPHASE}")
+set(GATE "        if (sPlayerbotAIConfig.supervisor && ai::supervisor::Applies(sPlayerbotAIConfig.supervisor, bot->GetGUIDLow()))\n            EnsureSupervisor()->Tick(WorldTimer::getMSTime(), sPlayerbotAIConfig.supervisorArbiter == 1);\n        else if (supervisor_)\n        {\n            supervisor_->Release();\n            supervisor_.reset();\n        }\n\n${SCPHASE}")
 set(COUNTDOWN "        aiInternalUpdateDelay = 0;\n        isWaiting = false;\n    }")
 set(REACTION "if(!UpdateAIReaction(elapsed, doMinimalReaction, bot->IsTaxiFlying()) && CanUpdateAIInternal())")
 set(PASS "        UpdateAIInternal(elapsed, minimal);")
@@ -186,19 +189,21 @@ function(check_no_behaviour sup_h sup_cpp all_sources out)
       return()
     endif()
   endforeach()
-  string(FIND "${sup_cpp}" "void Supervisor::Tick(std::uint32_t /*nowMs*/)\n{\n    ++ticks_;\n}" at)
+  # Behaviour pair 1: the tick is the counter plus the hand-over to the arbiter shadow, nothing else; Release only lets the
+  # shadow close its bundle.
+  string(FIND "${sup_cpp}" "void Supervisor::Tick(std::uint32_t /*nowMs*/, bool shadowOn)\n{\n    ++ticks_;\n    ShadowTick(ai_, shadow_, shadowOn);\n}" at)
   if(at EQUAL -1)
-    set(${out} "Supervisor.cpp: the scaffold tick is not the bare counter" PARENT_SCOPE)
+    set(${out} "Supervisor.cpp: the tick is not the counter plus the shadow hand-over" PARENT_SCOPE)
     return()
   endif()
-  string(FIND "${sup_cpp}" "void Supervisor::Release()\n{\n}" at)
+  string(FIND "${sup_cpp}" "void Supervisor::Release()\n{\n    ShadowRelease(ai_, shadow_);\n}" at)
   if(at EQUAL -1)
-    set(${out} "Supervisor.cpp: the scaffold release is not empty" PARENT_SCOPE)
+    set(${out} "Supervisor.cpp: the release does more than close the shadow's bundle" PARENT_SCOPE)
     return()
   endif()
-  string(FIND "${sup_cpp}" "Supervisor::~Supervisor() = default;" at)
+  string(FIND "${sup_cpp}" "Supervisor::~Supervisor()\n{\n    ShadowDrop(shadow_);\n}" at)
   if(at EQUAL -1)
-    set(${out} "Supervisor.cpp: ~Supervisor is not defined out of line" PARENT_SCOPE)
+    set(${out} "Supervisor.cpp: ~Supervisor is not defined out of line (dropping only the shadow state)" PARENT_SCOPE)
     return()
   endif()
   string(FIND "${sup_h}" "    ~Supervisor();" at)
@@ -347,7 +352,7 @@ string(REPLACE "    ++ticks_;\n" "    ticks_ += 2;\n" m "${sup_cpp}")
 check_no_behaviour("${sup_h}" "${m}" "${all_sources}" r)
 expect_caught("${r}" "the tick is not the bare counter")
 
-string(REPLACE "Supervisor::~Supervisor() = default;" "" m "${sup_cpp}")
+string(REPLACE "Supervisor::~Supervisor()\n{\n    ShadowDrop(shadow_);\n}" "" m "${sup_cpp}")
 check_no_behaviour("${sup_h}" "${m}" "${all_sources}" r)
 expect_caught("${r}" "no out-of-line destructor")
 
