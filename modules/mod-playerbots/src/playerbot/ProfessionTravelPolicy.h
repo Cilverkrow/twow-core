@@ -27,6 +27,9 @@ constexpr std::uint32_t kSkinning = 393;
 constexpr std::uint32_t kFirstAid = 129;
 // twow-repo#333 M2 Crafting.Cooking (owner list 07.11.2026, item 2): a trip skill only with the switch on for the bot.
 constexpr std::uint32_t kCooking = 185;
+// twow-repo#333 M2 Crafting.Survival (owner list 07.11.2026, item 3): Turtle Survival, a trip skill only with its switch; its tool.
+constexpr std::uint32_t kSurvival = 142;
+constexpr std::uint32_t kWhittle = 42004;
 
 constexpr std::uint32_t kMiningPick = 2901;
 constexpr std::uint32_t kSkinningKnife = 7005;
@@ -49,9 +52,9 @@ inline bool IsPhaseOneSkill(std::uint32_t skill)
 
 // twow-repo#333 M2 Crafting.Cooking (owner list 07.11.2026, item 2): with the switch on for the bot the trips also teach cooking;
 // off, the phase-one skills only.
-inline bool IsTripSkill(std::uint32_t skill, bool cooking)
+inline bool IsTripSkill(std::uint32_t skill, bool cooking, bool survival = false)
 {
-    return IsPhaseOneSkill(skill) || (cooking && skill == kCooking);
+    return IsPhaseOneSkill(skill) || (cooking && skill == kCooking) || (survival && skill == kSurvival);
 }
 
 // The quest-first gap (CLI-Deep 25.10.2026): the 8.1 quest route backoff runs (the last quest search found nothing),
@@ -163,9 +166,9 @@ inline bool NearTripSkill(std::uint32_t skill, bool hasSkill)
 }
 
 // twow-repo#333 M2 Crafting.Cooking: the same "once" rule for the trip skills of IsTripSkill.
-inline bool NearTripSkill(std::uint32_t skill, bool hasSkill, bool cooking)
+inline bool NearTripSkill(std::uint32_t skill, bool hasSkill, bool cooking, bool survival = false)
 {
-    return IsTripSkill(skill, cooking) && !hasSkill;
+    return IsTripSkill(skill, cooking, survival) && !hasSkill;
 }
 
 inline bool WithinNearRadius(float distance, std::uint32_t nearRadius)
@@ -312,6 +315,15 @@ inline std::uint32_t MissingTool(bool mining, bool hasPick, bool skinning, bool 
     if (skinning && !hasKnife)
         return kSkinningKnife;
     return 0;
+}
+
+// twow-repo#333 M2 Crafting.Survival (owner list 07.11.2026, item 3): with the switch on for a survivalist the tool trip also buys
+// the Whittle (the tool of most survival recipes); pick and knife first, as before.
+inline std::uint32_t MissingTool(bool mining, bool hasPick, bool skinning, bool hasKnife, bool survival, bool hasWhittle)
+{
+    if (std::uint32_t const gatherTool = MissingTool(mining, hasPick, skinning, hasKnife))
+        return gatherTool;
+    return survival && !hasWhittle ? kWhittle : 0;
 }
 
 // A gather purpose for this skill is useful only with its tool (the loot check LootObjectStack.cpp needs it anyway).
