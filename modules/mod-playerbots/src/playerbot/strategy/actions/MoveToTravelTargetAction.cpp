@@ -1,5 +1,6 @@
 
 #include "playerbot/playerbot.h"
+#include "playerbot/SupervisorShadow.h"   // A3 step 3 arbiter shadow: writer scopes
 #include "MoveToTravelTargetAction.h"
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/ServerFacade.h"
@@ -30,6 +31,7 @@ void LogStartupTravel()
 
 bool MoveToTravelTargetAction::Execute(Event& event)
 {
+    ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::Execution);
     TravelTarget* target = AI_VALUE(TravelTarget*, "travel target");
 
     if (target->GetStatus() == TravelStatus::TRAVEL_STATUS_READY)

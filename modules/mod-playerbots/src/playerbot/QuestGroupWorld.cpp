@@ -1,4 +1,5 @@
 #include "playerbot/playerbot.h"
+#include "playerbot/SupervisorShadow.h"   // A3 step 3 arbiter shadow: writer scopes
 #include "playerbot/QuestGroupWorld.h"
 #include "playerbot/BotGroupDiagnostics.h"
 #include "playerbot/GroupAiRefresh.h"
@@ -145,6 +146,7 @@ void ResetTravelValues(PlayerbotAI* ai)
 // needs it, the taker while the bot can turn in (ChooseTravelTargetAction's own condition strings).
 bool ForceQuestTravel(Player* bot, std::uint32_t questId, int objIdx)
 {
+    ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::Select);
     PlayerbotAI* ai = Ai(bot);
     TravelTarget* t = Target(ai);
     if (t->GetStatus() == TravelStatus::TRAVEL_STATUS_PREPARE)
@@ -231,6 +233,7 @@ SavedTravel SaveTravel(TravelTarget* t)
 // A stale target (inactive since) is ended by TravelTarget::CheckStatus itself.
 void RestoreTravel(PlayerbotAI* ai, SavedTravel const& s)
 {
+    ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::Select);
     TravelTarget* t = Target(ai);
     if (!s.valid)
     {

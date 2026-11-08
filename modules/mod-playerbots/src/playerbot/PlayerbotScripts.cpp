@@ -35,6 +35,7 @@
 #include "playerbot/BotSlots.h"
 #include "playerbot/GroupOps.h"
 #include "playerbot/PacketTracePolicy.h"
+#include "playerbot/SupervisorShadow.h"   // A3 step 3 arbiter shadow: the world hook's thread tag
 #include <array>
 #include <mutex>
 
@@ -97,6 +98,8 @@ class PlayerbotWorldScript : public WorldScript
         // Was World::UpdatePlayerbotsTick(diff).
         void OnUpdate(uint32 diff) override
         {
+            // A3 step 3 arbiter shadow (AiPlayerbot.Supervisor.Arbiter): writes here run with all maps idle.
+            ai::supervisor::ThreadTag const threadTag(ai::supervisor::ThreadKind::World, nullptr);
             // twow-repo#676 (BOT-HOLDER-FARACK-01): the far-teleport acks the master holders queued during sMapMgr.Update run
             // here, with all maps idle (WORLDHOOK_ON_UPDATE comes after sMapMgr.Update; see GroupOps.cpp for the chain). Before
             // the enabled check, so a queued bot is never left mid-teleport; an empty queue is one atomic load.
