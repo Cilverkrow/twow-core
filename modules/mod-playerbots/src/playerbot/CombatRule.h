@@ -48,6 +48,12 @@ void CountProgress(Player* bot, ProgressStep const& step);
 // One combat engine pass: without an OK action, and of those while the bot auto-attacks (swing).
 void CountCombatPass(Player* bot, bool noOk, bool swing);
 
+// P6 (log only): the bot's own totals for the "[CombatRule] part=ProgressGuardBot" line (CombatRulePolicy.h ProgressBotTotals). Both
+// write the open block first when this reading is in a later 10-minute block or another band. Same callers as CountProgress /
+// CountCombatPass, so only with the switch on and never for a real-player-master bot.
+void CountProgressBot(Player* bot, ProgressBotTotals& totals, ProgressStep const& step);
+void CountCombatPassBot(Player* bot, ProgressBotTotals& totals, bool noOk, bool swing);
+
 enum class ProgressAct : std::uint8_t
 {
     Backoff = 0,
