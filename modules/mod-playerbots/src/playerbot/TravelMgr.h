@@ -435,6 +435,14 @@ namespace ai
 
 		bool IsForced() const { return forced; }
 
+		// A3 step 3 arbiter shadow (AiPlayerbot.Supervisor.Arbiter, default 0): only the bot's own travel target value marks its
+		// target live (TargetValue.h); temporaries and group copies stay unwatched. A write the shadow could not follow (no
+		// thread tag, another bot's map thread) marks the target, and the next followed write carries gap=1.
+		void MarkLive() { live_ = true; }
+		bool IsLive() const { return live_; }
+		void NoteShadowGap() { shadowGap_ = true; }
+		bool TakeShadowGap() { bool const gap = shadowGap_; shadowGap_ = false; return gap; }
+
 		bool IsConditionsActive(bool clear = false);
 		bool IsDestinationActive();
 
@@ -576,6 +584,8 @@ namespace ai
 		uint32 bandWalkFromZone = 0;
 		bool gapGrindChoice = false;   // twow-repo#601 S2 R3: only the new target of a GrindMode 1 gap grind choice
 		bool restPausePending = false;   // twow-repo#602 X1: a rest ended since the last turn-in observation
+		bool live_ = false;        // A3 step 3 arbiter shadow: the bot's own target (MarkLive, TravelTargetValue only)
+		bool shadowGap_ = false;   // A3 step 3 arbiter shadow: a write the shadow could not follow came before the next one
 
 		bool forced = false;
 		bool visitor = true;

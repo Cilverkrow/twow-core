@@ -706,6 +706,9 @@ private:
 public:
 	Player* GetBot() { return bot; }
     Player* GetMaster() { return master; }
+    // A3 step 3 behaviour pair 1 (AiPlayerbot.Supervisor.Arbiter): the supervisor if it exists, else nullptr; never makes one
+    // (the arbiter shadow's observer, on the bot's own thread or the world thread while the maps are idle).
+    ai::supervisor::Supervisor* GetSupervisor() const { return supervisor_.get(); }
 
     // accessor for the active engine so
     // cpp can build heartbeat / debug payloads without being

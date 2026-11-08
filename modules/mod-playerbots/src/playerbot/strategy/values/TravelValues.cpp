@@ -1,4 +1,5 @@
 #include "playerbot/playerbot.h"
+#include "playerbot/SupervisorShadow.h"   // A3 step 3 arbiter shadow: writer scopes
 #include "TravelValues.h"
 #include "QuestValues.h"
 #include "SharedValueContext.h"
@@ -914,6 +915,7 @@ uint8 ai::ProfessionTripOpenKind(PlayerbotAI* ai)
 // end as lost. PREPARE: nothing (the target still carries the old conditions).
 void ai::ProfessionTripTick(PlayerbotAI* ai)
 {
+    ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::Lifecycle);
     Player* bot = ai->GetBot();
     if (!ai::cohort::Applies(sPlayerbotAIConfig.professionTrainingTripNoGrind, bot->GetGUIDLow()) || ai->HasRealPlayerMaster() ||
         !sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()))

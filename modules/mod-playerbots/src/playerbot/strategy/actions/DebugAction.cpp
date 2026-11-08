@@ -1,4 +1,5 @@
 #include "playerbot/playerbot.h"
+#include "playerbot/SupervisorShadow.h"   // A3 step 3 arbiter shadow: writer scopes
 #include "DebugAction.h"
 #include "playerbot/PlayerbotAIConfig.h"
 #include <playerbot/TravelNode.h>
@@ -5008,6 +5009,7 @@ bool DebugAction::HandleSound(Event& event, Player* requester, const std::string
 
 bool DebugAction::HandleStuck(Event& event, Player* requester, const std::string& text)
 {
+    ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::Command);
     bool shouldReset = (text.find("reset") != std::string::npos);
 
     ai->TellPlayer(requester, "=== Stuck Bot Diagnostic ===");
