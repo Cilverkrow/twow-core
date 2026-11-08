@@ -438,6 +438,69 @@ inline bool ProgressMayAct(ProgressClock const& c)
     return c.target != 0;
 }
 
+// P6 (OB-00 08.11. Q1 (a), log only): per-bot totals of the progress clock and the combat passes, written as one
+// "[CombatRule] part=ProgressGuardBot" line per bot and 10-minute wall-clock block, and on a band change, so the PREREG can use a
+// bot-cluster bootstrap (the minute lines are cohort sums). A block is written by the bot's first reading in a later block or band;
+// a bot that logs out loses at most its open block. Same fields and meaning as ProgressGuardCls, for one bot.
+constexpr std::uint64_t ProgressBotBlockSeconds = 600;
+
+struct ProgressBotTotals
+{
+    std::uint64_t block = 0;   // wall-clock block start (unix seconds)
+    unsigned band = 0;
+    std::uint64_t combatMs = 0;
+    std::uint64_t noProgressMs = 0;
+    std::uint64_t kills = 0;
+    std::uint64_t killMs = 0;
+    std::uint64_t passes = 0;
+    std::uint64_t noOk = 0;
+    std::uint64_t noOkSwing = 0;
+};
+
+inline std::uint64_t ProgressBotBlock(std::uint64_t unixSeconds)
+{
+    return unixSeconds - unixSeconds % ProgressBotBlockSeconds;
+}
+
+inline bool ProgressBotEmpty(ProgressBotTotals const& t)
+{
+    return !t.combatMs && !t.kills && !t.passes;
+}
+
+// True: the totals belong to an earlier block or another band and must be written (then cleared) before this reading counts.
+inline bool ProgressBotFlushDue(ProgressBotTotals const& t, std::uint64_t block, unsigned band)
+{
+    return !ProgressBotEmpty(t) && (t.block != block || t.band != band);
+}
+
+inline void AddProgressBotStep(ProgressBotTotals& t, std::uint64_t block, unsigned band, ProgressStep const& s)
+{
+    if (!s.combatMs && !s.kill)
+        return;
+    t.block = block;
+    t.band = band;
+    t.combatMs += s.combatMs;
+    t.noProgressMs += s.noProgressMs;
+    if (s.kill)
+    {
+        ++t.kills;
+        t.killMs += s.killMs;
+    }
+}
+
+inline void AddProgressBotPass(ProgressBotTotals& t, std::uint64_t block, unsigned band, bool noOk, bool swing)
+{
+    t.block = block;
+    t.band = band;
+    ++t.passes;
+    if (noOk)
+    {
+        ++t.noOk;
+        if (swing)
+            ++t.noOkSwing;
+    }
+}
+
 // ---------------------------------------------------------------------------------------------------------------------------
 // Part TargetRule (AiPlayerbot.CombatRule.TargetRule; design A3-S5-PROGRESSGUARD-ENTWURF.md v1.1 §3, OB-00 08.11.2026 (a)).
 //
