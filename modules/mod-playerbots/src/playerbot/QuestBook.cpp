@@ -189,10 +189,11 @@ void ReportQuestBook()
         auto take = [c](Count k) { return (unsigned long long)ai::questbook::counts[c][std::size_t(k)].exchange(0, std::memory_order_relaxed); };
         sLog.outBasic("[QuestBookMin] cohort=%c mode=%u shadow=%u accept_yes=%llu accept_no_window=%llu accept_no_grey=%llu "
             "accept_no_full=%llu accept_no_excl=%llu target_no_window=%llu target_no_excl=%llu turnin_yield=%llu complete_stale=%llu "
-            "left_log=%llu credit_dropped=%llu",
+            "left_log=%llu credit_dropped=%llu source_single=%llu source_common=%llu source_regroup=%llu order_scored=%llu",
             c == 0 ? 'A' : 'B', sPlayerbotAIConfig.questBook, sPlayerbotAIConfig.questBookShadow ? 1u : 0u,
             take(Count::AcceptYes), take(Count::AcceptNoWindow), take(Count::AcceptNoGrey), take(Count::AcceptNoFull),
             take(Count::AcceptNoExcluded), take(Count::TargetNoWindow), take(Count::TargetNoExcluded), take(Count::TurnInYield),
-            take(Count::CompleteStale), take(Count::LeftLog), take(Count::CreditDropped));
+            take(Count::CompleteStale), take(Count::LeftLog), take(Count::CreditDropped), take(Count::SourceSingle),
+            take(Count::SourceCommon), take(Count::SourceRegroup), take(Count::OrderScored));
     }
 }
