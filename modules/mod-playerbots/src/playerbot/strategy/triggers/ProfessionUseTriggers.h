@@ -14,6 +14,19 @@ namespace ai
     // in the switch's cohort (CohortPolicy.h). The config check first, so the default costs nothing.
     bool CraftingConsumablesFor(PlayerbotAI* ai);
 
+    // twow-repo#333 M2 Crafting.Cooking (owner list 07.11.2026, item 2): the switch is on for this bot - a roster bot on its own
+    // in the switch's cohort (CohortPolicy.h). The config check first, so the default costs nothing.
+    bool CraftingCookingFor(PlayerbotAI* ai);
+
+    // The cooking fire: spell focus 4 (Basic Campfire GO 29784, any fire counts as in Spell::CheckCast), lit by Basic Campfire 818
+    // (learned with cooking; reagent Simple Wood 4470, tool Flint and Tinder 4471, category cooldown).
+    constexpr uint32 kCookingFireFocus = 4;
+    constexpr uint32 kCampfireSpell = 818;
+    // A spell focus kCookingFireFocus within Spell::CheckCast's reach (GameObjectFocusCheck, 10 yd).
+    bool CookingFireNear(Player* bot);
+    // The bot can light a campfire now: knows 818, not on (category) cooldown, wood and flint in the bags.
+    bool CanLightCampfire(Player* bot);
+
     // twow-repo#485: not moving (nor on a flight path), fighting, casting,
     // sitting or mounted - a craft cast would fail now.
     bool IsReadyToCraft(PlayerbotAI* ai);
