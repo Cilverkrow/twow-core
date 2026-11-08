@@ -3,6 +3,7 @@
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/ServerFacade.h"
 #include "playerbot/strategy/triggers/ProfessionUseTriggers.h"
+#include "playerbot/CohortPolicy.h"
 
 #include <algorithm>
 #include <string>
@@ -73,6 +74,30 @@ bool ProfessionCraftAction::Execute(Event& event)
         if (bot->GetShapeshiftForm() != FORM_NONE)
             ai->RemoveShapeshift();
 
+        // twow-repo#333 M2 Crafting.Cooking (owner list 07.11.2026, item 2): a fire recipe without a fire in reach - light the
+        // campfire first and keep the pick, so the trigger fires again right after the fire instead of after the craft interval.
+        // A fire that cannot be lit leaves the recipe to the cast check below (no_focus backoff).
+        bool const cooking = spell->RequiresSpellFocus == kCookingFireFocus && CraftingCookingFor(ai);
+        if (cooking && !CookingFireNear(bot) && CanLightCampfire(bot))
+        {
+            SpellCastResult fireCheck = SPELL_CAST_OK;
+            uint32 fireDuration = 0;
+            bool const lit = ai->CanCastSpell(kCampfireSpell, bot, 0, true, nullptr, false, false, false, &fireCheck) &&
+                ai->CastSpell(kCampfireSpell, bot, nullptr, true, &fireDuration);
+            sLog.outBasic("[Crafting] kind=cooking event=campfire result=%s check=%u recipe=%u bot=%u level=%u cohort=%c",
+                lit ? "cast_started" : "failed", uint32(fireCheck), spellId, bot->GetGUIDLow(), bot->GetLevel(),
+                ai::cohort::Letter(bot->GetGUIDLow()));
+            if (lit)
+            {
+                time_t const now = time(nullptr);
+                SetDuration(std::max(fireDuration, sPlayerbotAIConfig.reactDelay));
+                SET_AI_VALUE2(int, "manual int", "profession craft spell", int32(spellId));
+                SET_AI_VALUE2(time_t, "manual time", "profession craft scan", now);
+                SET_AI_VALUE2(time_t, "manual time", "profession craft", now - time_t(sPlayerbotAIConfig.professionUseCraftIntervalSeconds));
+                return true;
+            }
+        }
+
         SpellCastResult check = SPELL_CAST_OK;
         if (!ai->CanCastSpell(spellId, bot, 0, true, nullptr, false, false, false, &check))
         {
@@ -102,6 +127,10 @@ bool ProfessionCraftAction::Execute(Event& event)
         {
             SetDuration(std::max(castDuration, sPlayerbotAIConfig.reactDelay));
             sPlayerbotAIConfig.logEvent(ai, "CraftCastStarted", spell->SpellName[0], std::to_string(spellId));
+            // twow-repo#333 M2 Crafting.Cooking: one line per started fire recipe of the switch's bots.
+            if (cooking)
+                sLog.outBasic("[Crafting] kind=cooking event=cook spell=%u item=%u bot=%u level=%u cohort=%c", spellId,
+                    uint32(spell->EffectItemType[0]), bot->GetGUIDLow(), bot->GetLevel(), ai::cohort::Letter(bot->GetGUIDLow()));
         }
         return ok;
     }
