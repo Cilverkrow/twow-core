@@ -187,6 +187,13 @@ PlayerTravelInfo::PlayerTravelInfo(Player* player, bool gapGrind)
         }
     }
 
+    // A3 step 2 QB-B (AiPlayerbot.QuestBook.Bundle, default 0): the bundle bit and the run speed, here on the bot thread; the async
+    // quest fetch orders the giver sites by them. Every other bot: false, nothing is read.
+    questBundle = questBook && sPlayerbotAIConfig.questBookBundle &&
+        ai::questbook::Applies(sPlayerbotAIConfig.questBookBundle, player->GetGUIDLow());
+    if (questBundle)
+        runSpeed = player->GetSpeed(MOVE_RUN);
+
     // twow-repo#333 P1-v (AiPlayerbot.Travel.RpgAreaLevelFromSpawn): the RPG area level bit, here on the bot thread; read by
     // RpgTravelDestination::IsPossible only as a value. Mode 0: false for every bot, as before.
     rpgAreaFromSpawn = ai::cohort::Applies(sPlayerbotAIConfig.travelRpgAreaLevelFromSpawn, player->GetGUIDLow());

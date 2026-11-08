@@ -8,6 +8,7 @@
 #include "playerbot/GatherNodePolicy.h"
 #include "playerbot/strategy/values/TravelValues.h"
 #include "playerbot/QuestSource.h"   // A3 step 2 QB-S (AiPlayerbot.QuestBook.SourceChoice): source choice and order
+#include "playerbot/QuestBundle.h"   // A3 step 2 QB-B (AiPlayerbot.QuestBook.Bundle): giver sites by bundle
 #include "playerbot/strategy/values/SharedValueContext.h"
 #include "playerbot/strategy/values/GuildValues.h"
 #include "playerbot/strategy/values/QuestValues.h"   // twow-repo#601 quest acceptance step 1b: DialogStatusValue::getDialogStatus
@@ -2024,6 +2025,9 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
                 // A3 step 2 QB-S (AiPlayerbot.QuestBook.SourceChoice, default 0): one line per objective pick of a bot the switch
                 // applies to, with the load-time facts of the source. Every other bot: no line.
                 ai::questsource::NotePick(bot, ai, destination, position);
+                // A3 step 2 QB-B (AiPlayerbot.QuestBook.Bundle, default 0): one line per giver pick of a bot the switch applies to,
+                // with the bundle recounted from this choice list. Every other bot: no line.
+                ai::questbundle::NotePick(bot, ai, destination, position, partitionedList);
                 break;
             }
             else
@@ -3601,6 +3605,11 @@ bool RequestQuestTravelTargetAction::Execute(Event& event)
                     for (auto const& [partition, points] : list)
                         giverPoints += uint32(points.size());
             }
+
+            // A3 step 2 QB-B (AiPlayerbot.QuestBook.Bundle, default 0): the giver sites by quests per second (the distinct quests within
+            // BundleRadius over route + accept time), after the whole-map fallback that brings most giver points. Reads the bot-thread
+            // snapshot only. Every other bot: returns at once, the list stays as it is.
+            ai::questbundle::RankQuestBundles(list, travelInfo);
 
             if (traceGivers && (giverFetched || giverFallback))
                 sLog.outBasic("[QuestFirstRoute] state=giver_fetch bot=%u level=%u stage=%u radius=%.0f fetch=%s free_slots=%u "

@@ -1567,6 +1567,16 @@ AiPlayerbot.QuestBook.SourceChoice = 0
 AiPlayerbot.QuestBook.KillSeconds = 12
 # A named / single source wins only when it is this much cheaper than the cheapest common one, 1..10, default 1.5.
 AiPlayerbot.QuestBook.SingleSpawnMargin = 1.5
+# A3 step 2 QB-B: quest givers by bundle, only where the quest book is active (QuestBook applies to the bot). A giver site (the
+# position of a giver spawn) scores its bundle - the distinct offerable quests of all givers on the same map within BundleRadius -
+# per second: bundle / (route + 20 s per quest). The giver sites go in that order (ties keep the nearest-first order), after the
+# turn-ins and objectives; with one site or none nothing changes. A lone giver at 100 yd and three quests at 300 yd tie, three at
+# 250 yd win. Lines: `[QuestBundle] ...` per giver pick, counters bundle_ranked / bundle_regroup / bundle_capped in
+# `[QuestBookMin]`. 0 = off (default, rollback), 1 = all, 2 = cohort B (odd low guid), 3 = cohort A (even low guid); any other
+# value acts like 0.
+AiPlayerbot.QuestBook.Bundle = 0
+# The area that counts as one bundle, in yards (2D), 30..300, default 100.
+AiPlayerbot.QuestBook.BundleRadius = 100
 
 # #627 S7 help groups (owner 18.10./23.10.2026): roster bots holding the same elite
 # quest (Type 1; with SuggestedPlayers = 1 also SuggestedPlayers >= 2; never
