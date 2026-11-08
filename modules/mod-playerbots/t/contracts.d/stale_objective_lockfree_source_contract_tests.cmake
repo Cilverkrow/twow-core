@@ -101,15 +101,16 @@ function(check_writer travel_cpp out)
     set(${out} "TravelMgr.cpp: PublishStaleObjectiveSnapshot missing" PARENT_SCOPE)
     return()
   endif()
-  string(FIND "${publish_fn}" "        if (!sPlayerbotAIConfig.questFirstProgressionStaleObjectiveFilterLockFree)\n            return;" gate)
+  # Switch 0: nothing built; a published snapshot is withdrawn (null pointer, then the version) so a reload 1 -> 0 -> 1 never
+  # leaves the readers on a snapshot that missed the 0 phase (OB-10 review #958).
+  string(FIND "${publish_fn}" "        if (!sPlayerbotAIConfig.questFirstProgressionStaleObjectiveFilterLockFree)\n        {\n            if (staleObjectiveSnapshotLive)\n            {\n                std::atomic_store_explicit(&staleObjectivePublished, std::shared_ptr<ai::stale_objective::Snapshot const>(), std::memory_order_release);\n                staleObjectivePublishVersion.fetch_add(1, std::memory_order_acq_rel);\n                staleObjectiveSnapshotLive = false;\n            }\n            return;\n        }\n        auto const start" gate)
   if(gate EQUAL -1)
-    set(${out} "publish: not gated by the switch" PARENT_SCOPE)
+    set(${out} "publish: not gated by the switch, or switch 0 does not withdraw a published snapshot (pointer before version)" PARENT_SCOPE)
     return()
   endif()
-  string(FIND "${publish_fn}" "std::atomic_store_explicit(&staleObjectivePublished, std::move(snapshot), std::memory_order_release);" store_at)
-  string(FIND "${publish_fn}" "staleObjectivePublishVersion.fetch_add(1, std::memory_order_acq_rel);" version_at)
-  if(store_at EQUAL -1 OR version_at EQUAL -1 OR NOT store_at LESS version_at)
-    set(${out} "publish: the pointer must be stored atomically before the version grows" PARENT_SCOPE)
+  string(FIND "${publish_fn}" "        std::atomic_store_explicit(&staleObjectivePublished, std::move(snapshot), std::memory_order_release);\n        staleObjectivePublishVersion.fetch_add(1, std::memory_order_acq_rel);\n        staleObjectiveSnapshotLive = true;\n" store_at)
+  if(store_at EQUAL -1)
+    set(${out} "publish: the pointer must be stored atomically before the version grows, then marked live" PARENT_SCOPE)
     return()
   endif()
   string(FIND "${publish_fn}" "ai::stale_objective::BuildSnapshot(staleObjectiveStore, nowMs)" build_at)
@@ -138,11 +139,11 @@ function(check_writer travel_cpp out)
     return()
   endif()
 
-  # The pointer: one declaration, one atomic store, two atomic loads, nothing else.
+  # The pointer: one declaration, two atomic stores (publish, withdraw), two atomic loads, nothing else.
   count_regex("${travel_cpp}" "staleObjectivePublished" all)
   count_regex("${travel_cpp}" "std::atomic_(store_explicit|load_explicit|load)\\(&staleObjectivePublished" atomic)
-  if(NOT all EQUAL 4 OR NOT atomic EQUAL 3)
-    set(${out} "TravelMgr.cpp: staleObjectivePublished used ${all} times, ${atomic} of them atomic (4 / 3 expected)" PARENT_SCOPE)
+  if(NOT all EQUAL 5 OR NOT atomic EQUAL 4)
+    set(${out} "TravelMgr.cpp: staleObjectivePublished used ${all} times, ${atomic} of them atomic (5 / 4 expected)" PARENT_SCOPE)
   endif()
 endfunction()
 
@@ -286,9 +287,22 @@ string(REPLACE "\nAiPlayerbot.QuestFirstProgression.StaleObjectiveFilter.LockFre
 check_switch("${config_h}" "${config_cpp}" "${m}" r)
 expect_caught("${r}" "documented 1")
 
-string(REPLACE "        if (!sPlayerbotAIConfig.questFirstProgressionStaleObjectiveFilterLockFree)\n            return;\n" "" m "${travel_cpp}")
+string(REPLACE "        if (!sPlayerbotAIConfig.questFirstProgressionStaleObjectiveFilterLockFree)\n        {\n" "        if (false)\n        {\n" m "${travel_cpp}")
 check_writer("${m}" r)
 expect_caught("${r}" "publish without the switch")
+
+string(REPLACE "            if (staleObjectiveSnapshotLive)\n" "            if (false)\n" m "${travel_cpp}")
+check_writer("${m}" r)
+expect_caught("${r}" "switch 0 never withdraws the snapshot (reload 1 -> 0 -> 1)")
+
+string(REPLACE "                std::atomic_store_explicit(&staleObjectivePublished, std::shared_ptr<ai::stale_objective::Snapshot const>(), std::memory_order_release);\n                staleObjectivePublishVersion.fetch_add(1, std::memory_order_acq_rel);\n"
+  "                staleObjectivePublishVersion.fetch_add(1, std::memory_order_acq_rel);\n                std::atomic_store_explicit(&staleObjectivePublished, std::shared_ptr<ai::stale_objective::Snapshot const>(), std::memory_order_release);\n" m "${travel_cpp}")
+check_writer("${m}" r)
+expect_caught("${r}" "the withdraw bumps the version before the null pointer")
+
+string(REPLACE "        staleObjectiveSnapshotLive = true;\n" "" m "${travel_cpp}")
+check_writer("${m}" r)
+expect_caught("${r}" "a publish not marked live (never withdrawn)")
 
 string(REPLACE "        std::atomic_store_explicit(&staleObjectivePublished, std::move(snapshot), std::memory_order_release);\n        staleObjectivePublishVersion.fetch_add(1, std::memory_order_acq_rel);\n"
   "        staleObjectivePublishVersion.fetch_add(1, std::memory_order_acq_rel);\n        std::atomic_store_explicit(&staleObjectivePublished, std::move(snapshot), std::memory_order_release);\n" m "${travel_cpp}")
