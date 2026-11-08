@@ -43,6 +43,7 @@
 #include "playerbot/LevelGuardPolicy.h"   // twow-repo#601 cand4 lever (ii): config clamps + the startup grid
 #include "playerbot/R01CohortPolicy.h"
 #include "playerbot/LosCachePolicy.h"   // twow-repo#602 (Rotation.LosCacheMs): the read's bounds
+#include "playerbot/RescueHubPolicy.h"   // twow-repo#575 RG-a (QuestRescue.HomeHubs): the mode clamp
 
 #include <iostream>
 #include <numeric>
@@ -841,6 +842,7 @@ bool PlayerbotAIConfig::Initialize()
     grindCapLowLevelMargin = config.GetIntDefault("AiPlayerbot.GrindCap.LowLevelMargin", 2);
     questRescueIdleMinutes = config.GetIntDefault("AiPlayerbot.QuestRescue.IdleMinutes", 30);
     questRescueKeepRequestWhenFull = config.GetBoolDefault("AiPlayerbot.QuestRescue.KeepRequestWhenFull", false);
+    questRescueHomeHubs = ai::rescue_hub::ClampMode(config.GetIntDefault("AiPlayerbot.QuestRescue.HomeHubs", 0));
     grindAvoidMaxDeaths = config.GetIntDefault("AiPlayerbot.GrindAvoid.MaxDeaths", 0);
     grindAvoidWindowSeconds = std::max<uint32>(60, config.GetIntDefault("AiPlayerbot.GrindAvoid.WindowSeconds", 3600));
     grindAvoidSeconds = std::max<uint32>(60, config.GetIntDefault("AiPlayerbot.GrindAvoid.AvoidSeconds", 3600));
@@ -2054,6 +2056,7 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestLoop.RelationArriveRpgTarget", Value(questLoopRelationArriveRpgTarget)},
             {"QuestLoop.RelationWorkNoGrind", Value(questLoopRelationWorkNoGrind)},
             {"QuestLoop.TurnInWorkDeathNotRoute", Value(questLoopTurnInWorkDeathNotRoute)},
+            {"QuestRescue.HomeHubs", Value(questRescueHomeHubs)},
             {"QuestRescue.KeepRequestWhenFull", Value(questRescueKeepRequestWhenFull)},
             {"Revive.CorpseRunFirst", Value(reviveCorpseRunFirst)},
             {"Revive.CorpseRunFirst.MaxSeconds", Value(reviveCorpseRunFirstMaxSeconds)},
