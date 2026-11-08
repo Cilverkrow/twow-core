@@ -7,6 +7,7 @@
 #include <algorithm>
 #include "playerbot/RandomPlayerbotMgr.h"
 #include "playerbot/QuestBook.h"   // A3 step 2 K2 (AiPlayerbot.QuestBook): the one level window and the QB5 list
+#include "playerbot/LootChancePolicy.h"   // OB-00 08.11.: QuestRelation.GameObjectChanceDrops
 #include "Formulas.h"
 #include "playerbot/strategy/deathknight/DKActions.h"
 
@@ -79,7 +80,11 @@ EntryQuestRelationMap EntryQuestRelationMapValue::Calculate()
 						for (auto& entry : GAI_VALUE2(std::list<int32>, "item drop list", itemId))
 						{
 							std::string chanceQualifier = std::to_string(entry) + " " + std::to_string(itemId);
-							if (proto->Class == ITEM_CLASS_QUEST || GAI_VALUE2(float, "loot chance", chanceQualifier) > 5.0f)
+							// OB-00 08.11.2026: with LootChance.GameObjectEntryFix a game object has its real chance; the lever
+							// QuestRelation.GameObjectChanceDrops (default 0) keeps the rule as it was: a game object only through a
+							// quest item (LootChancePolicy.h).
+							bool const chanceDrops = sPlayerbotAIConfig.questRelationGameObjectChanceDrops != 0;
+							if (proto->Class == ITEM_CLASS_QUEST || (ai::loot_chance::AskChance(entry, chanceDrops) && GAI_VALUE2(float, "loot chance", chanceQualifier) > ai::loot_chance::RelationMinChance))
 								rMap[entry][questId] |= relationFlag;
 						}
 					}
