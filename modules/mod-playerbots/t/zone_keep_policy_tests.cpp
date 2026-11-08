@@ -78,6 +78,7 @@ int main()
         Require(!LeaveDue(1000, 1300, 1300 + RefusalFreshSeconds + 1, FollowLeaveSeconds), "G3: the refusals stopped: no leave");
         Require(!LeaveDue(0, 1300, 1400, FollowLeaveSeconds) && !LeaveDue(1000, 0, 1400, FollowLeaveSeconds), "G3: no run: no leave");
         Require(LeaveDue(0xFFFFFF00u, 0x0000002Cu, 0x0000002Cu, FollowLeaveSeconds), "G3: across the uint32 wrap");
+        Require(LeaveAllowed(false) && !LeaveAllowed(true), "G3: never a group with a real player in it (OB-00 (b))");
 
         // V2-a: the release window StartZoneMinLevel .. +2, only in the start zone, the push at least one prior failure.
         Require(!InReleaseWindow(5, 4) && InReleaseWindow(5, 5) && InReleaseWindow(5, 7) && !InReleaseWindow(5, 8), "V2-a: L5-7");

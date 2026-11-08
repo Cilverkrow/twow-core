@@ -102,6 +102,12 @@ require_text("${follow_gated}" "ZoneKeepClock(botAI, FollowLineLeaderValue) != l
 between("${travel}" "bool ai::zone_keep::GroupLeaveDue(" "void ai::zone_keep::NoteGroupCopyGate(" leave_due)
 require_text("${leave_due}" "ai::zone_keep::LeaveDue(since, ZoneKeepClock(botAI, FollowRefusedLastValue), now, ai::zone_keep::FollowLeaveSeconds)" "G3 rule used")
 require_text("${leave_due}" "[ZoneKeep] state=group_leave bot=%u level=%u zone=%u leader=%u refused_s=%u" "group_leave line")
+# OB-00 (b) after OB-10's review of #948: no leave from a group with a real player in it, leader or not.
+require_text("${policy}" "inline bool LeaveAllowed(bool realPlayerMember)\n{\n    return !realPlayerMember;\n}" "G3: real player rule")
+require_text("${leave_due}" "for (GroupReference* ref = group->GetFirstMember(); ref && !realPlayerMember; ref = ref->next())" "G3: every member checked")
+require_text("${leave_due}" "realPlayerMember = !memberAi || memberAi->IsRealPlayer();" "G3: a player's character or a bot a real player plays")
+require_text("${leave_due}" "if (!ai::zone_keep::LeaveAllowed(realPlayerMember))\n        return false;" "G3: the real player check decides")
+require_order("${leave_due}" "if (!ai::zone_keep::LeaveAllowed(realPlayerMember))" "[ZoneKeep] state=group_leave" "G3: the check before the line and the clock reset")
 between("${travel}" "void ai::zone_keep::NoteGroupCopyGate(" "bool ai::zone_keep::ReleasePushApplies(" copy_gate)
 require_text("${copy_gate}" "[ZoneKeep] state=group_copy_gate bot=%u level=%u zone=%u rejects=%u chosen=%u" "group_copy_gate line")
 require_text("${copy_gate}" "ai::zone_keep::LineDue(ZoneKeepClock(botAI, CopyLineUntilValue), now)" "group_copy_gate once per window")
