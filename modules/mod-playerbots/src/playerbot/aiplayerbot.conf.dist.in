@@ -1506,6 +1506,10 @@ AiPlayerbot.CombatRule.RestStartMana = 40
 # <kills A/B>/<kill_ms A/B>/<passes A/B>/<no_ok A/B>/<no_ok_swing A/B>,..." (combat engine passes, passes without an OK action, and of
 # those the passes while the bot auto-attacks). Mode: 0 = off (default, rollback), 1 = every bot, 2 = only cohort B (odd low guid),
 # 3 = only cohort A (even low guid). Any other value acts like 0.
+# Per bot (P6, log only, for the PREREG's bot-cluster bootstrap): "[CombatRule] part=ProgressGuardBot mode= block= guid= cohort=
+# cls= band= combat_ms= noprog_ms= kills= kill_ms= passes= no_ok= no_ok_swing=", one line per bot and 10-minute wall-clock block
+# (block = its start, unix seconds) and on a band change, written by the bot's first reading after it; at most ~1,200 lines per
+# hour for 200 bots in combat.
 AiPlayerbot.CombatRule.ProgressGuard = 0
 # ProgressGuard: seconds without progress before the backoff (5..300; default 15).
 AiPlayerbot.CombatRule.ProgressDeadlineSeconds = 15

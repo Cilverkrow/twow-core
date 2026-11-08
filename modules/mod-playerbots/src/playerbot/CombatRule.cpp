@@ -189,6 +189,39 @@ void CountCombatPass(Player* bot, bool noOk, bool swing)
         c.cls[band][cls][ProgressGuardCounters::NoOkSwing][cohort].fetch_add(1, std::memory_order_relaxed);
 }
 
+namespace
+{
+// "[CombatRule] part=ProgressGuardBot mode= block= guid= cohort= cls= band= combat_ms= noprog_ms= kills= kill_ms= passes= no_ok=
+// no_ok_swing=" (P6, log only): one bot's totals of one 10-minute block (block = its start, unix seconds) and band.
+void WriteProgressBot(Player* bot, ProgressBotTotals& t)
+{
+    sLog.outBasic("[CombatRule] part=ProgressGuardBot mode=%u block=%llu guid=%u cohort=%c cls=%u band=%u combat_ms=%llu "
+        "noprog_ms=%llu kills=%llu kill_ms=%llu passes=%llu no_ok=%llu no_ok_swing=%llu", sPlayerbotAIConfig.combatRuleProgressGuard,
+        (unsigned long long)t.block, bot->GetGUIDLow(), ai::cohort::Letter(bot->GetGUIDLow()), uint32(bot->getClass()), t.band,
+        (unsigned long long)t.combatMs, (unsigned long long)t.noProgressMs, (unsigned long long)t.kills, (unsigned long long)t.killMs,
+        (unsigned long long)t.passes, (unsigned long long)t.noOk, (unsigned long long)t.noOkSwing);
+    t = ProgressBotTotals();
+}
+}
+
+void CountProgressBot(Player* bot, ProgressBotTotals& totals, ProgressStep const& step)
+{
+    std::uint64_t const block = ProgressBotBlock(std::uint64_t(std::time(nullptr)));
+    unsigned const band = ProgressBand(bot->GetLevel());
+    if (ProgressBotFlushDue(totals, block, band))
+        WriteProgressBot(bot, totals);
+    AddProgressBotStep(totals, block, band, step);
+}
+
+void CountCombatPassBot(Player* bot, ProgressBotTotals& totals, bool noOk, bool swing)
+{
+    std::uint64_t const block = ProgressBotBlock(std::uint64_t(std::time(nullptr)));
+    unsigned const band = ProgressBand(bot->GetLevel());
+    if (ProgressBotFlushDue(totals, block, band))
+        WriteProgressBot(bot, totals);
+    AddProgressBotPass(totals, block, band, noOk, swing);
+}
+
 void CountProgressAct(Player* bot, ProgressAct act)
 {
     ProgressGuardCounters& c = ProgressGuardGlobal();

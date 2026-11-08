@@ -1436,6 +1436,7 @@ protected:
     bool oomBackoffPending = false;   // twow-repo#602 ROT-01 3c-B: an out-of-mana backoff wait is running
     ai::combat_rule::ProgressClock progressClock;   // A3 step 5 (CombatRule.ProgressGuard): the combat progress clock (R8)
     ai::combat_rule::ProgressVerdict progressVerdict = ai::combat_rule::ProgressVerdict::Off;   // this pass's reading
+    ai::combat_rule::ProgressBotTotals progressBotTotals;   // P6: the bot's open 10-minute block for part=ProgressGuardBot (log only)
     bool progressBackoffPending = false;   // a ProgressGuard backoff wait is running
     bool combatLoopPending = false;   // a CombatLoop event waits for the supervisor's CombatGuard frame
     ai::supervisor::Event combatLoopEvent;
