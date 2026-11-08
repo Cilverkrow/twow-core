@@ -1460,6 +1460,22 @@ AiPlayerbot.CombatRule.HealerStart = 0
 # the overlay, per cohort, and how many got it without "+dps"; increments). Mode: 0 = off (default, rollback: the overlay as it
 # is), 1 = every bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid). Any other value acts like 0.
 AiPlayerbot.CombatRule.PriestOverlay = 0
+# Part RestBeforePull (A3-AKTIONS-VERDRAHTUNG §1.4, F7): without RestGate a bot eats only with HP in [20, 50) and drinks below 65 %
+# mana; below 20 % HP out of combat nothing runs, and it pulls the next mob at any HP. With the part on, a solo free bot (no group,
+# no real player, not in a battleground) out of combat and not attacked does not start a pull (attack anything) below RestStartHp,
+# or below RestStartMana with a mana pool; the rule's rest node (strategy "combat rule", added only to the bots the part applies to)
+# eats / drinks first at relevance 7.0, with no lower bound. Unlike RestGate it locks no movement and keeps no episode: one food or
+# drink cast lasts until the bot is full. A target that already fights the bot is always taken. A bot that Rotation.RestGate applies
+# to is left to RestGate. Minute line "[CombatRule] part=RestBeforePull mode= start_hp= start_mana= pulls=A/B pulls_low_hp=A/B
+# pulls_low_mana=A/B refused=A/B rest_ticks_hp=A/B rest_ticks_mana=A/B" (pulls of solo free bots in both cohorts and of those below
+# the start values = the outcome; refused pull checks; ticks the rest node fired; increments). Mode: 0 = off (default, rollback),
+# 1 = every bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid). Any other value acts like 0. Changing it
+# needs a restart or a strategy reset (the rest node is added at strategy setup).
+AiPlayerbot.CombatRule.RestBeforePull = 0
+# RestBeforePull: no pull below this HP percent (1..99; default 60).
+AiPlayerbot.CombatRule.RestStartHp = 60
+# RestBeforePull: no pull below this mana percent, bots with a mana pool only (0..99; default 40; 0 = no mana rest).
+AiPlayerbot.CombatRule.RestStartMana = 40
 # A3 step 2 (ADR-0041, OB-00 07.11.2026): the quest book core (QB-K). One book per roster bot on its own (no real player master)
 # answers accept, travel target and turn-in with one level window, one progress notion (credit per quest, not objective text) and
 # the QB5 exclusion list, and a complete quest ends the grind fallback (QB4). Where the switch does not apply, every old rule stays.
@@ -2337,6 +2353,17 @@ AiPlayerbot.Crafting.Cooking = 0
 #   [Crafting] kind=survival event=craft spell= item= skill= bot= level= cohort=
 #   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid); other values act like 0.
 AiPlayerbot.Crafting.Survival = 0
+# twow-repo#333 M2 Crafting.Fishing (owner list 07.11.2026, item 4, M2-ENTWURF §7; inventory: fishing learned only at a random local
+# trainer, no pole trip, and the fishing purpose (6.5) outranks the quest request (6.3) for up to 30 min). For a roster bot on its own:
+#   - the profession trips (ProfessionTraining.Travel / NearRadius) also teach fishing (skill 356, Apprentice / Journeyman);
+#   - a fisher's tool trip (ProfessionUse.ToolBuy) also buys the Fishing Pole 6256 when the bags hold no pole (after pick, knife
+#     and Whittle);
+#   - its fishing purpose ("tfish") starts only in the quest-first gap (quest route backoff running, no open turn-in, no band walk)
+#     and holds only until the backoff ended plus 10 min; a found quest route ends it at once.
+# Line, one per started fishing purpose of the switch's bots:
+#   [Crafting] kind=fishing event=start skill= target= backoff_s= bot= level= cohort=
+#   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid); other values act like 0.
+AiPlayerbot.Crafting.Fishing = 0
 # Profession use (#333), persistent roster bots without a real-player master.
 # GatherDistance: passive gathering radius for such a bot on its own (herbs,
 # ore, skinning); 0 = GatheringDistance. The hostile check stays in force.

@@ -572,6 +572,10 @@ public:
     // Survival (skill 142) by the profession trips, its tool trip buys the Whittle and vendors sell it Whittle and Simple Wood (item
     // usage SKILL); the craft loop crafts its recipes as before. 0 off (default), 1 all, 2 cohort B (odd guid), 3 cohort A (even guid).
     uint32 craftingSurvival = 0;
+    // twow-repo#333 M2 Crafting.Fishing (owner list 07.11.2026, item 4; M2-ENTWURF §7): a roster bot on its own also learns fishing by
+    // the profession trips and its tool trip buys a Fishing Pole; its fishing purpose starts only in the quest-first gap (and ends
+    // with it). 0 off (default), 1 all, 2 cohort B (odd guid), 3 cohort A (even guid).
+    uint32 craftingFishing = 0;
     uint32 professionUseToolBuy = 0;
     // twow-repo#333 P1-z (OB-00 31.10.2026, bug fix: code default 1, 0 = rollback, 2 cohort B): BuyAction "vendor" also reads the
     // vendor template items (creature_template.vendor_id), as the player's buy, the by-name buy and the vendor map already do.
@@ -929,6 +933,11 @@ public:
     // PriestOverlay: a discipline / holy priest gets the RandomBotCombatStrategies overlay without "+dps" (which swaps its tree for
     // the shadow placeholder). 0 off (default, overlay unchanged), 1 all, 2 cohort B, 3 cohort A; other = 0.
     uint32 combatRulePriestOverlay = 0;
+    // RestBeforePull: a solo free bot does not pull below RestStartHp (or RestStartMana with a mana pool) and eats / drinks first through
+    // the rule's rest node (strategy "combat rule", added only where the part applies). 0 off (default), 1 all, 2 cohort B, 3 cohort A.
+    uint32 combatRuleRestBeforePull = 0;
+    uint32 combatRuleRestStartHp = 60;     // 1..99
+    uint32 combatRuleRestStartMana = 40;   // 0..99, 0 = no mana rest
     // A3 step 2 (ADR-0041, OB-00 07.11.2026): the quest book core QB-K (QuestBookPolicy.h, QuestBook.cpp). 0 off, 1 all, 2 cohort B,
     // 3 cohort A; other = 0 + error line. Shadow: the other roster bots keep a book that only writes the KPI lines.
     uint32 questBook = 0;
