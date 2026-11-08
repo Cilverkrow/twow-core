@@ -7,6 +7,7 @@
 #include "playerbot/strategy/generic/PullStrategy.h"
 #include "playerbot/strategy/values/FreeMoveValues.h"
 #include "playerbot/CohortPolicy.h"
+#include "playerbot/CombatRule.h"   // A3 step 5: the healer gate (CombatRule.HealerStart)
 #include "playerbot/InvalidTargetPolicy.h"
 #include "playerbot/RetargetEmptyPolicy.h"
 #include "playerbot/strategy/values/PossibleAttackTargetsValue.h"
@@ -56,7 +57,7 @@ bool AttackAnythingAction::isUseful()
             return false;
     }
 
-    if (ai->ContainsStrategy(STRATEGY_TYPE_HEAL) && !ai->HasStrategy("offdps", BotState::BOT_STATE_COMBAT))
+    if (!ai::combat_rule::HealerMayAttack(ai))   // A3 step 5: the healer gate (CombatRule.HealerStart, default 0 = the old rule)
         return false;
 
     if(!target->IsPlayer() && bot->isInFront(target,target->GetAttackDistance(bot)*1.5f, M_PI_F*0.5f) && target->CanAttackOnSight(bot) && target->GetLevel() < bot->GetLevel() + 3.0) //Attack before being attacked.

@@ -568,6 +568,10 @@ public:
     // the profession trips, cooks the fire recipes (spell focus 4) of the craft loop and lights its own campfire (spell 818) for them;
     // 0 off (default), 1 all, 2 cohort B (odd guid), 3 cohort A (even guid). The craft part needs ProfessionUse.RealReagents.
     uint32 craftingCooking = 0;
+    // twow-repo#333 M2 Crafting.Survival (owner list 07.11.2026, item 3; M2-ENTWURF §7): a roster bot on its own also learns Turtle
+    // Survival (skill 142) by the profession trips, its tool trip buys the Whittle and vendors sell it Whittle and Simple Wood (item
+    // usage SKILL); the craft loop crafts its recipes as before. 0 off (default), 1 all, 2 cohort B (odd guid), 3 cohort A (even guid).
+    uint32 craftingSurvival = 0;
     uint32 professionUseToolBuy = 0;
     // twow-repo#333 P1-z (OB-00 31.10.2026, bug fix: code default 1, 0 = rollback, 2 cohort B): BuyAction "vendor" also reads the
     // vendor template items (creature_template.vendor_id), as the player's buy, the by-name buy and the vendor map already do.
@@ -856,6 +860,7 @@ public:
     // #421: rescue teleport after this many minutes without quest progress.
     uint32 questRescueIdleMinutes = 30;
     bool questRescueKeepRequestWhenFull = false;  // twow-repo#587: a pending rescue request stays with the bot while the global limit is used up
+    uint32 questRescueHomeHubs = 0;  // twow-repo#575 RG-a: the quest rescue's anchor table (own start-zone hub < L5, next zone L5-10; cohort modes)
     uint32 grindAvoidMaxDeaths = 0;       // 0 = off
     uint32 grindAvoidWindowSeconds = 3600;
     uint32 grindAvoidSeconds = 3600;
@@ -917,6 +922,10 @@ public:
     // A3 step 3 behaviour pair 1: the arbiter shadow (SupervisorShadow.cpp), only where the supervisor runs. 0 off, 1 shadow
     // (watch and log, no write); other = 0 + error line (no enforcement code yet).
     uint32 supervisorArbiter = 0;
+    // A3 step 5 (ADR-0041, OB-00 07.11.2026): the combat rule (CombatRulePolicy.h, CombatRule.cpp), one switch per part.
+    // HealerStart: a holy paladin / restoration druid may attack like a healer with "offdps" (their contexts have no offdps
+    // creator, so the healer gate refused every attack). 0 off (default, the old rule), 1 all, 2 cohort B, 3 cohort A; other = 0.
+    uint32 combatRuleHealerStart = 0;
     // A3 step 2 (ADR-0041, OB-00 07.11.2026): the quest book core QB-K (QuestBookPolicy.h, QuestBook.cpp). 0 off, 1 all, 2 cohort B,
     // 3 cohort A; other = 0 + error line. Shadow: the other roster bots keep a book that only writes the KPI lines.
     uint32 questBook = 0;

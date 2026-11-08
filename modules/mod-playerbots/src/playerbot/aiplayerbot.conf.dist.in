@@ -1219,6 +1219,13 @@ AiPlayerbot.QuestRescue.IdleMinutes = 30
 # stays with the bot for the next scan instead of being dropped. Matters for stranded bots (ZoneExit.StrandedRescueAfter),
 # which only ask again after more empty quest searches. 0 = as before (default).
 AiPlayerbot.QuestRescue.KeepRequestWhenFull = 0
+# twow-repo#575 RG-a (OB-00 08.11.2026): the quest rescue's first answer is an anchor table (RescueHubPolicy.h, OB-50 innkeeper
+# spawns): below L5 a bot goes to its race's start-zone hub (Goldshire, Kharanos, Dolanaar, Razor Hill, Brill, Bloodhoof; high elf
+# up to L9 Brinthilien / Alah'Thalas) instead of no target (R1) or another race's start point; night elves and undead L5-10 go to
+# the next zone on their home continent (Auberdine, The Sepulcher), unless StartZoneMinLevel still gates the level. No row or no
+# spawn left: the legacy targets as before. Logs [RescueHub] and [RescueHubMin].
+# Cohort mode: 0 = off (default), 1 = all bots, 2 = cohort B (odd guid), 3 = cohort A (even guid).
+AiPlayerbot.QuestRescue.HomeHubs = 0
 # A creature entry that killed the bot GrindAvoid.MaxDeaths times within
 # WindowSeconds is skipped as a grind target for AvoidSeconds. 0 = off.
 AiPlayerbot.GrindAvoid.MaxDeaths = 0
@@ -1433,6 +1440,17 @@ AiPlayerbot.Supervisor = 0
 # (at most 300 lines per minute), plus one [ArbiterMin] sum per minute and cohort. It never writes the target or the bot.
 # 0 = off (default, rollback), 1 = shadow. Any other value acts like 0 (one error line at load; no enforcement yet).
 AiPlayerbot.Supervisor.Arbiter = 0
+# A3 step 5 (ADR-0041, OB-00 07.11.2026): the combat rule - one module that owns the combat decisions (who may start a fight,
+# rest before the pull, target choice, flee point, loop guard), one switch per part. Design: A3-S5-KAMPFREGEL-ENTWURF.md.
+# Part HealerStart (A3-AKTIONS-VERDRAHTUNG F2 (a)): the healer gate of attack my target / attack RTI target / attack anything
+# lets a bot with a heal strategy attack only with "offdps" in its combat engine. Only the priest and shaman contexts create
+# "offdps", so a holy paladin or a restoration druid that keeps its heal strategy (in a group; solo free bots switch to
+# retribution / balance) never starts a fight. With the part on, these two healers pass the gate like a healer with offdps.
+# Nothing else changes: no trigger, action, multiplier or heal priority. Minute line "[CombatRule] part=HealerStart mode=
+# asked=A/B lifted=A/B cls=" (gate checks the old rule refused, per cohort, and how many the part opened; increments).
+# Mode (in-realm A/B, cohort parity): 0 = off (default, rollback: the old rule), 1 = every bot, 2 = only cohort B (odd low
+# guid), 3 = only cohort A (even low guid). Any other value acts like 0.
+AiPlayerbot.CombatRule.HealerStart = 0
 # A3 step 2 (ADR-0041, OB-00 07.11.2026): the quest book core (QB-K). One book per roster bot on its own (no real player master)
 # answers accept, travel target and turn-in with one level window, one progress notion (credit per quest, not objective text) and
 # the QB5 exclusion list, and a complete quest ends the grind fallback (QB4). Where the switch does not apply, every old rule stays.
@@ -2287,6 +2305,18 @@ AiPlayerbot.Crafting.Consumables = 0
 #   [Crafting] kind=cooking event=cook spell= item= bot= level= cohort=
 #   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid); other values act like 0.
 AiPlayerbot.Crafting.Cooking = 0
+# twow-repo#333 M2 Crafting.Survival (owner list 07.11.2026, item 3, M2-ENTWURF §7; inventory: Turtle Survival only an allowed
+# secondary skill - no trip, no tool, never bought). For a roster bot on its own:
+#   - the profession trips (ProfessionTraining.Travel / NearRadius) also teach Survival (skill 142; Survivalist ranks at the
+#     Survival Trainers), like the phase-one skills;
+#   - a survivalist's tool trip (ProfessionUse.ToolBuy) also buys the Whittle 42004 (after pick and knife), and the item usage
+#     makes Whittle and Simple Wood 4470 "buy at a vendor" items for it;
+#   - its recipes go through the craft loop as before (ProfessionUse.Craft; focus recipes stay excluded). Cutting trees gives no
+#     skill-up in this core (Player.cpp, SKILL_SURVIVAL2 commented out), so there are no wood trips.
+# Line, one per started survival recipe:
+#   [Crafting] kind=survival event=craft spell= item= skill= bot= level= cohort=
+#   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid); other values act like 0.
+AiPlayerbot.Crafting.Survival = 0
 # Profession use (#333), persistent roster bots without a real-player master.
 # GatherDistance: passive gathering radius for such a bot on its own (herbs,
 # ore, skinning); 0 = GatheringDistance. The hostile check stays in force.

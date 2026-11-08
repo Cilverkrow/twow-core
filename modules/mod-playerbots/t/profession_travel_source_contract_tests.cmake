@@ -95,7 +95,7 @@ require_text("${policy}" "if (effects[i] == kSpellEffectLearnSpell && triggers[i
 forbid_text("${values_cpp}" "if (!sSpellMgr.IsProfessionSpell(trainerSpell->learnedSpell))" "the M1r filter on the teaching spell (dropped every rank)")
 forbid_text("${conf_dist}" "[ProfTravel] state=start" "the documented line is state=request")
 require_order("${values_cpp}" "else if (name == \"trainer profession\" || name == \"trainer profession hold\")" "else if (name.find(\"trainer\") == 0)" "the profession trip before the generic trainer branch")
-require_text("${values_cpp}" "if (!ai::profession_travel::IsTripSkill(skill, cooking))" "only phase-one trainers (twow-repo#333 M2 Crafting.Cooking: plus cooking with the switch on)")
+require_text("${values_cpp}" "if (!ai::profession_travel::IsTripSkill(skill, cooking, survival))" "only phase-one trainers (twow-repo#333 M2 Crafting.Cooking: plus cooking with the switch on)")
 require_text("${values_cpp}" "else if (name == \"tool vendor\" || name == \"tool vendor hold\")" "tool vendor value")
 require_text("${values_h}" "std::vector<int32> PhaseOneProfessionTrainers(PlayerbotAI* ai, bool onlyUnlearned = false);" "shared trainer list (P1-n: only unlearned skills on request)")
 require_text("${values_h}" "uint32 MissingGatherTool(PlayerbotAI* ai);" "shared tool check")
