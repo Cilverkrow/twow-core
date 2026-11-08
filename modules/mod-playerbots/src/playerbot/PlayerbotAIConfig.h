@@ -953,6 +953,12 @@ public:
     uint32 combatRuleProgressBreakSeconds = 45;      // deadline..600
     uint32 combatRuleProgressBackoffMs = 1000;       // 0..5000, 0 = no cadence backoff
     uint32 combatRuleProgressIgnoreSeconds = 120;    // 10..600
+    // A3 step 5 P5 (CombatRule.TargetRule, OB-00 08.11.2026 (a)): the "select new target" backoff. After an empty pick of the dps/tank
+    // assist while the bot has attackers, the "invalid target" trigger stays quiet (empty current target) until the attacker set changes,
+    // the bot takes damage or TargetBackoffMs pass. The TargetRule / TargetValues lines run for both cohorts while the switch is on.
+    // 0 off (default), 1 all, 2 cohort B, 3 cohort A; other = 0.
+    uint32 combatRuleTargetRule = 0;
+    uint32 combatRuleTargetBackoffMs = 2000;   // 250..10000
     // A3 step 2 (ADR-0041, OB-00 07.11.2026): the quest book core QB-K (QuestBookPolicy.h, QuestBook.cpp). 0 off, 1 all, 2 cohort B,
     // 3 cohort A; other = 0 + error line. Shadow: the other roster bots keep a book that only writes the KPI lines.
     uint32 questBook = 0;

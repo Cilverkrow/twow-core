@@ -1515,6 +1515,20 @@ AiPlayerbot.CombatRule.ProgressBreakSeconds = 45
 AiPlayerbot.CombatRule.ProgressBackoffMs = 1000
 # ProgressGuard: seconds a broken target stays on the ignore list (10..600; default 120).
 AiPlayerbot.CombatRule.ProgressIgnoreSeconds = 120
+# ProgressGuard, since P5: "[CombatRule] part=ProgressGuardLoop mode= loop_overwrites=A/B" (only when > 0) counts CombatLoop events
+# that replaced one the frame had not taken yet (log only).
+# A3 step 5 P5 (ADR-0041, OB-00 08.11.2026 (a); design A3-S5-PROGRESSGUARD-ENTWURF.md v1.1 §3): CombatRule.TargetRule, the "select
+# new target" backoff. After a kill the bot can keep attackers while the dps/tank assist picks nothing (W24 pattern B), and then
+# "invalid target" -> "select new target" fails on every pass. With the switch on for the bot's cohort, an empty pick arms the backoff:
+# the "invalid target" trigger stays quiet while the current target is empty, until the attacker set changes, the bot takes damage
+# or TargetBackoffMs pass; a current target ends it. Not for a bot with a real player as master. Minute lines (switch on, increments):
+# "[CombatRule] part=TargetRule mode= backoff_ms= failed=A/B skipped=A/B woken_attackers=A/B woken_hit=A/B woken_time=A/B
+# woken_target=A/B" and "[CombatRule] part=TargetValues mode= values=<value>=<calcs A>/<calcs B>/<us A>/<us B>,..." (computes and time
+# of attackers, possible attack targets, dps target, tank target and invalid target, both cohorts; descriptive only). Mode: 0 = off
+# (default, rollback), 1 = every bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid). Any other value acts like 0.
+AiPlayerbot.CombatRule.TargetRule = 0
+# TargetRule: longest backoff after an empty pick in ms (250..10000; default 2000).
+AiPlayerbot.CombatRule.TargetBackoffMs = 2000
 # A3 step 2 (ADR-0041, OB-00 07.11.2026): the quest book core (QB-K). One book per roster bot on its own (no real player master)
 # answers accept, travel target and turn-in with one level window, one progress notion (credit per quest, not objective text) and
 # the QB5 exclusion list, and a complete quest ends the grind fallback (QB4). Where the switch does not apply, every old rule stays.
