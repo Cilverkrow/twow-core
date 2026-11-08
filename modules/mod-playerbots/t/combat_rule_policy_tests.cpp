@@ -1,6 +1,7 @@
 // A3 step 5 (ADR-0041; OB-00 07.11.2026): the combat rule, pure parts (CombatRulePolicy.h).
 // Parts HealerStart, PriestOverlay and RestBeforePull (default 0). HealerStart: the healer gate keeps the old rule unchanged and opens only
-// for a holy paladin or a restoration druid, and only where the part applies.
+// for a holy paladin or a restoration druid, and only where the part applies. ProgressGuard (OB-00 08.11.2026, A3 R8): the combat
+// progress clock - progress only as damage or approach, per episode, backoff, break, kill and time-to-kill.
 #include <cstdlib>
 #include <iostream>
 
@@ -119,6 +120,128 @@ int main()
     Require(rc.pulls[0].load() == 0 && rc.refused[1].load() == 0 && rc.restMana[1].load() == 0, "rest counters start at 0");
     rc.refused[1].fetch_add(4);
     Require(rc.refused[1].exchange(0) == 4 && rc.refused[1].load() == 0, "rest counters are increments");
+
+    // Part ProgressGuard (A3 R8): progress = damage to the target or approach; OK does not count; clock per episode.
+    {
+        ProgressLimits lim;   // deadline 15 s, break 45 s, gain 1 yd, window 8 s, long 300 s
+        ProgressClock c;
+        ProgressReading r;
+        r.inCombat = false;
+        r.nowMs = 1000;
+        Require(ObserveProgress(c, r, lim).verdict == ProgressVerdict::Off && !c.active, "out of combat: no episode");
+
+        r.inCombat = true;
+        r.target = 7;
+        r.targetAlive = true;
+        r.targetHealth = 100;
+        r.distance = 30.0f;
+        ProgressStep s = ObserveProgress(c, r, lim);
+        Require(s.episodeStarted && s.verdict == ProgressVerdict::Progress && c.active, "combat starts an episode");
+
+        r.nowMs = 2000;
+        r.distance = 29.5f;
+        s = ObserveProgress(c, r, lim);
+        Require(s.verdict == ProgressVerdict::Quiet && s.combatMs == 1000, "half a yard closer is no progress");
+        r.nowMs = 3000;
+        r.distance = 28.9f;
+        Require(ObserveProgress(c, r, lim).verdict == ProgressVerdict::Progress, "one yard below the best distance is progress");
+        r.nowMs = 4000;
+        r.distance = 40.0f;
+        Require(ObserveProgress(c, r, lim).verdict == ProgressVerdict::Quiet, "moving away is no progress");
+        r.nowMs = 5000;
+        r.distance = 28.5f;
+        Require(ObserveProgress(c, r, lim).verdict == ProgressVerdict::Quiet, "coming back is no progress (best 28.9)");
+        r.nowMs = 6000;
+        r.targetHealth = 90;
+        Require(ObserveProgress(c, r, lim).verdict == ProgressVerdict::Progress, "damage to the target is progress");
+        r.nowMs = 7000;
+        r.targetHealth = 95;
+        Require(ObserveProgress(c, r, lim).verdict == ProgressVerdict::Quiet, "regeneration is no progress");
+        r.nowMs = 8000;
+        r.targetHealth = 94;
+        Require(ObserveProgress(c, r, lim).verdict == ProgressVerdict::Progress, "a drop from the regenerated value counts");
+
+        // No progress: quiet up to the deadline, then backoff, break at 45 s and again every 45 s; window and long loop.
+        r.nowMs = 8000 + 14999;
+        s = ObserveProgress(c, r, lim);
+        Require(s.verdict == ProgressVerdict::Quiet && s.noProgressMs == 14999 - 8000, "inside the deadline; time beyond the window counts");
+        r.nowMs = 8000 + 15000;
+        Require(ObserveProgress(c, r, lim).verdict == ProgressVerdict::Backoff, "deadline reached: backoff");
+        r.target = 8;   // a target switch does not restart the clock
+        r.targetHealth = 200;
+        r.nowMs = 8000 + 30000;
+        Require(ObserveProgress(c, r, lim).verdict == ProgressVerdict::Backoff && c.engageMs == 38000, "switch: no progress, no restart");
+        r.nowMs = 8000 + 45000;
+        Require(ObserveProgress(c, r, lim).verdict == ProgressVerdict::Break, "break at BreakMs");
+        r.nowMs = 8000 + 60000;
+        Require(ObserveProgress(c, r, lim).verdict == ProgressVerdict::Backoff, "after a break: backoff until the next break");
+        r.nowMs = 8000 + 90000;
+        Require(ObserveProgress(c, r, lim).verdict == ProgressVerdict::Break, "again every BreakMs");
+        r.nowMs = 8000 + 299999;
+        Require(!ObserveProgress(c, r, lim).longLoop, "below 5 min: no long loop");
+        r.nowMs = 8000 + 300000;
+        Require(ObserveProgress(c, r, lim).longLoop, "5 min without progress: one long loop");
+        r.nowMs = 8000 + 301000;
+        Require(!ObserveProgress(c, r, lim).longLoop, "the long loop counts once per stretch");
+
+        // Kill: the target read dead, or the old target dead after a switch; time-to-kill from its first reading.
+        r.nowMs = 400000;
+        r.targetAlive = false;
+        s = ObserveProgress(c, r, lim);
+        Require(s.kill && s.killMs == 400000 - 38000 && s.verdict == ProgressVerdict::Progress, "dead target: kill with time-to-kill");
+        r.nowMs = 401000;
+        Require(!ObserveProgress(c, r, lim).kill, "a kill counts once");
+        r.target = 9;
+        r.targetAlive = true;
+        r.targetHealth = 50;
+        r.nowMs = 402000;
+        ObserveProgress(c, r, lim);
+        r.target = 10;
+        r.previousTargetDied = true;
+        r.nowMs = 410000;
+        s = ObserveProgress(c, r, lim);
+        Require(s.kill && s.killMs == 8000, "switch after the old target died: kill");
+        r.previousTargetDied = false;
+        r.target = 0;   // no target in combat: no progress possible
+        r.nowMs = 411000;
+        Require(ObserveProgress(c, r, lim).verdict == ProgressVerdict::Quiet, "no target: quiet");
+
+        r.inCombat = false;
+        r.nowMs = 412000;
+        s = ObserveProgress(c, r, lim);
+        Require(s.episodeEnded && s.verdict == ProgressVerdict::Off && !c.active && s.combatMs == 1000, "combat end closes the episode");
+        r.inCombat = true;
+        r.target = 11;
+        r.nowMs = 500000;
+        Require(ObserveProgress(c, r, lim).episodeStarted && c.lastProgressMs == 500000, "a new episode starts a new clock");
+
+        // Wrap of the ms timer.
+        ProgressClock w;
+        ProgressReading wr;
+        wr.inCombat = true;
+        wr.target = 1;
+        wr.targetAlive = true;
+        wr.targetHealth = 10;
+        wr.nowMs = 0xFFFFF000u;
+        ObserveProgress(w, wr, lim);
+        wr.nowMs = 0x00001000u;
+        Require(ObserveProgress(w, wr, lim).combatMs == 0x2000u, "wrap-safe differences");
+
+        Require(ProgressShouldWake(c, 12, 100, 90, 50) && ProgressShouldWake(c, 11, 0, 90, 50) && ProgressShouldWake(c, 11, 100, 40, 50),
+            "wake on switch, damage or low health");
+        Require(!ProgressShouldWake(c, 11, c.targetHealth, 90, 50), "no wake while nothing changed");
+
+        Require(ClampProgressDeadline(1) == 5 && ClampProgressDeadline(15) == 15 && ClampProgressDeadline(999) == 300, "deadline 5..300");
+        Require(ClampProgressBreak(10, 15) == 15 && ClampProgressBreak(45, 15) == 45 && ClampProgressBreak(999, 15) == 600, "break deadline..600");
+        Require(ClampProgressBackoffMs(-1) == 0 && ClampProgressBackoffMs(1000) == 1000 && ClampProgressBackoffMs(9000) == 5000, "backoff 0..5000");
+        Require(ClampProgressIgnore(1) == 10 && ClampProgressIgnore(120) == 120 && ClampProgressIgnore(999) == 600, "ignore 10..600");
+        Require(ProgressBand(1) == 0 && ProgressBand(9) == 0 && ProgressBand(10) == 1 && ProgressBand(19) == 1 && ProgressBand(20) == 2, "bands");
+
+        ProgressGuardCounters& pc = ProgressGuardGlobal();
+        Require(pc.breaks[1].load() == 0 && pc.cls[2][11][ProgressGuardCounters::NoOkSwing][1].load() == 0, "guard counters start at 0");
+        pc.breaks[1].fetch_add(3);
+        Require(pc.breaks[1].exchange(0) == 3 && pc.breaks[1].load() == 0, "guard counters are increments");
+    }
 
     std::cout << "combat_rule_policy_tests: ok\n";
     return 0;
