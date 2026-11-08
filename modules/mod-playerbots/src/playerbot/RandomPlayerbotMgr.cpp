@@ -38,6 +38,7 @@
 #include "playerbot/AiFactory.h"
 #include "playerbot/StartZonePolicy.h"
 #include "playerbot/ZoneKeepPolicy.h"   // twow-repo#601 owner rule R1 (StartZoneMinLevel rescue gate)
+#include "playerbot/RescueHubPolicy.h"   // twow-repo#575 RG-a (QuestRescue.HomeHubs): the anchor table
 #include "playerbot/CohortPolicy.h"     // twow-repo#601 owner rule R1 (StartZoneMinLevel.Cohort)
 #include "PlayerbotCommandServer.h"
 #include "MemoryMonitor.h"
@@ -7617,6 +7618,56 @@ std::vector<WorldLocation> RandomPlayerbotMgr::QuestRescueTargets(Player* bot)
         return nullptr;
     };
     PlayerInfo const* own = firstInfo(bot->getRace());
+
+    // twow-repo#575 RG-a (AiPlayerbot.QuestRescue.HomeHubs, OB-00 08.11.2026): the anchor table first (RescueHubPolicy.h). own_hub = the
+    // race's start-zone hub below L5 (also for R1-gated bots inside their start zone, which got no target), next_zone = night elf /
+    // undead L5-10 to the next zone on the home continent unless R1 gates the level. No row or no spawn left: the legacy targets.
+    if (ai::cohort::Applies(sPlayerbotAIConfig.questRescueHomeHubs, bot->GetGUIDLow()))
+    {
+        namespace rh = ai::rescue_hub;
+        rh::Counters& counters = rh::SharedCounters();
+        bool const startZoneGated = ai::zone_keep::StartZoneGated(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevel, level) &&
+            ai::cohort::Applies(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevelCohort, bot->GetGUIDLow());
+        rh::Row const* const row = rh::RowFor(bot->getRace(), level);
+        if (row && !rh::Usable(row, startZoneGated))
+            counters.gated.fetch_add(1, std::memory_order_relaxed);
+        else if (row)
+        {
+            std::string anchors;
+            for (uint32 entry : row->entries)
+            {
+                if (!entry)
+                    continue;
+                anchors += (anchors.empty() ? "" : ",") + std::to_string(entry);
+                auto cached = questRescueAnchors.find(entry);
+                if (cached == questRescueAnchors.end())
+                {
+                    std::vector<WorldLocation> spawns;
+                    for (CreatureDataPair const* creature : WorldPosition().getCreaturesNear(0, entry))
+                        spawns.push_back(WorldPosition(creature));
+                    cached = questRescueAnchors.emplace(entry, spawns).first;
+                }
+                for (WorldLocation const& spawn : cached->second)
+                    if (botPos.distance(WorldPosition(spawn)) > row->minDistance)
+                        targets.push_back(spawn);
+            }
+            bool const hub = !targets.empty();
+            if (hub)
+                counters.Hub(row->step);
+            else
+                counters.fallback.fetch_add(1, std::memory_order_relaxed);
+            sLog.outBasic("[RescueHub] bot=%u race=%u level=%u map=%u zone=%u step=%s anchors=%s targets=%u result=%s", bot->GetGUIDLow(),
+                uint32(bot->getRace()), level, bot->GetMapId(), bot->GetZoneId(), rh::StepName(row->step), anchors.c_str(),
+                uint32(targets.size()), hub ? "hub" : "fallback");
+        }
+        uint64 const nowSeconds = uint64(time(nullptr));
+        if (counters.LogDue(nowSeconds))
+            sLog.outBasic("[RescueHubMin] own_hub=%u next_zone=%u fallback=%u gated=%u", counters.TakeHub(rh::Step::OwnHub),
+                counters.TakeHub(rh::Step::NextZone), counters.fallback.exchange(0, std::memory_order_relaxed),
+                counters.gated.exchange(0, std::memory_order_relaxed));
+        if (!targets.empty())
+            return targets;
+    }
 
     // twow-repo#601 owner rule R1 (QuestFirstProgression.StartZoneMinLevel, ZoneKeepPolicy.h): below it a bot is never rescued out of its
     // start zone - inside it there is no rescue (it keeps questing / grinding there), outside it the rescue takes it to its race's

@@ -856,6 +856,7 @@ public:
     // #421: rescue teleport after this many minutes without quest progress.
     uint32 questRescueIdleMinutes = 30;
     bool questRescueKeepRequestWhenFull = false;  // twow-repo#587: a pending rescue request stays with the bot while the global limit is used up
+    uint32 questRescueHomeHubs = 0;  // twow-repo#575 RG-a: the quest rescue's anchor table (own start-zone hub < L5, next zone L5-10; cohort modes)
     uint32 grindAvoidMaxDeaths = 0;       // 0 = off
     uint32 grindAvoidWindowSeconds = 3600;
     uint32 grindAvoidSeconds = 3600;
