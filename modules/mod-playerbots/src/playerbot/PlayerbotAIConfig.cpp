@@ -22,6 +22,7 @@
 #include "playerbot/SupervisorPolicy.h"   // A3 step 3: Supervisor mode
 #include "playerbot/QuestBookPolicy.h"   // A3 step 2: QuestBook mode
 #include "playerbot/LockoutPolicy.h"   // L1: BotGroups.ResetRaidsRealInviterOnly parse
+#include "playerbot/LootChancePolicy.h"   // OB-00 08.11.: LootChance.GameObjectEntryFix / QuestRelation.GameObjectChanceDrops
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
@@ -508,6 +509,11 @@ bool PlayerbotAIConfig::Initialize()
     buffStrangerCooldownSeconds = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.Buff.StrangerCooldownSeconds", 900)));
     lootRoleWeights = std::min<uint32>(2, uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.Loot.RoleWeights", 0))));
     lootFeralFixedSpec = config.GetBoolDefault("AiPlayerbot.Loot.FeralFixedSpec", true);
+    // OB-00 08.11.2026 (bug fix: code default 1, 0 = rollback, an unknown value = 1): "loot chance" of a game object
+    // (LootChancePolicy.h). The lever QuestRelation.GameObjectChanceDrops keeps the quest relation rule (default 0, an unknown
+    // value = 0).
+    lootChanceGameObjectEntryFix = ai::loot_chance::FixOn(config.GetIntDefault("AiPlayerbot.LootChance.GameObjectEntryFix", 1)) ? 1 : 0;
+    questRelationGameObjectChanceDrops = ai::loot_chance::ChanceDropsOn(config.GetIntDefault("AiPlayerbot.QuestRelation.GameObjectChanceDrops", 0)) ? 1 : 0;
     equipKeepWeaponsUnlessUpgrade = config.GetBoolDefault("AiPlayerbot.Equip.KeepWeaponsUnlessUpgrade", false);
     equipAfterRollWon = config.GetBoolDefault("AiPlayerbot.Equip.AfterRollWon", false);   // twow-repo#341 (owner repro 25.10.)
     parkCellSourceStats = config.GetBoolDefault("AiPlayerbot.Park.CellSourceStats", false);
@@ -2030,6 +2036,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Grind.SafePull.ReadyMana", Value(grindSafePullReadyMana)},
             {"LogInGroupOnly", Value(logInGroupOnly)},
             {"Loot.RoleWeights", Value(lootRoleWeights)},
+            {"LootChance.GameObjectEntryFix", Value(lootChanceGameObjectEntryFix)},
             {"Path.IslandGuard", Value(pathIslandGuard)},
             {"Path.IslandMaxPolys", Value(pathIslandMaxPolys)},
             {"Path.IslandSnapDz", Value(pathIslandSnapDz)},
@@ -2111,6 +2118,7 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestLoop.RelationArriveRpgTarget", Value(questLoopRelationArriveRpgTarget)},
             {"QuestLoop.RelationWorkNoGrind", Value(questLoopRelationWorkNoGrind)},
             {"QuestLoop.TurnInWorkDeathNotRoute", Value(questLoopTurnInWorkDeathNotRoute)},
+            {"QuestRelation.GameObjectChanceDrops", Value(questRelationGameObjectChanceDrops)},
             {"QuestRescue.HomeHubs", Value(questRescueHomeHubs)},
             {"QuestRescue.KeepRequestWhenFull", Value(questRescueKeepRequestWhenFull)},
             {"Rescue.RepopDeadOnly", Value(rescueRepopDeadOnly)},
