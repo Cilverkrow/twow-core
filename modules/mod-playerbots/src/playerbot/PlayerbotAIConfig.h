@@ -965,6 +965,10 @@ public:
     uint32 questBookSourceChoice = 0;
     float questBookKillSeconds = 12.0f;           // one kill incl. loot, for the expected work at a source
     float questBookSingleSpawnMargin = 1.5f;      // a named / single source must be this much cheaper than a common one
+    // A3 step 2 QB-B (QuestBundlePolicy.h): giver sites by quests per second where the quest book is active. 0 off, 1 all, 2 cohort B,
+    // 3 cohort A; other = 0 + error line. BundleRadius 30..300 yd: the area that counts as one bundle.
+    uint32 questBookBundle = 0;
+    uint32 questBookBundleRadius = 100;
     // twow-repo#627 S7 help groups (QuestGroupPolicy.h, QuestGroupWorld.cpp); Enable: 0 off, 1 all, 2 cohort B, 3 cohort A.
     uint32 questGroupsEnable = 0;
     uint32 questGroupsScanSeconds = 60;
