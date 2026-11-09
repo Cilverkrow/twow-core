@@ -31,6 +31,7 @@
 #include "playerbot/PathReusePolicy.h"   // twow-repo#541 (L1): Perf.PartialPathReuse
 #include "playerbot/RouteTimePolicy.h"   // twow-repo#592 (PATH-02): Perf.RouteTimeTrace
 #include "playerbot/TransportEdgePolicy.h"   // twow-repo#342 (S1): Path.TransportEdgeTrace
+#include "playerbot/TransportSameMapPolicy.h"   // twow-repo#575 H4: Path.TransportSameMapGuard
 #include "playerbot/TransportBoardPolicy.h"   // twow-repo#342 (S3b-0): Path.TransportDeckProbe / TransportWaitTimeoutMin
 #include "playerbot/MeleeFleeBreakPolicy.h"   // twow-repo#602 (MFB-W): the break's flee dispatch record
 #include "playerbot/FleeAwayPolicy.h"   // twow-repo#602 (c): Rotation.FleeAway
@@ -1278,7 +1279,10 @@ bool MovementAction::UseTransport(PlayerbotAI* ai, uint32 entry, WorldPosition d
 
     std::string transportName;
 
-    std::set<GenericTransport*> const candidates = dockPosition.getTransports(entry);   // twow-repo#342: named for cand=
+    // twow-repo#575 H4 (AiPlayerbot.Path.TransportSameMapGuard, default 1): no scan of another map's vessels from this map's
+    // update thread; a dock on another map waits as before (TransportSameMapPolicy.h). 0 = the scan as before.
+    bool const scanDock = ai::transport_samemap::ScanAllowed(sPlayerbotAIConfig.pathTransportSameMapGuard, dockPosition.getMapId(), bot->GetMapId());
+    std::set<GenericTransport*> const candidates = scanDock ? dockPosition.getTransports(entry) : std::set<GenericTransport*>();   // twow-repo#342: named for cand=
     for (auto& trans : candidates)
     {
         float distance = dockPosition.sqDistance2d(trans);
