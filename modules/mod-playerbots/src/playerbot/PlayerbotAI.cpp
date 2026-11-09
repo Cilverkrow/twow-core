@@ -591,6 +591,11 @@ PlayerbotAI::~PlayerbotAI()
     // s7r (BotGroups.WorldThreadDefer): lines a manager handed to this bot are written at logout, not lost (world thread).
     DrainDeferredLogs();
 
+    // A3 step 3 mailbox pair (SupervisorMail.cpp): undelivered mail goes with the AI (logout, release to a client); every removal
+    // site still holds the Player (HostHooks RemoveBotAI). No ring open anywhere = one atomic load, no lock.
+    if (bot)
+        ai::supervisor::Forget(bot->GetGUIDLow());
+
     for (uint8 i = 0 ; i < (uint8)BotState::BOT_STATE_ALL; i++)
     {
         if (engines[i])
