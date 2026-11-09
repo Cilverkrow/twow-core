@@ -785,6 +785,8 @@ namespace ai
 		void NoteQuestCredit(Player* bot, uint32 questId);
 		// Marked now (the skip itself is cohort-gated by the caller).
 		bool IsObjectiveStale(QuestObjectiveTravelDestination const* objective);
+		// A3-GERUEST-L60 8.4 lever 3: [StaleObjectiveMin] once per minute while the filter is on (world thread).
+		void ReportMinute();
 	}
 
 	// twow-repo#601 owner rule R1 (AiPlayerbot.QuestFirstProgression.StartZoneMinLevel, ZoneKeepPolicy.h): the game side of the start-zone

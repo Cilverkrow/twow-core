@@ -118,7 +118,7 @@ require_text("${rescue_fn}" "[ZoneKeep] state=rescue_gate bot=%u level=%u zone=%
 
 # 6. The stale query: no lock while no mark is active; a per-thread snapshot rebuilt under the one mutex after a store change.
 between("${travel}" "bool ai::stale_objective::IsObjectiveStale(" "\n}\n" query_fn)
-require_order("${query_fn}" "if (!staleObjectiveAnyMark.load(std::memory_order_acquire) ||" "std::lock_guard<std::mutex> lock(staleObjectiveMutex);" "fast path before the lock")
+require_order("${query_fn}" "if (!staleObjectiveAnyMark.load(std::memory_order_acquire) ||" "std::unique_lock<std::mutex> lock(staleObjectiveMutex, std::try_to_lock);" "fast path before the lock (try_lock first: [StaleObjectiveMin] counts the waits, StaleObjectiveFilter.LockFree pair)")
 require_text("${query_fn}" "thread_local Snapshot snapshot;" "per-thread snapshot")
 require_text("${query_fn}" "if (!snapshot.built || snapshot.version != version)" "rebuilt only after a change")
 between("${travel}" "void ai::stale_objective::NoteObjectiveFailure(" "\n}\n" note_fn)

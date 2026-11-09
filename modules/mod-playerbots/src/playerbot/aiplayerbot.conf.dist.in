@@ -1807,6 +1807,14 @@ AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter.Failures = 4
 AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter.Bots = 3
 AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter.WindowSeconds = 3600
 AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter.Seconds = 3600
+# A3-GERUEST-L60 8.4 lever 3 (CLI-Deep 08.11.2026): how the stale query reads the memory. 0 = each map thread rebuilds its own copy
+# of the marked objectives under the memory lock after every recorded failure or credit (default, the rollback). 1 = the writer
+# publishes one copy when the marked set changes (a new mark, a credit that ends marks, an evicted mark) and the query reads it
+# without the lock. Same answers. With StaleObjectiveFilter on: [StaleObjectiveMin] lockfree= rebuilds= reader_lock_waits=
+# reader_wait_us= publishes= publish_us= published_keys= once per minute (with 0 as well). A reload may switch it: turned on, the query
+# uses the per-thread path until the next publish; turned off, the next change of the marked set withdraws the published copy, so a
+# later 1 never reads a copy that missed the off phase. Other values act like 0.
+AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter.LockFree = 0
 # twow-repo#601 owner rule R1 (owner 04.11.2026 via OB-00: a bot leaves its start zone at level 5-7, never below 5, and a stale
 # objective is no reason to change zone; CLI-Deep, ZoneKeepPolicy.h, evidence cli-quest-organic/cand4/R1-OFFLINE.md - in cand4G 90 zone
 # changes followed a stale skip within 600 s). StaleKeepZone: a quest search that came back empty while it skipped stale objectives
