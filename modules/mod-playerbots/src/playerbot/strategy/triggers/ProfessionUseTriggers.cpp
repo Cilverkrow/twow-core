@@ -10,6 +10,10 @@
 #include "Maps/CellImpl.h"
 #include "playerbot/MaterialReservePolicy.h"
 #include "playerbot/strategy/values/CraftValues.h"
+#include "playerbot/strategy/values/TravelValues.h"   // twow-repo#333 T28-M: ProfessionTripKindOf
+#include "playerbot/TravelMgr.h"                      // T28-M: TravelTarget, TravelStatus
+#include "playerbot/GatheringTracePolicy.h"
+#include "playerbot/ProfessionTravelPolicy.h"           // T28-M: kTripKindNone
 
 #include <algorithm>
 #include <limits>
@@ -313,3 +317,56 @@ bool ProfessionCraftTrigger::IsActive()
 
     return true;
 }
+
+// twow-repo#333 T28-M begin (AiPlayerbot.Gathering.Trace, plan A3-PLAN-ZIEL T28, OB-00 09.11.2026): log only. Reads the bot and its
+// values; writes nothing but the bot's own window (PlayerbotAI::GetGatheringTrace) and the one line per hour.
+void ai::GatheringTraceOpen(PlayerbotAI* ai, uint32 castDurationMs)
+{
+    // The cast DoLoot just started is the bot's generic spell (every gathering cast has a cast time); its spell gives the kind.
+    Player* bot = ai->GetBot();
+    Spell* const spell = bot ? bot->GetCurrentSpell(CURRENT_GENERIC_SPELL) : nullptr;
+    if (spell && spell->m_spellInfo)
+        ai->GetGatheringTrace().NoteOpen(ai::gathering_trace::OpenKindOfSpell(spell->m_spellInfo->Id), castDurationMs);
+}
+
+void ai::GatheringTraceCraft(PlayerbotAI* ai, uint32 castDurationMs)
+{
+    ai->GetGatheringTrace().NoteCraft(castDurationMs);
+}
+
+bool GatheringTraceTrigger::IsActive()
+{
+    if (!sPlayerbotAIConfig.gatheringTrace)
+        return false;
+
+    // The scope of the [ProfessionUse] lines and of the [Purpose] start: a roster bot on its own. Out of it the window goes.
+    ai::gathering_trace::Window& window = ai->GetGatheringTrace();
+    Player* bot = ai->GetBot();
+    if (!bot || !IsRosterBotOnItsOwn(ai))
+    {
+        window.Reset();
+        return false;
+    }
+
+    // Trip: a profession trainer / tool trip is the travel target in READY / TRAVEL / WORK (ProfessionTripKindOf: the trip's
+    // "... hold" condition, never a group copy). Purpose: the declared gathering purpose (GatherPurposePolicy.h). A trip outranks
+    // a purpose (GatheringTracePolicy.h ActivityOf).
+    TravelTarget* travelTarget = AI_VALUE(TravelTarget*, "travel target");
+    TravelStatus const status = travelTarget ? travelTarget->GetStatus() : TravelStatus::TRAVEL_STATUS_NONE;
+    bool const trip = (status == TravelStatus::TRAVEL_STATUS_READY || status == TravelStatus::TRAVEL_STATUS_TRAVEL ||
+        status == TravelStatus::TRAVEL_STATUS_WORK) && ProfessionTripKindOf(travelTarget) != ai::profession_travel::kTripKindNone;
+    if (!window.Sample(uint32(time(nullptr)), ai->GetGatherPurpose().Active(), trip))
+        return false;
+
+    ai::gathering_trace::Skill herbalism, mining, skinning;
+    herbalism.value = bot->GetSkillValuePure(SKILL_HERBALISM);
+    herbalism.max = bot->GetSkillMaxPure(SKILL_HERBALISM);
+    mining.value = bot->GetSkillValuePure(SKILL_MINING);
+    mining.max = bot->GetSkillMaxPure(SKILL_MINING);
+    skinning.value = bot->GetSkillValuePure(SKILL_SKINNING);
+    skinning.max = bot->GetSkillMaxPure(SKILL_SKINNING);
+    sLog.outBasic("%s", ai::gathering_trace::ShareLine(bot->GetGUIDLow(), bot->GetLevel(), window, herbalism, mining, skinning).c_str());
+    window.Roll();
+    return false;
+}
+// twow-repo#333 T28-M end
