@@ -1792,6 +1792,13 @@ bool PlayerbotAIConfig::Initialize()
     professionUseCraftIntervalSeconds = std::max<uint32>(10, config.GetIntDefault("AiPlayerbot.ProfessionUse.CraftIntervalSeconds", 300));
     professionUseTrace = config.GetBoolDefault("AiPlayerbot.ProfessionUse.Trace", false);
     professionUseTraceCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.ProfessionUse.TraceCooldownSeconds", 300));
+    // twow-repo#333 T28-M (OB-00 09.11.2026): the [Gathering] event=share line; an unknown value is off.
+    gatheringTrace = config.GetIntDefault("AiPlayerbot.Gathering.Trace", 0);
+    if (gatheringTrace > 1)
+    {
+        sLog.outError("[Gathering] config key=Trace value=%u result=off (0 off, 1 on)", gatheringTrace);
+        gatheringTrace = 0;
+    }
     professionUseRealReagents = config.GetBoolDefault("AiPlayerbot.ProfessionUse.RealReagents", false);
     // Clamped as int32 first: a negative value must not wrap to ~136 years.
     professionUseCraftFailBackoffSeconds = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.ProfessionUse.CraftFailBackoffSeconds", 1800)));
@@ -2096,6 +2103,7 @@ bool PlayerbotAIConfig::Initialize()
             {"EquipDiagnostics.Trace", Value(equipDiagnosticsTrace)},
             {"Gather.FishingSkillCheck", Value(gatherFishingSkillCheck)},
             {"Gather.QuestHerbFilter", Value(gatherQuestHerbFilter)},
+            {"Gathering.Trace", Value(gatheringTrace)},
             {"Grind.GreyByLevel", Value(grindGreyByLevel)},
             {"Grind.NeighbourAware", Value(grindNeighbourAware)},
             {"Grind.QuestFirstOrder", Value(grindQuestFirstOrder)},
