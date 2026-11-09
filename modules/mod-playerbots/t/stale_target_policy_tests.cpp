@@ -52,6 +52,12 @@ int main()
     Require(HoldOf(false, false, true, true, true) == Hold::Loot, "loot third");
     Require(HoldOf(false, false, false, true, true) == Hold::Cast, "cast fourth");
     Require(HoldOf(false, false, false, false, true) == Hold::Rest, "rest last");
+    // Rest input (v1.2 F1): only a regen aura with AURA_INTERRUPT_FLAG_NOT_SEATED (food, drink) counts; Blessing of Wisdom and mp5 /
+    // hp5 gear (no interrupt flag, or others only) are not Rest, so the bot without a sit stays releasable.
+    Require(NotSeatedInterruptFlag == 0x00040000u, "NOT_SEATED as in the core SpellDefines.h");
+    Require(IsEatOrDrinkAura(0x00040000u) && IsEatOrDrinkAura(0x00040000u | 0x2u), "food / drink aura: Rest");
+    Require(!IsEatOrDrinkAura(0) && !IsEatOrDrinkAura(0x00000002u | 0x00001000u), "non-seated regen aura (Wisdom, mp5 gear): not Rest");
+    Require(HoldOf(false, false, false, false, false || IsEatOrDrinkAura(0)) == Hold::None, "standing with a Wisdom / mp5 aura: no hold");
 
     // 5) Observe: the first observation opens an episode and anchors both clocks.
     {
@@ -101,6 +107,18 @@ int main()
         Observe(c, 67000, 77, 1, 0, 0, 0, true);
         Require(DueOf(c, 67000, 60, 5) == Due::Still, "Still wins when both are due");
         Require(DueOf(c, 67000, 0, 5) == Due::Stopped, "Stopped alone");
+    }
+    {
+        // An episode anchored at nowMs 0 (v1.2 F3): the running flags, not a "sinceMs != 0" sentinel, make it due.
+        Clock c;
+        Require(Observe(c, 0, 77, 1, 0, 0, 0, true) == Observed::NewEpisode, "nowMs 0: new episode");
+        Require(c.running && c.stillRunning && c.stillSinceMs == 0 && c.stoppedRunning && c.stoppedSinceMs == 0, "nowMs 0: both clocks run");
+        for (uint32_t t = 1000; t <= 5000; t += 1000)
+            Observe(c, t, 77, 1, 0, 0, 0, true);
+        Require(DueOf(c, 4999, 60, 5) == Due::None && DueOf(c, 5000, 60, 5) == Due::Stopped, "nowMs 0: Stopped due at 5000");
+        for (uint32_t t = 6000; t <= 60000; t += 1000)
+            Observe(c, t, 77, 1, 0, 0, 0, false);
+        Require(DueOf(c, 59999, 60, 5) == Due::None && DueOf(c, 60000, 60, 5) == Due::Still, "nowMs 0: Still due at 60000");
     }
     {
         // Wrap: WorldTimer ms across the uint32 wrap.

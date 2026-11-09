@@ -67,6 +67,16 @@ inline Hold HoldOf(bool pullRunning, bool waitForAttack, bool lootOpen, bool cas
     return Hold::None;
 }
 
+// Rest = sitting, eating or drinking. A MOD_REGEN / MOD_POWER_REGEN aura counts only with the core's AURA_INTERRUPT_FLAG_NOT_SEATED
+// (SpellDefines.h; the core's own eating test, SpellAuras.cpp:6468/6483): food and drink. Blessing of Wisdom and mp5 / hp5 gear use
+// the same aura types without that flag and are up all the time - counted as Rest they would block the release for good (v1.2 F1).
+constexpr std::uint32_t NotSeatedInterruptFlag = 0x00040000u;
+
+inline bool IsEatOrDrinkAura(std::uint32_t auraInterruptFlags)
+{
+    return (auraInterruptFlags & NotSeatedInterruptFlag) != 0;
+}
+
 // One clock per bot (a member of the bot's "no target" trigger). Its own anchor and times, separate running flags (no 0 sentinel).
 // Times are WorldTimer ms; uint32 differences are wrap-safe.
 struct Clock

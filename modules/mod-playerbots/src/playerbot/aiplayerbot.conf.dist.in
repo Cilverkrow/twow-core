@@ -3892,7 +3892,8 @@ AiPlayerbot.Rotation.InvalidTargetQuiet = 1
 # switch such a bot drops ONLY its current target after StoppedSeconds standing still, or after StillSeconds without moving 5 yards,
 # so "no target" -> "attack anything" picks again (possibly the same mob). Travel target, rpg target, attack / pull / old target,
 # movement and the stuck clocks are not touched. Not while a pull runs (15 s), waiting for attack, with an open loot window, casting,
-# sitting, eating or drinking; never in combat, dead, under a real player master, on a taxi or transport, in a duel or battleground.
+# sitting, eating or drinking (food / drink auras only: Blessing of Wisdom and mp5 / hp5 gear do not hold); never in combat, dead,
+# under a real player master, on a taxi or transport, in a duel or battleground.
 # "[StaleTarget] mode= shadow= still_s= stopped_s= elig_bot_min= released= by_still= by_stopped= shadow_would= re_same= moved_on=
 # held_pull= held_wait= held_loot= held_cast= held_rest=" once a minute with the mode or the shadow on; every counter is an A/B pair
 # (cohort A even / cohort B odd low guid).
