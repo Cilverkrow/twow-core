@@ -7,6 +7,8 @@ cmake_policy(VERSION 3.16)
 #   - the pure header names no game header and reads no config;
 #   - the manager touches no group: no group handler, no Group::*, no ObjectMgr group map, no group op, no strategy change, no
 #     teleport. The pair that gives the manager its first behaviour changes this check on purpose, together with its own A/B.
+#     The pass is the counter plus the inbox drain (A3-GERUEST-L60 7.2.11, measurement only; pinned in detail by
+#     a3s6_manager_inbox_source_contract_tests.cmake).
 # Pure rules: t/group_manager_policy_tests.cpp. Every check_* returns "" when it holds, else the reason; the negative probes at
 # the end reuse them on mutated text.
 if(NOT DEFINED PB_SOURCE_DIR)
@@ -132,9 +134,9 @@ function(check_no_behaviour mgr_h mgr_cpp out)
       return()
     endif()
   endforeach()
-  string(FIND "${mgr_cpp}" "void WorldThreadManager::Update(std::map<std::uint32_t, Player*> const& /*bots*/, std::uint32_t /*now*/)\n{\n    ++passes_;\n}" at)
+  string(FIND "${mgr_cpp}" "void WorldThreadManager::Update(std::map<std::uint32_t, Player*> const& bots, std::uint32_t /*now*/)\n{\n    ++passes_;\n    DrainInbox(bots, WorldTimer::getMSTime());\n}" at)
   if(at EQUAL -1)
-    set(${out} "GroupManager.cpp: the scaffold pass is not the bare counter" PARENT_SCOPE)
+    set(${out} "GroupManager.cpp: the scaffold pass is not the counter plus the inbox drain" PARENT_SCOPE)
     return()
   endif()
   set(${out} "" PARENT_SCOPE)

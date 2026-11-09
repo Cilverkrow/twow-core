@@ -445,6 +445,9 @@ private:
     void BreakCombatLoop();
     // A3 step 5 P5: the guard's target lookup on the bot's own map (a player only from this map's player list).
     Unit* ProgressUnitOnMap(ObjectGuid guid);
+    // A3-GERUEST-L60 7.2.11 (AiPlayerbot.BotGroups.Manager.StatusSeconds, default 0): posts this bot's status snapshot to the
+    // manager inbox when due (own thread, own values only).
+    void PostManagerStatus();
     // A3 step 3 (ADR-0041, AiPlayerbot.Supervisor, default 0): the supervisor of this bot, made on the first engine pass the
     // switch applies to it.
     ai::supervisor::Supervisor* EnsureSupervisor();
@@ -1451,6 +1454,8 @@ protected:
     uint32 losCacheAt = 0;   // when it was taken (WorldTimer ms)
     ai::cast_wait::Watch castWait;   // twow-repo#602 (AiPlayerbot.CastWait.Preparing): pending wait for the bot's own PREPARING cast
     ai::teleport_cast::HoldWatch teleportHold;   // twow-repo#333 finding 4: pending travel / unstuck / zone-escape hold for a teleport
+    uint32 managerStatusLastMs = 0;   // 7.2.11: WorldTimer ms of the last status post (0 = never)
+    uint32 managerStatusSeq = 0;      // 7.2.11: sequence of this bot's status posts
     // A3 step 3 (ADR-0041, AiPlayerbot.Supervisor, default 0): nullptr while the switch does not apply to this bot.
     std::unique_ptr<ai::supervisor::Supervisor> supervisor_;
     // A3 step 2 (ADR-0041, AiPlayerbot.QuestBook, default 0): nullptr while neither the switch nor the shadow applies to this bot.
