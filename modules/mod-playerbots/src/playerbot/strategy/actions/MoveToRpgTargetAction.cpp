@@ -5,6 +5,7 @@
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/ServerFacade.h"
 #include "playerbot/LootObjectStack.h"
+#include "playerbot/LootHoldPolicy.h"   // twow-repo#575 H1: Loot.HoldTravelWhileLootable
 #include "playerbot/strategy/values/PossibleRpgTargetsValue.h"
 #include "playerbot/strategy/values/FreeMoveValues.h"
 #include "playerbot/TravelMgr.h"
@@ -277,6 +278,10 @@ bool MoveToRpgTargetAction::isUseful()
         if (lootObject.IsLootPossible(bot))
             return false;
     }
+    // twow-repo#575 H1 (AiPlayerbot.Loot.HoldTravelWhileLootable, LootHoldPolicy.h): stand back also while the loot target
+    // is still open (the available-loot entry above expires after 30 s, the loot target does not: loot ping-pong).
+    if (sPlayerbotAIConfig.lootHoldTravelWhileLootable && ai::loot_hold::LootTargetOpen(ai))
+        return false;
 
     return true;
 }

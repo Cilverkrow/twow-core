@@ -5,6 +5,7 @@
 #include "playerbot/SkinLootPolicy.h"
 #include "playerbot/CohortPolicy.h"
 #include "playerbot/GatherNodePolicy.h"
+#include "playerbot/LootHoldPolicy.h"   // twow-repo#575 H1: Loot.HoldTravelWhileLootable
 #include "playerbot/strategy/values/SharedValueContext.h"
 
 using namespace ai;
@@ -442,3 +443,17 @@ std::vector<LootObject> LootObjectStack::OrderByDistance(float maxDistance)
     return result;
 }
 
+
+// twow-repo#575 H1 (AiPlayerbot.Loot.HoldTravelWhileLootable, LootHoldPolicy.h): the bot's loot target is open - set, within the
+// loot distance of the bot and still lootable. Read-only: no value is set or reset here.
+bool ai::loot_hold::LootTargetOpen(PlayerbotAI* ai)
+{
+    Player* bot = ai->GetBot();
+    LootObject lootObject = ai->GetAiObjectContext()->GetValue<LootObject>("loot target")->Get();
+    if (lootObject.IsEmpty())
+        return false;
+    WorldObject* wo = lootObject.GetWorldObject(bot);
+    if (!wo || !ai::loot_hold::WithinLootDistance(bot->GetDistance(wo), sPlayerbotAIConfig.lootDistance))
+        return false;
+    return lootObject.IsLootPossible(bot);
+}
