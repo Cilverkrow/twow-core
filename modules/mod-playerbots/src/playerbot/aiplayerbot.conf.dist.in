@@ -2130,9 +2130,10 @@ AiPlayerbot.Path.TransportBoardFix = 0
 # twow-repo#575 H4 (BUG FIX, crash class; A3-HARM-UPSTREAM, OB-00 09.11.2026): a bot waiting for a ship, zeppelin
 # or lift scans the vessels at the dock only when the dock is on the bot's own map. Before, it first read the transports of
 # the dock's map, even when that map belongs to another update thread, and only then tested the map. A dock on another map
-# still waits as before ("different map"), with no candidate vessel: no boarding is possible there either way. The
-# [TransportWait] trace keeps counting the wait (cand=0 on that path). 0 = as before (default until the acceptance unit;
-# then 1 by default, 0 = rollback).
+# still waits as before ("different map"), with no candidate vessel: no boarding is possible there either way. A dock on
+# the bot's map is scanned on the bot's own map instance (the old scan took the first instance of that map, under the
+# region layout any region). The [TransportWait] trace keeps counting the wait (cand=0 on a cross-map wait).
+# 0 = as before (default until the acceptance unit; then 1 by default, 0 = rollback).
 AiPlayerbot.Path.TransportSameMapGuard = 0
 # twow-repo#575 (PATH-01 b, flight A/B 18.10.2026): a res=failed [TaxiUse] line names the refusal: reason=logout|combat|
 # disable_move|unknown_node|mounted|shapeshift|casting|no_path|money|other (first core check that holds; trace only).

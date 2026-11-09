@@ -1279,10 +1279,14 @@ bool MovementAction::UseTransport(PlayerbotAI* ai, uint32 entry, WorldPosition d
 
     std::string transportName;
 
-    // twow-repo#575 H4 (AiPlayerbot.Path.TransportSameMapGuard, default 1): no scan of another map's vessels from this map's
-    // update thread; a dock on another map waits as before (TransportSameMapPolicy.h). 0 = the scan as before.
-    bool const scanDock = ai::transport_samemap::ScanAllowed(sPlayerbotAIConfig.pathTransportSameMapGuard, dockPosition.getMapId(), bot->GetMapId());
-    std::set<GenericTransport*> const candidates = scanDock ? dockPosition.getTransports(entry) : std::set<GenericTransport*>();   // twow-repo#342: named for cand=
+    // twow-repo#575 H4 (AiPlayerbot.Path.TransportSameMapGuard; default 0 until its acceptance unit): no scan of another map's
+    // vessels from this map's update thread. A dock on another map id waits as before; a dock on the bot's map id is scanned on
+    // the bot's own map instance (bot->GetMap(); the legacy scan took the first instance of that id, under the region layout
+    // any region). TransportSameMapPolicy.h. 0 = the scan as before.
+    bool const sameMapGuard = sPlayerbotAIConfig.pathTransportSameMapGuard;
+    bool const scanDock = ai::transport_samemap::ScanAllowed(sameMapGuard, dockPosition.getMapId(), bot->GetMapId());
+    std::set<GenericTransport*> const candidates = !scanDock ? std::set<GenericTransport*>() :   // twow-repo#342: named for cand=
+        sameMapGuard ? dockPosition.getTransports(entry, bot->GetMap()) : dockPosition.getTransports(entry);
     for (auto& trans : candidates)
     {
         float distance = dockPosition.sqDistance2d(trans);

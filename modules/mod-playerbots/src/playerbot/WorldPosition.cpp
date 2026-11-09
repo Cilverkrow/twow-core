@@ -646,8 +646,18 @@ std::vector<ElevatorSpawn> const* ElevatorSpawnsOf(uint32 mapId)
 
 std::set<GenericTransport*> WorldPosition::getTransports(uint32 entry)
 {
+    return getTransports(entry, getMap(getFirstInstanceId()));
+}
+
+// twow-repo#575 H4 (AiPlayerbot.Path.TransportSameMapGuard, OB-10 review 09.11.2026): the scan on one given map instance.
+// UseTransport passes the bot's own map with the guard on, so no other map update thread's transports are read; the
+// overload above keeps the old instance choice. The body is the old one with getMap(getFirstInstanceId()) -> map.
+std::set<GenericTransport*> WorldPosition::getTransports(uint32 entry, Map* map)
+{
     std::set<GenericTransport*> transports;
-    for (auto transport : getMap(getFirstInstanceId())->GetTransports()) //Boats&Zeppelins.
+    if (!map)
+        return transports;
+    for (auto transport : map->GetTransports()) //Boats&Zeppelins.
         if (!entry || transport->GetEntry() == entry)
             transports.insert(transport);
 
@@ -660,7 +670,7 @@ std::set<GenericTransport*> WorldPosition::getTransports(uint32 entry)
             if (std::vector<ElevatorSpawn> const* spawns = ElevatorSpawnsOf(getMapId()))
                 for (ElevatorSpawn const& spawn : *spawns)
                     if (!entry || spawn.entry == entry)
-                        if (GameObject* go = getMap(getFirstInstanceId())->GetGameObject(
+                        if (GameObject* go = map->GetGameObject(
                                 ObjectGuid(HIGHGUID_GAMEOBJECT, spawn.entry, spawn.guid)))
                             if (GenericTransport* transport = dynamic_cast<GenericTransport*>(go))
                                 transports.insert(transport);
@@ -673,7 +683,7 @@ std::set<GenericTransport*> WorldPosition::getTransports(uint32 entry)
         // so GetGameObject could never match it and this branch always came back
         // empty. Built properly it needs the entry too, which is gopair->second.id.
         for (auto gopair : getGameObjectsNear(0.0f, entry))
-            if (GameObject* go = getMap(getFirstInstanceId())->GetGameObject(
+            if (GameObject* go = map->GetGameObject(
                     ObjectGuid(HIGHGUID_GAMEOBJECT, gopair->second.id, gopair->first)))
                 if (GenericTransport* transport = dynamic_cast<GenericTransport*>(go))
                     transports.insert(transport);
