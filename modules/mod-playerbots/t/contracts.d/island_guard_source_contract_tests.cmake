@@ -107,6 +107,15 @@ foreach(line IN ITEMS
   require_text("${conf_dist}" "${line}" ".dist default")
 endforeach()
 require_text("${conf_dist}" "70 % of the route starts, on the main mesh for 7.5 %" ".dist reason for the 200-poly threshold (OB-00 point 2)")
+# OB-10 review 09.11. (#976/#977): the A/B result block stands once, at the IslandGuard key; the neighbour key
+# Unstuck.CombatFightClock (same mode wording) keeps its own text and default 0.
+count_text("${conf_dist}" "# IslandGuard A/B (crossover B/C" ig_ab_blocks)
+if(NOT ig_ab_blocks EQUAL 1)
+  message(FATAL_ERROR "island guard: .dist IslandGuard A/B block expected once, found ${ig_ab_blocks}")
+endif()
+require_text("${conf_dist}" "#   0 = off (rollback), 1 = every bot (default), 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid); other\n#   values act like 0.\nAiPlayerbot.Path.IslandGuard = 1\n" ".dist: the IslandGuard mode text sits at its key")
+require_text("${conf_dist}" "#   0 = off (default), 1 = every bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid); other values act like 0.\nAiPlayerbot.Unstuck.CombatFightClock = 0\n" ".dist: CombatFightClock mode text and default 0 unchanged")
+require_text("${config_h}" "0 off (rollback), 1 all (default\n    // since the IslandGuard A/B, ACCEPT 09.11.2026)" "member comment: 0 = rollback, default 1")
 require_text("${policy}" "constexpr std::uint32_t DefaultMaxPolys = 200;" "policy default threshold")
 require_text("${policy}" "constexpr float DefaultSnapDz = 10.0f;" "policy default snap dz")
 require_text("${policy}" "constexpr float DefaultStepOffYards = 7.0f;" "policy default step-off")

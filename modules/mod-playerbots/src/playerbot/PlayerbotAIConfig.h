@@ -1166,9 +1166,9 @@ public:
     bool pathTaxiCancelForm = false;  // twow-repo#575 (PATH-01 b): cancel a disallowed mount form (travel form, Ghost Wolf) before a flight, 0 = off
     bool pathRescueSkipCustomStarts = false;  // twow-repo#575 (PATH-01 E6): the quest rescue sends only goblins / high elves to their start zones, 0 = off
     // twow-repo#575 A3 step 4 M-c (OB-00 06.11.2026, IslandGuardPolicy.h): no far-move arrival on a navmesh micro-island (the
-    // arrival point moves to the nearest main ground), and a bot already on one steps off it. 0 off (default), 1 all, 2 cohort B,
-    // 3 cohort A; any other value acts like 0. The other three keys: island threshold (polys), vertical window of the arrival
-    // snap (yd), step-off reach (yd, 0 = no step-off).
+    // arrival point moves to the nearest main ground), and a bot already on one steps off it. 0 off (rollback), 1 all (default
+    // since the IslandGuard A/B, ACCEPT 09.11.2026), 2 cohort B, 3 cohort A; any other value acts like 0. The other three keys:
+    // island threshold (polys), vertical window of the arrival snap (yd), step-off reach (yd, 0 = no step-off).
     uint32 pathIslandGuard = 1;
     uint32 pathIslandMaxPolys = 200;
     float pathIslandSnapDz = 10.0f;
