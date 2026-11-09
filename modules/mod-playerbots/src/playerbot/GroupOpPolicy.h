@@ -2,6 +2,7 @@
 
 #include "CohortPolicy.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -66,7 +67,18 @@ enum class OpSource : std::uint8_t
     Accept,         // AcceptInvitationAction
     Invite,         // InviteToGroupAction::Invite ("invite", "invite nearby", "invite guild")
     Leader,         // PassLeadershipToMasterAction ("leader", "give leader")
+    Manager,        // A3 step 6 T30-0: the world-thread group manager (QueueManagerJoin / QueueManagerLeave; no caller yet)
 };
+
+// A3 step 6 T30-0 (design T30 v1.1 3.5): Op.reason of a Join (the ad-hoc action's joins keep 0). No new OpKind, no new
+// verdict. T30-1 makes RunJoin read the bits (range and size by type, no ad-hoc registry for a manager group).
+constexpr std::uint8_t kJoinManager = 0x01;   // a manager join
+constexpr std::uint8_t kJoinQuest = 0x02;     // with kJoinManager: a QUEST group (else ADHOC)
+
+inline std::uint8_t ManagerJoinReason(bool quest)
+{
+    return std::uint8_t(kJoinManager | (quest ? kJoinQuest : 0));
+}
 
 // Op.reason of the new kinds (Leave keeps the ad-hoc reason; a QueueLeave op: kLeaveQueued below).
 constexpr std::uint8_t kAcceptDecline = 1;      // Accept: the security decline (UninviteFromGroup)
@@ -262,6 +274,49 @@ inline bool IsDrop(Verdict v)
 {
     return v != Verdict::Execute && v != Verdict::Retry;
 }
+
+// ---- A3 step 6 T30-0 (design T30 v1.1 3.5, m3): what became of a manager op ----------------------------------------------------
+// Counted in Drain around Run, never inside the Run* bodies: "failed" is the before/after compare of the minute's failed count
+// of the op's kind (the core refused although the op ran). A Retry is no outcome (the op waits); a superseded op never ran.
+enum class ManagerOpResult : std::uint8_t
+{
+    Executed = 0,
+    Failed,        // ran, the core refused (invite gone, accept refused, still grouped)
+    Stale,         // dropped by a staleness rule (the verdict says which)
+    Superseded,    // a later op of its bot replaced it (a manager Leave replaces the bot's waiting Join)
+};
+constexpr std::size_t kManagerOpResults = 4;
+
+inline ManagerOpResult ManagerOpResultOf(Verdict v, std::uint32_t failedBefore, std::uint32_t failedAfter)
+{
+    if (v != Verdict::Execute)
+        return ManagerOpResult::Stale;
+    return failedAfter != failedBefore ? ManagerOpResult::Failed : ManagerOpResult::Executed;
+}
+
+// One outcome for the manager (world thread). verdict: the drain's verdict; Retry for a superseded op (it never ran).
+struct ManagerOutcome
+{
+    std::uint32_t bot = 0;
+    std::uint32_t other = 0;
+    std::uint32_t groupId = 0;
+    std::uint32_t seq = 0;
+    OpKind kind = OpKind::Leave;
+    Verdict verdict = Verdict::Retry;
+    ManagerOpResult result = ManagerOpResult::Stale;
+};
+
+// Outcomes nobody took yet stay bounded (T30-0 has no taker and no producer): the rest is counted, not kept.
+constexpr std::size_t kManagerOutcomesMax = 256;
+
+// Totals since start (world thread only: the manager's pass queues, the drain runs; both on the world thread).
+struct ManagerOpCounts
+{
+    std::array<std::uint32_t, kKinds> queued{};
+    std::array<std::uint32_t, kKinds> refused{};   // a bot not found, a dungeon type, or the push refused (full / pending)
+    std::array<std::array<std::uint32_t, kManagerOpResults>, kKinds> results{};
+    std::uint32_t outcomesDropped = 0;
+};
 
 struct LeaveOpFacts
 {
