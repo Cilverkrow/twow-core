@@ -2314,7 +2314,8 @@ AiPlayerbot.ProfessionTraining.TraceCooldownSeconds = 300
 # the trip stops holding (hold_over_s = seconds after the backoff end). reason=lost (another target took over) is written
 # at the next request of the kind, with trip_s / hold_over_s up to the last hold check that held and seen_after_s = the
 # delay of the line (P1-b3). Mode (in-realm A/B, cohort parity): 0 = as before (default),
-# 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
+# 1 = every bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid) - the second arm of a crossover unit
+# (T28a, OB-00 09.11.2026). Any other value acts like 0.
 AiPlayerbot.ProfessionTraining.Travel = 0
 # twow-repo#333 Berufe P1-n (OB-00 26.10.2026 after M1 FUTILE: the quest-first gap was too rare - 0 trainer trips): with
 # ProfessionTraining.Travel on for the bot, a bot (level 5+, roster, on its own) that has not learned a phase-one skill of
@@ -2485,7 +2486,8 @@ AiPlayerbot.ProfessionUse.TraceCooldownSeconds = 300
 # as the gap tool trip; it holds 10 min, its whole time counts as hold_over_s. "[ProfTravel] state=request kind=tool ...
 # path=near"; with ProfessionTraining.Trace one "[ProfTravel] state=gate kind=tool path=near ... result=" per bot missing a tool
 # and TraceCooldownSeconds (start, not_eligible, cooldown, turn_in, band, money, no_vendor, not_near, unreachable, home_zone).
-# Mode: 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
+# Mode: 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid) - the
+# second arm of a crossover unit (T28a, OB-00 09.11.2026). Any other value acts like 0.
 AiPlayerbot.ProfessionUse.ToolBuy = 0
 # twow-repo#333 P1-z (OB-00 31.10.2026, BUG FIX: code default 1, 0 = rollback): a bot's own vendor purchase ("buy" with
 # "vendor", the RPG buy at a vendor) also reads the vendor template items (creature_template.vendor_id -> npc_vendor_template),
