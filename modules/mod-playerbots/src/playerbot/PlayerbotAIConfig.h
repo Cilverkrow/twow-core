@@ -1162,6 +1162,7 @@ public:
     bool pathTransportDeckProbe = false;  // twow-repo#342 (S3b-0): once per dock wait 8 fixed vessel deck probes, one [TransportDeck] line (30/min) + [TransportBoard] summary, 0 = off
     uint32 pathTransportWaitTimeoutMin = 15;  // twow-repo#342 (S3b-0): minutes at a dock / aboard before the S1 wait_timeout / overrun, 1-240 (<= 0 -> 15)
     bool pathTransportBoardFix = false;  // twow-repo#342 (S3b-1): bots board ships / zeppelins (deck hit, stop gate, dock-hop entry, ride record, exit at the arrival dock, lost-ride recovery), 0 = off
+    bool pathTransportSameMapGuard = false;  // twow-repo#575 H4 (bug fix; code default 0 until its acceptance unit, then the flip pair): UseTransport scans a dock's vessels only on the bot's map (no read of another map's transports from this thread), 0 = as before
     bool pathTaxiCancelForm = false;  // twow-repo#575 (PATH-01 b): cancel a disallowed mount form (travel form, Ghost Wolf) before a flight, 0 = off
     bool pathRescueSkipCustomStarts = false;  // twow-repo#575 (PATH-01 E6): the quest rescue sends only goblins / high elves to their start zones, 0 = off
     // twow-repo#575 A3 step 4 M-c (OB-00 06.11.2026, IslandGuardPolicy.h): no far-move arrival on a navmesh micro-island (the
