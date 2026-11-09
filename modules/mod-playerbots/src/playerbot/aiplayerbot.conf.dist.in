@@ -2199,6 +2199,8 @@ AiPlayerbot.Revive.CorpseRunFirst.MaxSeconds = 600
 # holds an earlier one is kept for the next packet pass, as loot responses are, instead of being dropped. The bot then
 # accepts it in its dead state as before ("accept resurrect" checks that the bot is dead; the core checks that the request
 # is still open). Accepted resurrects shorten deaths and move the base for deaths and re-deaths in A/B units.
+# Read when the bot's AI is created (the packet handler table, at login): a config reload affects only bots logged in
+# afterwards.
 # 0 = as before (default until the acceptance unit; then 1 by default, 0 = rollback).
 AiPlayerbot.Revive.DelayResurrectRequest = 0
 # twow-repo#575 A3 step 4 S4-2 (OB-00 07.11.2026): repop only when dead. "unstuck" sent an ALIVE bot to repop for "move long

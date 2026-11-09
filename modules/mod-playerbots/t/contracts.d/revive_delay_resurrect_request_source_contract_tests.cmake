@@ -50,6 +50,8 @@ read_source("${PB_SOURCE_DIR}/strategy/actions/AcceptResurrectAction.h" accept_h
 # 1. The key: dist default 0, member default false, read with default false, [ConfigEcho] in sorted place.
 require_text("${dist}" "\nAiPlayerbot.Revive.DelayResurrectRequest = 0\n" "dist default 0")
 count_text("${dist}" "AiPlayerbot.Revive.DelayResurrectRequest =" 1 "one dist line")
+# OB-10 review 09.11.: the dist text names when the flag is read.
+require_text("${dist}" "# Read when the bot's AI is created (the packet handler table, at login): a config reload affects only bots logged in\n# afterwards.\n" "dist: read at AI creation, reload only for later bots")
 require_text("${config_h}" "    bool reviveDelayResurrectRequest = false;" "member default false")
 require_text("${config_cpp}" "    reviveDelayResurrectRequest = config.GetBoolDefault(\"AiPlayerbot.Revive.DelayResurrectRequest\", false);" "read with default false")
 require_text("${config_cpp}" "            {\"Revive.CorpseRunFirst.MaxSeconds\", Value(reviveCorpseRunFirstMaxSeconds)},\n            {\"Revive.DelayResurrectRequest\", Value(reviveDelayResurrectRequest)},\n            {\"Revive.SpiritHealerFull\", Value(reviveSpiritHealerFull)}," "[ConfigEcho] sorted")
