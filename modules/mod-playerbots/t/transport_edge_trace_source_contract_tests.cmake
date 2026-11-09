@@ -216,7 +216,7 @@ region("${move_cpp}" "void TraceTransportBoard(Player* bot" "\n}\n" board_fn)
 require_text("${board_fn}" "boardedOn != nullptr,\n        !boardedOn && (doTeleport || !moved));" "board_point = not boarded and not walking there")
 # attempt / wait_timeout / route_changed / left at the not-boardable exit, right before its false answer.
 require_text("${use_body}" "    if (edgeTrace)   // twow-repo#342 (S1): state=attempt on a new key, fail route_changed / left / wait_timeout\n        TraceTransportWait(bot, *edge, uint32(candidates.size()), transport ? std::sqrt(minDist) : -1.0f);\n\n    return false;" "attempt at the not-boardable exit")
-require_text("${use_body}" "    std::set<GenericTransport*> const candidates = dockPosition.getTransports(entry);" "one transport scan, as before")
+require_text("${use_body}" "    std::set<GenericTransport*> const candidates = scanDock ? dockPosition.getTransports(entry) : std::set<GenericTransport*>();" "one transport scan, as before (twow-repo#575 H4: behind Path.TransportSameMapGuard)")
 count_text("${use_body}" "getTransports(" 1 "transport scans in UseTransport")
 
 # 4. Callers: key only with the switch, derived once per run change, no node lookup, no per-tick scan.
