@@ -19,6 +19,13 @@ Ring<Capacity>& InboxRing()
     static Ring<Capacity> ring;
     return ring;
 }
+
+// T30-0: rare (a quest id >= 2^23), so it shares the inbox mutex instead of an atomic of its own.
+std::uint64_t& KeyOverflows()
+{
+    static std::uint64_t count = 0;
+    return count;
+}
 }
 
 bool Post(Event const& event)
@@ -46,15 +53,24 @@ std::size_t Drain(std::vector<Event>& out, std::size_t max)
     return InboxRing().Drain(out, max);
 }
 
+void CountKeyOverflow()
+{
+    std::lock_guard<std::mutex> lock(InboxMutex());
+    ++KeyOverflows();
+}
+
 Counters Read()
 {
     std::lock_guard<std::mutex> lock(InboxMutex());
-    return InboxRing().Read();
+    Counters counters = InboxRing().Read();
+    counters.keyOverflow = KeyOverflows();
+    return counters;
 }
 
 void LogMinute(MinuteLine const& minute)
 {
-    char buf[256];
+    // The T30-0 line: 17 fields, ~200 chars of names plus at most 20 digits each - 640 never cuts it.
+    char buf[640];
     FormatMinuteLine(buf, sizeof(buf), minute);
     sLog.outString("%s", buf);
 }
