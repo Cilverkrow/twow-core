@@ -55,6 +55,10 @@ public:
     ShadowState& Shadow() { return shadow_; }
 
 private:
+    // Mailbox pair: takes this bot's mail, oldest first, once per tick; the mailbox counts it (GroupDirective separately). Nothing
+    // acts on it in that pair.
+    void TakeMail();
+
     PlayerbotAI* ai_;
     Mode mode_ = Mode::Passive;
     Phase phase_ = Phase::Plan;
@@ -65,9 +69,11 @@ private:
 
 // The module-wide mailbox (design section 1.10), keyed by the bot's low guid: other threads (the group manager on the world
 // thread, the bot brain's answer thread) only know the guid; no pointer to a Supervisor or PlayerbotAI leaves the bot's thread.
-// DECLARED ONLY in this scaffold: the pair that wires the first event defines them, together with Forget in ~PlayerbotAI. The
-// contract pins that nothing calls them yet.
+// Defined by the mailbox pair in SupervisorMail.cpp (pure rules SupervisorMailPolicy.h, contract
+// a3s3_supervisor_mailbox_source_contract_tests.cmake): Drain only in Supervisor::TakeMail (the tick), Forget only in ~PlayerbotAI
+// (logout and every other AI teardown). Post has no caller in that pair; the group manager's directives (T30) are the first.
 bool Post(std::uint32_t guidLow, Event const& event);              // fixed ring per guid under a mutex; full -> dropped
-std::size_t Drain(std::uint32_t guidLow, Event* out, std::size_t max);   // bot thread only, in UpdateAI
+std::size_t Drain(std::uint32_t guidLow, Event* out, std::size_t max);   // bot thread only, from the tick
 void Forget(std::uint32_t guidLow);                                 // logout / AI teardown: drop the ring
+bool MailWaiting();                                                 // any ring holds an event (one atomic load, no lock)
 }

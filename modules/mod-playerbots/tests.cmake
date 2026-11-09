@@ -1735,6 +1735,21 @@ add_test(NAME supervisor_policy
   COMMAND supervisor_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# A3 step 3, mailbox pair (agreed with CLI-GRP 09.11.2026): the pure rules of the supervisor's mailbox (SupervisorMailPolicy.h; no
+# game header). The game side is pinned by t/contracts.d/a3s3_supervisor_mailbox_source_contract_tests.cmake.
+add_executable(supervisor_mail_policy_tests
+  "${PB_MODULE_DIR}/t/supervisor_mail_policy_tests.cpp")
+
+target_include_directories(supervisor_mail_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(supervisor_mail_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME supervisor_mail_policy
+  COMMAND supervisor_mail_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # A3 step 2 quest book core QB-K (QuestBookPolicy.h, AiPlayerbot.QuestBook); source contract in t/contracts.d.
 add_executable(questbook_policy_tests
   "${PB_MODULE_DIR}/t/questbook_policy_tests.cpp")
