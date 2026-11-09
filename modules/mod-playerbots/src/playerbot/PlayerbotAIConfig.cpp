@@ -52,6 +52,7 @@
 #include "playerbot/R01CohortPolicy.h"
 #include "playerbot/LosCachePolicy.h"   // twow-repo#602 (Rotation.LosCacheMs): the read's bounds
 #include "playerbot/RescueHubPolicy.h"   // twow-repo#575 RG-a (QuestRescue.HomeHubs): the mode clamp
+#include "playerbot/ResurrectDelayPolicy.h"   // twow-repo#575 H3 (Revive.DelayResurrectRequest): the mode clamp
 
 #include <iostream>
 #include <numeric>
@@ -1225,7 +1226,7 @@ bool PlayerbotAIConfig::Initialize()
     // twow-repo#575 A3 step 4 S4-1 (Revive.CorpseRunFirst): an unknown mode is off; MaxSeconds clamped to 120..1800 (CorpseRunFirstPolicy.h).
     reviveCorpseRunFirst = ai::corpse_first::ClampMode(config.GetIntDefault("AiPlayerbot.Revive.CorpseRunFirst", 0));
     reviveCorpseRunFirstMaxSeconds = ai::corpse_first::ClampMaxSeconds(config.GetIntDefault("AiPlayerbot.Revive.CorpseRunFirst.MaxSeconds", int(ai::corpse_first::DefaultMaxSeconds)));
-    reviveDelayResurrectRequest = config.GetBoolDefault("AiPlayerbot.Revive.DelayResurrectRequest", false);   // twow-repo#575 H3
+    reviveDelayResurrectRequest = ai::resurrect_delay::ClampMode(config.GetIntDefault("AiPlayerbot.Revive.DelayResurrectRequest", 0));   // twow-repo#575 H3
     // twow-repo#575 A3 step 4 S4-2 (Rescue.RepopDeadOnly): an unknown mode is off (RepopDeadOnlyPolicy.h).
     rescueRepopDeadOnly = ai::repop_dead_only::ClampMode(config.GetIntDefault("AiPlayerbot.Rescue.RepopDeadOnly", 0));
     questFirstProgressionTurnInDeathRouteCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInDeathRouteCooldownSeconds", 3600));
