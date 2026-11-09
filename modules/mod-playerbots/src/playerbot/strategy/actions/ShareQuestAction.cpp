@@ -2,6 +2,7 @@
 #include "playerbot/playerbot.h"
 #include "ShareQuestAction.h"
 #include "playerbot/QuestGroupWorld.h"
+#include "playerbot/GroupManagerView.h"   // A3 step 6 T30-1: a manager QUEST group shares nothing either (3.6)
 
 using namespace ai;
 
@@ -198,5 +199,6 @@ bool AutoShareQuestAction::Execute(Event& event)
 // into a member's log.
 bool AutoShareQuestAction::isUseful()
 {
-    return bot->GetGroup() && !ai->HasActivePlayerMaster() && !quest_groups::IsMember(ai);
+    return bot->GetGroup() && !ai->HasActivePlayerMaster() && !quest_groups::IsMember(ai) &&
+        !group_mgr::IsQuestMember(bot->GetGUIDLow());   // 3.6 (T30-1)
 }

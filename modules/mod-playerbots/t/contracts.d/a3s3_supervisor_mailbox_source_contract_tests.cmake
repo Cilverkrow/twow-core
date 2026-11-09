@@ -97,6 +97,7 @@ read_source("Supervisor.h" sup_h)
 read_source("Supervisor.cpp" sup_cpp)
 read_source("SupervisorShadow.cpp" shadow_cpp)
 read_source("PlayerbotAI.cpp" ai_cpp)
+read_source("GroupManager.cpp" mgr_cpp)   # T30-1 (R7 (a)): the one supervisor::Post( outside the namespace
 file(READ "${PB_MODULE_DIR}/tests.cmake" tests_cmake)
 string(REPLACE "\r" "" tests_cmake "${tests_cmake}")
 file(READ "${PB_MODULE_DIR}/t/supervisor_mail_policy_tests.cpp" unit_test)
@@ -171,9 +172,13 @@ endfunction()
 
 # ---- (c) the call sites ------------------------------------------------------------------------------------------------------
 function(check_calls sup_cpp shadow_cpp ai_cpp all_sources out)
-  count_regex("${all_sources}" "supervisor::(Post|Drain)\\(" n)
-  if(NOT n EQUAL 0)
-    set(${out} "the mailbox is posted to or drained from outside the namespace ${n} times (0 expected in this pair)" PARENT_SCOPE)
+  # T30-1 (A3-S3-T30-SCHNITTSTELLE R7 (a)): exactly one supervisor::Post( outside the namespace, the group manager's directive
+  # post in GroupManager.cpp; no Drain( outside.
+  count_regex("${all_sources}" "supervisor::Drain\\(" n)
+  count_regex("${all_sources}" "supervisor::Post\\(" np)
+  count_regex("${mgr_cpp}" "supervisor::Post\\(" nm)
+  if(NOT n EQUAL 0 OR NOT np EQUAL 1 OR NOT nm EQUAL 1)
+    set(${out} "the mailbox is posted to or drained from outside the namespace: Drain ${n}, Post ${np} (${nm} in GroupManager.cpp; 0, 1 and 1 expected)" PARENT_SCOPE)
     return()
   endif()
   count_regex("${all_sources}" "supervisor::Forget\\(" n)
@@ -381,6 +386,13 @@ expect_reason("a refused post not counted" "${r}" "Post lacks")
 # (c) a Post caller, a second Forget, Forget gone from the destructor, a second drain, the shadow draining.
 check_calls("${sup_cpp}" "${shadow_cpp}" "${ai_cpp}" "${all_sources}\n    ai::supervisor::Post(guid, ev);" r)
 expect_reason("a Post caller" "${r}" "outside the namespace")
+# T30-1: the one Post moved out of GroupManager.cpp (no caller there, one elsewhere).
+set(mgr_saved "${mgr_cpp}")
+string(REPLACE "supervisor::Post(" "supervisor::Deliver(" mgr_cpp "${mgr_saved}")
+string(REPLACE "ai::supervisor::Post(low, event);" "ai::supervisor::Deliver(low, event);" m "${all_sources}")
+check_calls("${sup_cpp}" "${shadow_cpp}" "${ai_cpp}" "${m}\n    ai::supervisor::Post(guid, ev);" r)
+expect_reason("the directive post outside GroupManager.cpp" "${r}" "outside the namespace")
+set(mgr_cpp "${mgr_saved}")
 check_calls("${sup_cpp}" "${shadow_cpp}" "${ai_cpp}" "${all_sources}\n    ai::supervisor::Forget(guid);" r)
 expect_reason("a second Forget" "${r}" "Forget\\( called")
 string(REPLACE "${FORGET_CALL}" "" m "${ai_cpp}")

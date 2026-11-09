@@ -411,10 +411,12 @@ Verdict RunJoin(Op const& op, std::uint32_t transitMs, DrainMinute& m)
         f.inviterGroupId = g ? g->GetId() : 0u;
         f.inviterLeads = g && g->IsLeader(inviter->GetObjectGuid());
         f.inviterMembers = g ? g->GetMembersCount() : 1u;
-        f.maxMembers = sPlayerbotAIConfig.botGroupsMaxBots;
+        // T30-1 (design 3.5 rows 1-2): a manager QUEST join takes the S7 size and recruit radius, every other join the ad-hoc ones.
+        bool const questJoin = (op.reason & kJoinManager) && (op.reason & kJoinQuest);
+        f.maxMembers = questJoin ? sPlayerbotAIConfig.questGroupsMaxSize : sPlayerbotAIConfig.botGroupsMaxBots;
         f.sameMap = invitee->GetMapId() == inviter->GetMapId();
-        f.inRange = f.inWorld && f.sameMap &&
-            sServerFacade.GetDistance2d(inviter, invitee) <= 2.0f * sPlayerbotAIConfig.botGroupsAdhocRadius;
+        f.inRange = f.inWorld && f.sameMap && sServerFacade.GetDistance2d(inviter, invitee) <=
+            (questJoin ? sPlayerbotAIConfig.questGroupsRecruitRadius : 2.0f * sPlayerbotAIConfig.botGroupsAdhocRadius);
     }
     f.opGroupId = op.groupId;
     f.transitMs = transitMs;
@@ -447,6 +449,24 @@ Verdict RunJoin(Op const& op, std::uint32_t transitMs, DrainMinute& m)
         return v;
     }
 
+    // T30-1 (design 3.5 rows 3-4): a manager group is the manager's (its registry, its end rules), never the ad-hoc registry's.
+    // The loot of a new group as its legacy path sets it: ADHOC free-for-all (#365), QUEST group loot from uncommon (S7).
+    if (op.reason & kJoinManager)
+    {
+        if (group->GetMembersCount() == 2)
+        {
+            if (op.reason & kJoinQuest)
+            {
+                group->SetLootMethod(GROUP_LOOT);
+                group->SetLootThreshold(ITEM_QUALITY_UNCOMMON);
+            }
+            else
+                group->SetLootMethod(FREE_FOR_ALL);
+            group->SendUpdate();
+        }
+        ++m.executed[std::size_t(OpKind::Join)];
+        return v;
+    }
     adhoc_group::Registry::Entry entry;
     if (!adhoc_group::Groups().Find(group->GetId(), entry) && adhoc_group::AllRosterBots(group))
     {

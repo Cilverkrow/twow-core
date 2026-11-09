@@ -1,6 +1,7 @@
 #include "playerbot/playerbot.h"
 #include "playerbot/ManagerFacts.h"
 #include "playerbot/AdhocGroupWorld.h"
+#include "playerbot/GroupManagerView.h"   // T30-1: the key of a manager group (ManagedKeyOf)
 #include "playerbot/QuestGroupPolicy.h"
 #include "playerbot/PlayerbotAI.h"
 #include "playerbot/PlayerbotAIConfig.h"
@@ -55,8 +56,8 @@ manager_inbox::StatusFlags ReadFlags(Player* bot, PlayerbotAI* ai)
     manager_inbox::StatusFlags f;
     f.alliance = bot->GetTeam() == ALLIANCE;
     f.alive = bot->IsAlive();
-    // T30-1 splits the ownership test off (CandidateFacts, G2); today the whole rule is the candidate fact.
-    f.candidate = adhoc_group::IsCandidateBot(bot);
+    // G2 (T30-1): the candidate rule without the ownership test (IsCandidateBot adds "not owned by the manager").
+    f.candidate = adhoc_group::CandidateFacts(bot);
     f.inBgQueue = bot->InBattleGroundQueue();
     f.dungeonMap = bot->GetMap()->IsDungeon();
     f.busy = Busy(bot, ai);
@@ -67,11 +68,22 @@ manager_inbox::StatusFlags ReadFlags(Player* bot, PlayerbotAI* ai)
 manager_inbox::KeyFacts ReadKey(Player* bot)
 {
     manager_inbox::KeyFacts k;
-    adhoc_group::ObjectiveKey const key = adhoc_group::CurrentObjective(bot);
+    adhoc_group::ObjectiveKey key = adhoc_group::CurrentObjective(bot);
+    // T30-1: a member of a manager group reports the group's key (its quest; its objective, none for QUEST), not its travel
+    // target's, so the end rules follow the group's quest. The view answers false at once while the manager holds nobody.
+    std::uint32_t groupQuest = 0;
+    std::int8_t groupObjective = -1;
+    Group* const own = bot->GetGroup();
+    bool const managed = own && group_mgr::ManagedKeyOf(own->GetId(), groupQuest, groupObjective) && groupQuest;
+    if (managed)
+    {
+        key.questId = groupQuest;
+        key.objective = std::uint8_t(groupObjective >= 0 ? groupObjective : 0);
+    }
     if (!key.IsValid())
         return k;
     k.questId = key.questId;
-    k.objective = std::int8_t(key.objective);
+    k.objective = managed && groupObjective < 0 ? std::int8_t(-1) : std::int8_t(key.objective);
     QuestStatusData const* st = bot->GetQuestStatusData(key.questId);
     if (!st)
         k.questStatus = manager_inbox::kQuestNone;
@@ -81,6 +93,18 @@ manager_inbox::KeyFacts ReadKey(Player* bot)
         k.questStatus = manager_inbox::kQuestComplete;
     else if (st->m_status == QUEST_STATUS_INCOMPLETE)
         k.questStatus = manager_inbox::kQuestIncomplete;
+    if (k.objective < 0)
+    {
+        // A QUEST group: progress over every objective (S7 counts any objective's progress); done = the quest complete.
+        k.objDone = k.questStatus == manager_inbox::kQuestComplete || k.questStatus == manager_inbox::kQuestRewarded;
+        for (std::uint8_t i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
+        {
+            adhoc_group::ObjectiveKey part = key;
+            part.objective = i;
+            k.progress += adhoc_group::ObjectiveCounter(bot, part);
+        }
+        return k;
+    }
     k.objDone = adhoc_group::ObjectiveDone(bot, key);
     k.progress = adhoc_group::ObjectiveCounter(bot, key);
     return k;

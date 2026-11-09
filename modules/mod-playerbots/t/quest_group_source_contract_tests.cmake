@@ -104,7 +104,7 @@ require_text("${world}" "return ai && ai->GetQuestGroupRole() != 0;" "lock-free 
 # Members are not dropped by "leave far away" and get no auto-shared quests.
 require_text("${leave}" "        if (quest_groups::IsMember(ai))
             return false;" "leave far away spares help groups")
-require_text("${share}" "return bot->GetGroup() && !ai->HasActivePlayerMaster() && !quest_groups::IsMember(ai);" "no auto share in help groups")
+require_text("${share}" "return bot->GetGroup() && !ai->HasActivePlayerMaster() && !quest_groups::IsMember(ai) &&\n        !group_mgr::IsQuestMember(bot->GetGUIDLow());" "no auto share in help groups (nor in a manager QUEST group, T30-1 3.6)")
 
 # Lines: one tag for all group lines (OB-20), cohort in every state line.
 require_text("${world}" "[QuestGroup] state=formed group=%u quest=%u size=%u leader=%u levels=%u-%u objective=%d cohort=%c mixed=%u" "formed line")
@@ -125,7 +125,7 @@ require_text("${policy}" "inline bool StuckTriggersExempt(std::uint8_t role, boo
 {
     return role != 0 && inGroup;
 }" "R2 exemption: role and a real group")
-require_text("${stuck}" "return quest_groups::StuckTriggersExempt(ai->GetQuestGroupRole(), bot->GetGroup() != nullptr);" "R2 helper")
+require_text("${stuck}" "uint8 const role = std::max<uint8>(ai->GetQuestGroupRole(), group_mgr::QuestRoleOf(bot->GetGUIDLow()));\n        return quest_groups::StuckTriggersExempt(role, bot->GetGroup() != nullptr);" "R2 helper (S7 role or the T30-1 manager QUEST role, 3.6)")
 set(r2_count 0)
 set(r2_rest "${stuck}")
 while(TRUE)

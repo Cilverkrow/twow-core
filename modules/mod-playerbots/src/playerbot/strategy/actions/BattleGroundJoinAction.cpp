@@ -27,6 +27,7 @@
 #include "Battlegrounds/BattleGround.h"
 #include "Battlegrounds/BattleGroundMgr.h"
 #include "BattleGroundJoinAction.h"
+#include "playerbot/GroupManagerView.h"   // A3 step 6 T30-1: the manager gate (G12)
 #ifndef MANGOSBOT_ZERO
 #ifdef CMANGOS
 #include "Arena/ArenaTeam.h"
@@ -224,6 +225,10 @@ bool BGJoinAction::Execute(Event& event)
 #ifndef MANGOSBOT_ZERO
 bool BGJoinAction::gatherArenaTeam(ArenaType type)
 {
+    // G12 (T30-1): a captain the group manager holds gathers no arena team (its group is the manager's).
+    if (ai::group_mgr::IsManaged(bot->GetGUIDLow()))
+        return false;
+
     ArenaTeam* arenateam = nullptr;
     Group* leaderGroup = nullptr;
     uint32 needMembers = (uint32)type;
@@ -286,6 +291,10 @@ bool BGJoinAction::gatherArenaTeam(ArenaType type)
         if (member)
         {
             if (!GetBotAI(member))
+                continue;
+
+            // G12 (T30-1): a member the group manager holds is not pulled into the arena group.
+            if (ai::group_mgr::IsManaged(member->GetGUIDLow()))
                 continue;
 
             if (member->GetGroup() && GetBotAI(member)->HasRealPlayerMaster())

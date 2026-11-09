@@ -5,6 +5,7 @@
 #include "playerbot/strategy/values/Formations.h"
 #include "Guild/GuildMgr.h"
 #include "playerbot/GroupOps.h"   // A3 lever 2: BotGroups.WritePath
+#include "playerbot/GroupManagerView.h"   // A3 step 6 T30-1: the manager gate (G7, G10)
 
 namespace ai
 {
@@ -57,6 +58,10 @@ namespace ai
             return false;
 
         Player* master = event.getOwner();
+
+        // G10 (T30-1): a bot the group manager owns or holds joins no group on another bot's word.
+        if (master && group_mgr::Blocks(bot->GetGUIDLow()) && GetBotAI(master) && !GetBotAI(master)->IsRealPlayer())
+            return false;
 
         Group* group = master->GetGroup();
 
@@ -216,6 +221,10 @@ namespace ai
             return false;
 
         if (bot->InBattleGroundQueue())
+            return false;
+
+        // G10 (T30-1): a bot the group manager owns or holds runs no LFG group on another bot's word.
+        if (requester && group_mgr::Blocks(bot->GetGUIDLow()) && GetBotAI(requester) && !GetBotAI(requester)->IsRealPlayer())
             return false;
 
         if (!ai->IsSafe(requester))
@@ -427,6 +436,11 @@ namespace ai
     bool InviteNearbyToGroupAction::isUseful()
     {
         if (!sPlayerbotAIConfig.randomBotGroupNearby)
+            return false;
+
+        // G7 (T30-1, design 2.1): a bot the group manager owns or holds invites nobody nearby; under a real player it keeps
+        // the legacy path.
+        if (group_mgr::Blocks(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster())
             return false;
 
         if (bot->InBattleGround())

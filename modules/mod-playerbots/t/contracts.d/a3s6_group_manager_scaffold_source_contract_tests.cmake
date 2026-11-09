@@ -81,7 +81,8 @@ endfunction()
 
 # ---- the one call site ---------------------------------------------------------------------------------------------------
 function(check_call_site rpm all_sources out)
-  set(gate "        if (sPlayerbotAIConfig.botGroupsManager)\n            ai::group_mgr::WorldManager().Update(GetAllBots(), uint32(time(nullptr)));\n        PlayerbotHolder::UpdateAIInternal(elapsed, minimal);")
+  # T30-1: also while the manager still holds a group after a switch to 0 (HasGroups), so it ends them through the op path.
+  set(gate "        if (sPlayerbotAIConfig.botGroupsManager || ai::group_mgr::WorldManager().HasGroups())\n            ai::group_mgr::WorldManager().Update(GetAllBots(), uint32(time(nullptr)));\n        PlayerbotHolder::UpdateAIInternal(elapsed, minimal);")
   string(FIND "${rpm}" "${gate}" at)
   if(at EQUAL -1)
     set(${out} "RandomPlayerbotMgr.cpp: the gated call before PlayerbotHolder::UpdateAIInternal is missing" PARENT_SCOPE)
@@ -121,22 +122,35 @@ function(check_pure policy out)
   set(${out} "" PARENT_SCOPE)
 endfunction()
 
-# ---- no behaviour yet ----------------------------------------------------------------------------------------------------
+# ---- no direct group write -----------------------------------------------------------------------------------------------
+# T30-1: the manager acts only through the BOT-12 manager queue (QueueManagerJoin / QueueManagerLeave / TakeManagerOutcomes)
+# and logs through its one WorldIo line; every other group write or game call stays banned.
 function(check_no_behaviour mgr_h mgr_cpp out)
   set(code "${mgr_h}\n${mgr_cpp}")
+  set(log_line "    void Line(char const* line) override { sLog.outBasic(\"%s\", line); }")
+  string(FIND "${mgr_cpp}" "${log_line}" at)
+  if(at EQUAL -1)
+    set(${out} "GroupManager.cpp: the one WorldIo log line is missing" PARENT_SCOPE)
+    return()
+  endif()
+  string(REPLACE "${log_line}" "" code "${code}")
+  foreach(allowed "group_ops::QueueManagerJoin(" "group_ops::QueueManagerLeave(" "group_ops::TakeManagerOutcomes("
+      "group_ops::QueueManagerJoin /" "group_ops::ManagerOutcome>")
+    string(REPLACE "${allowed}" "" code "${code}")
+  endforeach()
   foreach(word
       "HandleGroup" "RemoveMember" "AddMember" "Disband" "AddGroup" "RemoveGroup" "RemoveFromGroup" "UninviteFromGroup"
       "->Create(" "ChangeLeader" "GetGroupById" "GetGroupByMember" "sObjectMgr" "group_ops::" "DoSpecificAction"
       "ChangeStrategy" "ResetStrategies" "RequestGroupAi" "TeleportTo" "SetForcedRole" "dungeon_run::" "sLog")
     string(FIND "${code}" "${word}" at)
     if(NOT at EQUAL -1)
-      set(${out} "GroupManager: scaffold must not use ${word}" PARENT_SCOPE)
+      set(${out} "GroupManager: must not use ${word} (only the BOT-12 manager queue and the one log line)" PARENT_SCOPE)
       return()
     endif()
   endforeach()
-  string(FIND "${mgr_cpp}" "void WorldThreadManager::Update(std::map<std::uint32_t, Player*> const& bots, std::uint32_t /*now*/)\n{\n    ++passes_;\n    DrainInbox(bots, WorldTimer::getMSTime());\n}" at)
+  string(FIND "${mgr_cpp}" "void WorldThreadManager::Update(std::map<std::uint32_t, Player*> const& bots, std::uint32_t now)\n{\n    ++passes_;\n    std::uint32_t const nowMs = WorldTimer::getMSTime();\n    DrainInbox(bots, nowMs);\n    RunDirectives(bots, nowMs, now);\n}" at)
   if(at EQUAL -1)
-    set(${out} "GroupManager.cpp: the scaffold pass is not the counter plus the inbox drain" PARENT_SCOPE)
+    set(${out} "GroupManager.cpp: the pass is not the counter, the inbox drain and the directive pass" PARENT_SCOPE)
     return()
   endif()
   set(${out} "" PARENT_SCOPE)
@@ -199,9 +213,17 @@ string(REPLACE "if (!ai::group_mgr::ValidMode(botGroupsManager))" "if (false)" m
 check_switch("${config_h}" "${m}" "${conf_dist}" r)
 expect_caught("${r}" "no mode clamp")
 
-string(REPLACE "        if (sPlayerbotAIConfig.botGroupsManager)\n" "" m "${rpm}")
+string(REPLACE "        if (sPlayerbotAIConfig.botGroupsManager || ai::group_mgr::WorldManager().HasGroups())\n" "" m "${rpm}")
 check_call_site("${m}" "${all_sources}" r)
 expect_caught("${r}" "ungated call")
+
+string(REPLACE "        if (sPlayerbotAIConfig.botGroupsManager || ai::group_mgr::WorldManager().HasGroups())\n" "        if (sPlayerbotAIConfig.botGroupsManager)\n" m "${rpm}")
+check_call_site("${m}" "${all_sources}" r)
+expect_caught("${r}" "held groups orphaned after a switch to 0")
+
+string(REPLACE "    void Line(char const* line) override { sLog.outBasic(\"%s\", line); }" "    void Line(char const* line) override { sLog.outBasic(\"%s\", line); }\n    void Raw() { sLog.outError(\"x\"); }" m "${mgr_cpp}")
+check_no_behaviour("${mgr_h}" "${m}" r)
+expect_caught("${r}" "a second log site in the manager")
 
 check_call_site("${rpm}" "${all_sources}\nai::group_mgr::WorldManager().Update(x, y);" r)
 expect_caught("${r}" "second call site")

@@ -67,11 +67,11 @@ enum class OpSource : std::uint8_t
     Accept,         // AcceptInvitationAction
     Invite,         // InviteToGroupAction::Invite ("invite", "invite nearby", "invite guild")
     Leader,         // PassLeadershipToMasterAction ("leader", "give leader")
-    Manager,        // A3 step 6 T30-0: the world-thread group manager (QueueManagerJoin / QueueManagerLeave; no caller yet)
+    Manager,        // A3 step 6 T30-0: the world-thread group manager (QueueManagerJoin / QueueManagerLeave; called by GroupManager.cpp)
 };
 
 // A3 step 6 T30-0 (design T30 v1.1 3.5): Op.reason of a Join (the ad-hoc action's joins keep 0). No new OpKind, no new
-// verdict. T30-1 makes RunJoin read the bits (range and size by type, no ad-hoc registry for a manager group).
+// verdict. T30-1: RunJoin reads the bits (range and size by type, no ad-hoc registry for a manager group).
 constexpr std::uint8_t kJoinManager = 0x01;   // a manager join
 constexpr std::uint8_t kJoinQuest = 0x02;     // with kJoinManager: a QUEST group (else ADHOC)
 
