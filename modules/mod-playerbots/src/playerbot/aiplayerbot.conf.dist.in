@@ -3885,6 +3885,26 @@ AiPlayerbot.Rotation.DuelRule.CancelSeconds = 60
 # are a trace only (a live target dropped by "select new target", and whether that interrupted a cast).
 # 0 = as before, 1 = every bot (default), 2 = only cohort B (odd low guid). Any other value acts like 1.
 AiPlayerbot.Rotation.InvalidTargetQuiet = 1
+# A3-HARM-UPSTREAM H6 (T40) (idea: cmangos/playerbots 21b8aef2 + f6f1d3f, no code taken; BEHAVIOUR CHANGE, default 0 = as before):
+# a bot out of combat can keep a valid current target that nothing acts on. A grind pick that took the pull path returns before
+# "attack target" is set, and the end of the pull clears only "pull target"; travel resets "attack target" but keeps the current
+# target. Then "combat end" switches the engine back, "no target" stays false and "attack anything" never runs again. With the
+# switch such a bot drops ONLY its current target after StoppedSeconds standing still, or after StillSeconds without moving 5 yards,
+# so "no target" -> "attack anything" picks again (possibly the same mob). Travel target, rpg target, attack / pull / old target,
+# movement and the stuck clocks are not touched. Not while a pull runs (15 s), waiting for attack, with an open loot window, casting,
+# sitting, eating or drinking; never in combat, dead, under a real player master, on a taxi or transport, in a duel or battleground.
+# "[StaleTarget] mode= shadow= still_s= stopped_s= elig_bot_min= released= by_still= by_stopped= shadow_would= re_same= moved_on=
+# held_pull= held_wait= held_loot= held_cast= held_rest=" once a minute with the mode or the shadow on; every counter is an A/B pair
+# (cohort A even / cohort B odd low guid).
+# 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
+AiPlayerbot.Rotation.ReleaseStaleTarget = 0
+# 1 = with the mode on, the bots it does not act on (cohort A in mode 2) count "would release" episodes (shadow_would=), never act.
+# Default 0.
+AiPlayerbot.Rotation.ReleaseStaleTarget.Shadow = 0
+# Seconds without a move of 5 yards before the release. Default 60; 0 = this clause off.
+AiPlayerbot.Rotation.ReleaseStaleTarget.StillSeconds = 60
+# Seconds standing (not moving) before the release. Default 5; 0 = this clause off.
+AiPlayerbot.Rotation.ReleaseStaleTarget.StoppedSeconds = 5
 # twow-repo#541 (audit A17, BEHAVIOUR CHANGE, enable only after OB-30 measurement + owner go): 1 = a bot AI in
 # combat (no real player master; also non-roster random bots, bot-led groups, battlegrounds and duels) whose AI
 # pass executed no action while it auto-attacks its current target (melee swing with the victim in melee reach,

@@ -643,6 +643,14 @@ bool PlayerbotAIConfig::Initialize()
     rotationInvalidTargetQuiet = config.GetIntDefault("AiPlayerbot.Rotation.InvalidTargetQuiet", 1);   // twow-repo#602 failure census
     if (rotationInvalidTargetQuiet > 2)
         rotationInvalidTargetQuiet = 1;   // an unknown mode is the default (0 off = rollback, 1 all, 2 cohort B)
+    rotationReleaseStaleTarget = config.GetIntDefault("AiPlayerbot.Rotation.ReleaseStaleTarget", 0);   // A3-HARM-UPSTREAM H6 (T40)
+    if (rotationReleaseStaleTarget > 2)
+        rotationReleaseStaleTarget = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
+    rotationReleaseStaleTargetShadow = config.GetIntDefault("AiPlayerbot.Rotation.ReleaseStaleTarget.Shadow", 0);
+    if (rotationReleaseStaleTargetShadow > 1)
+        rotationReleaseStaleTargetShadow = 0;   // an unknown value is off
+    rotationReleaseStaleTargetStillSeconds = config.GetIntDefault("AiPlayerbot.Rotation.ReleaseStaleTarget.StillSeconds", 60);
+    rotationReleaseStaleTargetStoppedSeconds = config.GetIntDefault("AiPlayerbot.Rotation.ReleaseStaleTarget.StoppedSeconds", 5);
     perfCombatIdleYield = config.GetBoolDefault("AiPlayerbot.Perf.CombatIdleYield", false);
     castWaitPreparing = config.GetIntDefault("AiPlayerbot.CastWait.Preparing", 0);
     if (castWaitPreparing > 2)
@@ -2211,6 +2219,10 @@ bool PlayerbotAIConfig::Initialize()
             {"Rotation.ReachDropEngagement", Value(rotationReachDropEngagement)},
             {"Rotation.ReachLosClose", Value(rotationReachLosClose)},
             {"Rotation.ReachPlayerMaster", Value(rotationReachPlayerMaster)},
+            {"Rotation.ReleaseStaleTarget", Value(rotationReleaseStaleTarget)},
+            {"Rotation.ReleaseStaleTarget.Shadow", Value(rotationReleaseStaleTargetShadow)},
+            {"Rotation.ReleaseStaleTarget.StillSeconds", Value(rotationReleaseStaleTargetStillSeconds)},
+            {"Rotation.ReleaseStaleTarget.StoppedSeconds", Value(rotationReleaseStaleTargetStoppedSeconds)},
             {"Rotation.RestGate", Value(rotationRestGate)},
             {"Rotation.RestoShamanOffdps", Value(rotationRestoShamanOffdps)},
             {"Rotation.RetargetEmptyTrace", Value(rotationRetargetEmptyTrace)},
