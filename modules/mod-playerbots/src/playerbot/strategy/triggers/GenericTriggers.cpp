@@ -578,6 +578,18 @@ bool NoTargetTrigger::IsActive()
 // (pull path return before "attack target", ChooseTargetActions.cpp:165-174; an "attack target" reset by travel) and stands still for
 // StoppedSeconds, or does not move MoveYards for StillSeconds, drops ONLY its "current target", so "no target" fires and "attack
 // anything" re-picks. Only pure accessors are read here (no cached value is filled); the one write is "current target" = nullptr.
+// The Rest hold's aura part: only a regen aura that standing up removes (food, drink), not Blessing of Wisdom or mp5 / hp5 gear.
+static bool StaleTargetEatOrDrink(Player* bot)
+{
+    for (Aura const* aura : bot->GetAurasByType(SPELL_AURA_MOD_REGEN))
+        if (ai::stale_target::IsEatOrDrinkAura(aura->GetSpellProto()->AuraInterruptFlags))
+            return true;
+    for (Aura const* aura : bot->GetAurasByType(SPELL_AURA_MOD_POWER_REGEN))
+        if (ai::stale_target::IsEatOrDrinkAura(aura->GetSpellProto()->AuraInterruptFlags))
+            return true;
+    return false;
+}
+
 bool NoTargetTrigger::StaleTargetCheck(Unit* target, bool oldRule, uint32 mode)
 {
     uint32 const guidLow = bot->GetGUIDLow();
@@ -629,7 +641,7 @@ bool NoTargetTrigger::StaleTargetCheck(Unit* target, bool oldRule, uint32 mode)
     bool const pullRunning = pull && pull->HasPullStarted() && time(nullptr) - pull->GetPullStartTime() < PullStrategy::GetMaxPullTime();
     ai::stale_target::Hold const hold = ai::stale_target::HoldOf(pullRunning, WaitForAttackStrategy::ShouldWait(ai),
         !bot->GetLootGuid().IsEmpty(), bot->IsNonMeleeSpellCasted(true),
-        bot->IsSitState() || bot->HasAuraType(SPELL_AURA_MOD_REGEN) || bot->HasAuraType(SPELL_AURA_MOD_POWER_REGEN));
+        bot->IsSitState() || StaleTargetEatOrDrink(bot));
     if (hold != ai::stale_target::Hold::None)
     {
         if (ai::stale_target::NoteHold(staleClock, hold))
