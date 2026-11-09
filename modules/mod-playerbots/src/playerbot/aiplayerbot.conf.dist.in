@@ -2194,6 +2194,13 @@ AiPlayerbot.Revive.PreferCorpseRun = 0
 AiPlayerbot.Revive.CorpseRunFirst = 0
 # Seconds dead after which the spirit healer is taken (120..1800).
 AiPlayerbot.Revive.CorpseRunFirst.MaxSeconds = 600
+# twow-repo#575 H3 (BUG FIX; A3-HARM-UPSTREAM, OB-00 09.11.2026): a resurrect request (a player or bot casting
+# Resurrection / Redemption / Ancestral Spirit on a dead bot) that arrives while the "resurrect request" trigger still
+# holds an earlier one is kept for the next packet pass, as loot responses are, instead of being dropped. The bot then
+# accepts it in its dead state as before ("accept resurrect" checks that the bot is dead; the core checks that the request
+# is still open). Accepted resurrects shorten deaths and move the base for deaths and re-deaths in A/B units.
+# 0 = as before (default until the acceptance unit; then 1 by default, 0 = rollback).
+AiPlayerbot.Revive.DelayResurrectRequest = 0
 # twow-repo#575 A3 step 4 S4-2 (OB-00 07.11.2026): repop only when dead. "unstuck" sent an ALIVE bot to repop for "move long
 # stuck" / "combat long stuck" whenever its hearthstone was not useful (e.g. the homebind zone above its level): a teleport
 # to the race start or homebind, a group leave, the travel target nulled. With the switch the repop is not useful for an alive
