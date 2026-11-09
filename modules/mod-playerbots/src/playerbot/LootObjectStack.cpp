@@ -5,6 +5,8 @@
 #include "playerbot/SkinLootPolicy.h"
 #include "playerbot/CohortPolicy.h"
 #include "playerbot/GatherNodePolicy.h"
+#include "playerbot/LootHoldPolicy.h"   // twow-repo#575 H1: Loot.HoldTravelWhileLootable
+#include <cstdlib>   // twow-repo#575 H1: strtoull
 #include "playerbot/strategy/values/SharedValueContext.h"
 
 using namespace ai;
@@ -442,3 +444,44 @@ std::vector<LootObject> LootObjectStack::OrderByDistance(float maxDistance)
     return result;
 }
 
+
+// twow-repo#575 H1 (AiPlayerbot.Loot.HoldTravelWhileLootable, LootHoldPolicy.h): the bot's loot target is open for a hold - set,
+// within the loot distance of the bot, still lootable and its hold younger than Loot.HoldTravelWhileLootable.MaxSeconds (OB-10
+// review 09.11.: the hold clock per loot target guid). Writes only this bot's own hold clock ("manual string" / "manual time",
+// qualifiers "loot hold guid" / "loot hold since"); the loot target itself is not set or reset here.
+bool ai::loot_hold::LootTargetOpen(PlayerbotAI* ai)
+{
+    Player* bot = ai->GetBot();
+    AiObjectContext* context = ai->GetAiObjectContext();
+    LootObject lootObject = context->GetValue<LootObject>("loot target")->Get();
+    if (lootObject.IsEmpty())
+        return false;
+    WorldObject* wo = lootObject.GetWorldObject(bot);
+    if (!wo || !ai::loot_hold::WithinLootDistance(bot->GetDistance(wo), sPlayerbotAIConfig.lootDistance))
+        return false;
+    if (!lootObject.IsLootPossible(bot))
+        return false;
+
+    Value<std::string>* const heldGuidValue = context->GetValue<std::string>("manual string", "loot hold guid");
+    Value<time_t>* const heldSinceValue = context->GetValue<time_t>("manual time", "loot hold since");
+    std::uint64_t const guid = lootObject.guid.GetRawValue();
+    std::string const heldGuidText = heldGuidValue->Get();
+    std::uint64_t const heldGuid = heldGuidText.empty() ? 0 : std::strtoull(heldGuidText.c_str(), nullptr, 10);
+    time_t const now = time(nullptr);
+    time_t const heldSince = heldSinceValue->Get();
+    ai::loot_hold::Step const step = ai::loot_hold::Next(guid, heldGuid, std::int64_t(heldSince), std::int64_t(now),
+        sPlayerbotAIConfig.lootHoldTravelWhileLootableMaxSeconds);
+    if (step == ai::loot_hold::Step::Start)
+    {
+        heldGuidValue->Set(std::to_string(guid));
+        heldSinceValue->Set(now);
+    }
+    else if (step == ai::loot_hold::Step::Expire)
+    {
+        sLog.outBasic("[LootHold] bot=%u level=%u map=%u target_entry=%u target_low=%u kind=%s held_s=%u result=expired",
+            bot->GetGUIDLow(), bot->GetLevel(), bot->GetMapId(), lootObject.guid.GetEntry(), lootObject.guid.GetCounter(),
+            lootObject.guid.IsGameObject() ? "go" : "creature", uint32(now - heldSince));
+        heldSinceValue->Set(0);   // this guid holds no more until the bot takes another loot target
+    }
+    return ai::loot_hold::Holds(step);
+}

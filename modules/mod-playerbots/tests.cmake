@@ -1321,6 +1321,21 @@ add_test(NAME loot_chance_policy
   COMMAND loot_chance_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#575 H1 (A3-HARM-UPSTREAM, bug fix, default 0 until acceptance): AiPlayerbot.Loot.HoldTravelWhileLootable, loot
+# ping-pong (LootHoldPolicy.h); source contract in t/contracts.d.
+add_executable(loot_hold_policy_tests
+  "${PB_MODULE_DIR}/t/loot_hold_policy_tests.cpp")
+
+target_include_directories(loot_hold_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(loot_hold_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME loot_hold_policy
+  COMMAND loot_hold_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # #416 (7.3): area levels without a world creature scan at runtime.
 add_executable(area_level_policy_tests
   "${PB_MODULE_DIR}/t/area_level_policy_tests.cpp")
