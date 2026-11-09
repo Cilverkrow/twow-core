@@ -8,7 +8,9 @@ cmake_policy(VERSION 3.16)
 #   - the pure headers (SupervisorPolicy.h, PlannerPolicy.h) name no game header and read no config; <cstdio> only in
 #     SupervisorPolicy.h, for std::snprintf in the two pure line formatters (decision F2 a: no log line in the scaffold);
 #   - the supervisor writes nothing of the bot: no travel-target writer, no delay setter, no strategy change, no teleport, no
-#     log call; Tick starts with the counter; the mailbox is declared only and nothing calls it; ~Supervisor is out of line.
+#     log call; Tick starts with the counter; ~Supervisor is out of line. The mailbox pair (agreed with CLI-GRP 09.11.2026)
+#     defines the mailbox in SupervisorMail.cpp under its own contract (a3s3_supervisor_mailbox_source_contract_tests.cmake);
+#     here Supervisor.cpp only drains its own bot (TakeMail in the tick), never posts, forgets or defines the mailbox.
 # Behaviour pair 1 (AiPlayerbot.Supervisor.Arbiter, the arbiter shadow; OB-00 07.11.2026 E1-E4 a, owner OK 08.11.2026) changed
 # this check on purpose: Tick takes shadowOn from the gate and hands the pass to the shadow, Release lets the shadow close its
 # bundle, ~Supervisor drops the shadow state (no line, no bot access); the shadow itself lives in SupervisorShadow.*, pinned by a3s3_arbiter_shadow_source_contract_tests.cmake. The word
@@ -189,11 +191,12 @@ function(check_no_behaviour sup_h sup_cpp all_sources out)
       return()
     endif()
   endforeach()
-  # Behaviour pair 1: the tick is the counter plus the hand-over to the arbiter shadow, nothing else; Release only lets the
-  # shadow close its bundle.
-  string(FIND "${sup_cpp}" "void Supervisor::Tick(std::uint32_t /*nowMs*/, bool shadowOn)\n{\n    ++ticks_;\n    ShadowTick(ai_, shadow_, shadowOn);\n}" at)
+  # Behaviour pair 1: the tick is the counter plus the hand-over to the arbiter shadow; the mailbox pair puts the bot's own mail
+  # take between them (TakeMail, pinned by a3s3_supervisor_mailbox_source_contract_tests.cmake), nothing else; Release only lets
+  # the shadow close its bundle.
+  string(FIND "${sup_cpp}" "void Supervisor::Tick(std::uint32_t /*nowMs*/, bool shadowOn)\n{\n    ++ticks_;\n    TakeMail();\n    ShadowTick(ai_, shadow_, shadowOn);\n}" at)
   if(at EQUAL -1)
-    set(${out} "Supervisor.cpp: the tick is not the counter plus the shadow hand-over" PARENT_SCOPE)
+    set(${out} "Supervisor.cpp: the tick is not the counter, the mail take and the shadow hand-over" PARENT_SCOPE)
     return()
   endif()
   string(FIND "${sup_cpp}" "void Supervisor::Release()\n{\n    ShadowRelease(ai_, shadow_);\n}" at)
@@ -211,15 +214,16 @@ function(check_no_behaviour sup_h sup_cpp all_sources out)
     set(${out} "Supervisor.h: ~Supervisor must be declared only (unique_ptr to the incomplete type in PlayerbotAI.h)" PARENT_SCOPE)
     return()
   endif()
-  # The mailbox is declared only: nobody calls or defines it in this scaffold.
-  count_regex("${all_sources}" "supervisor::(Post|Drain|Forget)\\(" n)
+  # The mailbox lives in SupervisorMail.cpp (mailbox pair, its own contract). Supervisor.cpp only drains its own bot: no Post, no
+  # Forget, and no definition of the mailbox here.
+  count_regex("${sup_cpp}" "[^A-Za-z_](Post|Forget)\\(" n)
   if(NOT n EQUAL 0)
-    set(${out} "the mailbox is called ${n} times (0 expected in the scaffold)" PARENT_SCOPE)
+    set(${out} "Supervisor.cpp: posts or forgets mail (the tick only drains its own bot)" PARENT_SCOPE)
     return()
   endif()
-  count_regex("${sup_cpp}" "(Post|Drain|Forget)\\(" n)
+  count_regex("${sup_cpp}" "std::size_t Drain\\(|bool Post\\(|void Forget\\(" n)
   if(NOT n EQUAL 0)
-    set(${out} "Supervisor.cpp: the mailbox is wired (declared only in the scaffold)" PARENT_SCOPE)
+    set(${out} "Supervisor.cpp: defines the mailbox (it lives in SupervisorMail.cpp)" PARENT_SCOPE)
     return()
   endif()
   set(${out} "" PARENT_SCOPE)
@@ -356,8 +360,15 @@ string(REPLACE "Supervisor::~Supervisor()\n{\n    ShadowDrop(shadow_);\n}" "" m 
 check_no_behaviour("${sup_h}" "${m}" "${all_sources}" r)
 expect_caught("${r}" "no out-of-line destructor")
 
-check_no_behaviour("${sup_h}" "${sup_cpp}" "${all_sources}\nai::supervisor::Post(guid, ev)" r)
-expect_caught("${r}" "a mailbox call in the scaffold")
+check_no_behaviour("${sup_h}" "${sup_cpp}\nvoid Supervisor::Other()\n{\n    Forget(1);\n}" "${all_sources}" r)
+expect_caught("${r}" "a mail forget in Supervisor.cpp")
+
+check_no_behaviour("${sup_h}" "${sup_cpp}\nbool Post(std::uint32_t guidLow, Event const& event)\n{\n    return false;\n}" "${all_sources}" r)
+expect_caught("${r}" "the mailbox defined in Supervisor.cpp")
+
+string(REPLACE "    ++ticks_;\n    TakeMail();\n" "    ++ticks_;\n" m "${sup_cpp}")
+check_no_behaviour("${sup_h}" "${m}" "${all_sources}" r)
+expect_caught("${r}" "the tick without the mail take")
 
 string(REPLACE "add_test(NAME supervisor_policy\n" "add_test(NAME other\n" m "${tests_cmake}")
 check_unit_tests("${m}" r)

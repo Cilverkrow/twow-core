@@ -89,6 +89,9 @@ bool OpenLootAction::Execute(Event& event)
     castDuration = 0;
     LootObject lootObject = AI_VALUE(LootObject, "loot target");
     bool result = DoLoot(lootObject);
+    // twow-repo#333 T28-M (AiPlayerbot.Gathering.Trace): a cast DoLoot started; a herb / ore / skinning cast (also on a creature) counts.
+    if (sPlayerbotAIConfig.gatheringTrace && result && castDuration)
+        GatheringTraceOpen(ai, castDuration);
     if (result)
     {
         AI_VALUE(LootObjectStack*, "available loot")->Remove(lootObject.guid);

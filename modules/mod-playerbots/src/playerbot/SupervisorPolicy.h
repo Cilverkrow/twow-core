@@ -78,7 +78,8 @@ enum class Requester : std::uint8_t
     External = 7,       // go/debug, real player master, battleground, park: PASSIVE and back
 };
 
-// Mailbox events (section 1.10). Wired by the later pairs; the scaffold only defines them.
+// Mailbox events (section 1.10). The mailbox pair (SupervisorMail.cpp) carries them; what a supervisor does with each kind comes
+// in the later pairs.
 enum class EventKind : std::uint8_t
 {
     QuestAccepted = 0,
@@ -104,7 +105,7 @@ enum class EventKind : std::uint8_t
     ZoneChanged,
     Stall,             // R9
     CombatLoop,        // R8
-    GroupDirective,    // the group manager, with a = seq
+    GroupDirective,    // the group manager: a = seq, b = directive type, c = target id, mapId/x/y/z = meeting point
     BrainIntent,       // bot brain preference, with a TTL
     Count,
 };
@@ -115,6 +116,7 @@ struct Event
     EventKind kind = EventKind::Count;
     std::uint32_t a = 0;
     std::uint32_t b = 0;
+    std::uint32_t c = 0;      // a target id (mailbox pair, agreed with CLI-GRP 09.11.2026 for GroupDirective)
     std::uint32_t mapId = 0;
     float x = 0.0f;
     float y = 0.0f;

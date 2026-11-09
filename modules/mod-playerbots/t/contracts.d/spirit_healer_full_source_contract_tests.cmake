@@ -41,7 +41,8 @@ require_text("${config_h}" "uint32 reviveSpiritHealerFull = 1;" "config member, 
 require_text("${config_cpp}" "reviveSpiritHealerFull = config.GetIntDefault(\"AiPlayerbot.Revive.SpiritHealerFull\", 1);   // owner order 27.10.2026\n    if (reviveSpiritHealerFull > 2)\n        reviveSpiritHealerFull = 1;" "config read, > 2 = the default 1")
 # twow-repo#575 A3 step 4 S4-1/S4-2: Revive.CorpseRunFirst(.MaxSeconds) sort in before Revive.SpiritHealerFull; only the direct
 # neighbours are pinned here (the generic config_echo contract checks the full order).
-require_text("${config_cpp}" "            {\"Revive.CorpseRunFirst.MaxSeconds\", Value(reviveCorpseRunFirstMaxSeconds)},\n            {\"Revive.SpiritHealerFull\", Value(reviveSpiritHealerFull)},\n            {\"RosterFarMove.ArriveSafe\"" "parsed mode in [ConfigEcho], sorted (owner rule #615, #710)")
+# twow-repo#575 H3: Revive.DelayResurrectRequest sorts in between them.
+require_text("${config_cpp}" "            {\"Revive.CorpseRunFirst.MaxSeconds\", Value(reviveCorpseRunFirstMaxSeconds)},\n            {\"Revive.DelayResurrectRequest\", Value(reviveDelayResurrectRequest)},\n            {\"Revive.SpiritHealerFull\", Value(reviveSpiritHealerFull)},\n            {\"RosterFarMove.ArriveSafe\"" "parsed mode in [ConfigEcho], sorted (owner rule #615, #710)")
 
 # 2. Pure policy (std + the cohort rule only).
 string(REGEX MATCHALL "#include [<\"][^>\"]+[>\"]" incs "${policy}")
