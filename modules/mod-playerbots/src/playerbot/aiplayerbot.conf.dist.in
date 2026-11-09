@@ -2093,7 +2093,11 @@ AiPlayerbot.Path.PosStuck.RateMinutes = 30
 # > 60 s; rot01-tank run T: 1,136 triggers, none in a fight running >= 60 s). With the key the clock is the fight with the
 # current target: from the combat start ("combat start time"), restarted whenever the current target changes; a check more
 # than 30 s after the previous one in combat starts a new fight. The duel rule is unchanged.
-#   0 = off (default), 1 = every bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid); other values act like 0.
+# IslandGuard A/B (crossover B/C, PREREG-ISLANDGUARD cbdeb508 + addendum 1, bot brain off): ACCEPT 09.11.2026, island path
+# failures rr 0.063 (95 % 0.034-0.114), deaths / turn-ins / idle+stuck share unchanged; OB-10 OK, owner standing approval
+# 09.11.2026. Since then default 1 (every bot).
+#   0 = off (rollback), 1 = every bot (default), 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid); other
+#   values act like 0.
 AiPlayerbot.Unstuck.CombatFightClock = 0
 # twow-repo#575 (PATH-01 b, trace, no behaviour change; enable only after OB-30 measurement + owner go - nach Abnahme
 # an): 1 = every bot flight attempt (UseTaxi) is counted by result - ok, noPath (stored TaxiPath id unknown), noNpc (no
@@ -2159,8 +2163,12 @@ AiPlayerbot.Path.RescueSkipCustomStarts = 0
 # Components are labelled once per navmesh tile on its first use and cached (about 21 MB and < 1 s CPU for every continent
 # tile; shared by all map threads, publish-once); a component small inside its tile but touching the tile edge is decided by
 # a link search across the edge capped at IslandMaxPolys polys.
-#   0 = off (default), 1 = every bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid); other values act like 0.
-AiPlayerbot.Path.IslandGuard = 0
+# IslandGuard A/B (crossover B/C, PREREG-ISLANDGUARD cbdeb508 + addendum 1, bot brain off): ACCEPT 09.11.2026, island path
+# failures rr 0.063 (95 % 0.034-0.114), deaths / turn-ins / idle+stuck share unchanged; OB-10 OK, owner standing approval
+# 09.11.2026. Since then default 1 (every bot).
+#   0 = off (rollback), 1 = every bot (default), 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid); other
+#   values act like 0.
+AiPlayerbot.Path.IslandGuard = 1
 # Island = a link component below this many polys (20-1000, default 200). Why 200: with < 200 polys the server logged "all start
 # legs failed" ([RouteFailDetail] bad_start = start_nodes) for 70 % of the route starts, on the main mesh for 7.5 %.
 AiPlayerbot.Path.IslandMaxPolys = 200
