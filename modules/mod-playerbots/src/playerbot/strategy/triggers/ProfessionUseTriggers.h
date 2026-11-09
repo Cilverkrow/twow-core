@@ -1,6 +1,7 @@
 #pragma once
 
 #include "playerbot/strategy/Trigger.h"
+#include "playerbot/GatheringTracePolicy.h"   // twow-repo#333 T28-M
 
 namespace ai
 {
@@ -51,6 +52,22 @@ namespace ai
     {
     public:
         ProfessionCraftTrigger(PlayerbotAI* ai) : Trigger(ai, "profession craft", 10) {}
+        bool IsActive() override;
+    };
+
+    // twow-repo#333 T28-M (AiPlayerbot.Gathering.Trace, OB-00 09.11.2026; GatheringTracePolicy.h): log only. The callers test the
+    // key first. A gathering open OpenLootAction started (its kind from the bot's running generic spell) and a craft cast
+    // ProfessionCraftAction started, each with its cast time in ms; counted only inside an open window.
+    void GatheringTraceOpen(PlayerbotAI* ai, uint32 castDurationMs);
+    void GatheringTraceCraft(PlayerbotAI* ai, uint32 castDurationMs);
+
+    // T28-M: the sampler of the [Gathering] event=share window, a node of the "default" strategy (combat, non-combat and dead
+    // engine) added only with the key on. It never fires: IsActive samples the bot, writes the hour line when due and returns
+    // false, so no action is ever queued. Reads values only.
+    class GatheringTraceTrigger : public Trigger
+    {
+    public:
+        GatheringTraceTrigger(PlayerbotAI* ai) : Trigger(ai, "gathering trace", int(ai::gathering_trace::SampleSeconds)) {}
         bool IsActive() override;
     };
 }
