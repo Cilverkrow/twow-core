@@ -1695,8 +1695,9 @@ bool PlayerbotAIConfig::Initialize()
     professionTrainingTrace = config.GetBoolDefault("AiPlayerbot.ProfessionTraining.Trace", false);
     professionTrainingTraceCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.ProfessionTraining.TraceCooldownSeconds", 300));
     // twow-repo#333 Berufe P1-a / P1-b: an unknown mode is off (0 off, 1 all, 2 cohort B).
+    // T28a crossover (OB-00 09.11.2026, plan A3-PLAN-ZIEL T28a): Travel and ProfessionUse.ToolBuy also take 3 = only cohort A.
     professionTrainingTravel = config.GetIntDefault("AiPlayerbot.ProfessionTraining.Travel", 0);
-    if (professionTrainingTravel > 2)
+    if (professionTrainingTravel > 3)
         professionTrainingTravel = 0;
     // P1-n: yards, 0 = off, at most 1000 (ProfessionTravelPolicy.h ClampNearRadius); the mode and cohort of ProfessionTraining.Travel.
     professionTrainingNearRadius = ai::profession_travel::ClampNearRadius(config.GetIntDefault("AiPlayerbot.ProfessionTraining.NearRadius", 0));
@@ -1770,8 +1771,9 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[Crafting] config key=Fishing value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", craftingFishing);
         craftingFishing = 0;
     }
+    // T28a crossover (OB-00 09.11.2026): 3 = only cohort A, as ProfessionTraining.Travel.
     professionUseToolBuy = config.GetIntDefault("AiPlayerbot.ProfessionUse.ToolBuy", 0);
-    if (professionUseToolBuy > 2)
+    if (professionUseToolBuy > 3)
         professionUseToolBuy = 0;
     buyVendorTemplateItems = config.GetIntDefault("AiPlayerbot.Buy.VendorTemplateItems", 1);   // twow-repo#333 P1-z vendor templates
     if (buyVendorTemplateItems > 2)
