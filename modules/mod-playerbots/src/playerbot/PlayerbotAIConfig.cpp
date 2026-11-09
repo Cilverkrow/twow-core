@@ -919,6 +919,21 @@ bool PlayerbotAIConfig::Initialize()
             int32(botGroupsManagerStatusSeconds), clamped, ai::manager_inbox::kStatusSecondsMax);
         botGroupsManagerStatusSeconds = clamped;
     }
+    // A3 step 6 T30-1 (design T30 v1.1 5.1): the manager's group types (bit 1 ADHOC, bit 2 QUEST). Reserved bits are masked; a
+    // type without status posts would form blind, so StatusSeconds 0 turns them off (F9 (a)). One error line each.
+    botGroupsManagerTypes = uint32(config.GetIntDefault("AiPlayerbot.BotGroups.Manager.Types", 0));
+    int32 const typesRaw = int32(botGroupsManagerTypes);   // the configured value, sign included (a negative one is off)
+    if (typesRaw < 0 || !ai::group_mgr::TypesValid(botGroupsManagerTypes))
+    {
+        uint32 const masked = typesRaw < 0 ? 0u : ai::group_mgr::SanitizeTypes(botGroupsManagerTypes);
+        sLog.outError("[GroupMgr] config key=Manager.Types value=%d result=%u (bit 1 ADHOC, bit 2 QUEST)", typesRaw, masked);
+        botGroupsManagerTypes = masked;
+    }
+    if (botGroupsManagerTypes && !botGroupsManagerStatusSeconds)
+    {
+        sLog.outError("[GroupMgr] config key=Manager.Types value=%u result=0 (needs Manager.StatusSeconds > 0)", botGroupsManagerTypes);
+        botGroupsManagerTypes = ai::group_mgr::EffectiveTypes(botGroupsManagerTypes, botGroupsManagerStatusSeconds);
+    }
     // L1 (owner 07.11.2026): code default 1; only "0" is off, any other value is 1. Read as a string: GetIntDefault is atoi,
     // which would turn a non-numeric value such as "on" into 0 (rollback).
     botGroupsResetRaidsRealInviterOnly = ai::lockout::SwitchOn(config.GetStringDefault("AiPlayerbot.BotGroups.ResetRaidsRealInviterOnly", "1"));
@@ -2063,6 +2078,7 @@ bool PlayerbotAIConfig::Initialize()
             {"BotGroups.LeaderOtherMapSeconds", Value(botGroupsLeaderOtherMapSeconds)},
             {"BotGroups.Manager", Value(botGroupsManager)},
             {"BotGroups.Manager.StatusSeconds", Value(botGroupsManagerStatusSeconds)},
+            {"BotGroups.Manager.Types", Value(botGroupsManagerTypes)},
             {"BotGroups.OpQueue", Value(botGroupsOpQueue)},
             {"BotGroups.OpQueueAlertAgeSeconds", Value(botGroupsOpQueueAlertAgeSeconds)},
             {"BotGroups.OpQueueMaxDepth", Value(botGroupsOpQueueMaxDepth)},

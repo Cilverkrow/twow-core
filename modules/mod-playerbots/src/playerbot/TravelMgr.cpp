@@ -12,6 +12,7 @@
 #include "playerbot/QuestFeasibilityPolicy.h"
 #include "playerbot/QuestBook.h"         // A3 step 2 K2/K3 (AiPlayerbot.QuestBook): the one level window and the QB5 list
 #include "playerbot/QuestGroupWorld.h"   // twow-repo#627 S7 hooks (CLI-Deep): help-group members out of PosStuck, S3c, turn-in recovery
+#include "playerbot/GroupManagerView.h"   // A3 step 6 T30-1: the S7 mirrors for manager QUEST groups (3.6)
 #include "playerbot/AdhocGroupWorld.h"   // twow-repo#601 F5b: a bot-only group shares the kill credit (CLI-GRP 25.10.)
 #include "playerbot/CohortPolicy.h"
 #include "playerbot/SupervisorShadow.h"   // A3 step 3 arbiter shadow (AiPlayerbot.Supervisor.Arbiter): the observer in the status write
@@ -1492,7 +1493,7 @@ turnin_recovery::RecoveryAction TravelTarget::ObserveTurnInProgress()
 
     // twow-repo#627 S7 hook (CLI-Deep): a help-group member is excluded, not paused - the group ends a stalled goal itself
     // (no_progress, turnin_wait, leader_stuck), so no stage, suppression or park here, and no stale window after the group.
-    if (quest_groups::IsMember(ai))
+    if (quest_groups::IsMember(ai) || group_mgr::IsQuestMember(ai->GetBot()->GetGUIDLow()))   // 3.6: or a manager QUEST group
     {
         turnInRecovery.ResetProgress();
         return turnin_recovery::RecoveryAction::None;
@@ -1668,7 +1669,8 @@ void TravelTarget::OnWorkTimeout()
         // same turn-in parks it at once (soak: bot 216 at the Azora taker, no line of sight through the door). Not
         // abandonable: a finished quest is never dropped for it (the series of abandonable parks ends here, S1).
         // twow-repo#627 S7 hook: not for a help-group member (the group's turnin_wait ends a stalled turn-in phase).
-        if (sPlayerbotAIConfig.zoneExitTurnInTravelStall && sPlayerbotAIConfig.S3For(bot->GetGUIDLow()) && !quest_groups::IsMember(ai))
+        if (sPlayerbotAIConfig.zoneExitTurnInTravelStall && sPlayerbotAIConfig.S3For(bot->GetGUIDLow()) && !quest_groups::IsMember(ai) &&
+            !group_mgr::IsQuestMember(bot->GetGUIDLow()))   // 3.6: nor a manager QUEST group (T30-1)
         {
             uint32 const questId = static_cast<QuestTravelDestination*>(tDestination)->GetQuestId();
             if (turnin_recovery::RecordWorkTimeout(workTimeoutTurnIns, questId))
@@ -2639,7 +2641,8 @@ bool TravelTarget::ObservePosStuck()
     observation.excluded = !sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) || ai->HasRealPlayerMaster() ||
         !bot->IsAlive() || bot->IsTaxiFlying() || bot->GetTransport() || !map || map->Instanceable() ||
         wPosition->getMapId() != bot->GetMapId() || RestGateValue::Resting(ai) ||
-        quest_groups::IsFollower(ai);   // twow-repo#627 S7: a follower goes where its leader goes (the leader stays watched)
+        quest_groups::IsFollower(ai) ||   // twow-repo#627 S7: a follower goes where its leader goes (the leader stays watched)
+        group_mgr::IsQuestFollower(bot->GetGUIDLow());   // 3.6 (T30-1): a manager QUEST follower likewise
     // twow-repo#342 ABBA-1 §6 (OB-00 28.10.2026): a bot waiting at its dock for a ship or zeppelin is held up on purpose - no
     // window during the wait, a fresh one after the ride (PosStuckPolicy.h DockWaitPaused). OB-10 review: at most
     // Path.TransportWaitTimeoutMin of continuous waiting (PauseHolds), then the window runs again - a transport that never
@@ -2660,6 +2663,14 @@ bool TravelTarget::ObservePosStuck()
     if (quest_groups::IsMember(ai) && !quest_groups::IsFollower(ai))
     {
         quest_groups::NoteLeaderStuck(ai);
+        posStuck.Reset();
+        return false;
+    }
+    // 3.6 (T30-1): the leader of a manager QUEST group likewise; the mark rides in its next group edge (b5) and the manager ends
+    // the group with leader_stuck.
+    if (group_mgr::QuestRoleOf(bot->GetGUIDLow()) == 2)
+    {
+        ai->NoteManagerLeaderStuck();
         posStuck.Reset();
         return false;
     }

@@ -1719,6 +1719,25 @@ add_test(NAME group_manager_policy
   COMMAND group_manager_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# A3 step 6 T30-1 (AiPlayerbot.BotGroups.Manager.Types, default 0): the directive engine of the group manager
+# (GroupDirectivePolicy.h; no game header). The game side is pinned by
+# t/contracts.d/a3s6_t30_directives_source_contract_tests.cmake.
+add_executable(group_directive_policy_tests
+  "${PB_MODULE_DIR}/t/group_directive_policy_tests.cpp")
+
+target_include_directories(group_directive_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+# The read view's mutex (std::mutex).
+target_link_libraries(group_directive_policy_tests PRIVATE Threads::Threads)
+
+set_target_properties(group_directive_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME group_directive_policy
+  COMMAND group_directive_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # A3-GERUEST-L60 7.2.11 (AiPlayerbot.BotGroups.Manager.StatusSeconds, default 0): the pure rules of the manager inbox
 # (ManagerInboxPolicy.h; no game header). The game side is pinned by
 # t/contracts.d/a3s6_manager_inbox_source_contract_tests.cmake.

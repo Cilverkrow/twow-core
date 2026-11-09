@@ -9,6 +9,7 @@
 #include "playerbot/LockoutPolicy.h"   // L1 (owner 07.11.2026): BotGroups.ResetRaidsRealInviterOnly
 #include "playerbot/LockoutGuard.h"
 #include "playerbot/GroupOps.h"   // A3 lever 2: BotGroups.WritePath
+#include "playerbot/GroupManagerView.h"   // A3 step 6 T30-1: the manager gate (G8)
 namespace ai
 {
     class AcceptInvitationAction : public Action
@@ -37,6 +38,20 @@ namespace ai
             Player* inviter = sObjectMgr.GetPlayer(grp->GetLeaderGuid());
             if (!inviter)
                 return false;
+
+            // G8 (T30-1): a bot the group manager owns or holds declines another bot's invite. The manager's own joins run as
+            // group ops (GroupOpSource) and pass; a real player's invite stays as it is. M5: the decline goes through the op
+            // queue whatever BotGroups.WritePath says (its drain always runs); only a refused push declines here directly.
+            if (event.getSource() != group_ai_refresh::GroupOpSource && group_mgr::Blocks(bot->GetGUIDLow()) && !::IsRealPlayer(inviter))
+            {
+                if (!group_ai_refresh::IsWorldManagerSource(event.getSource()) && group_ops::QueueAccept(ai, inviter->GetGUIDLow(), true))
+                    return false;
+                WorldPacket data(SMSG_GROUP_DECLINE, 10);
+                data << bot->GetName();
+                sServerFacade.SendPacket(inviter, data);
+                bot->UninviteFromGroup();
+                return false;
+            }
 
 			if (!ai->GetSecurity()->CheckLevelFor(PlayerbotSecurityLevel::PLAYERBOT_SECURITY_INVITE, false, inviter))
             {

@@ -10,6 +10,7 @@
 #include "playerbot/GuidPosition.h"
 #include "playerbot/BotSlots.h"
 #include "playerbot/GroupOps.h"        // BOT-12: the heavy-tick mark of the group queue
+#include "playerbot/GroupManagerView.h"   // A3 step 6 T30-1: the manager gate (G5)
 #include "playerbot/PlayerbotAI.h"
 #include "playerbot/strategy/AiObjectContext.h"
 #include "playerbot/PlayerbotAIConfig.h"
@@ -55,7 +56,8 @@ bool Eligible(Player* bot)
         return false;
     PlayerbotAI* ai = Ai(bot);
     return ai && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster() &&
-        !bot->InBattleGround() && !bot->InBattleGroundQueue() && !bot->GetMap()->IsDungeon();
+        !bot->InBattleGround() && !bot->InBattleGroundQueue() && !bot->GetMap()->IsDungeon() &&
+        !group_mgr::Blocks(bot->GetGUIDLow());   // G5 (T30-1): the group manager owns or holds the bot
 }
 
 bool ObjectiveOpen(QuestStatusData const& st, Quest const* q, std::uint8_t i)

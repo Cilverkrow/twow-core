@@ -1399,6 +1399,15 @@ AiPlayerbot.BotGroups.Manager = 0
 # snapshots, edges, wishes, stale_snap, cand_*, no_supervisor = table stands at the line).
 # 0 = no posts (default), 1..3600 seconds; a larger value acts like 3600 (one error line at load).
 AiPlayerbot.BotGroups.Manager.StatusSeconds = 0
+# A3 step 6 T30-1 (design T30 v1.1, owner decisions F1-F16 = (a)): the group types the manager forms and holds itself for the
+# roster bots of its cohort. Bit 1 = ADHOC (bots on the same quest objective nearby), bit 2 = QUEST (S7-style quest groups);
+# 3 = both. 0 = none (default): the game behaves exactly as before. With a type on, the manager owns its cohort's bots: the
+# legacy group paths (ad-hoc action and world pass, S7, invite nearby, leave far away, LFG and arena joins by bots) leave them
+# alone, it forms and ends their groups through the group op queue and tells each member's supervisor by a directive (Enter /
+# Exit); a refused or unanswered directive ends the membership. Existing bot-only groups of owned bots are dissolved
+# (foreign_group). Needs Manager.StatusSeconds > 0 (else it acts like 0, one error line); other bits are ignored (one error
+# line). Lines: "[GroupMgr] event=..." per op / directive / ack / end and "[GroupMgr] minute ..." / "[GroupMgr] minute2 ...".
+AiPlayerbot.BotGroups.Manager.Types = 0
 # L1 (owner 07.11.2026, owner-ordered behaviour change): a bot resets its raid lockouts ("reset raids", which drops every bind
 # except the one of its current map, PERM included) only when a real player invites it. An invite by another bot or by a
 # bot-only world-thread group manager (ad-hoc, quest groups) keeps the bot's PERM raid binds; an accept run by the group op

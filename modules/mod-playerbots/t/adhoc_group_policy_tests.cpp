@@ -196,6 +196,17 @@ int main()
     teleport.transient = true;
     teleport.otherGroup = true;
     Require(DecideHelperExit(teleport) == HelperExit::Keep, "teleporting: decided on a later pass");
+    // T30-1 (G4): the group manager owns or holds the bot - no longer kept as a helper; S7 and a logout still come first.
+    HelperFacts managed;
+    managed.helping = true;
+    managed.managerOwns = true;
+    Require(DecideHelperExit(managed) == HelperExit::Release, "the manager owns it: the helper role is released");
+    managed.otherGroup = true;
+    Require(DecideHelperExit(managed) == HelperExit::RoleOnly, "the manager owns it, in another group: only the role goes");
+    managed.transient = true;
+    Require(DecideHelperExit(managed) == HelperExit::Keep, "the manager owns it but it teleports: decided on a later pass");
+    managed.s7Owns = true;
+    Require(DecideHelperExit(managed) == HelperExit::Forget, "S7 owns it: untouched, the manager gate notwithstanding");
     Require(std::string(HelperExitName(HelperExit::RoleOnly)) == "role_only" &&
         std::string(HelperExitName(HelperExit::Release)) == "release", "exit names for the log");
 
