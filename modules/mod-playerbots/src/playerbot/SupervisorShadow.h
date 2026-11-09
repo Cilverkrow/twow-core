@@ -101,4 +101,13 @@ void ShadowRelease(PlayerbotAI* owner, ShadowState& state);
 // From ~Supervisor (the bot's AI may be in teardown): drops the state without a line and without touching the bot. When the
 // last shadow is off, the observer is disarmed again and the minute sums are cleared.
 void ShadowDrop(ShadowState& state);
+
+// Live arbiter switch (OB-00 09.11.2026; SupervisorPolicy.h ParseArbiterSwitch / ArbiterEffective). One process-wide atomic, no
+// config reload: PlayerbotAIConfig::Initialize is never called for it (map threads read the config without a lock).
+// ArbiterOn is the gate's value (PlayerbotAI::UpdateAI, once per engine pass; configValue = AiPlayerbot.Supervisor.Arbiter).
+// SetArbiterOverride (console "rndbot arbiter on|off", world thread) stores kArbiterOn / kArbiterOff and returns the override
+// before the call (kArbiterFollowConfig while the console never set it). A bot sees the new value at its next engine pass; the
+// shadow's own on/off handling (ShadowTick) is the same as for a reload of the key.
+bool ArbiterOn(std::uint32_t configValue);
+int SetArbiterOverride(bool on);
 }
