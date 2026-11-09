@@ -1198,7 +1198,7 @@ bool PlayerbotAIConfig::Initialize()
     pathTaxiCancelForm = config.GetBoolDefault("AiPlayerbot.Path.TaxiCancelForm", false);
     pathRescueSkipCustomStarts = config.GetBoolDefault("AiPlayerbot.Path.RescueSkipCustomStarts", false);
     // twow-repo#575 A3 step 4 M-c (Path.IslandGuard): an unknown mode is off (CohortPolicy.h); the others clamped (IslandGuardPolicy.h).
-    pathIslandGuard = ai::island::ClampMode(config.GetIntDefault("AiPlayerbot.Path.IslandGuard", 0));
+    pathIslandGuard = ai::island::ClampMode(config.GetIntDefault("AiPlayerbot.Path.IslandGuard", 1));   // default 1 since the IslandGuard A/B (ACCEPT 09.11.2026)
     pathIslandMaxPolys = ai::island::ClampMaxPolys(config.GetIntDefault("AiPlayerbot.Path.IslandMaxPolys", int(ai::island::DefaultMaxPolys)));
     pathIslandSnapDz = ai::island::ClampSnapDz(config.GetFloatDefault("AiPlayerbot.Path.IslandSnapDz", ai::island::DefaultSnapDz));
     pathIslandStepOffYards = ai::island::ClampStepOffYards(config.GetFloatDefault("AiPlayerbot.Path.IslandStepOffYards", ai::island::DefaultStepOffYards));
