@@ -13,6 +13,9 @@
 #include "playerbot/MeleeFleeBreakPolicy.h"
 #include "playerbot/InvalidTargetPolicy.h"
 #include "playerbot/DuelRulePolicy.h"
+#include "playerbot/StaleTargetPolicy.h"   // A3-HARM-UPSTREAM H6 (T40): Rotation.ReleaseStaleTarget
+#include "playerbot/strategy/generic/CombatStrategy.h"   // ... WaitForAttackStrategy::ShouldWait (hold)
+#include "playerbot/strategy/generic/PullStrategy.h"     // ... PullStrategy::Get (hold)
 #include "playerbot/strategy/values/LastMovementValue.h"
 
 #include <regex>
@@ -560,7 +563,101 @@ bool InvalidTargetTrigger::IsActive()
 
 bool NoTargetTrigger::IsActive()
 {
-	return !AI_VALUE(Unit*, "current target") || AI_VALUE2(bool, "invalid target", "current target");
+    // The old rule first, the same reads in the same short-circuit order.
+    Unit* const target = AI_VALUE(Unit*, "current target");
+    bool const oldRule = !target || AI_VALUE2(bool, "invalid target", "current target");
+    // A3-HARM-UPSTREAM H6 (T40) (AiPlayerbot.Rotation.ReleaseStaleTarget, default 0): 0 = the old rule, nothing else is read.
+    uint32 const mode = sPlayerbotAIConfig.rotationReleaseStaleTarget;
+    if (!mode)
+        return oldRule;
+
+    return StaleTargetCheck(target, oldRule, mode);
+}
+
+// A3-HARM-UPSTREAM H6 (T40) (StaleTargetPolicy.h, design note H6-DESIGN.md v1.1): a bot out of combat that keeps a valid current target
+// (pull path return before "attack target", ChooseTargetActions.cpp:165-174; an "attack target" reset by travel) and stands still for
+// StoppedSeconds, or does not move MoveYards for StillSeconds, drops ONLY its "current target", so "no target" fires and "attack
+// anything" re-picks. Only pure accessors are read here (no cached value is filled); the one write is "current target" = nullptr.
+bool NoTargetTrigger::StaleTargetCheck(Unit* target, bool oldRule, uint32 mode)
+{
+    uint32 const guidLow = bot->GetGUIDLow();
+    bool const applies = ai::stale_target::Applies(mode, guidLow);
+    bool const shadow = ai::stale_target::ShadowApplies(mode, sPlayerbotAIConfig.rotationReleaseStaleTargetShadow, guidLow);
+    if (!applies && !shadow)
+        return oldRule;   // the control cohort without shadow: nothing else is read
+
+    unsigned const ab = ai::stale_target::CohortIndex(guidLow);
+    uint32 const nowMs = WorldTimer::getMSTime();
+    uint64 const targetGuid = target ? target->GetObjectGuid().GetRawValue() : 0;
+    uint32 const mapId = bot->GetMapId();
+    float const x = bot->GetPositionX();
+    float const y = bot->GetPositionY();
+    float const z = bot->GetPositionZ();
+
+    // The follow-up of the last release (re_same / moved_on within 30 s).
+    if (staleFollowUp.open)
+    {
+        ai::stale_target::Follow const follow = ai::stale_target::FollowOf(staleFollowUp, nowMs, targetGuid, mapId, x, y, z);
+        if (follow == ai::stale_target::Follow::ReSame)
+            ai::stale_target::reSame[ab].fetch_add(1, std::memory_order_relaxed);
+        else if (follow == ai::stale_target::Follow::MovedOn)
+            ai::stale_target::movedOn[ab].fetch_add(1, std::memory_order_relaxed);
+    }
+
+    // Not eligible (Reset): the clock is cleared and the old rule decides.
+    if (oldRule || ai::stale_target::IsReset(bot->IsInCombat(), sServerFacade.IsAlive(bot), ai->HasRealPlayerMaster(), bot->IsTaxiFlying(),
+            bot->GetTransport() != nullptr, bot->m_duel != nullptr, bot->InBattleGround()))
+    {
+        ai::stale_target::Clear(staleClock);
+        return oldRule;
+    }
+
+    bool const stopped = bot->IsStopped();
+    ai::stale_target::Observe(staleClock, nowMs, targetGuid, mapId, x, y, z, stopped);
+    if (ai::stale_target::NoteEligibleMinute(staleEligMinute, nowMs))
+        ai::stale_target::eligBotMin[ab].fetch_add(1, std::memory_order_relaxed);
+
+    ai::stale_target::Due const due = ai::stale_target::DueOf(staleClock, nowMs, sPlayerbotAIConfig.rotationReleaseStaleTargetStillSeconds,
+        sPlayerbotAIConfig.rotationReleaseStaleTargetStoppedSeconds);
+    if (due == ai::stale_target::Due::None)
+        return false;
+    if (shadow && staleClock.shadowCounted)
+        return false;   // counted once for this episode: no hold is read again
+
+    // The holds, read only now that a clause is due.
+    PullStrategy const* const pull = PullStrategy::Get(ai);
+    bool const pullRunning = pull && pull->HasPullStarted() && time(nullptr) - pull->GetPullStartTime() < PullStrategy::GetMaxPullTime();
+    ai::stale_target::Hold const hold = ai::stale_target::HoldOf(pullRunning, WaitForAttackStrategy::ShouldWait(ai),
+        !bot->GetLootGuid().IsEmpty(), bot->IsNonMeleeSpellCasted(true),
+        bot->IsSitState() || bot->HasAuraType(SPELL_AURA_MOD_REGEN) || bot->HasAuraType(SPELL_AURA_MOD_POWER_REGEN));
+    if (hold != ai::stale_target::Hold::None)
+    {
+        if (ai::stale_target::NoteHold(staleClock, hold))
+            ai::stale_target::held[unsigned(hold)][ab].fetch_add(1, std::memory_order_relaxed);
+        return false;
+    }
+    if (ai::stale_target::EndHold(staleClock, nowMs, x, y, z, stopped))
+        return false;   // the end of a hold restarts both clocks
+
+    if (shadow)
+    {
+        if (ai::stale_target::NoteShadow(staleClock))
+            ai::stale_target::shadow[ab].fetch_add(1, std::memory_order_relaxed);
+        return false;
+    }
+
+    if (!ai::stale_target::Release(applies, due, hold))
+        return false;
+
+    SET_AI_VALUE(Unit*, "current target", nullptr);
+    ai::stale_target::released[ab].fetch_add(1, std::memory_order_relaxed);
+    if (due == ai::stale_target::Due::Still)
+        ai::stale_target::byStill[ab].fetch_add(1, std::memory_order_relaxed);
+    else
+        ai::stale_target::byStopped[ab].fetch_add(1, std::memory_order_relaxed);
+    ai::stale_target::OpenFollowUp(staleFollowUp, targetGuid, nowMs, mapId, x, y, z);
+    ai::stale_target::Clear(staleClock);
+    return true;
 }
 
 bool MyAttackerCountTrigger::IsActive()
