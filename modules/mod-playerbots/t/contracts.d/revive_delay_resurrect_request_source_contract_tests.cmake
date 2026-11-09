@@ -6,6 +6,9 @@
 # This contract pins the key (dist, member, read, [ConfigEcho] sorted), the one registration with the key as the delay flag,
 # the unchanged delay mechanism (Handle keeps a delayed packet whose trigger is busy) and the dead-state guard of the
 # accept action.
+# Mode (OB-00 09.11.2026, option (a): the acceptance rides along in CLI-GRP's in-realm cohort test T30-1): the key is read
+# as 0 off / 1 all / 2 guid bit 1 set / 3 guid bit 1 clear (ResurrectDelayPolicy.h), independent of the CohortPolicy parity,
+# so T30-1's parity arms and this key form a balanced 2x2 in one realm.
 
 # cmake 3.x script mode (Debian trixie builder / CI): policies as in the host cmake 4.x.
 cmake_policy(VERSION 3.16)
@@ -47,18 +50,32 @@ read_source("${PB_SOURCE_DIR}/aiplayerbot.conf.dist.in" dist)
 read_source("${PB_SOURCE_DIR}/PlayerbotAI.cpp" ai_cpp)
 read_source("${PB_SOURCE_DIR}/strategy/actions/AcceptResurrectAction.h" accept_h)
 
-# 1. The key: dist default 0, member default false, read with default false, [ConfigEcho] in sorted place.
+# 1. The key: dist default 0, member mode default 0, read as a clamped mode, [ConfigEcho] in sorted place.
 require_text("${dist}" "\nAiPlayerbot.Revive.DelayResurrectRequest = 0\n" "dist default 0")
 count_text("${dist}" "AiPlayerbot.Revive.DelayResurrectRequest =" 1 "one dist line")
 # OB-10 review 09.11.: the dist text names when the flag is read.
 require_text("${dist}" "# Read when the bot's AI is created (the packet handler table, at login): a config reload affects only bots logged in\n# afterwards.\n" "dist: read at AI creation, reload only for later bots")
-require_text("${config_h}" "    bool reviveDelayResurrectRequest = false;" "member default false")
-require_text("${config_cpp}" "    reviveDelayResurrectRequest = config.GetBoolDefault(\"AiPlayerbot.Revive.DelayResurrectRequest\", false);" "read with default false")
+require_text("${config_h}" "    uint32 reviveDelayResurrectRequest = 0;" "member: mode, default 0")
+require_text("${config_cpp}" "    reviveDelayResurrectRequest = ai::resurrect_delay::ClampMode(config.GetIntDefault(\"AiPlayerbot.Revive.DelayResurrectRequest\", 0));" "read as a clamped mode, default 0")
+require_text("${config_cpp}" "#include \"playerbot/ResurrectDelayPolicy.h\"" "config includes the policy")
+require_text("${dist}" "#   2 = only bots whose low guid has bit 1 set ((guid >> 1) & 1 = 1), 3 = only bots with bit 1 clear; any other value acts\n#   like 0. 2 / 3 are NOT the cohort B / A modes of other keys (those split by parity, bit 0)" "dist: the bit-1 modes, named as not the parity cohorts")
 require_text("${config_cpp}" "            {\"Revive.CorpseRunFirst.MaxSeconds\", Value(reviveCorpseRunFirstMaxSeconds)},\n            {\"Revive.DelayResurrectRequest\", Value(reviveDelayResurrectRequest)},\n            {\"Revive.SpiritHealerFull\", Value(reviveSpiritHealerFull)}," "[ConfigEcho] sorted")
 
 # 2. One registration, the key as the delay flag; loot response keeps its delay.
 count_text("${ai_cpp}" "AddHandler(SMSG_RESURRECT_REQUEST," 1 "resurrect request registrations")
-require_text("${ai_cpp}" "    botOutgoingPacketHandlers.AddHandler(SMSG_RESURRECT_REQUEST, \"resurrect request\", sPlayerbotAIConfig.reviveDelayResurrectRequest);" "the delayed registration")
+require_text("${ai_cpp}" "    botOutgoingPacketHandlers.AddHandler(SMSG_RESURRECT_REQUEST, \"resurrect request\",\n        ai::resurrect_delay::Applies(sPlayerbotAIConfig.reviveDelayResurrectRequest, bot->GetGUIDLow()));" "the delayed registration, per bot by the mode")
+require_text("${ai_cpp}" "#include \"playerbot/ResurrectDelayPolicy.h\"" "PlayerbotAI.cpp includes the policy")
+# The split is the policy's guid bit 1, never the CohortPolicy parity.
+string(FIND "${ai_cpp}" "ai::cohort::Applies(sPlayerbotAIConfig.reviveDelayResurrectRequest" parity_use)
+if(NOT parity_use EQUAL -1)
+  message(FATAL_ERROR "DelayResurrectRequest: the key must not use the CohortPolicy parity split")
+endif()
+read_source("${PB_SOURCE_DIR}/ResurrectDelayPolicy.h" policy_h)
+require_text("${policy_h}" "    return mode >= 0 && mode <= 3 ? std::uint32_t(mode) : ModeOff;" "policy: unknown mode = off")
+require_text("${policy_h}" "    return ((guidLow >> 1) & 1u) != 0;" "policy: guid bit 1")
+require_text("${policy_h}" "    return mode == ModeAll || (mode == ModeOnlyBit1Set && Bit1Set(guidLow)) ||\n           (mode == ModeOnlyBit1Clear && !Bit1Set(guidLow));" "policy: Applies")
+read_source("${PB_MODULE_DIR}/tests.cmake" tests_cmake)
+require_text("${tests_cmake}" "add_test(NAME resurrect_delay_policy\n  COMMAND resurrect_delay_policy_tests" "unit test registered")
 require_text("${ai_cpp}" "    botOutgoingPacketHandlers.AddHandler(SMSG_LOOT_RESPONSE, \"loot response\", true);" "the model: loot response delayed")
 
 # 3. The delay mechanism the key relies on (unchanged): AddHandler stores the flag, Handle keeps a delayed packet whose
