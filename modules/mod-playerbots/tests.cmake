@@ -3932,6 +3932,21 @@ add_test(NAME duel_rule_policy
   COMMAND duel_rule_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# A3-HARM-UPSTREAM H6 (T40) (AiPlayerbot.Rotation.ReleaseStaleTarget, default 0): modes and shadow, Reset, holds, the still / stopped
+# clocks, due, release, once-per-episode counts and the re_same / moved_on follow-up.
+add_executable(stale_target_policy_tests
+  "${PB_MODULE_DIR}/t/stale_target_policy_tests.cpp")
+
+target_include_directories(stale_target_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(stale_target_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME stale_target_policy
+  COMMAND stale_target_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # twow-repo#602 (spell-name audit): the names that resolve in the image's spell data, the warlock stone ranks.
 add_executable(spell_name_policy_tests
   "${PB_MODULE_DIR}/t/spell_name_policy_tests.cpp")
