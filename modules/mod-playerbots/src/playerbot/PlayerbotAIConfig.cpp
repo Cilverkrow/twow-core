@@ -1204,6 +1204,7 @@ bool PlayerbotAIConfig::Initialize()
     // twow-repo#575 A3 step 4 S4-1 (Revive.CorpseRunFirst): an unknown mode is off; MaxSeconds clamped to 120..1800 (CorpseRunFirstPolicy.h).
     reviveCorpseRunFirst = ai::corpse_first::ClampMode(config.GetIntDefault("AiPlayerbot.Revive.CorpseRunFirst", 0));
     reviveCorpseRunFirstMaxSeconds = ai::corpse_first::ClampMaxSeconds(config.GetIntDefault("AiPlayerbot.Revive.CorpseRunFirst.MaxSeconds", int(ai::corpse_first::DefaultMaxSeconds)));
+    reviveDelayResurrectRequest = config.GetBoolDefault("AiPlayerbot.Revive.DelayResurrectRequest", false);   // twow-repo#575 H3
     // twow-repo#575 A3 step 4 S4-2 (Rescue.RepopDeadOnly): an unknown mode is off (RepopDeadOnlyPolicy.h).
     rescueRepopDeadOnly = ai::repop_dead_only::ClampMode(config.GetIntDefault("AiPlayerbot.Rescue.RepopDeadOnly", 0));
     questFirstProgressionTurnInDeathRouteCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInDeathRouteCooldownSeconds", 3600));
@@ -2183,6 +2184,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Rescue.RepopDeadOnly", Value(rescueRepopDeadOnly)},
             {"Revive.CorpseRunFirst", Value(reviveCorpseRunFirst)},
             {"Revive.CorpseRunFirst.MaxSeconds", Value(reviveCorpseRunFirstMaxSeconds)},
+            {"Revive.DelayResurrectRequest", Value(reviveDelayResurrectRequest)},
             {"Revive.SpiritHealerFull", Value(reviveSpiritHealerFull)},
             {"RosterFarMove.ArriveSafe", Value(rosterFarMoveArriveSafe)},
             {"RosterFarMove.LevelGuard", Value(rosterFarMoveLevelGuard)},
