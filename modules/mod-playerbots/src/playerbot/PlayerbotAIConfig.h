@@ -1169,7 +1169,7 @@ public:
     // arrival point moves to the nearest main ground), and a bot already on one steps off it. 0 off (default), 1 all, 2 cohort B,
     // 3 cohort A; any other value acts like 0. The other three keys: island threshold (polys), vertical window of the arrival
     // snap (yd), step-off reach (yd, 0 = no step-off).
-    uint32 pathIslandGuard = 0;
+    uint32 pathIslandGuard = 1;
     uint32 pathIslandMaxPolys = 200;
     float pathIslandSnapDz = 10.0f;
     float pathIslandStepOffYards = 7.0f;

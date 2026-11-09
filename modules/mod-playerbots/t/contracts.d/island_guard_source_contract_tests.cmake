@@ -83,11 +83,11 @@ read_source("WorldPosition.cpp" world_position)
 # 0. The movement TU includes the guard header (CI run 42279661623: without it ai::island is undeclared; host contracts read text only).
 require_text("${movement}" "#include \"playerbot/IslandGuard.h\"" "MovementActions.cpp includes IslandGuard.h")
 
-# 1. Defaults: off, threshold 200, dz 10, step-off 7 - in the member, the loader and the .dist.
-require_text("${config_h}" "uint32 pathIslandGuard = 0;" "switch member default 0")
+# 1. Defaults: on (A/B ACCEPT 09.11.2026), threshold 200, dz 10, step-off 7 - in the member, the loader and the .dist.
+require_text("${config_h}" "uint32 pathIslandGuard = 1;" "switch member default 1 (IslandGuard A/B ACCEPT 09.11.2026; 0 = rollback)")
 require_text("${config_h}" "uint32 pathIslandMaxPolys = 200;" "threshold member default")
-require_text("${config_cpp}" "pathIslandGuard = ai::island::ClampMode(config.GetIntDefault(\"AiPlayerbot.Path.IslandGuard\", 0));"
-  "loader: unknown mode = 0, default 0")
+require_text("${config_cpp}" "pathIslandGuard = ai::island::ClampMode(config.GetIntDefault(\"AiPlayerbot.Path.IslandGuard\", 1));"
+  "loader: unknown mode = 0, default 1")
 require_text("${config_cpp}" "ai::island::ClampMaxPolys(config.GetIntDefault(\"AiPlayerbot.Path.IslandMaxPolys\"" "threshold loader clamps")
 require_text("${config_cpp}" "ai::island::ClampSnapDz(config.GetFloatDefault(\"AiPlayerbot.Path.IslandSnapDz\"" "snap dz loader clamps")
 require_text("${config_cpp}" "ai::island::ClampStepOffYards(config.GetFloatDefault(\"AiPlayerbot.Path.IslandStepOffYards\"" "step-off loader clamps")
@@ -100,7 +100,7 @@ foreach(entry IN ITEMS
 endforeach()
 require_order("${config_cpp}" "{\"Path.IslandStepOffYards\"" "{\"Path.PartialNoop\"" "echo entries sorted")
 foreach(line IN ITEMS
-    "\nAiPlayerbot.Path.IslandGuard = 0\n"
+    "\nAiPlayerbot.Path.IslandGuard = 1\n"
     "\nAiPlayerbot.Path.IslandMaxPolys = 200\n"
     "\nAiPlayerbot.Path.IslandSnapDz = 10\n"
     "\nAiPlayerbot.Path.IslandStepOffYards = 7\n")
