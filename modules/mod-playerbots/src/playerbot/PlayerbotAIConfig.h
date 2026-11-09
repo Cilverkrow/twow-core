@@ -589,6 +589,9 @@ public:
     uint32 professionUseCraftIntervalSeconds = 300;
     bool professionUseTrace = false;
     uint32 professionUseTraceCooldownSeconds = 300;
+    // twow-repo#333 T28-M (OB-00 09.11.2026): one [Gathering] event=share line per roster bot on its own and online hour (the time
+    // share of gathering purposes, profession trips and gathering / craft casts, GatheringTracePolicy.h); log only. 0 off, 1 on.
+    uint32 gatheringTrace = 0;
     // twow-repo#485: craft with real reagents from the bags (the item cheat
     // made every recipe look craftable). false = legacy "craft random item".
     bool professionUseRealReagents = false;
