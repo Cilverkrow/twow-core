@@ -87,7 +87,11 @@ require_text("${dist}" "\nAiPlayerbot.Loot.HoldTravelWhileLootable = 0\n" "dist 
 count_text("${dist}" "AiPlayerbot.Loot.HoldTravelWhileLootable =" 1 "one dist line")
 require_text("${config_h}" "    bool lootHoldTravelWhileLootable = false;" "member default false")
 require_text("${config_cpp}" "    lootHoldTravelWhileLootable = config.GetBoolDefault(\"AiPlayerbot.Loot.HoldTravelWhileLootable\", false);" "read with default false")
-require_text("${config_cpp}" "            {\"LogInGroupOnly\", Value(logInGroupOnly)},\n            {\"Loot.HoldTravelWhileLootable\", Value(lootHoldTravelWhileLootable)},\n            {\"Loot.RoleWeights\", Value(lootRoleWeights)}," "[ConfigEcho] sorted")
+require_text("${config_cpp}" "            {\"LogInGroupOnly\", Value(logInGroupOnly)},\n            {\"Loot.HoldTravelWhileLootable\", Value(lootHoldTravelWhileLootable)},\n            {\"Loot.HoldTravelWhileLootable.MaxSeconds\", Value(lootHoldTravelWhileLootableMaxSeconds)},\n            {\"Loot.RoleWeights\", Value(lootRoleWeights)}," "[ConfigEcho] sorted")
+# The hold limit (OB-10 review 09.11.): dist 60, member 60, read through the clamp with the policy default.
+require_text("${dist}" "\nAiPlayerbot.Loot.HoldTravelWhileLootable.MaxSeconds = 60\n" "limit dist default 60")
+require_text("${config_h}" "    uint32 lootHoldTravelWhileLootableMaxSeconds = 60;" "limit member default 60")
+require_text("${config_cpp}" "    lootHoldTravelWhileLootableMaxSeconds = ai::loot_hold::ClampMaxSeconds(config.GetIntDefault(\"AiPlayerbot.Loot.HoldTravelWhileLootable.MaxSeconds\", int(ai::loot_hold::DefaultMaxSeconds)));" "limit read through the clamp")
 
 # 2. The hold in both isUseful bodies: key first (off = LootTargetOpen never called), after the available-loot test.
 set(HOLD "    if (sPlayerbotAIConfig.lootHoldTravelWhileLootable && ai::loot_hold::LootTargetOpen(ai))\n        return false;")
@@ -116,21 +120,36 @@ region("${heal_cpp}" "${GUARD}" "\n    }\n" guarded)
 count_text("${guarded}" "needHeals.push_back(" 1 "heal: only the rpg-target heal inside the guard")
 require_order("${heal_cpp}" "${GUARD}" "    const std::vector<Player*> partyMembers = GetPartyMembers();" "heal: party members after the guard, unguarded")
 
-# 4. The helper: read-only, the loot distance bound, then IsLootPossible.
+# 4. The helper: the loot distance bound, then IsLootPossible, then the hold clock (OB-10 review 09.11.: no hold without end).
+#    It writes only the bot's own hold clock, never the loot target.
 require_text("${stack_cpp}" "#include \"playerbot/LootHoldPolicy.h\"" "helper: policy include")
 region("${stack_cpp}" "bool ai::loot_hold::LootTargetOpen(PlayerbotAI* ai)" "\n}\n" helper)
 require_text("${helper}" "GetValue<LootObject>(\"loot target\")->Get();" "helper: reads the loot target")
 require_text("${helper}" "    if (lootObject.IsEmpty())\n        return false;" "helper: no loot target, no hold")
 require_text("${helper}" "!ai::loot_hold::WithinLootDistance(bot->GetDistance(wo), sPlayerbotAIConfig.lootDistance)" "helper: loot distance bound")
-require_order("${helper}" "WithinLootDistance(" "    return lootObject.IsLootPossible(bot);" "helper: bound before the lootable test")
-forbid_text("${helper}" "->Set(" "helper writes a value")
+require_order("${helper}" "WithinLootDistance(" "    if (!lootObject.IsLootPossible(bot))\n        return false;" "helper: bound before the lootable test")
+require_order("${helper}" "    if (!lootObject.IsLootPossible(bot))\n        return false;" "ai::loot_hold::Next(" "helper: the clock only for a lootable target")
+require_text("${helper}" "context->GetValue<std::string>(\"manual string\", \"loot hold guid\");" "helper: own clock guid (bot AI value)")
+require_text("${helper}" "context->GetValue<time_t>(\"manual time\", \"loot hold since\");" "helper: own clock start (bot AI value)")
+require_text("${helper}" "ai::loot_hold::Step const step = ai::loot_hold::Next(guid, heldGuid, std::int64_t(heldSince), std::int64_t(now),\n        sPlayerbotAIConfig.lootHoldTravelWhileLootableMaxSeconds);" "helper: the clock with the configured limit")
+require_text("${helper}" "    if (step == ai::loot_hold::Step::Start)\n    {\n        heldGuidValue->Set(std::to_string(guid));\n        heldSinceValue->Set(now);\n    }" "helper: a new loot target starts the clock")
+require_text("${helper}" "sLog.outBasic(\"[LootHold] bot=%u level=%u map=%u target_entry=%u target_low=%u kind=%s held_s=%u result=expired\"," "helper: the expired line")
+require_order("${helper}" "result=expired" "        heldSinceValue->Set(0);" "helper: expired marked after the line (one line per expiry)")
+require_text("${helper}" "    return ai::loot_hold::Holds(step);\n}" "helper: the answer is the clock's")
+count_text("${helper}" "->Set(" 3 "helper writes only its own clock (guid, start, expired mark)")
+forbid_text("${helper}" "\"loot target\")->Set(" "helper sets the loot target")
 forbid_text("${helper}" "->Reset(" "helper resets a value")
 forbid_text("${helper}" "RESET_AI_VALUE" "helper resets a value")
+forbid_text("${helper}" "SET_AI_VALUE" "helper sets a value through the macro")
 
 # 5. The pure policy.
 require_text("${policy}" "inline bool Hold(bool key, bool lootTargetOpen)\n{\n    return key && lootTargetOpen;\n}" "policy: Hold")
 require_text("${policy}" "inline bool WithinLootDistance(float distance, float lootDistance)\n{\n    return distance >= 0.0f && distance <= lootDistance;\n}" "policy: loot distance bound")
 require_text("${policy}" "bool LootTargetOpen(PlayerbotAI* ai);" "policy: helper declaration")
+require_text("${policy}" "constexpr std::uint32_t DefaultMaxSeconds = 60;" "policy: default limit")
+require_text("${policy}" "    return value < 10 ? 10u : (value > 600 ? 600u : std::uint32_t(value));" "policy: limit clamp 10..600")
+require_text("${policy}" "    if (guid != heldGuid)\n        return Step::Start;\n    if (heldSince == 0)\n        return Step::Expired;\n    if (now - heldSince < std::int64_t(maxSeconds))\n        return Step::Keep;\n    return Step::Expire;" "policy: the clock")
+require_text("${policy}" "inline bool Holds(Step step)\n{\n    return step == Step::Start || step == Step::Keep;\n}" "policy: only start and keep hold")
 
 # 6. The policy test is registered and compiled.
 require_text("${tests}" "add_executable(loot_hold_policy_tests\n  \"\${PB_MODULE_DIR}/t/loot_hold_policy_tests.cpp\")" "policy test target")
