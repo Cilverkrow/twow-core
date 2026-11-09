@@ -230,6 +230,12 @@ AiPlayerbot.Loot.FeralFixedSpec = 1
 # list forgets an entry after 30 s while the loot target stays, so a bot walking to its loot turned to its rpg / travel target
 # and came back for the loot later. 0 = as before (default until the acceptance unit; then 1 by default, 0 = rollback).
 AiPlayerbot.Loot.HoldTravelWhileLootable = 0
+# twow-repo#575 H1 (OB-10 review 09.11.2026): a loot target holds the bot at most this many seconds from its first hold (10-600,
+# default 60 = 2 x the 30 s expiry of the available-loot list). The bot's loot target is cleared only by a successful loot
+# or another target, so an object that stays lootable but cannot be looted (unreachable, a roll that does not release)
+# would otherwise hold the bot without end. After the limit that loot target holds no more until the bot takes another
+# one; one [LootHold] bot= ... held_s= result=expired line each time.
+AiPlayerbot.Loot.HoldTravelWhileLootable.MaxSeconds = 60
 # OB-00 08.11.2026 (BUG FIX: code default 1, 0 = rollback): the "loot chance" value of a game object. The drop map keeps a
 # game object entry negated; the value put that negative entry into the game object guid as it was, the entry ran into the
 # high guid bits, the guid was no game object guid and every game object had loot chance 0. With 1 it reads the game object's

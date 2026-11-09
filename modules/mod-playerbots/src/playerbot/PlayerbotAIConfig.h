@@ -636,6 +636,7 @@ public:
     bool buffRealPlayerStyle = false;  // twow-repo#588 (owner 14.10): buff group, then guild, strangers only once per cooldown
     uint32 buffStrangerCooldownSeconds = 900;
     bool lootHoldTravelWhileLootable = false;  // twow-repo#575 H1 (bug fix; code default 0 until its acceptance unit, then the flip pair): move to rpg / travel target and the rpg-target heal stand back while the loot target is open (LootHoldPolicy.h), 0 = as before
+    uint32 lootHoldTravelWhileLootableMaxSeconds = 60;  // twow-repo#575 H1 (OB-10 review): seconds a loot target may hold the bot at most (10..600); then that loot target holds no more ([LootHold] result=expired)
     uint32 lootRoleWeights = 0;       // twow-repo#308 LOOT-ROLE-01: 1 = weight scale from the premade path from L1, quest reward by gain; 2 = and the owner stat table v2
     bool lootFeralFixedSpec = true;   // twow-repo#308 (owner 26.09.): bear/cat scale by the premade path, not a coin per check
     // OB-00 08.11.2026 (bug fix: code default 1, 0 = rollback): "loot chance" of a game object reads its loot template; the old
