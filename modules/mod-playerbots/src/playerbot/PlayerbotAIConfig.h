@@ -1070,6 +1070,10 @@ public:
     uint32 questFirstProgressionStaleObjectiveBots = 3;           // 1..8
     uint32 questFirstProgressionStaleObjectiveWindowSeconds = 3600;
     uint32 questFirstProgressionStaleObjectiveSeconds = 3600;
+    // A3-GERUEST-L60 8.4 lever 3 (CLI-Deep 08.11.2026): how the stale query reads the store. 0 = a per-thread snapshot rebuilt under the
+    // store mutex after every store change (default, the rollback), 1 = one snapshot published by the writer when the marked set
+    // changed, read without the mutex. Same answers; [StaleObjectiveMin] counts both paths once per minute.
+    uint32 questFirstProgressionStaleObjectiveFilterLockFree = 0;
     // twow-repo#601 owner rule R1 (04.11.2026, CLI-Deep; ZoneKeepPolicy.h): a stale objective is no reason to change zone. A quest search
     // that came back empty while it skipped stale objectives neither widens nor counts toward a band step, and for Seconds the bot takes
     // no quest target outside its zone (turn-ins exempt). Mode 0 off (default), 1 all, 2 cohort B, 3 cohort A.

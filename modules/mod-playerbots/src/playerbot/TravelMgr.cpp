@@ -23,6 +23,8 @@
 #include "playerbot/TransportBoardPolicy.h"   // twow-repo#342 ABBA-1 §6: the PosStuck dock pause ends after WaitTimeoutMsOf
 #include <algorithm>
 #include <atomic>
+#include <chrono>   // StaleObjectiveFilter.LockFree: [StaleObjectiveMin] wait / build times
+#include <memory>   // StaleObjectiveFilter.LockFree: the published snapshot
 #include <vector>
 #include <cmath>           // A3 step 2 QB-S: std::sqrt / std::round in SourceStatsOf
 #include <unordered_map>   // A3 step 2 QB-S: the per-entry spawn cache at load
@@ -1811,6 +1813,54 @@ namespace
     std::atomic<uint32> staleObjectiveLatestMarkUntilMs{ 0 };
     std::atomic<uint32> staleObjectiveStoreVersion{ 0 };
 
+    // A3-GERUEST-L60 8.4 lever 3 (QuestFirstProgression.StaleObjectiveFilter.LockFree, CLI-Deep 08.11.2026): with the switch 1 the
+    // writer publishes the marked keys as one immutable snapshot (StaleObjectivePolicy.h BuildSnapshot) after the marked set changed;
+    // a reader copies the pointer once per publish and searches it without staleObjectiveMutex and without a rebuild per thread.
+    // 0 = the per-thread rebuild above (the rollback). The pointer is only touched through std::atomic_store / std::atomic_load.
+    std::shared_ptr<ai::stale_objective::Snapshot const> staleObjectivePublished;
+    std::atomic<uint32> staleObjectivePublishVersion{ 0 };
+    // [StaleObjectiveMin] counters (relaxed adds, taken once per minute): the rebuilds of the per-thread path, its lock waits (the
+    // mutex was held when the rebuild asked) with their wait time, and the publishes of the LockFree path with their build time.
+    std::atomic<uint64> staleObjectiveRebuilds{ 0 };
+    std::atomic<uint64> staleObjectiveReaderLockWaits{ 0 };
+    std::atomic<uint64> staleObjectiveReaderWaitUs{ 0 };
+    std::atomic<uint64> staleObjectivePublishes{ 0 };
+    std::atomic<uint64> staleObjectivePublishUs{ 0 };
+
+    uint64 StaleObjectiveMicrosSince(std::chrono::steady_clock::time_point start)
+    {
+        return uint64(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count());
+    }
+
+    // A snapshot is published (guarded by staleObjectiveMutex): with the switch 0 it is withdrawn at the next change of the marked set.
+    bool staleObjectiveSnapshotLive = false;
+
+    // The caller holds staleObjectiveMutex (publishes are therefore in store order). A reload 1 -> 0 -> 1 must not leave the readers
+    // on a snapshot that missed the marks and credits of the 0 phase (OB-10 review #958): with the switch 0 the first change of the
+    // marked set withdraws a published snapshot (null pointer, then the version), the readers fall back to the per-thread path until
+    // the next publish under 1. Without such a change the old snapshot still gives the same answers (untilMs is checked per lookup).
+    void PublishStaleObjectiveSnapshot(uint32 nowMs)
+    {
+        if (!sPlayerbotAIConfig.questFirstProgressionStaleObjectiveFilterLockFree)
+        {
+            if (staleObjectiveSnapshotLive)
+            {
+                std::atomic_store_explicit(&staleObjectivePublished, std::shared_ptr<ai::stale_objective::Snapshot const>(), std::memory_order_release);
+                staleObjectivePublishVersion.fetch_add(1, std::memory_order_acq_rel);
+                staleObjectiveSnapshotLive = false;
+            }
+            return;
+        }
+        auto const start = std::chrono::steady_clock::now();
+        std::shared_ptr<ai::stale_objective::Snapshot const> snapshot =
+            std::make_shared<ai::stale_objective::Snapshot const>(ai::stale_objective::BuildSnapshot(staleObjectiveStore, nowMs));
+        std::atomic_store_explicit(&staleObjectivePublished, std::move(snapshot), std::memory_order_release);
+        staleObjectivePublishVersion.fetch_add(1, std::memory_order_acq_rel);
+        staleObjectiveSnapshotLive = true;
+        staleObjectivePublishes.fetch_add(1, std::memory_order_relaxed);
+        staleObjectivePublishUs.fetch_add(StaleObjectiveMicrosSince(start), std::memory_order_relaxed);
+    }
+
     ai::stale_objective::Params StaleObjectiveParams()
     {
         ai::stale_objective::Params params;
@@ -1838,9 +1888,10 @@ void ai::stale_objective::NoteObjectiveFailure(Player* bot, PlayerbotAI* botAI, 
     uint32 failures = 0;
     uint32 bots = 0;
     bool marked = false;
+    bool evictedMark = false;
     {
         std::lock_guard<std::mutex> lock(staleObjectiveMutex);
-        marked = ai::stale_objective::RecordFailure(staleObjectiveStore, key, bot->GetGUIDLow(), nowMs, params, failures, bots);
+        marked = ai::stale_objective::RecordFailure(staleObjectiveStore, key, bot->GetGUIDLow(), nowMs, params, failures, bots, &evictedMark);
         if (marked)
         {
             auto const markedEntry = staleObjectiveStore.entries.find(key);
@@ -1851,6 +1902,9 @@ void ai::stale_objective::NoteObjectiveFailure(Player* bot, PlayerbotAI* botAI, 
             staleObjectiveAnyMark.store(true, std::memory_order_release);
         }
         staleObjectiveStoreVersion.fetch_add(1, std::memory_order_acq_rel);
+        // LockFree: only a change of the marked set is published (a failure that marks nothing changes no answer).
+        if (marked || evictedMark)
+            PublishStaleObjectiveSnapshot(nowMs);
     }
     if (marked)
         sLog.outBasic("[StaleObjective] state=mark quest=%u entry=%d failures=%u bots=%u window_s=%u seconds=%u last_bot=%u reason=%s",
@@ -1867,7 +1921,10 @@ void ai::stale_objective::NoteQuestCredit(Player* bot, uint32 questId)
         std::lock_guard<std::mutex> lock(staleObjectiveMutex);
         ended = ai::stale_objective::Credit(staleObjectiveStore, questId, WorldTimer::getMSTime());
         if (ended)
+        {
             staleObjectiveStoreVersion.fetch_add(1, std::memory_order_acq_rel);
+            PublishStaleObjectiveSnapshot(WorldTimer::getMSTime());
+        }
     }
     if (ended)
         sLog.outBasic("[StaleObjective] state=clear quest=%u marks=%u reason=credit bot=%u", questId, ended, bot ? bot->GetGUIDLow() : 0);
@@ -1883,6 +1940,23 @@ bool ai::stale_objective::IsObjectiveStale(QuestObjectiveTravelDestination const
         int32(staleObjectiveLatestMarkUntilMs.load(std::memory_order_acquire) - nowMs) <= 0)
         return false;
 
+    // A3-GERUEST-L60 8.4 lever 3 (StaleObjectiveFilter.LockFree): the published snapshot, its pointer copied once per publish, searched
+    // without staleObjectiveMutex. Nothing published yet (the switch was 0 when the marks were set): the per-thread path below.
+    if (sPlayerbotAIConfig.questFirstProgressionStaleObjectiveFilterLockFree)
+    {
+        thread_local std::shared_ptr<ai::stale_objective::Snapshot const> published;
+        thread_local uint32 publishedVersion = 0;
+        uint32 const current = staleObjectivePublishVersion.load(std::memory_order_acquire);
+        if (current != publishedVersion)
+        {
+            published = std::atomic_load_explicit(&staleObjectivePublished, std::memory_order_acquire);
+            publishedVersion = current;
+        }
+        if (published)
+            return ai::stale_objective::SnapshotMarked(*published,
+                ai::stale_objective::Key{ objective->GetQuestId(), objective->GetEntry() }, nowMs);
+    }
+
     // The thread's snapshot of the marked keys (store order = key order, so sorted), rebuilt under the lock after a store change.
     struct Snapshot
     {
@@ -1896,11 +1970,20 @@ bool ai::stale_objective::IsObjectiveStale(QuestObjectiveTravelDestination const
     {
         snapshot.marked.clear();
         {
-            std::lock_guard<std::mutex> lock(staleObjectiveMutex);
+            // [StaleObjectiveMin]: a rebuild that finds the mutex held counts as a lock wait, with its wait time.
+            std::unique_lock<std::mutex> lock(staleObjectiveMutex, std::try_to_lock);
+            if (!lock.owns_lock())
+            {
+                auto const waitStart = std::chrono::steady_clock::now();
+                lock.lock();
+                staleObjectiveReaderLockWaits.fetch_add(1, std::memory_order_relaxed);
+                staleObjectiveReaderWaitUs.fetch_add(StaleObjectiveMicrosSince(waitStart), std::memory_order_relaxed);
+            }
             for (auto const& [key, entry] : staleObjectiveStore.entries)
                 if (ai::stale_objective::IsMarked(entry, nowMs))
                     snapshot.marked.emplace_back(key, entry.markUntilMs);
         }
+        staleObjectiveRebuilds.fetch_add(1, std::memory_order_relaxed);
         snapshot.version = version;
         snapshot.built = true;
     }
@@ -1908,6 +1991,22 @@ bool ai::stale_objective::IsObjectiveStale(QuestObjectiveTravelDestination const
     auto const it = std::lower_bound(snapshot.marked.begin(), snapshot.marked.end(), key,
         [](std::pair<ai::stale_objective::Key, uint32> const& item, ai::stale_objective::Key const& k) { return item.first < k; });
     return it != snapshot.marked.end() && it->first == key && int32(it->second - nowMs) > 0;
+}
+
+void ai::stale_objective::ReportMinute()
+{
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (!sPlayerbotAIConfig.questFirstProgressionStaleObjectiveFilter || now < lastReport + 60)
+        return;
+    lastReport = now;
+    auto take = [](std::atomic<uint64>& counter) { return (unsigned long long)counter.exchange(0, std::memory_order_relaxed); };
+    std::shared_ptr<ai::stale_objective::Snapshot const> const published = std::atomic_load(&staleObjectivePublished);
+    sLog.outBasic("[StaleObjectiveMin] lockfree=%u rebuilds=%llu reader_lock_waits=%llu reader_wait_us=%llu publishes=%llu "
+        "publish_us=%llu published_keys=%u",
+        sPlayerbotAIConfig.questFirstProgressionStaleObjectiveFilterLockFree, take(staleObjectiveRebuilds),
+        take(staleObjectiveReaderLockWaits), take(staleObjectiveReaderWaitUs), take(staleObjectivePublishes),
+        take(staleObjectivePublishUs), published ? uint32(published->size()) : 0u);
 }
 
 // twow-repo#601 owner rule R1 (StartZoneMinLevel, ZoneKeepPolicy.h): the game side of the start-zone gate (see TravelMgr.h).
