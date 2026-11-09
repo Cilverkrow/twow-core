@@ -224,6 +224,18 @@ AiPlayerbot.Buff.StrangerCooldownSeconds = 900
 # premade path; 0 = a coin on every check (old).
 AiPlayerbot.Loot.RoleWeights = 0
 AiPlayerbot.Loot.FeralFixedSpec = 1
+# twow-repo#575 H1 (BUG FIX, loot ping-pong; A3-HARM-UPSTREAM, OB-00 09.11.2026; heal branch CLI-ROT): "move to rpg target",
+# "move to travel target" and the heal of the rpg target stand back while the bot's loot target is still open: set, within
+# LootDistance of the bot and still lootable. Before, they stood back only while the "available loot" list offered loot; that
+# list forgets an entry after 30 s while the loot target stays, so a bot walking to its loot turned to its rpg / travel target
+# and came back for the loot later. 0 = as before (default until the acceptance unit; then 1 by default, 0 = rollback).
+AiPlayerbot.Loot.HoldTravelWhileLootable = 0
+# twow-repo#575 H1 (OB-10 review 09.11.2026): a loot target holds the bot at most this many seconds from its first hold (10-600,
+# default 60 = 2 x the 30 s expiry of the available-loot list). The bot's loot target is cleared only by a successful loot
+# or another target, so an object that stays lootable but cannot be looted (unreachable, a roll that does not release)
+# would otherwise hold the bot without end. After the limit that loot target holds no more until the bot takes another
+# one; one [LootHold] bot= ... held_s= result=expired line each time.
+AiPlayerbot.Loot.HoldTravelWhileLootable.MaxSeconds = 60
 # OB-00 08.11.2026 (BUG FIX: code default 1, 0 = rollback): the "loot chance" value of a game object. The drop map keeps a
 # game object entry negated; the value put that negative entry into the game object guid as it was, the entry ran into the
 # high guid bits, the guid was no game object guid and every game object had loot chance 0. With 1 it reads the game object's
@@ -2137,6 +2149,14 @@ AiPlayerbot.Path.TransportWaitTimeoutMin = 15
 # an unusable point); a bot that lost its ride (fell off) within 40 yd of the arrival dock moves on, else it searches one
 # route from where it is (none: the existing rescues); only vessels with a known entry are boarded. 0 = as before (default).
 AiPlayerbot.Path.TransportBoardFix = 0
+# twow-repo#575 H4 (BUG FIX, crash class; A3-HARM-UPSTREAM, OB-00 09.11.2026): a bot waiting for a ship, zeppelin
+# or lift scans the vessels at the dock only when the dock is on the bot's own map. Before, it first read the transports of
+# the dock's map, even when that map belongs to another update thread, and only then tested the map. A dock on another map
+# still waits as before ("different map"), with no candidate vessel: no boarding is possible there either way. A dock on
+# the bot's map is scanned on the bot's own map instance (the old scan took the first instance of that map, under the
+# region layout any region). The [TransportWait] trace keeps counting the wait (cand=0 on a cross-map wait).
+# 0 = as before (default until the acceptance unit; then 1 by default, 0 = rollback).
+AiPlayerbot.Path.TransportSameMapGuard = 0
 # twow-repo#575 (PATH-01 b, flight A/B 18.10.2026): a res=failed [TaxiUse] line names the refusal: reason=logout|combat|
 # disable_move|unknown_node|mounted|shapeshift|casting|no_path|money|other (first core check that holds; trace only).
 # twow-repo#575 (PATH-01 b, BUG FIX, profile 1 after the A/B): with a flight master the core refuses a flight in a
@@ -2161,8 +2181,12 @@ AiPlayerbot.Path.RescueSkipCustomStarts = 0
 # Components are labelled once per navmesh tile on its first use and cached (about 21 MB and < 1 s CPU for every continent
 # tile; shared by all map threads, publish-once); a component small inside its tile but touching the tile edge is decided by
 # a link search across the edge capped at IslandMaxPolys polys.
-#   0 = off (default), 1 = every bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid); other values act like 0.
-AiPlayerbot.Path.IslandGuard = 0
+# IslandGuard A/B (crossover B/C, PREREG-ISLANDGUARD cbdeb508 + addendum 1, bot brain off): ACCEPT 09.11.2026, island path
+# failures rr 0.063 (95 % 0.034-0.114), deaths / turn-ins / idle+stuck share unchanged; OB-10 OK, owner standing approval
+# 09.11.2026. Since then default 1 (every bot).
+#   0 = off (rollback), 1 = every bot (default), 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid); other
+#   values act like 0.
+AiPlayerbot.Path.IslandGuard = 1
 # Island = a link component below this many polys (20-1000, default 200). Why 200: with < 200 polys the server logged "all start
 # legs failed" ([RouteFailDetail] bad_start = start_nodes) for 70 % of the route starts, on the main mesh for 7.5 %.
 AiPlayerbot.Path.IslandMaxPolys = 200
@@ -2204,6 +2228,15 @@ AiPlayerbot.Revive.PreferCorpseRun = 0
 AiPlayerbot.Revive.CorpseRunFirst = 0
 # Seconds dead after which the spirit healer is taken (120..1800).
 AiPlayerbot.Revive.CorpseRunFirst.MaxSeconds = 600
+# twow-repo#575 H3 (BUG FIX; A3-HARM-UPSTREAM, OB-00 09.11.2026): a resurrect request (a player or bot casting
+# Resurrection / Redemption / Ancestral Spirit on a dead bot) that arrives while the "resurrect request" trigger still
+# holds an earlier one is kept for the next packet pass, as loot responses are, instead of being dropped. The bot then
+# accepts it in its dead state as before ("accept resurrect" checks that the bot is dead; the core checks that the request
+# is still open). Accepted resurrects shorten deaths and move the base for deaths and re-deaths in A/B units.
+# Read when the bot's AI is created (the packet handler table, at login): a config reload affects only bots logged in
+# afterwards.
+# 0 = as before (default until the acceptance unit; then 1 by default, 0 = rollback).
+AiPlayerbot.Revive.DelayResurrectRequest = 0
 # twow-repo#575 A3 step 4 S4-2 (OB-00 07.11.2026): repop only when dead. "unstuck" sent an ALIVE bot to repop for "move long
 # stuck" / "combat long stuck" whenever its hearthstone was not useful (e.g. the homebind zone above its level): a teleport
 # to the race start or homebind, a group leave, the travel target nulled. With the switch the repop is not useful for an alive
@@ -2324,7 +2357,8 @@ AiPlayerbot.ProfessionTraining.TraceCooldownSeconds = 300
 # the trip stops holding (hold_over_s = seconds after the backoff end). reason=lost (another target took over) is written
 # at the next request of the kind, with trip_s / hold_over_s up to the last hold check that held and seen_after_s = the
 # delay of the line (P1-b3). Mode (in-realm A/B, cohort parity): 0 = as before (default),
-# 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
+# 1 = every bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid) - the second arm of a crossover unit
+# (T28a, OB-00 09.11.2026). Any other value acts like 0.
 AiPlayerbot.ProfessionTraining.Travel = 0
 # twow-repo#333 Berufe P1-n (OB-00 26.10.2026 after M1 FUTILE: the quest-first gap was too rare - 0 trainer trips): with
 # ProfessionTraining.Travel on for the bot, a bot (level 5+, roster, on its own) that has not learned a phase-one skill of
@@ -2495,7 +2529,8 @@ AiPlayerbot.ProfessionUse.TraceCooldownSeconds = 300
 # as the gap tool trip; it holds 10 min, its whole time counts as hold_over_s. "[ProfTravel] state=request kind=tool ...
 # path=near"; with ProfessionTraining.Trace one "[ProfTravel] state=gate kind=tool path=near ... result=" per bot missing a tool
 # and TraceCooldownSeconds (start, not_eligible, cooldown, turn_in, band, money, no_vendor, not_near, unreachable, home_zone).
-# Mode: 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
+# Mode: 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid) - the
+# second arm of a crossover unit (T28a, OB-00 09.11.2026). Any other value acts like 0.
 AiPlayerbot.ProfessionUse.ToolBuy = 0
 # twow-repo#333 P1-z (OB-00 31.10.2026, BUG FIX: code default 1, 0 = rollback): a bot's own vendor purchase ("buy" with
 # "vendor", the RPG buy at a vendor) also reads the vendor template items (creature_template.vendor_id -> npc_vendor_template),
@@ -3878,6 +3913,27 @@ AiPlayerbot.Rotation.DuelRule.CancelSeconds = 60
 # are a trace only (a live target dropped by "select new target", and whether that interrupted a cast).
 # 0 = as before, 1 = every bot (default), 2 = only cohort B (odd low guid). Any other value acts like 1.
 AiPlayerbot.Rotation.InvalidTargetQuiet = 1
+# A3-HARM-UPSTREAM H6 (T40) (idea: cmangos/playerbots 21b8aef2 + f6f1d3f, no code taken; BEHAVIOUR CHANGE, default 0 = as before):
+# a bot out of combat can keep a valid current target that nothing acts on. A grind pick that took the pull path returns before
+# "attack target" is set, and the end of the pull clears only "pull target"; travel resets "attack target" but keeps the current
+# target. Then "combat end" switches the engine back, "no target" stays false and "attack anything" never runs again. With the
+# switch such a bot drops ONLY its current target after StoppedSeconds standing still, or after StillSeconds without moving 5 yards,
+# so "no target" -> "attack anything" picks again (possibly the same mob). Travel target, rpg target, attack / pull / old target,
+# movement and the stuck clocks are not touched. Not while a pull runs (15 s), waiting for attack, with an open loot window, casting,
+# sitting, eating or drinking (food / drink auras only: Blessing of Wisdom and mp5 / hp5 gear do not hold); never in combat, dead,
+# under a real player master, on a taxi or transport, in a duel or battleground.
+# "[StaleTarget] mode= shadow= still_s= stopped_s= elig_bot_min= released= by_still= by_stopped= shadow_would= re_same= moved_on=
+# held_pull= held_wait= held_loot= held_cast= held_rest=" once a minute with the mode or the shadow on; every counter is an A/B pair
+# (cohort A even / cohort B odd low guid).
+# 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
+AiPlayerbot.Rotation.ReleaseStaleTarget = 0
+# 1 = with the mode on, the bots it does not act on (cohort A in mode 2) count "would release" episodes (shadow_would=), never act.
+# Default 0.
+AiPlayerbot.Rotation.ReleaseStaleTarget.Shadow = 0
+# Seconds without a move of 5 yards before the release. Default 60; 0 = this clause off.
+AiPlayerbot.Rotation.ReleaseStaleTarget.StillSeconds = 60
+# Seconds standing (not moving) before the release. Default 5; 0 = this clause off.
+AiPlayerbot.Rotation.ReleaseStaleTarget.StoppedSeconds = 5
 # twow-repo#541 (audit A17, BEHAVIOUR CHANGE, enable only after OB-30 measurement + owner go): 1 = a bot AI in
 # combat (no real player master; also non-roster random bots, bot-led groups, battlegrounds and duels) whose AI
 # pass executed no action while it auto-attacks its current target (melee swing with the victim in melee reach,

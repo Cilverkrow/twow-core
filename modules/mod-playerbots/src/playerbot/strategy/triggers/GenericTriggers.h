@@ -2,6 +2,7 @@
 #include "playerbot/strategy/Trigger.h"
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/ServerFacade.h"
+#include "playerbot/StaleTargetPolicy.h"
 #include "Spells/SpellAuraDefines.h"
 #include "DungeonTriggers.h"
 
@@ -470,11 +471,19 @@ namespace ai
         uint64 quietSince = 0;  // first second without a fight (0 = no duel or fighting), DuelRulePolicy.h NextQuietSince
     };
 
+    // A3-HARM-UPSTREAM H6 (T40) (AiPlayerbot.Rotation.ReleaseStaleTarget, StaleTargetPolicy.h, default 0): one trigger object per bot
+    // (TriggerContext), so one stale-target clock per bot - its own anchor and times, not "current position" or any stuck clock.
     class NoTargetTrigger : public Trigger
     {
     public:
         NoTargetTrigger(PlayerbotAI* ai) : Trigger(ai, "no target") {}
         virtual bool IsActive() override;
+
+    private:
+        bool StaleTargetCheck(Unit* target, bool oldRule, uint32 mode);
+        ai::stale_target::Clock staleClock;           // StaleTargetPolicy.h Observe / DueOf
+        ai::stale_target::FollowUp staleFollowUp;     // the last release, for re_same / moved_on
+        ai::stale_target::MinuteMark staleEligMinute; // elig_bot_min, once per bot and minute
     };
 
     class InvalidTargetTrigger : public Trigger
