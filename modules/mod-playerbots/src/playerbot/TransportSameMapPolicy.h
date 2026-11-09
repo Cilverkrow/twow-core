@@ -16,6 +16,10 @@ namespace ai::transport_samemap
 // With the guard the scan runs only for a dock on the bot's map. A dock on another map waits as before ("different map"),
 // with no candidate vessel: the [TransportWait] trace counts the wait as before (cand=0, near=-1 on that path instead of
 // values read from the other map's thread) and the deck probe (S3b-0) does not probe a vessel of another map.
+//
+// OB-10 review 09.11.2026: with the guard a dock on the bot's map id is scanned on the bot's own map instance
+// (WorldPosition::getTransports(entry, bot->GetMap())). The legacy scan took getMap(getFirstInstanceId()), the first instance
+// with that id: under the region layout (Continents.Instanciate, #697) any region of the continent, i.e. another pool thread.
 
 // True = UseTransport may scan the dock's vessels. Guard off (0): always, as before.
 inline bool ScanAllowed(bool guard, std::uint32_t dockMap, std::uint32_t botMap)
