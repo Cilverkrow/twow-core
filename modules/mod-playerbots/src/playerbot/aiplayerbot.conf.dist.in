@@ -1389,6 +1389,12 @@ AiPlayerbot.BotGroups.OpQueueAlertAgeSeconds = 60
 # Mode (in-realm A/B, cohort parity): 0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid), 3 = only
 # cohort A (even low guid). Any other value acts like 0 (one error line at load).
 AiPlayerbot.BotGroups.Manager = 0
+# A3-GERUEST-L60 7.2.11 (manager inbox): MEASUREMENT ONLY, default 0, no behaviour change. With Manager on, a roster bot of
+# the Manager's cohort without a real player master posts its status (level, HP/mana per mille, map, x/y; role unknown) to
+# the manager inbox every StatusSeconds; the manager keeps the latest per bot and decides nothing from it yet. The manager
+# writes "[ManagerInbox] posted= dropped= drained= status= snapshots=" once a minute (increments; snapshots = table size).
+# 0 = no posts (default), 1..3600 seconds; a larger value acts like 3600 (one error line at load).
+AiPlayerbot.BotGroups.Manager.StatusSeconds = 0
 # L1 (owner 07.11.2026, owner-ordered behaviour change): a bot resets its raid lockouts ("reset raids", which drops every bind
 # except the one of its current map, PERM included) only when a real player invites it. An invite by another bot or by a
 # bot-only world-thread group manager (ad-hoc, quest groups) keeps the bot's PERM raid binds; an accept run by the group op

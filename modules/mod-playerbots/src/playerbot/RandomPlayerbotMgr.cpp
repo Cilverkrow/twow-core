@@ -2299,7 +2299,8 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
         else if (ai::adhoc_group::WorldManager().HasHelpers())
             ai::adhoc_group::WorldManager().ReleaseHelpers(GetAllBots());  // #365 HelpUntilDone after a reload to 0
         // A3 step 6 (ADR-0041): the group manager of roster bots, on the world thread with the maps idle like S7 and #628
-        // above. Scaffold: the pass only counts itself; no group is formed, changed or read yet.
+        // above. Scaffold: the pass counts itself and drains the manager inbox (7.2.11, latest status per bot); no group is
+        // formed, changed or read yet.
         if (sPlayerbotAIConfig.botGroupsManager)
             ai::group_mgr::WorldManager().Update(GetAllBots(), uint32(time(nullptr)));
         PlayerbotHolder::UpdateAIInternal(elapsed, minimal);
