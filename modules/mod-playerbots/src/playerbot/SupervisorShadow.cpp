@@ -368,4 +368,20 @@ void ShadowDrop(ShadowState& state)
     std::lock_guard<std::mutex> lock(g_mutex);
     DropLocked(state);
 }
+
+namespace
+{
+// Live arbiter switch (OB-00 09.11.2026): kArbiterFollowConfig until the console sets it.
+std::atomic<int> g_arbiterOverride{kArbiterFollowConfig};
+}
+
+bool ArbiterOn(std::uint32_t configValue)
+{
+    return ArbiterEffective(g_arbiterOverride.load(std::memory_order_relaxed), configValue);
+}
+
+int SetArbiterOverride(bool on)
+{
+    return g_arbiterOverride.exchange(on ? kArbiterOn : kArbiterOff, std::memory_order_relaxed);
+}
 }

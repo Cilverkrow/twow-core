@@ -368,9 +368,28 @@ void TestArbiter()
 }
 }
 
+// Live arbiter switch (OB-00 09.11.2026, console "rndbot arbiter on|off").
+void TestArbiterConsole()
+{
+    Require(ParseArbiterSwitch("on") == kArbiterOn && ParseArbiterSwitch("1") == kArbiterOn, "on / 1");
+    Require(ParseArbiterSwitch("off") == kArbiterOff && ParseArbiterSwitch("0") == kArbiterOff, "off / 0");
+    Require(ParseArbiterSwitch("  on \r\n") == kArbiterOn && ParseArbiterSwitch("\toff ") == kArbiterOff, "blanks around");
+    Require(ParseArbiterSwitch("") == kArbiterFollowConfig && ParseArbiterSwitch(nullptr) == kArbiterFollowConfig &&
+        ParseArbiterSwitch("   ") == kArbiterFollowConfig, "empty = usage");
+    Require(ParseArbiterSwitch("2") == kArbiterFollowConfig && ParseArbiterSwitch("onn") == kArbiterFollowConfig &&
+        ParseArbiterSwitch("o") == kArbiterFollowConfig && ParseArbiterSwitch("ON") == kArbiterFollowConfig &&
+        ParseArbiterSwitch("of") == kArbiterFollowConfig && ParseArbiterSwitch("on off") == kArbiterFollowConfig,
+        "anything else = usage (enforcement 2 never via the console)");
+    Require(!ArbiterEffective(kArbiterFollowConfig, 0) && ArbiterEffective(kArbiterFollowConfig, 1) &&
+        !ArbiterEffective(kArbiterFollowConfig, 2), "no override: the config value, only 1 is the shadow");
+    Require(ArbiterEffective(kArbiterOn, 0) && !ArbiterEffective(kArbiterOff, 1), "the override wins over the config");
+    Require(ArbiterEffective(7, 1) && !ArbiterEffective(-5, 0),"an unknown override follows the config");
+}
+
 int main()
 {
     TestSwitch();
+    TestArbiterConsole();
     TestModes();
     TestPriority();
     TestTransitionsQuestGrind();

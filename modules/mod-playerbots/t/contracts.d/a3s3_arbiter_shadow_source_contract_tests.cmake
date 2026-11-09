@@ -474,7 +474,7 @@ function(check_tags ai_cpp scripts_cpp rnd_cpp all_sources out)
 endfunction()
 
 # ---- the switch ----------------------------------------------------------------------------------------------------------
-set(ARB_GATE "        if (sPlayerbotAIConfig.supervisor && ai::supervisor::Applies(sPlayerbotAIConfig.supervisor, bot->GetGUIDLow()))\n            EnsureSupervisor()->Tick(WorldTimer::getMSTime(), sPlayerbotAIConfig.supervisorArbiter == 1);\n")
+set(ARB_GATE "        if (sPlayerbotAIConfig.supervisor && ai::supervisor::Applies(sPlayerbotAIConfig.supervisor, bot->GetGUIDLow()))\n            EnsureSupervisor()->Tick(WorldTimer::getMSTime(), ai::supervisor::ArbiterOn(sPlayerbotAIConfig.supervisorArbiter));\n")
 
 function(check_switch config_h config_cpp conf_dist ai_cpp policy all_sources out)
   string(FIND "${config_h}" "    uint32 supervisorArbiter = 0;" at)
@@ -733,7 +733,7 @@ string(REPLACE "            {\"Supervisor.Arbiter\", Value(supervisorArbiter)},\
 check_switch("${config_h}" "${m}" "${conf_dist}" "${ai_cpp}" "${policy}" "${all_sources}" r)
 expect_caught("${r}" "not in [ConfigEcho]")
 
-string(REPLACE "sPlayerbotAIConfig.supervisorArbiter == 1);" "true);" m "${ai_cpp}")
+string(REPLACE "ai::supervisor::ArbiterOn(sPlayerbotAIConfig.supervisorArbiter));" "true);" m "${ai_cpp}")
 check_switch("${config_h}" "${config_cpp}" "${conf_dist}" "${m}" "${policy}" "${all_sources}" r)
 expect_caught("${r}" "the shadow on without its switch")
 

@@ -94,7 +94,7 @@ endfunction()
 
 # ---- the one tick --------------------------------------------------------------------------------------------------------
 set(SCPHASE "        SC_PHASE(\"UpdateAI.UpdateAIInternal\", bot ? bot->GetName() : \"(null)\");")
-set(GATE "        if (sPlayerbotAIConfig.supervisor && ai::supervisor::Applies(sPlayerbotAIConfig.supervisor, bot->GetGUIDLow()))\n            EnsureSupervisor()->Tick(WorldTimer::getMSTime(), sPlayerbotAIConfig.supervisorArbiter == 1);\n        else if (supervisor_)\n        {\n            supervisor_->Release();\n            supervisor_.reset();\n        }\n\n${SCPHASE}")
+set(GATE "        if (sPlayerbotAIConfig.supervisor && ai::supervisor::Applies(sPlayerbotAIConfig.supervisor, bot->GetGUIDLow()))\n            EnsureSupervisor()->Tick(WorldTimer::getMSTime(), ai::supervisor::ArbiterOn(sPlayerbotAIConfig.supervisorArbiter));\n        else if (supervisor_)\n        {\n            supervisor_->Release();\n            supervisor_.reset();\n        }\n\n${SCPHASE}")
 set(COUNTDOWN "        aiInternalUpdateDelay = 0;\n        isWaiting = false;\n    }")
 set(REACTION "if(!UpdateAIReaction(elapsed, doMinimalReaction, bot->IsTaxiFlying()) && CanUpdateAIInternal())")
 set(PASS "        UpdateAIInternal(elapsed, minimal);")
