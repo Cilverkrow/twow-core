@@ -509,6 +509,7 @@ bool PlayerbotAIConfig::Initialize()
     parkHideFromBots = config.GetBoolDefault("AiPlayerbot.Park.HideFromBots", false);
     buffRealPlayerStyle = config.GetBoolDefault("AiPlayerbot.Buff.RealPlayerStyle", false);
     buffStrangerCooldownSeconds = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.Buff.StrangerCooldownSeconds", 900)));
+    lootHoldTravelWhileLootable = config.GetBoolDefault("AiPlayerbot.Loot.HoldTravelWhileLootable", false);   // twow-repo#575 H1
     lootRoleWeights = std::min<uint32>(2, uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.Loot.RoleWeights", 0))));
     lootFeralFixedSpec = config.GetBoolDefault("AiPlayerbot.Loot.FeralFixedSpec", true);
     // OB-00 08.11.2026 (bug fix: code default 1, 0 = rollback, an unknown value = 1): "loot chance" of a game object
@@ -2088,6 +2089,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Grind.SafePull.ReadyHp", Value(grindSafePullReadyHp)},
             {"Grind.SafePull.ReadyMana", Value(grindSafePullReadyMana)},
             {"LogInGroupOnly", Value(logInGroupOnly)},
+            {"Loot.HoldTravelWhileLootable", Value(lootHoldTravelWhileLootable)},
             {"Loot.RoleWeights", Value(lootRoleWeights)},
             {"LootChance.GameObjectEntryFix", Value(lootChanceGameObjectEntryFix)},
             {"Path.IslandGuard", Value(pathIslandGuard)},
