@@ -19,6 +19,7 @@
 #include "playerbot/RestGatePolicy.h"
 #include "playerbot/GroupOpPolicy.h"   // BOT-12: BotGroups.OpQueue clamps
 #include "playerbot/GroupManagerPolicy.h"   // A3 step 6: BotGroups.Manager mode
+#include "playerbot/ManagerInboxPolicy.h"   // A3-GERUEST-L60 7.2.11: BotGroups.Manager.StatusSeconds clamp
 #include "playerbot/SupervisorPolicy.h"   // A3 step 3: Supervisor mode
 #include "playerbot/QuestBookPolicy.h"   // A3 step 2: QuestBook mode
 #include "playerbot/QuestBundlePolicy.h"   // A3 step 2 QB-B: QuestBook.BundleRadius clamp
@@ -897,6 +898,15 @@ bool PlayerbotAIConfig::Initialize()
     {
         sLog.outError("[GroupMgr] config key=Manager value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", botGroupsManager);
         botGroupsManager = 0;
+    }
+    // A3-GERUEST-L60 7.2.11: status posts to the manager inbox; 0 = none, a negative value = 0, above the max = the max.
+    botGroupsManagerStatusSeconds = uint32(config.GetIntDefault("AiPlayerbot.BotGroups.Manager.StatusSeconds", 0));
+    if (botGroupsManagerStatusSeconds > ai::manager_inbox::kStatusSecondsMax)
+    {
+        uint32 const clamped = ai::manager_inbox::ClampStatusSeconds(int32(botGroupsManagerStatusSeconds));
+        sLog.outError("[GroupMgr] config key=Manager.StatusSeconds value=%d result=%u (0 off, 1..%u s)",
+            int32(botGroupsManagerStatusSeconds), clamped, ai::manager_inbox::kStatusSecondsMax);
+        botGroupsManagerStatusSeconds = clamped;
     }
     // L1 (owner 07.11.2026): code default 1; only "0" is off, any other value is 1. Read as a string: GetIntDefault is atoi,
     // which would turn a non-numeric value such as "on" into 0 (rollback).
@@ -2037,6 +2047,7 @@ bool PlayerbotAIConfig::Initialize()
             {"BotGroups.LeaderOtherMap", Value(botGroupsLeaderOtherMap)},
             {"BotGroups.LeaderOtherMapSeconds", Value(botGroupsLeaderOtherMapSeconds)},
             {"BotGroups.Manager", Value(botGroupsManager)},
+            {"BotGroups.Manager.StatusSeconds", Value(botGroupsManagerStatusSeconds)},
             {"BotGroups.OpQueue", Value(botGroupsOpQueue)},
             {"BotGroups.OpQueueAlertAgeSeconds", Value(botGroupsOpQueueAlertAgeSeconds)},
             {"BotGroups.OpQueueMaxDepth", Value(botGroupsOpQueueMaxDepth)},

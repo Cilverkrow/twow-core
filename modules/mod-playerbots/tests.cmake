@@ -1704,6 +1704,22 @@ add_test(NAME group_manager_policy
   COMMAND group_manager_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# A3-GERUEST-L60 7.2.11 (AiPlayerbot.BotGroups.Manager.StatusSeconds, default 0): the pure rules of the manager inbox
+# (ManagerInboxPolicy.h; no game header). The game side is pinned by
+# t/contracts.d/a3s6_manager_inbox_source_contract_tests.cmake.
+add_executable(manager_inbox_policy_tests
+  "${PB_MODULE_DIR}/t/manager_inbox_policy_tests.cpp")
+
+target_include_directories(manager_inbox_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(manager_inbox_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME manager_inbox_policy
+  COMMAND manager_inbox_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # A3 step 3 (ADR-0041 + amendment 2026-11-06, OB-00 06.11.2026; AiPlayerbot.Supervisor): the pure rules of the supervisor and
 # the planner scaffold (SupervisorPolicy.h, PlannerPolicy.h; no game header). The game side is pinned by
 # t/contracts.d/a3s3_supervisor_scaffold_source_contract_tests.cmake.

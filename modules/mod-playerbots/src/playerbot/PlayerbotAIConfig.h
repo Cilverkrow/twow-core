@@ -919,6 +919,9 @@ public:
     // A3 step 6 (ADR-0041, OB-00 06.11.2026): the group manager of roster bots on the world thread (GroupManagerPolicy.h,
     // GroupManager.cpp). Scaffold: no decision yet. 0 off, 1 all, 2 cohort B, 3 cohort A; other = 0 + error line.
     uint32 botGroupsManager = 0;
+    // A3-GERUEST-L60 7.2.11 (measurement only): a bot in the manager's cohort posts its status snapshot to the manager inbox
+    // every StatusSeconds (ManagerInboxPolicy.h). 0 = no posts (default), 1..3600; above = 3600 + error line.
+    uint32 botGroupsManagerStatusSeconds = 0;
     // L1 (owner 07.11.2026, owner-ordered: code default 1, 0 = rollback, any other value = 1): a bot resets its raid lockouts
     // ("reset raids" in the accept tail) only on a real player's invite, and keeps out of another copy of a raid it is
     // perm-bound to (LockoutPolicy.h, LockoutGuard.cpp). 0 = the old behaviour: reset raids on every accepted invite.

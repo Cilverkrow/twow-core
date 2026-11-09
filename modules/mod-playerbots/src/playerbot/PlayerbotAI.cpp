@@ -25,6 +25,8 @@
 #include "playerbot/Supervisor.h"   // A3 step 3 (AiPlayerbot.Supervisor): the per-bot supervisor scaffold
 #include "playerbot/CombatRule.h"   // A3 step 5 (AiPlayerbot.CombatRule.ProgressGuard): limits, counters, CombatLoop event
 #include "playerbot/QuestBook.h"    // A3 step 2 (AiPlayerbot.QuestBook): the per-bot quest book core
+#include "playerbot/GroupManagerPolicy.h"   // A3-GERUEST-L60 7.2.11: the manager's cohort rule for the status post
+#include "playerbot/ManagerInbox.h"         // A3-GERUEST-L60 7.2.11: the manager inbox (Status post)
 #include "Maps/PathFinder.h"
 #include <stdarg.h>
 #include <array>
@@ -439,6 +441,35 @@ void PlayerbotAI::BackoffOutOfMana(bool yieldSetDelay, bool minimal)
     aiInternalUpdateDelay = sPlayerbotAIConfig.rotationOomBackoffDelayMs;
     oomBackoffPending = true;
     ai::oom_backoff::backoffs.fetch_add(1, std::memory_order_relaxed);
+}
+
+// A3-GERUEST-L60 7.2.11 (AiPlayerbot.BotGroups.Manager.StatusSeconds, default 0; measurement only): the bot reads its own
+// values on its own map thread and posts them by value; the manager (world thread) never reads the bot directly. Only a
+// roster bot without a real player master (the manager's bots; one rule with the quest book, InQuestBookScope). A full inbox
+// drops the snapshot (counted); the next one follows after StatusSeconds, no retry.
+void PlayerbotAI::PostManagerStatus()
+{
+    uint32 const nowMs = WorldTimer::getMSTime();
+    if (!ai::manager_inbox::StatusDue(managerStatusLastMs, nowMs, sPlayerbotAIConfig.botGroupsManagerStatusSeconds * 1000))
+        return;
+    if (!bot->IsInWorld() || !InQuestBookScope())
+        return;
+    managerStatusLastMs = ai::manager_inbox::PostStamp(nowMs);
+
+    ai::manager_inbox::Event event{};
+    event.botLow = bot->GetGUIDLow();
+    event.kind = ai::manager_inbox::Kind::Status;
+    // Role stays 0 (unknown): group_mgr::ResolveRole needs the roster plan role and the kit rule (E2, owner open), which the
+    // bot cannot read cheaply here; the manager pair that forms groups fills it.
+    event.role = 0;
+    event.level = uint8(std::min<uint32>(255, bot->GetLevel()));
+    event.mapOrDungeon = bot->GetMapId();
+    event.seq = ++managerStatusSeq;
+    event.hpPct10 = ai::manager_inbox::PerMille(bot->GetHealth(), bot->GetMaxHealth());
+    event.manaPct10 = ai::manager_inbox::PerMille(bot->GetPower(POWER_MANA), bot->GetMaxPower(POWER_MANA));
+    event.x = bot->GetPositionX();
+    event.y = bot->GetPositionY();
+    ai::manager_inbox::Post(event);
 }
 
 // A3 step 5 (AiPlayerbot.CombatRule.ProgressGuard, default 0; A3 §4.3 R8, CombatRulePolicy.h): one reading of the combat progress
@@ -2434,6 +2465,12 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
                     return;
             }
         }
+
+        // A3-GERUEST-L60 7.2.11 (AiPlayerbot.BotGroups.Manager.StatusSeconds, default 0; measurement only): once per engine pass
+        // the bot checks whether its status snapshot for the group manager's inbox is due; only while the manager applies to
+        // this bot. Before the progress reading and the quest book block, which stay adjacent (their contracts pin it).
+        if (sPlayerbotAIConfig.botGroupsManagerStatusSeconds && ai::group_mgr::Applies(sPlayerbotAIConfig.botGroupsManager, bot->GetGUIDLow()))
+            PostManagerStatus();
 
         // A3 step 5 (ADR-0041, AiPlayerbot.CombatRule.ProgressGuard, default 0): one reading of the combat progress clock per engine
         // pass (A3 R8), for both cohorts while the switch is on; the pass tail acts on it. Off: nothing is read.
