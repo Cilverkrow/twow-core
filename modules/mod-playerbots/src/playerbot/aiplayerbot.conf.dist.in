@@ -2517,6 +2517,7 @@ AiPlayerbot.ProfessionUse.TraceCooldownSeconds = 300
 # line comes at the first sample after the hour; a window cut by a logout is lost):
 #   [Gathering] event=share bot= level= play_s= purpose_s= trip_s= cast_s= opens_herb= opens_ore= opens_skin= crafts=
 #     s182=<value>/<max> s186=<value>/<max> s393=<value>/<max>
+#     far_picks= far_opens= far_timeouts=   (T28b, AiPlayerbot.Gathering.PaceReach below; 0 while that key is 0)
 # play_s: seconds of the window; purpose_s: seconds a declared gathering purpose ([Purpose]) ran; trip_s: seconds a profession
 # trainer / tool trip ("trainer profession", "... near", "tool vendor", "... near") was the bot's travel target in READY,
 # TRAVEL or WORK. A trip outranks a purpose, so purpose_s + trip_s <= play_s. Both are sampled every 5 s (each sample counts
@@ -2533,6 +2534,29 @@ AiPlayerbot.ProfessionUse.TraceCooldownSeconds = 300
 # the strategies are built; skipped on minimal (throttled) passes. 0 = off (default), 1 = on. Any other value acts like 0
 # ("[Gathering] config key=Trace value= result=off" error line).
 AiPlayerbot.Gathering.Trace = 0
+# twow-repo#333 T28b (CLI-BERUFE 09.11.2026; plan A3-PLAN-ZIEL T28b, OB-00 09.11.2026 T28 Q1 (a): built with default 0, A/B in W8
+# as an in-realm crossover with modes 2 / 3): the mining / herbalism reach. With the mode on for the bot, a roster bot on its own
+# (the scope of [ProfessionUse] / Gathering.Trace, and not in a group) whose herbalism or mining skill is below
+# min(rank cap, 5 x level) - the target of the gather purpose - may pick an orange or yellow herb / ore node (skill below the
+# node's required value + 50) up to Gathering.PaceReachYards away instead of the LootDistance (25 yd). The rule sits in the one
+# shared loot list (LootObjectStack::OrderByDistance), so the loot trigger, the loot pick and the travel / rpg loot pauses agree.
+# Limits of a far pick (a node beyond the LootDistance that only this key made eligible): 0 strong hostiles (level >= bot
+# level - 7) within 30 yd of the node (checked once per node and 10 s); at most 12 far picks in any 3600 s of the bot
+# (sliding); not opened 20 s after the pick (the clock starts when the bot picks it as its loot target), or a strong hostile
+# seen near the node on the way -> while the bot is still beyond the LootDistance the loot target is reset and the node goes
+# on a miss list (8 entries, 600 s each); once within the LootDistance the near rules apply as before. Far picks need the
+# "loot available" trigger, so they happen only while the bot is not mounted, not in combat and its "all targets" list is
+# empty. Nodes within the LootDistance are picked exactly as before.
+# Does not change: travel targets, gather purposes, quest order, skill-up chances, drops, prices, the queue-time node scan
+# (AddLootAction). Skinning is excluded, so are cooking, survival and fishing (owner W2) and every other lock.
+# Proof: with Gathering.Trace = 1 the hourly [Gathering] event=share line counts far_picks= far_opens= far_timeouts=
+# (far_timeouts: far picks ended without an open, by the 20 s or a strong hostile).
+# Mode: 0 = off (default), 1 = all bots, 2 = only cohort B (odd guid), 3 = only cohort A (even guid). Any other value acts like 0
+# ("[Gathering] config key=PaceReach value= result=off" error line). With 0, or for a bot outside its cohort, nothing changes.
+AiPlayerbot.Gathering.PaceReach = 0
+# The far reach in yards, 30 to 60; any other value is 45 ("[Gathering] config key=PaceReachYards value= result=45" error line).
+# A reach not beyond the LootDistance makes no far pick ("... result=no far pick" error line with the mode on).
+AiPlayerbot.Gathering.PaceReachYards = 45
 # twow-repo#333 Berufe P1-b (CLI-BERUFE PLAN-B1, OB-00 go 25.10.2026; profile 1 after the A/B + owner go): a persistent
 # roster bot on its own (level 5+) with mining but no Mining Pick (2901), or skinning but no Skinning Knife (7005), may
 # travel to a vendor that sells it; "rpg buy" buys it there from the tradeskill budget (ItemUsage SKILL, as before).

@@ -4771,6 +4771,11 @@ bool RunAwayAction::Execute(Event& event)
 bool MoveToLootAction::Execute(Event& event)
 {
     LootObject loot = AI_VALUE(LootObject, "loot target");
+    // twow-repo#333 T28b (AiPlayerbot.Gathering.PaceReach): this follows the loot target without a distance cap - a far pick
+    // not opened 20 s after its pick, or with a strong hostile near its node, ends here while the bot is beyond the loot
+    // distance (loot target reset, the node on the miss list).
+    if (sPlayerbotAIConfig.gatheringPaceReach && GatheringPaceTimeout(ai, loot))
+        return false;
     if (!loot.IsLootPossible(bot))
     {
         sLog.outDebug("[BOT LOOT] %s: MoveToLoot abort guid=%lu (IsLootPossible=false)",
