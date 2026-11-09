@@ -8598,6 +8598,29 @@ bool RandomPlayerbotMgr::HandlePlayerbotConsoleCommand(ChatHandler* handler, cha
         return true;
     }
 
+    // Live arbiter switch (OB-00 09.11.2026, arbiter shadow run): "rndbot arbiter on|off" sets only the process-wide override of
+    // AiPlayerbot.Supervisor.Arbiter (SupervisorShadow.h ArbiterOn), no config reload. Local mangosd console only (no game
+    // session, no remote admin). One [ArbiterCtl] line with the new value; prev = the override before (conf = never set).
+    if (cmd == "arbiter" || cmd.find("arbiter ") == 0)
+    {
+        if (isRA)
+        {
+            sLog.outError("[ArbiterCtl] rejected: local mangosd console required");
+            handler->SendSysMessage("rndbot arbiter is restricted to the local mangosd console.");
+            return true;
+        }
+        int const value = ai::supervisor::ParseArbiterSwitch(cmd.c_str() + 7);
+        if (value == ai::supervisor::kArbiterFollowConfig)
+        {
+            sLog.outError("[ArbiterCtl] usage: rndbot arbiter on|off");
+            return true;
+        }
+        int const prev = ai::supervisor::SetArbiterOverride(value == ai::supervisor::kArbiterOn);
+        sLog.outString("[ArbiterCtl] arbiter=%d prev=%s source=console", value,
+            prev == ai::supervisor::kArbiterFollowConfig ? "conf" : (prev == ai::supervisor::kArbiterOn ? "1" : "0"));
+        return true;
+    }
+
     std::map<std::string, ConsoleCommandHandler> handlers;
     handlers["help"] = &RandomPlayerbotMgr::HandleHelp;
     handlers["reset"] = &RandomPlayerbotMgr::HandleConsoleReset;

@@ -464,6 +464,51 @@ inline bool ValidArbiter(std::uint32_t value)
     return value <= 1;
 }
 
+// Live arbiter switch (OB-00 09.11.2026, arbiter shadow run: the kit switches the shadow without a config reload). The console
+// command "rndbot arbiter on|off" sets an override: kArbiterFollowConfig (the start state) = the gate uses
+// AiPlayerbot.Supervisor.Arbiter, kArbiterOff / kArbiterOn = the console value until the next restart. The conf key stays the
+// start value; enforcement (2) has no switch here either.
+constexpr int kArbiterFollowConfig = -1;
+constexpr int kArbiterOff = 0;
+constexpr int kArbiterOn = 1;
+
+// The console argument: "on" or "1" = kArbiterOn, "off" or "0" = kArbiterOff (surrounding blanks ignored); anything else, the
+// empty argument too, is kArbiterFollowConfig = usage, nothing is set.
+inline int ParseArbiterSwitch(char const* arg)
+{
+    if (!arg)
+        return kArbiterFollowConfig;
+    while (*arg == ' ' || *arg == '\t')
+        ++arg;
+    std::size_t len = 0;
+    while (arg[len])
+        ++len;
+    while (len && (arg[len - 1] == ' ' || arg[len - 1] == '\t' || arg[len - 1] == '\r' || arg[len - 1] == '\n'))
+        --len;
+    auto const is = [arg, len](char const* word) {
+        std::size_t i = 0;
+        for (; word[i]; ++i)
+            if (i >= len || arg[i] != word[i])
+                return false;
+        return i == len;
+    };
+    if (is("on") || is("1"))
+        return kArbiterOn;
+    if (is("off") || is("0"))
+        return kArbiterOff;
+    return kArbiterFollowConfig;
+}
+
+// The value the gate passes to Tick: the console override when one is set, else the config value (only 1 is the shadow).
+inline bool ArbiterEffective(int override, std::uint32_t configValue)
+{
+    if (override == kArbiterOn)
+        return true;
+    if (override == kArbiterOff)
+        return false;
+    return configValue == 1;
+}
+
 // The travel status as numbers, in the order of the game's enum (TravelMgr.h TravelStatus, uint8), so this header stays free of
 // game types. SupervisorShadow.cpp asserts the order at compile time.
 constexpr std::uint8_t kStatusNone = 0;
