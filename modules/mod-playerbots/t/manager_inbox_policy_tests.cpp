@@ -40,14 +40,15 @@ void TestLayout()
     Require(sizeof(Event) == 32, "Event is 32 bytes");
     Require(Capacity == 4096, "module ring capacity 4096");
     Require(kDrainMaxPerPass == 1024, "drain max per pass 1024");
-    Require(kKinds == std::size_t(Kind::GroupEdge) + 1, "kKinds covers every kind");
+    Require(kKinds == std::size_t(Kind::GatherPlace) + 1, "kKinds covers every kind");
     Require(std::size_t(Kind::QueueLeave) == 7 && std::size_t(Kind::DirectiveAck) == 8, "DirectiveAck appended at the end");
     Require(std::size_t(Kind::GroupEdge) == 9 && std::size_t(Kind::GroupWish) == 2, "T30-0: GroupEdge appended, GroupWish kept");
     Require(kKindBuckets == kKinds + 1, "one other bucket");
     Require(KindIndex(Kind::Status) == 3, "Status index");
     Require(KindIndex(Kind::DirectiveAck) == 8, "DirectiveAck has its own bucket");
     Require(KindIndex(Kind::GroupEdge) == 9, "GroupEdge has its own bucket");
-    Require(KindIndex(Kind(200)) == kKinds && KindIndex(Kind(10)) == kKinds, "an unknown kind goes to the other bucket");
+    Require(std::size_t(Kind::GatherPlace) == 10 && KindIndex(Kind::GatherPlace) == 10, "T33-0: GatherPlace appended, own bucket");
+    Require(KindIndex(Kind(200)) == kKinds && KindIndex(Kind(11)) == kKinds, "an unknown kind goes to the other bucket");
     Require(KindIndex(Kind(200)) < kKindBuckets, "the other bucket is in range");
 }
 

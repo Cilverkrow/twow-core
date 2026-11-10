@@ -1754,6 +1754,25 @@ add_test(NAME manager_inbox_policy
   COMMAND manager_inbox_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# A3 step 6 T33-0 (AiPlayerbot.BotGroups.Manager.Gather, default 0; measurement only): the meeting facts and rules
+# (GroupGatherPolicy.h) and the meeting shadow (GroupGatherShadow.h; no game header). The game side is pinned by
+# t/contracts.d/a3s6_t33_gather_facts_source_contract_tests.cmake.
+add_executable(group_gather_policy_tests
+  "${PB_MODULE_DIR}/t/group_gather_policy_tests.cpp")
+
+target_include_directories(group_gather_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+# GroupDirectivePolicy.h (the registry types) holds the read view's mutex (std::mutex).
+target_link_libraries(group_gather_policy_tests PRIVATE Threads::Threads)
+
+set_target_properties(group_gather_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME group_gather_policy
+  COMMAND group_gather_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # A3 step 3 (ADR-0041 + amendment 2026-11-06, OB-00 06.11.2026; AiPlayerbot.Supervisor): the pure rules of the supervisor and
 # the planner scaffold (SupervisorPolicy.h, PlannerPolicy.h; no game header). The game side is pinned by
 # t/contracts.d/a3s3_supervisor_scaffold_source_contract_tests.cmake.

@@ -424,9 +424,10 @@ endfunction()
 
 # ---- (g) the pass order (2.2, M15/M16) and the op budget -------------------------------------------------------------------------
 function(check_order out)
-  string(FIND "${mgr_cpp}" "void WorldThreadManager::Update(std::map<std::uint32_t, Player*> const& bots, std::uint32_t now)\n{\n    ++passes_;\n    std::uint32_t const nowMs = WorldTimer::getMSTime();\n    DrainInbox(bots, nowMs);\n    RunDirectives(bots, nowMs, now);\n}" at)
+  string(FIND "${mgr_cpp}" "void WorldThreadManager::Update(std::map<std::uint32_t, Player*> const& bots, std::uint32_t now)\n{\n    ++passes_;\n    std::uint32_t const nowMs = WorldTimer::getMSTime();\n    mgrMs_ = AdvanceClock(mgrMs_, clockLastMs_, nowMs, sPlayerbotAIConfig.randomBotUpdateInterval);\n    DrainInbox(bots, nowMs);\n    RunDirectives(bots, nowMs, now);\n    RunGather(nowMs);\n}" at)
   if(at EQUAL -1)
-    set(${out} "order: Update is not drain, then the directive pass" PARENT_SCOPE)
+    # T33-0 (design T33 v1.1 2.5): the manager clock before the drain, the measurement-only meeting shadow after the directive pass.
+    set(${out} "order: Update is not clock, drain, the directive pass, then the T33-0 meeting shadow" PARENT_SCOPE)
     return()
   endif()
   region("${mgr_cpp}" "void WorldThreadManager::RunDirectives(" "\n}\n" run)

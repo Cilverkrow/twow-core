@@ -15,7 +15,8 @@ namespace ai::manager_inbox
 {
 // New kinds go at the END only: the values of the others stay fixed. DirectiveAck (09.11., agreed with CLI-Projekt) is the
 // bot's answer to a manager directive (PostDirectiveAck); the manager only counts it. GroupEdge (T30-0) is the bot's own group
-// as the bot sees it (id, leader, size, flags), posted on a change and with every status.
+// as the bot sees it (id, leader, size, flags), posted on a change and with every status. GatherPlace (T33-0, only with
+// BotGroups.Manager.Gather != 0) is the bot's own place for the meeting shadow (GroupGatherPolicy.h MakeGatherPlace).
 enum class Kind : std::uint8_t
 {
     QueueRequest,
@@ -28,8 +29,9 @@ enum class Kind : std::uint8_t
     QueueLeave,
     DirectiveAck,
     GroupEdge,
+    GatherPlace,
 };
-constexpr std::size_t kKinds = std::size_t(Kind::GroupEdge) + 1;
+constexpr std::size_t kKinds = std::size_t(Kind::GatherPlace) + 1;
 // One bucket more than kinds: a corrupt or future kind lands in that "other" bucket, never in a real kind's count.
 constexpr std::size_t kKindBuckets = kKinds + 1;
 

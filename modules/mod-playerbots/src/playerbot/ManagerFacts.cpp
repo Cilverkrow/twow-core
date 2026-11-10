@@ -171,4 +171,16 @@ bool ReadWish(Player* bot, PlayerbotAI* ai, manager_inbox::WishFacts& out)
     out.guildId = bot->GetGuildId();
     return true;
 }
+
+group_mgr::PlaceFacts ReadPlace(Player* bot)
+{
+    group_mgr::PlaceFacts p;
+    p.mapId = bot->GetMapId();
+    p.instanceId = bot->GetInstanceId();
+    p.instanceable = bot->GetMap()->Instanceable();
+    p.x = bot->GetPositionX();
+    p.y = bot->GetPositionY();
+    p.z = bot->GetPositionZ();
+    return p;
+}
 }
