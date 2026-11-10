@@ -17,6 +17,11 @@ bool Post(Event const& event);
 // Agreed with CLI-Projekt 09.11.; no caller in this pair (their mailbox pair or T30 wires it). Same drop rule as Post.
 bool PostDirectiveAck(std::uint32_t guidLow, std::uint32_t seq, std::uint8_t state, std::uint8_t reason);
 
+// Any thread (T30-1b, agreed with CLI-Projekt 10.11., G2): the bot left the GROUP mode itself. A DirectiveAck with seq 0,
+// state kAckLeft in b0-7 of the state word and the group serial (low 16 bits) the bot held in b16-31; reason 26 goal_done,
+// 27 goal_lost, 22 arbiter_off. No caller in this pair (T02-GROUP wires it). Same drop rule as Post.
+bool PostDirectiveLeft(std::uint32_t guidLow, std::uint16_t serial, std::uint8_t reason);
+
 // World thread only, once per manager pass (GroupManager.cpp): appends up to max events to out, oldest first.
 std::size_t Drain(std::vector<Event>& out, std::size_t max);
 
