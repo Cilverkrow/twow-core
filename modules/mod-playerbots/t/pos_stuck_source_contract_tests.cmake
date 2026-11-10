@@ -140,9 +140,11 @@ function(check_travel err travel_h travel_cpp)
   count_text(e "${travel_cpp}" "ObservePosStuck()" 2 "gate call + definition")
   region("${travel_cpp}" "bool TravelTarget::ObservePosStuck()" "\n}\n" body)
   require_text(e "${body}" "observation.excluded = !sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) || ai->HasRealPlayerMaster() ||\n        !bot->IsAlive() || bot->IsTaxiFlying() || bot->GetTransport() || !map || map->Instanceable() ||\n        wPosition->getMapId() != bot->GetMapId() || RestGateValue::Resting(ai) ||
-        quest_groups::IsFollower(ai);" "population (twow-repo#627 S7 hook: help-group followers out, the leader stays watched)")
+        quest_groups::IsFollower(ai) ||" "population (twow-repo#627 S7 hook: help-group followers out, the leader stays watched)")
   region("${body}" "    observation.excluded = " "    observation.distance = " excluded_expr)
-  require_text(e "${excluded_expr}" "quest_groups::IsFollower(ai);" "S7 hook: the follower in the excluded expression (region found)")
+  require_text(e "${excluded_expr}" "quest_groups::IsFollower(ai) ||" "S7 hook: the follower in the excluded expression (region found)")
+  # A3 step 6 T30-1 (3.6): a manager QUEST follower likewise (false while BotGroups.Manager.Types is 0).
+  require_text(e "${excluded_expr}" "        group_mgr::IsQuestFollower(bot->GetGUIDLow());" "T30-1 mirror: the manager QUEST follower in the excluded expression")
   forbid_text(e "${excluded_expr}" "quest_groups::IsMember(ai)" "S7 hook: only followers are excluded - a leader stuck on its own target is still detected")
   set(leader_block "    if (quest_groups::IsMember(ai) && !quest_groups::IsFollower(ai))\n    {\n        quest_groups::NoteLeaderStuck(ai);\n        posStuck.Reset();\n        return false;\n    }")
   require_order(e "${body}" "sPlayerbotAIConfig.pathPosStuckProgress) != pos_stuck::Verdict::Detect)\n        return false;" "${leader_block}" "S7 hook: only a detect tells the help-group manager (leader_stuck)")

@@ -15,6 +15,10 @@ cmake_policy(VERSION 3.16)
 #       supervisor::Applies and StaleMs(StatusSeconds);
 #   (e) no supervisor::Post/Drain/Forget anywhere in the pair's files;
 #   (f) the unit tests cover the new pure helpers.
+# T30-1 (directives, a3s6_t30_directives pins the new parts) moves these pins: the hook also posts for a bot the manager holds
+# (|| IsManaged; OwnsBot/Types/Blocks are allowed from T30-1 on), ReadFlags uses the gate-free CandidateFacts, the manager is
+# the one caller of QueueManagerJoin/QueueManagerLeave/TakeManagerOutcomes and posts directives through the one R10-gated
+# supervisor::Post, RunJoin reads the join bits (H_RUN_JOIN re-pinned), the shadow lambda takes the R10 form.
 # Pure rules: t/manager_inbox_policy_tests.cpp, t/group_op_queue_tests.cpp. Every check_* returns "" when it holds, else the
 # reason; the negative probes at the end reuse them on mutated text.
 if(NOT DEFINED PB_SOURCE_DIR)
@@ -125,7 +129,9 @@ endforeach()
 set(all_sources_extra "")   # probes add a use here
 
 set(POST_START "void PlayerbotAI::PostManagerStatus()\n{")
-set(HOOK "        if (sPlayerbotAIConfig.botGroupsManagerStatusSeconds && ai::group_mgr::Applies(sPlayerbotAIConfig.botGroupsManager, bot->GetGUIDLow()))\n            PostManagerStatus();\n")
+set(HOOK "        if (sPlayerbotAIConfig.botGroupsManagerStatusSeconds &&\n            (ai::group_mgr::Applies(sPlayerbotAIConfig.botGroupsManager, bot->GetGUIDLow()) || ai::group_mgr::IsManaged(bot->GetGUIDLow())))\n            PostManagerStatus();\n")
+# T30-1: the one R10-gated directive post in GroupManager.cpp (the only supervisor::Post the pair's files may hold).
+set(R10_POST "        if (sPlayerbotAIConfig.supervisor && ai::supervisor::Applies(sPlayerbotAIConfig.supervisor, low))\n            return ai::supervisor::Post(low, event);")
 
 # ---- (a) the gate ------------------------------------------------------------------------------------------------------------
 function(check_gate ai_cpp all_sources out)
@@ -133,17 +139,15 @@ function(check_gate ai_cpp all_sources out)
   # PostManagerStatus( in the module: the declaration, the definition and the hook's call.
   count_text("${all_sources}" "PostManagerStatus(" calls)
   if(NOT n EQUAL 1 OR NOT calls EQUAL 3)
-    set(${out} "gate: the status hook (StatusSeconds && Applies(Manager)) found ${n} times, PostManagerStatus( ${calls} times (1 and 3 expected)" PARENT_SCOPE)
+    set(${out} "gate: the status hook (StatusSeconds && (Applies(Manager) || IsManaged)) found ${n} times, PostManagerStatus( ${calls} times (1 and 3 expected)" PARENT_SCOPE)
     return()
   endif()
-  # T30-0 has no ownership: OwnsBot, the .Types key and IsManaged come with T30-1 (design 3.1, m1).
-  foreach(word "group_mgr::OwnsBot(" "botGroupsManagerTypes" "Manager.Types" "group_mgr::IsManaged(" "group_mgr::Blocks(")
-    string(FIND "${all_sources}" "${word}" at)
-    if(NOT at EQUAL -1)
-      set(${out} "gate: T30-0 must not use ${word}" PARENT_SCOPE)
-      return()
-    endif()
-  endforeach()
+  # T30-1: OwnsBot, the .Types key, IsManaged and Blocks exist now (design 3.1); the hook names only Applies and IsManaged.
+  string(FIND "${HOOK}" "OwnsBot" own_in_hook)
+  if(NOT own_in_hook EQUAL -1)
+    set(${out} "gate: the status hook must not gate on OwnsBot" PARENT_SCOPE)
+    return()
+  endif()
   region("${ai_cpp}" "${POST_START}" "\n}\n" body)
   if(body STREQUAL "")
     set(${out} "gate: PostManagerStatus not found" PARENT_SCOPE)
@@ -204,7 +208,7 @@ function(check_own_reads facts_h facts_cpp ai_cpp adhoc_world s7_world out)
       return()
     endif()
   endforeach()
-  foreach(needle "adhoc_group::IsCandidateBot(bot)" "adhoc_group::CurrentObjective(bot)" "adhoc_group::ObjectiveDone(bot, key)"
+  foreach(needle "adhoc_group::CandidateFacts(bot)" "adhoc_group::CurrentObjective(bot)" "adhoc_group::ObjectiveDone(bot, key)"
       "adhoc_group::ObjectiveCounter(bot, key)" "ai::zone_keep::StartZoneHolds(bot, ai)" "Group* const group = bot->GetGroup();")
     string(FIND "${facts_cpp}" "${needle}" at)
     if(at EQUAL -1)
@@ -213,7 +217,7 @@ function(check_own_reads facts_h facts_cpp ai_cpp adhoc_world s7_world out)
     endif()
   endforeach()
   # The ad-hoc helpers read only their argument (no member list, no lookup, only the argument's own AI).
-  foreach(fn "ObjectiveKey CurrentObjective(Player* player)\n{" "bool IsCandidateBot(Player* player)\n{"
+  foreach(fn "ObjectiveKey CurrentObjective(Player* player)\n{" "bool CandidateFacts(Player* player)\n{"
       "std::uint32_t ObjectiveCounter(Player* player, ObjectiveKey const& key)\n{" "bool ObjectiveDone(Player* player, ObjectiveKey const& key)\n{")
     region("${adhoc_world}" "${fn}" "\n}\n" helper)
     if(helper STREQUAL "")
@@ -259,10 +263,10 @@ set(RUN_LEADER "Verdict RunLeader(Op const& op, std::uint32_t transitMs, DrainMi
 set(RUN_ANY "Verdict Run(Op const& op, std::uint32_t transitMs, DrainMinute& m)\n{")
 set(FLUSH "void FlushMinute(WorldState& w, std::uint32_t nowMs)\n{")
 # SHA256 of each region (start .. first "\n}\n") as of release/9.x 19711064; T30-0 leaves them byte-identical (m3). A pair that
-# changes one on purpose updates its hash here. Known gap, deferred to T30-1: RunJoin still uses the ad-hoc size/range and the
-# ad-hoc registry for manager joins (design 3.5 rows 3-4); T30-1 changes RunJoin and re-pins H_RUN_JOIN.
+# changes one on purpose updates its hash here. T30-1 re-pinned H_RUN_JOIN (was 86de9994...): a manager join takes the S7 size
+# and range for QUEST, the ad-hoc ones for ADHOC, sets the loot rule on a new group and skips the ad-hoc registry (3.5 rows 3-4).
 set(H_RUN_LEAVE "f1092d915066be196ccedc58bc85c76d2daa3a45281b92554b2f4e3e8462eb6c")
-set(H_RUN_JOIN "86de99944cc962e39d4fbaa3f82dd6a6ab525c7d76a2afe565ecda7928e9b59b")
+set(H_RUN_JOIN "22c53b148d8521afb36911467dc473ee1cb273bcda94b0a62f17aacf86868e9a")
 set(H_RUN_ACCEPT "83fb4c9e284d541ef00f25e95bdceb3811886b30b9ad7416bf13a1d73ebbed46")
 set(H_RUN_INVITE "2d36442ef62787957dfa59d668024af281d2efff8161e81a49a587e191284dac")
 set(H_RUN_LEADER "02821db08fc9c0b2aad64dfe3e2fa10a8b24c9db150fb61d57aa0bff4e927b20")
@@ -284,17 +288,20 @@ function(check_op_path ops_policy ops_h ops_cpp all_sources out)
       return()
     endif()
   endforeach()
-  string(FIND "${ops_policy}" "    Manager,        // A3 step 6 T30-0: the world-thread group manager (QueueManagerJoin / QueueManagerLeave; no caller yet)\n};" at)
+  string(FIND "${ops_policy}" "    Manager,        // A3 step 6 T30-0: the world-thread group manager (QueueManagerJoin / QueueManagerLeave; called by GroupManager.cpp)\n};" at)
   if(at EQUAL -1)
     set(${out} "op path: OpSource::Manager is not the last source" PARENT_SCOPE)
     return()
   endif()
-  # Declared and defined, no caller in T30-0.
-  foreach(fn "QueueManagerJoin(" "QueueManagerLeave(" "ReadManagerOpCounts(" "TakeManagerOutcomes(")
+  # Declared and defined; T30-1: one caller each (the manager's WorldIo in GroupManager.cpp), ReadManagerOpCounts still none.
+  foreach(fn_n "QueueManagerJoin(|3" "QueueManagerLeave(|3" "ReadManagerOpCounts(|2" "TakeManagerOutcomes(|3")
+    string(REPLACE "|" ";" fv "${fn_n}")
+    list(GET fv 0 fn)
+    list(GET fv 1 want)
     count_text("${all_sources}" "${fn}" n)
     count_text("${ops_h}\n${ops_cpp}" "${fn}" n_own)
-    if(NOT n EQUAL 2 OR NOT n_own EQUAL 2)
-      set(${out} "op path: ${fn} appears ${n} times in the module (2 expected: declaration and definition, no caller in T30-0)" PARENT_SCOPE)
+    if(NOT n EQUAL want OR NOT n_own EQUAL 2)
+      set(${out} "op path: ${fn} appears ${n} times in the module (${want} expected: declaration, definition and the GroupManager.cpp caller)" PARENT_SCOPE)
       return()
     endif()
   endforeach()
@@ -364,11 +371,21 @@ endfunction()
 # ---- (d) the manager: tables and shadow counts, no op, no directive ---------------------------------------------------------
 function(check_manager mgr_h mgr_cpp out)
   strip_comments("${mgr_h}\n${mgr_cpp}" code)
-  foreach(word "group_ops::" "QueueManager" "supervisor::Post" "supervisor::Drain" "supervisor::Forget" "PostDirectiveAck" "GroupDirective"
+  # T30-1: ops only through the BOT-12 manager queue, directives only through the one R10-gated post.
+  count_text("${code}" "${R10_POST}" n_post)
+  if(NOT n_post EQUAL 1)
+    set(${out} "manager: the R10-gated directive post found ${n_post} times (1 expected)" PARENT_SCOPE)
+    return()
+  endif()
+  foreach(allowed "${R10_POST}" "group_ops::QueueManagerJoin(" "group_ops::QueueManagerLeave(" "group_ops::TakeManagerOutcomes("
+      "group_ops::ManagerOutcome>")
+    string(REPLACE "${allowed}" "" code "${code}")
+  endforeach()
+  foreach(word "group_ops::" "supervisor::Post" "supervisor::Drain" "supervisor::Forget" "PostDirectiveAck"
       "manager_inbox::Post(" "OpSource")
     string(FIND "${code}" "${word}" at)
     if(NOT at EQUAL -1)
-      set(${out} "manager: T30-0 must not use ${word} (no op, no directive)" PARENT_SCOPE)
+      set(${out} "manager: must not use ${word} (only the manager queue and the R10 directive post)" PARENT_SCOPE)
       return()
     endif()
   endforeach()
@@ -398,9 +415,9 @@ function(check_manager mgr_h mgr_cpp out)
       return()
     endif()
   endforeach()
-  foreach(needle "        [supervisorMode](std::uint32_t low) { return ai::supervisor::Applies(supervisorMode, low); }, nowMs,"
-      "        manager_inbox::StaleMs(sPlayerbotAIConfig.botGroupsManagerStatusSeconds));"
-      "    std::uint32_t const supervisorMode = sPlayerbotAIConfig.supervisor;")
+  # T30-1: the shadow candidates take the R10 form (supervisor on and Applies), the same rule as the directive post.
+  foreach(needle "        [](std::uint32_t low) { return sPlayerbotAIConfig.supervisor && ai::supervisor::Applies(sPlayerbotAIConfig.supervisor, low); }, nowMs,"
+      "        manager_inbox::StaleMs(sPlayerbotAIConfig.botGroupsManagerStatusSeconds));")
     string(FIND "${pass}" "${needle}" at)
     if(at EQUAL -1)
       set(${out} "manager: the shadow count misses ${needle}" PARENT_SCOPE)
@@ -443,7 +460,9 @@ function(check_unit inbox_test queue_test out)
 endfunction()
 
 region("${ai_cpp}" "${POST_START}" "\n}\n" post_body)
-set(PAIR_FILES "${policy}\n${inbox_h}\n${inbox_cpp}\n${facts_h}\n${facts_cpp}\n${mgr_h}\n${mgr_cpp}\n${ops_policy}\n${ops_h}\n${ops_cpp}\n${post_body}")
+# The one R10 post (check_manager counts it) is the only supervisor::Post allowed in the pair's files.
+string(REPLACE "${R10_POST}" "" mgr_cpp_no_r10 "${mgr_cpp}")
+set(PAIR_FILES "${policy}\n${inbox_h}\n${inbox_cpp}\n${facts_h}\n${facts_cpp}\n${mgr_h}\n${mgr_cpp_no_r10}\n${ops_policy}\n${ops_h}\n${ops_cpp}\n${post_body}")
 
 # ---- the real sources -------------------------------------------------------------------------------------------------------
 check_gate("${ai_cpp}" "${all_sources}" r)
@@ -464,8 +483,9 @@ fail_if("${r}")
 string(REPLACE "${HOOK}" "        if (sPlayerbotAIConfig.botGroupsManagerStatusSeconds)\n            PostManagerStatus();\n" m "${ai_cpp}")
 check_gate("${m}" "${all_sources}" r)
 expect_reason("hook without Applies(Manager)" "${r}" "gate: the status hook")
-check_gate("${ai_cpp}" "${all_sources}\n    if (ai::group_mgr::OwnsBot(low)) {}" r)
-expect_reason("an OwnsBot gate in T30-0" "${r}" "must not use group_mgr::OwnsBot")
+string(REPLACE " || ai::group_mgr::IsManaged(bot->GetGUIDLow())))\n            PostManagerStatus();" "))\n            PostManagerStatus();" m "${ai_cpp}")
+check_gate("${m}" "${all_sources}" r)
+expect_reason("hook without IsManaged (a held bot outside S1 scope stops posting)" "${r}" "gate: the status hook")
 check_gate("${ai_cpp}" "${all_sources}\n    Post(ai::manager_inbox::MakeEdge(1, e, 0, 0));" r)
 expect_reason("a second edge post" "${r}" "MakeEdge\\( used 2 times")
 string(REPLACE "ai::manager_facts::ReadFlags(bot, this)" "ai::manager_facts::ReadFlags(master, this)" m "${ai_cpp}")
@@ -486,7 +506,7 @@ expect_reason("another Player* in the facts" "${r}" "names another player")
 string(REPLACE "    ai::manager_inbox::Post(ai::manager_inbox::MakeEdge(" "    sObjectMgr.GetPlayer(guid);\n    ai::manager_inbox::Post(ai::manager_inbox::MakeEdge(" m "${ai_cpp}")
 check_own_reads("${facts_h}" "${facts_cpp}" "${m}" "${adhoc_world}" "${s7_world}" r)
 expect_reason("a player lookup in PostManagerStatus" "${r}" "must not use GetPlayer")
-string(REPLACE "bool IsCandidateBot(Player* player)\n{" "bool IsCandidateBot(Player* player)\n{\n    player->GetGroup()->GetFirstMember();" m "${adhoc_world}")
+string(REPLACE "bool CandidateFacts(Player* player)\n{" "bool CandidateFacts(Player* player)\n{\n    player->GetGroup()->GetFirstMember();" m "${adhoc_world}")
 check_own_reads("${facts_h}" "${facts_cpp}" "${ai_cpp}" "${m}" "${s7_world}" r)
 expect_reason("the candidate helper walks the group" "${r}" "reads beyond its player")
 string(REPLACE "quest_groups::Waits(f)" "true" m "${facts_cpp}")
@@ -495,13 +515,15 @@ expect_reason("the wish without the S7 Waits rule" "${r}" "not the S7 rule")
 string(REPLACE "${S7_OPEN}" "st.m_itemcount[i] < q->ReqItemCount[i]" m "${s7_world}")
 check_own_reads("${facts_h}" "${facts_cpp}" "${ai_cpp}" "${adhoc_world}" "${m}" r)
 expect_reason("the S7 rule drifted" "${r}" "the S7 rule changed")
-# (c) a caller of QueueManagerJoin/Leave, the outcome note inside RunJoin, a changed Run* body, OpSource::Manager not last.
+# (c) a second caller of QueueManagerJoin/Leave, the outcome note inside RunJoin, a changed Run* body, OpSource::Manager not last.
 check_op_path("${ops_policy}" "${ops_h}" "${ops_cpp}" "${all_sources}\n    ai::group_ops::QueueManagerJoin(1, 2, 0, ai::group_mgr::GroupType::Adhoc, 0, 0);" r)
-expect_reason("a caller of QueueManagerJoin" "${r}" "QueueManagerJoin\\( appears 3 times")
+expect_reason("a second caller of QueueManagerJoin" "${r}" "QueueManagerJoin\\( appears 4 times")
 check_op_path("${ops_policy}" "${ops_h}" "${ops_cpp}" "${all_sources}\n    group_ops::QueueManagerLeave(1, 7, 2);" r)
-expect_reason("a caller of QueueManagerLeave" "${r}" "QueueManagerLeave\\( appears 3 times")
+expect_reason("a second caller of QueueManagerLeave" "${r}" "QueueManagerLeave\\( appears 4 times")
 check_op_path("${ops_policy}" "${ops_h}" "${ops_cpp}" "${all_sources}\n    group_ops::TakeManagerOutcomes(v);" r)
-expect_reason("a taker of the outcomes in T30-0" "${r}" "TakeManagerOutcomes\\( appears 3 times")
+expect_reason("a second taker of the outcomes" "${r}" "TakeManagerOutcomes\\( appears 4 times")
+check_op_path("${ops_policy}" "${ops_h}" "${ops_cpp}" "${all_sources}\n    group_ops::ReadManagerOpCounts();" r)
+expect_reason("a reader of the manager op counts" "${r}" "ReadManagerOpCounts\\( appears 3 times")
 string(REPLACE "        ++m.failed[std::size_t(OpKind::Join)];\n        return v;\n    }\n\n    group_op_timing::lastAcceptCoreUs = 0;"
   "        ++m.failed[std::size_t(OpKind::Join)];\n        NoteManagerOutcome(op, v, ManagerOpResult::Failed);\n        return v;\n    }\n\n    group_op_timing::lastAcceptCoreUs = 0;" m "${ops_cpp}")
 check_op_path("${ops_policy}" "${ops_h}" "${m}" "${all_sources}" r)
@@ -509,15 +531,15 @@ expect_reason("the outcome noted inside RunJoin" "${r}" "NoteManagerOutcome\\( 2
 string(REPLACE "    f.opGroupId = op.groupId;\n    f.transitMs = transitMs;\n    Verdict const v = DecideJoinOp(f);"
   "    f.opGroupId = op.groupId;\n    f.transitMs = transitMs;\n    f.maxMembers = (op.reason & kJoinQuest) ? 5u : f.maxMembers;\n    Verdict const v = DecideJoinOp(f);" m "${ops_cpp}")
 check_op_path("${ops_policy}" "${ops_h}" "${m}" "${all_sources}" r)
-expect_reason("RunJoin reads the join bits in T30-0" "${r}" "RUN_JOIN is no longer byte-identical")
+expect_reason("RunJoin changed beyond the T30-1 pin" "${r}" "RUN_JOIN is no longer byte-identical")
 string(REPLACE "    if (lastPair)\n        adhoc_group::Groups().Forget(groupId);" "    if (lastPair && op.source != std::uint8_t(7))\n        adhoc_group::Groups().Forget(groupId);" m "${ops_cpp}")
 check_op_path("${ops_policy}" "${ops_h}" "${m}" "${all_sources}" r)
 expect_reason("RunLeave changed" "${r}" "RUN_LEAVE is no longer byte-identical")
 string(REPLACE "    sLog.outBasic(\"%s\", line.c_str());" "    sLog.outBasic(\"%s mgr=1\", line.c_str());" m "${ops_cpp}")
 check_op_path("${ops_policy}" "${ops_h}" "${m}" "${all_sources}" r)
 expect_reason("the [GroupOps] line changed" "${r}" "FLUSH is no longer byte-identical")
-string(REPLACE "    Leader,         // PassLeadershipToMasterAction (\"leader\", \"give leader\")\n    Manager,        // A3 step 6 T30-0: the world-thread group manager (QueueManagerJoin / QueueManagerLeave; no caller yet)\n"
-  "    Leader,         // PassLeadershipToMasterAction (\"leader\", \"give leader\")\n    Manager,        // A3 step 6 T30-0: the world-thread group manager (QueueManagerJoin / QueueManagerLeave; no caller yet)\n    Later,\n" m "${ops_policy}")
+string(REPLACE "    Leader,         // PassLeadershipToMasterAction (\"leader\", \"give leader\")\n    Manager,        // A3 step 6 T30-0: the world-thread group manager (QueueManagerJoin / QueueManagerLeave; called by GroupManager.cpp)\n"
+  "    Leader,         // PassLeadershipToMasterAction (\"leader\", \"give leader\")\n    Manager,        // A3 step 6 T30-0: the world-thread group manager (QueueManagerJoin / QueueManagerLeave; called by GroupManager.cpp)\n    Later,\n" m "${ops_policy}")
 check_op_path("${m}" "${ops_h}" "${ops_cpp}" "${all_sources}" r)
 expect_reason("a source after Manager" "${r}" "not the last source")
 string(REPLACE "                if (op.source == std::uint8_t(OpSource::Manager))\n                    NoteManagerOutcome(op, v, ManagerOpResultOf(v, failedBefore, m.failed[std::size_t(op.kind)]));\n" "" m "${ops_cpp}")
@@ -530,20 +552,24 @@ set(all_sources_extra "")
 string(REPLACE "    if (s.outcomes.size() >= kManagerOutcomesMax)" "    if (false)" m "${ops_cpp}")
 check_op_path("${ops_policy}" "${ops_h}" "${m}" "${all_sources}" r)
 expect_reason("an unbounded outcome list" "${r}" "not bounded")
-# (d) an op from the manager, the shadow count before the drain, a status that keeps the old wish.
-string(REPLACE "    DropGone(status_, bots);" "    ai::group_ops::QueueManagerLeave(1, 2, 3);\n    DropGone(status_, bots);" m "${mgr_cpp}")
+# (d) an op from the manager outside the manager queue, an ungated directive, the shadow count before the drain, a status that
+# keeps the old wish.
+string(REPLACE "    DropGone(status_, bots);" "    ai::group_ops::QueueLeave(1, 2, 3);\n    DropGone(status_, bots);" m "${mgr_cpp}")
 check_manager("${mgr_h}" "${m}" r)
-expect_reason("an op from the manager" "${r}" "must not use group_ops::")
+expect_reason("an op from the manager outside the manager queue" "${r}" "must not use group_ops::")
 string(REPLACE "    manager_inbox::LogMinute(line);" "    manager_inbox::LogMinute(line);\n    ai::supervisor::Post(1, ev);" m "${mgr_cpp}")
 check_manager("${mgr_h}" "${m}" r)
-expect_reason("a directive from the manager" "${r}" "must not use supervisor::Post")
+expect_reason("a second directive post from the manager" "${r}" "must not use supervisor::Post")
+string(REPLACE "        if (sPlayerbotAIConfig.supervisor && ai::supervisor::Applies(sPlayerbotAIConfig.supervisor, low))\n            return ai::supervisor::Post(" "        return ai::supervisor::Post(" m "${mgr_cpp}")
+check_manager("${mgr_h}" "${m}" r)
+expect_reason("the directive post without the R10 gate" "${r}" "R10-gated directive post found 0 times")
 string(REPLACE "    // (1) drain, (2) tables.\n" "    // (1) drain, (2) tables.\n    manager_inbox::CountShadow(status_, edges_, wishes_, f, nowMs, 0);\n" m "${mgr_cpp}")
 check_manager("${mgr_h}" "${m}" r)
 expect_reason("the shadow count before the drain" "${r}" "pass order")
 string(REPLACE "            wishes_.erase(event.botLow);\n" "" m "${mgr_cpp}")
 check_manager("${mgr_h}" "${m}" r)
 expect_reason("a status keeps the old wish" "${r}" "StoreEvent missing")
-string(REPLACE "return ai::supervisor::Applies(supervisorMode, low);" "return true;" m "${mgr_cpp}")
+string(REPLACE "        [](std::uint32_t low) { return sPlayerbotAIConfig.supervisor && ai::supervisor::Applies(sPlayerbotAIConfig.supervisor, low); }, nowMs," "        [](std::uint32_t low) { return true; }, nowMs," m "${mgr_cpp}")
 check_manager("${mgr_h}" "${m}" r)
 expect_reason("shadow candidates without the supervisor rule" "${r}" "shadow count misses")
 # (e) the postbox called in the facts or the op path.

@@ -19,6 +19,7 @@
 #include <map>
 #include <set>      // twow-repo#601 no-route gate (TravelTarget::noRouteTurnIns)
 #include <vector>
+#include <algorithm>   // twow-repo#575 SZF-Q: PlayerTravelInfo::ObjectiveWindowInLog
 #include <string>
 #include "GuidPosition.h"
 #include "strategy/values/TravelValues.h"
@@ -121,6 +122,18 @@ namespace ai
 		// A3 step 2 QB-B (AiPlayerbot.QuestBook.Bundle, default 0): bundle scoring applies to this bot (an active quest book in the
 		// Bundle cohort); read by the async quest fetch (ai::questbundle::RankQuestBundles) with the run speed. false for every other bot.
 		bool HasQuestBundle() const { return questBundle; }
+		// twow-repo#575 SZF-Q (QuestFirstProgression.StartZoneMinLevel.ObjectiveWindow, ZoneKeepPolicy.h): the window applies to this bot
+		// (the mode's cohort and StartZoneMinLevel holds it), with the quests in its log that are not complete, its level window, guid
+		// and zone - all set in the constructor on the bot thread and read by QuestObjectiveTravelDestination::IsPossible only as values.
+		// false / empty for every other bot (mode 0: nothing is read).
+		bool HasObjectiveWindow() const { return objectiveWindow; }
+		bool ObjectiveWindowInLog(uint32 questId) const
+		{
+			return std::find(objectiveWindowQuests.begin(), objectiveWindowQuests.end(), questId) != objectiveWindowQuests.end();
+		}
+		uint32 GetObjectiveWindowAbove() const { return objectiveWindowAbove; }
+		uint32 GetObjectiveWindowGuid() const { return objectiveWindowGuid; }
+		uint32 GetObjectiveWindowZone() const { return objectiveWindowZone; }
 		// twow-repo#601 quest acceptance step 1b (TraceTravelDecisions): the drop counters of one traced giver fetch. Set only on the
 		// copy the async quest fetch job passes to GetPartitions, counted by QuestRelationTravelDestination::IsPossible in that job's
 		// thread and written by it; null everywhere else (no count).
@@ -142,6 +155,11 @@ namespace ai
 		uint32 questBookGuid = 0;        // the cohort of the [QuestBookMin] counters
 		bool questSourceChoice = false;  // A3 step 2 QB-S: SourceChoice applies to this bot (implies questBook)
 		bool questBundle = false;        // A3 step 2 QB-B: Bundle applies to this bot (implies questBook)
+		bool objectiveWindow = false;    // twow-repo#575 SZF-Q: the objective window applies to this bot
+		uint32 objectiveWindowAbove = 0;
+		uint32 objectiveWindowGuid = 0;
+		uint32 objectiveWindowZone = 0;
+		std::vector<uint32> objectiveWindowQuests;   // SZF-Q: in the log, not complete (filled only with the window on)
 		float runSpeed = 7.0f;
 		std::vector<QuestSourceNeed> questSourceNeeds;
 		uint16 currentSkill[MAX_SKILL_TYPE] = {0};
@@ -835,6 +853,13 @@ namespace ai
 		void NoteGroupCopyGate(Player* bot, PlayerbotAI* botAI, uint32 startZoneRejects, bool chosen);
 		// V2-a: the release window (StartZoneMinLevel .. +2) in the .Cohort selection, a roster bot on its own, still in its start zone.
 		bool ReleasePushApplies(Player* bot, PlayerbotAI* botAI);
+		// twow-repo#575 SZF-Q (StartZoneMinLevel.ObjectiveWindow): the objective level test of QuestObjectiveTravelDestination::IsPossible
+		// (the one helper for both paths: baseAbove 1 without a quest book, the book's AboveLevels on the book path after an
+		// AboveWindow refusal). Reads only the snapshot (any thread). A pass made only by the window is counted and queued for its
+		// once-per-bot-and-quest line.
+		bool ObjectiveLevelAllowed(PlayerTravelInfo const& info, Quest const* quest, int32 baseAbove);
+		// The world thread's minute report: the queued [ZoneKeep] state=objective_window lines, then [ZoneKeepMin] (mode on only).
+		void ReportObjectiveWindowMinute();
 	}
 }
 

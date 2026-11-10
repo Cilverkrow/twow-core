@@ -592,6 +592,11 @@ public:
     // twow-repo#333 T28-M (OB-00 09.11.2026): one [Gathering] event=share line per roster bot on its own and online hour (the time
     // share of gathering purposes, profession trips and gathering / craft casts, GatheringTracePolicy.h); log only. 0 off, 1 on.
     uint32 gatheringTrace = 0;
+    // twow-repo#333 T28b (OB-00 09.11.2026): a roster bot on its own whose herbalism / mining lags behind min(rank cap, 5 x level)
+    // may pick an orange / yellow node up to gatheringPaceReachYards away (GatheringPacePolicy.h). Mode 0 off, 1 all, 2 cohort B,
+    // 3 cohort A; reach 30-60 yd, default 45.
+    uint32 gatheringPaceReach = 0;
+    uint32 gatheringPaceReachYards = 45;
     // twow-repo#485: craft with real reagents from the bags (the item cheat
     // made every recipe look craftable). false = legacy "craft random item".
     bool professionUseRealReagents = false;
@@ -879,7 +884,7 @@ public:
     // #421: rescue teleport after this many minutes without quest progress.
     uint32 questRescueIdleMinutes = 30;
     bool questRescueKeepRequestWhenFull = false;  // twow-repo#587: a pending rescue request stays with the bot while the global limit is used up
-    uint32 questRescueHomeHubs = 0;  // twow-repo#575 RG-a: the quest rescue's anchor table (own start-zone hub < L5, next zone L5-10; cohort modes)
+    uint32 questRescueHomeHubs = 1;  // twow-repo#575 RG-a: the quest rescue's anchor table (own start-zone hub < L5, next zone L5-10; cohort modes); 1 = default (SZM adoption 10.11.2026), 0 = rollback
     uint32 grindAvoidMaxDeaths = 0;       // 0 = off
     uint32 grindAvoidWindowSeconds = 3600;
     uint32 grindAvoidSeconds = 3600;
@@ -931,6 +936,9 @@ public:
     // A3-GERUEST-L60 7.2.11 (measurement only): a bot in the manager's cohort posts its status snapshot to the manager inbox
     // every StatusSeconds (ManagerInboxPolicy.h). 0 = no posts (default), 1..3600; above = 3600 + error line.
     uint32 botGroupsManagerStatusSeconds = 0;
+    // A3 step 6 T30-1 (design T30 v1.1 5.1): the group types the manager forms and holds for the bots of its cohort (bit 1
+    // ADHOC, bit 2 QUEST; 0 = none, default). Needs StatusSeconds > 0 (else 0 + error line, F9); other bits are masked.
+    uint32 botGroupsManagerTypes = 0;
     // L1 (owner 07.11.2026, owner-ordered: code default 1, 0 = rollback, any other value = 1): a bot resets its raid lockouts
     // ("reset raids" in the accept tail) only on a real player's invite, and keeps out of another copy of a raid it is
     // perm-bound to (LockoutPolicy.h, LockoutGuard.cpp). 0 = the old behaviour: reset raids on every accepted invite.
@@ -1097,15 +1105,20 @@ public:
     uint32 questFirstProgressionStaleKeepZone = 0;
     uint32 questFirstProgressionStaleKeepZoneSeconds = 900;      // 60..3600
     // twow-repo#601 owner rule R1: below this level a roster bot on its own takes no travel target outside its start zone, no band step
-    // and no rescue out of it. 0 = off (default); the owner value is 5. .Cohort picks the bots for an in-realm A/B: 0 none, 1 all (default),
-    // 2 cohort B, 3 cohort A.
-    uint32 questFirstProgressionStartZoneMinLevel = 0;
+    // and no rescue out of it. 5 = default (the owner value, SZM adoption 10.11.2026), 0 = rollback. .Cohort picks the bots for an in-realm
+    // A/B: 0 none, 1 all (default), 2 cohort B, 3 cohort A.
+    uint32 questFirstProgressionStartZoneMinLevel = 5;
     uint32 questFirstProgressionStartZoneMinLevelCohort = 1;
     // twow-repo#601 owner rule R1, package "start-zone rule complete" (OB-00 08.11.2026, ZoneKeepPolicy.h): 1 = a held bot (below
     // StartZoneMinLevel, .Cohort) does not follow a bot leader outside its start zone (G1), logs a refused group copy (G2), leaves its
     // group after FollowLeaveSeconds of refused follow (G3), and at the release (level StartZoneMinLevel .. +2, still in its start zone)
-    // its first empty offer counts as the band step (V2-a). 0 = off (default and rollback).
-    uint32 questFirstProgressionStartZoneComplete = 0;
+    // its first empty offer counts as the band step (V2-a). 1 = default (SZM adoption 10.11.2026), 0 = rollback.
+    uint32 questFirstProgressionStartZoneComplete = 1;
+    // twow-repo#575 SZF-Q (BOT-14 #703, ZoneKeepPolicy.h): for a bot StartZoneMinLevel holds, the objective check of a quest in its log
+    // that is not complete accepts up to L + .AboveLevels instead of L + 1 (no new accept, no giver change). Mode 0 off (default,
+    // rollback), 1 all, 2 cohort B, 3 cohort A (the shared guid parity); .AboveLevels 1..3, default 2.
+    uint32 questFirstProgressionStartZoneObjectiveWindow = 0;
+    uint32 questFirstProgressionStartZoneObjectiveWindowAbove = 2;
     // twow-repo#601 S5a F4 (OB-00 24.10.2026, owner D1 "rumstehen ist keine Option"): from this many quest searches in a row
     // without a route on (the F1 streak), a search that does not step walks toward the rung the step would take until the
     // route backoff ends. 0 = off (default), 1..10; other values act like 0.

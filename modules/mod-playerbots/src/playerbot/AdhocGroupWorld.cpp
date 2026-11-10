@@ -12,6 +12,7 @@
 #include "playerbot/ServerFacade.h"
 #include "playerbot/CohortPolicy.h"
 #include "playerbot/GroupOps.h"        // BOT-12: the heavy-tick mark of the group queue
+#include "playerbot/GroupManagerView.h"   // A3 step 6 T30-1: the manager gate (G2-G4)
 #include "Group/Group.h"
 
 #include <algorithm>
@@ -43,7 +44,7 @@ ObjectiveKey CurrentObjective(Player* player)
     return key;
 }
 
-bool IsCandidateBot(Player* player)
+bool CandidateFacts(Player* player)
 {
     PlayerbotAI* playerAi = GetBotAI(player);
     if (!playerAi || playerAi->IsRealPlayer() || playerAi->HasRealPlayerMaster())
@@ -56,6 +57,12 @@ bool IsCandidateBot(Player* player)
         if (group->IsRaidGroup() || group->isBGGroup())
             return false;
     return true;
+}
+
+bool IsCandidateBot(Player* player)
+{
+    // G2 (T30-1): a bot the group manager owns or holds is nobody's ad-hoc partner (Types 0: never).
+    return CandidateFacts(player) && !group_mgr::Blocks(player->GetGUIDLow());
 }
 
 std::uint32_t ObjectiveCounter(Player* player, ObjectiveKey const& key)
@@ -116,7 +123,7 @@ bool Eligible(Player* bot)
         return false;
     PlayerbotAI* ai = GetBotAI(bot);
     return ai && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster() &&
-        !bot->InBattleGround() && !bot->InBattleGroundQueue();
+        !bot->InBattleGround() && !bot->InBattleGroundQueue() && !group_mgr::Blocks(bot->GetGUIDLow());   // G3 (T30-1)
 }
 
 // Bucket of bots that can meet: same map and team, same objective.
@@ -364,6 +371,7 @@ void WorldThreadManager::SweepHelpers(std::map<std::uint32_t, Player*> const& bo
         facts.helping = helpingPass.count(it->first) != 0;
         facts.otherGroup = group && group->GetId() != it->second;
         facts.realMaster = !facts.loggedOut && !facts.transient && ai->HasRealPlayerMaster();
+        facts.managerOwns = group_mgr::Blocks(it->first);   // G4 (T30-1)
         HelperExit const exit = DecideHelperExit(facts);
         if (exit == HelperExit::Keep)
         {

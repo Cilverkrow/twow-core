@@ -264,7 +264,15 @@ set(DECLINE_GATE "                if (group_ops::WritePathRoutes(ai) && !group_a
 set(ACCEPT_GATE "            if (group_ops::WritePathRoutes(ai) && !group_ai_refresh::IsWorldManagerSource(event.getSource()) &&\n                group_ops::QueueAccept(ai, inviter->GetGUIDLow(), false))\n                return true;")
 
 function(check_accept accept out)
-  check_before("${accept}" "${DECLINE_GATE}" "bot->UninviteFromGroup();" "accept: the decline queued before the map-thread uninvite" r)
+  # A3 step 6 T30-1 G8 (the group manager's gate, pinned by a3s6_t30_directives) queues its own decline above the security
+  # check, with its own direct fallback: the security decline is read from its check on.
+  string(FIND "${accept}" "PLAYERBOT_SECURITY_INVITE, false, inviter))" sec)
+  if(sec EQUAL -1)
+    set(${out} "accept: the security check (PLAYERBOT_SECURITY_INVITE) is missing" PARENT_SCOPE)
+    return()
+  endif()
+  string(SUBSTRING "${accept}" ${sec} -1 security)
+  check_before("${security}" "${DECLINE_GATE}" "bot->UninviteFromGroup();" "accept: the decline queued before the map-thread uninvite" r)
   if(NOT r STREQUAL "")
     set(${out} "${r}" PARENT_SCOPE)
     return()

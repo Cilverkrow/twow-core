@@ -1,12 +1,51 @@
 #include "playerbot/playerbot.h"
 #include "playerbot/GroupManager.h"
 #include "playerbot/ManagerInbox.h"
-#include "playerbot/SupervisorPolicy.h"   // T30-0: supervisor::Applies for the shadow candidates (no postbox)
+#include "playerbot/SupervisorPolicy.h"   // T30-0: supervisor::Applies for the shadow candidates
+#include "playerbot/Supervisor.h"         // T30-1: the one directive post (R10)
+#include "playerbot/GroupManagerView.h"
+#include "playerbot/GroupOps.h"           // T30-1: QueueManagerJoin / QueueManagerLeave / TakeManagerOutcomes
+#include "playerbot/QuestGroupWorld.h"    // T30-1: S7 still owns a bot (quest_groups::OwnsBot)
+
+#include <chrono>
 
 namespace ai::group_mgr
 {
 namespace
 {
+// R10 (A3-S3-T30-SCHNITTSTELLE): the supervisor applies to the bot. A directive goes only to such a bot; a ring nobody drains
+// would make MailWaiting() true for every bot.
+bool SupervisorOn(std::uint32_t low)
+{
+    return sPlayerbotAIConfig.supervisor && ai::supervisor::Applies(sPlayerbotAIConfig.supervisor, low);
+}
+
+// The engine's I/O on the world thread: guids only (the op path looks the bots up itself, m2), the one Post, the log.
+class WorldIo : public Io
+{
+public:
+    // TODO(T30-1b step 2, waits for T02-a): candidates only with ai::supervisor::ArbiterValue(<config>.supervisorArbiter) == 2
+    // (<config> = sPlayerbotAIConfig; spelled apart so the arbiter shadow contract still counts one read of the switch).
+    bool SupervisorApplies(std::uint32_t low) override { return SupervisorOn(low); }
+    bool S7Owns(std::uint32_t low) override { return quest_groups::OwnsBot(low); }
+    bool QueueJoin(std::uint32_t invitee, std::uint32_t inviter, std::uint32_t groupId, GroupType type, std::uint32_t questId,
+        std::uint8_t objective) override
+    {
+        return group_ops::QueueManagerJoin(invitee, inviter, groupId, type, questId, objective);
+    }
+    bool QueueLeave(std::uint32_t bot, std::uint32_t groupId, std::uint32_t leaderLow) override
+    {
+        return group_ops::QueueManagerLeave(bot, groupId, leaderLow);
+    }
+    bool PostDirective(std::uint32_t low, ai::supervisor::Event const& event) override
+    {
+        if (sPlayerbotAIConfig.supervisor && ai::supervisor::Applies(sPlayerbotAIConfig.supervisor, low))
+            return ai::supervisor::Post(low, event);
+        return false;
+    }
+    void Line(char const* line) override { sLog.outBasic("%s", line); }
+};
+
 // A bot that logged out or left the roster posts no more: drop its entry (map keys only, no Player* read).
 template <typename Table>
 void DropGone(Table& table, std::map<std::uint32_t, Player*> const& bots)
@@ -21,11 +60,67 @@ void DropGone(Table& table, std::map<std::uint32_t, Player*> const& bots)
 }
 }
 
-// Scaffold (A3 step 6): no decision, no group read or write. The next pairs fill this pass in.
-void WorldThreadManager::Update(std::map<std::uint32_t, Player*> const& bots, std::uint32_t /*now*/)
+// A3 step 6: the inbox drain (T30-0), then the directive pass (T30-1, design 2.2; a no-op while Types is 0 and nothing is held).
+void WorldThreadManager::Update(std::map<std::uint32_t, Player*> const& bots, std::uint32_t now)
 {
     ++passes_;
-    DrainInbox(bots, WorldTimer::getMSTime());
+    std::uint32_t const nowMs = WorldTimer::getMSTime();
+    DrainInbox(bots, nowMs);
+    RunDirectives(bots, nowMs, now);
+}
+
+void WorldThreadManager::RunDirectives(std::map<std::uint32_t, Player*> const& bots, std::uint32_t nowMs, std::uint32_t nowSec)
+{
+    std::uint32_t const types = EffectiveTypes(sPlayerbotAIConfig.botGroupsManagerTypes, sPlayerbotAIConfig.botGroupsManagerStatusSeconds);
+    if (!types && !engine_.HasGroups())
+    {
+        acks_.clear();
+        return;
+    }
+    auto const start = std::chrono::steady_clock::now();
+    // (2) the op outcomes of the manager's ops since the last pass.
+    outcomes_.clear();
+    group_ops::TakeManagerOutcomes(outcomes_);
+    Rules rules;
+    rules.mode = sPlayerbotAIConfig.botGroupsManager;
+    rules.types = types;
+    rules.statusSeconds = sPlayerbotAIConfig.botGroupsManagerStatusSeconds;
+    rules.intervalMs = sPlayerbotAIConfig.randomBotUpdateInterval;   // ms
+    rules.maxBots = sPlayerbotAIConfig.botGroupsMaxBots;
+    rules.levelWindow = sPlayerbotAIConfig.botGroupsLevelWindow;
+    rules.adhocRadius = sPlayerbotAIConfig.botGroupsAdhocRadius;
+    rules.pairCooldownSeconds = sPlayerbotAIConfig.botGroupsAdhocPairCooldownSeconds;
+    rules.helpUntilDone = sPlayerbotAIConfig.botGroupsAdhocHelpUntilDone && sPlayerbotAIConfig.botGroupsAdhocWorldThread;   // F5 (a)
+    rules.leaderOtherMapMode = sPlayerbotAIConfig.botGroupsLeaderOtherMap;   // F11 (a)
+    rules.leaderOtherMapSeconds = sPlayerbotAIConfig.botGroupsLeaderOtherMapSeconds;
+    rules.questMaxSize = sPlayerbotAIConfig.questGroupsMaxSize;
+    rules.questMaxSizeDrop = sPlayerbotAIConfig.questGroupsMaxSizeDrop;
+    rules.questLevelWindow = sPlayerbotAIConfig.questGroupsLevelWindow;
+    rules.recruitRadius = sPlayerbotAIConfig.questGroupsRecruitRadius;
+    rules.maxAttempts = sPlayerbotAIConfig.questGroupsMaxAttempts;
+    rules.retryCooldownMinutes = sPlayerbotAIConfig.questGroupsRetryCooldownMinutes;
+    rules.timers.rendezvousMinutes = sPlayerbotAIConfig.questGroupsRendezvousMinutes;
+    rules.timers.noProgressMinutes = sPlayerbotAIConfig.questGroupsNoProgressMinutes;
+    rules.timers.turnInWaitMinutes = sPlayerbotAIConfig.questGroupsTurnInWaitMinutes;
+    rules.timers.maxQuestMinutes = sPlayerbotAIConfig.questGroupsMaxQuestMinutes;
+    PassInput in;
+    in.nowMs = nowMs;
+    in.nowSec = nowSec;
+    in.resumed = resumedPass_;
+    in.status = &status_;
+    in.edges = &edges_;
+    in.wishes = &wishes_;
+    in.acks = &acks_;
+    in.outcomes = &outcomes_;
+    in.keyOverflow = manager_inbox::Read().keyOverflow;   // 5.3 key_overflow (the engine prints its increment)
+    // A bot that left the bot map (logout, roster release) can take no op: forgotten (map keys only). Not after a resume (M16).
+    if (!resumedPass_)
+        engine_.ForgetGone([&bots](std::uint32_t low) { return bots.find(low) != bots.end(); });
+    WorldIo io;
+    engine_.Pass(in, rules, io);
+    acks_.clear();
+    engine_.NotePassUs(std::uint32_t(std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now() - start).count()));
 }
 
 void WorldThreadManager::StoreEvent(manager_inbox::Event const& event, std::uint32_t nowMs)
@@ -40,11 +135,15 @@ void WorldThreadManager::StoreEvent(manager_inbox::Event const& event, std::uint
         case manager_inbox::Kind::GroupEdge:
             edges_[event.botLow] = manager_inbox::EdgeSnapshotOf(event, nowMs);
             break;
+        case manager_inbox::Kind::DirectiveAck:
+            // T30-1: the supervisor's answer to a directive (3.4); the engine applies it in this pass (step 3).
+            acks_.push_back(AckOf(event));
+            break;
         case manager_inbox::Kind::GroupWish:
             wishes_[event.botLow] = manager_inbox::WishSnapshotOf(event, nowMs);
             break;
         default:
-            break;   // counted only (DirectiveAck: no directive goes out yet; no sender for the others)
+            break;   // counted only (no sender for the others)
     }
 }
 
@@ -62,10 +161,20 @@ void WorldThreadManager::DrainInbox(std::map<std::uint32_t, Player*> const& bots
         edges_.clear();
         wishes_.clear();
     }
+    // T30-1 (M16): the registry stays; the directive pass of this pass restarts its anchors and ends nothing.
+    resumedPass_ = resumed;
 
+    // After a resume the whole ring dates from before the off time: this pass takes all of it and stores none (a leftover
+    // drained in a later pass would get receivedMs = now and look fresh). Bounded by the ring's capacity, so bots posting
+    // meanwhile cannot keep the loop going.
     // (1) drain, (2) tables.
     inboxBuf_.clear();
-    manager_inbox::Drain(inboxBuf_, manager_inbox::kDrainMaxPerPass);
+    for (;;)
+    {
+        std::size_t const taken = manager_inbox::Drain(inboxBuf_, manager_inbox::kDrainMaxPerPass);
+        if (!resumed || !taken || inboxBuf_.size() >= manager_inbox::Capacity)
+            break;
+    }
     for (manager_inbox::Event const& event : inboxBuf_)
     {
         ++kindTotals_[manager_inbox::KindIndex(event.kind)];
@@ -109,9 +218,8 @@ void WorldThreadManager::DrainInbox(std::map<std::uint32_t, Player*> const& bots
     line.edges = edges_.size();
     line.wishes = wishes_.size();
     // T30-0 shadow candidates (design 2.4, measurement only): who the manager could group now. Counted from the tables, no op.
-    std::uint32_t const supervisorMode = sPlayerbotAIConfig.supervisor;
     line.shadow = manager_inbox::CountShadow(status_, edges_, wishes_,
-        [supervisorMode](std::uint32_t low) { return ai::supervisor::Applies(supervisorMode, low); }, nowMs,
+        [](std::uint32_t low) { return sPlayerbotAIConfig.supervisor && ai::supervisor::Applies(sPlayerbotAIConfig.supervisor, low); }, nowMs,
         manager_inbox::StaleMs(sPlayerbotAIConfig.botGroupsManagerStatusSeconds));
     // StatusSeconds 0 and no ack yet: a silent minute, no line (the deltas above are still taken).
     if (manager_inbox::MinuteLineDue(line))
@@ -122,5 +230,59 @@ WorldThreadManager& WorldManager()
 {
     static WorldThreadManager manager;
     return manager;
+}
+
+// ---- T30-1 read views (GroupManagerView.h): any thread; the registry view answers from one atomic while it is empty ----------
+bool OwnsBot(std::uint32_t guidLow)
+{
+    return Owns(sPlayerbotAIConfig.botGroupsManager,
+        EffectiveTypes(sPlayerbotAIConfig.botGroupsManagerTypes, sPlayerbotAIConfig.botGroupsManagerStatusSeconds), guidLow);
+}
+
+bool IsManaged(std::uint32_t guidLow)
+{
+    ViewEntry v;
+    return WorldManager().Directives().View().Find(guidLow, v);
+}
+
+bool IsManaged(std::uint32_t guidLow, std::uint16_t serial)
+{
+    return WorldManager().Directives().View().IsMember(guidLow, serial);
+}
+
+bool Blocks(std::uint32_t guidLow)
+{
+    return OwnsBot(guidLow) || IsManaged(guidLow);
+}
+
+std::uint8_t QuestRoleOf(std::uint32_t guidLow)
+{
+    ViewEntry v;
+    return WorldManager().Directives().View().Find(guidLow, v) ? v.questRole : std::uint8_t(0);
+}
+
+bool IsQuestMember(std::uint32_t guidLow)
+{
+    return QuestRoleOf(guidLow) != 0;
+}
+
+bool IsQuestFollower(std::uint32_t guidLow)
+{
+    return QuestRoleOf(guidLow) == 1;
+}
+
+std::uint32_t QueuedAge(std::uint32_t guidLow, std::uint32_t questId)
+{
+    return WorldManager().Directives().QueuedAge(guidLow, questId, std::uint32_t(time(nullptr)));
+}
+
+bool ManagedKeyOf(std::uint32_t coreGroupId, std::uint32_t& questId, std::int8_t& objective)
+{
+    ViewEntry v;
+    if (!WorldManager().Directives().View().KeyOf(coreGroupId, v))
+        return false;
+    questId = v.questId;
+    objective = v.objective;
+    return true;
 }
 }

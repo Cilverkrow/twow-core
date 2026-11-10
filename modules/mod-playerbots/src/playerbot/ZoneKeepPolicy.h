@@ -8,20 +8,32 @@
 // level 5-7, never below 5, and a stale (dead, taken) quest objective is no reason to change zone. Offline basis (cand4G u1/u2,
 // evidence ws-10/cli-quest-organic/cand4/R1-OFFLINE.md): with StaleObjectiveFilter on, 90 zone changes followed a stale skip within
 // 600 s (548 cross-zone quest routes and 54 band steps after one); in the base config L1-4 bots crossed zones in 2 of 65 far moves.
-// Two switches, both default 0:
+// Two switches: StaleKeepZone default 0, StartZoneMinLevel default 5 since the SZM adoption 10.11.2026 (0 = rollback):
 //   StaleKeepZone (0 off, 1 all, 2 cohort B, 3 cohort A): a quest search that came back empty while it skipped stale objectives
 //     neither widens nor counts toward a band step; for StaleKeepZone.Seconds the bot then takes no quest target outside its zone
 //     (turn-ins exempt - a hand-in is progress, not a stale objective).
-//   StartZoneMinLevel (0 off, 2..60; owner value 5): below it a roster bot on its own takes no travel target outside its start zone,
+//   StartZoneMinLevel (0 off, 2..60; default 5 = the owner value): below it a roster bot on its own takes no travel target outside its start zone,
 //     no band step, and no rescue out of it (outside it, the rescue takes it home).
 // Pure functions, no core types.
 namespace ai::zone_keep
 {
 // The bot's start zone: the custom start zones with CustomRaceStartZones (goblin Blackstone Island; high elf Thalassian Highlands
-// and Alah'Thalas), otherwise the zone of its race's playercreateinfo row. 0 = unknown (fail open: not gated, logged once).
+// and Alah'Thalas), otherwise the zone of its race's playercreateinfo row. 0 = unknown (fail open: not gated, no line).
+// A custom start race WITHOUT CustomRaceStartZones is unknown too (SZM adoption review 10.11.2026): it lives at a proxy start
+// (goblin Durotar, high elf Northshire; StartZonePolicy.h), while its playercreateinfo row names the custom zone (goblin 5536, high
+// elf 5225), so the gate would hold every such bot "outside" its start zone and the rescue would take it to an avoided zone.
 inline bool StartZoneKnown(std::uint32_t race, bool customStarts, std::uint32_t createZone)
 {
-    return (customStarts && start_zone::IsCustomStartRace(race)) || createZone != 0;
+    if (start_zone::IsCustomStartRace(race))
+        return customStarts;
+    return createZone != 0;
+}
+
+// The same case for the level holds (StartZoneHolds, the band-step hold below StartZoneMinLevel): a custom start race without
+// CustomRaceStartZones is never held, so it keeps its behaviour from before the SZM adoption (it was not in the SZM A/B).
+inline bool CustomStartUngated(std::uint32_t race, bool customStarts)
+{
+    return start_zone::IsCustomStartRace(race) && !customStarts;
 }
 
 inline bool InStartZone(std::uint32_t race, bool customStarts, std::uint32_t createZone, std::uint32_t zoneId)
@@ -72,7 +84,7 @@ inline bool KeepZoneDefers(bool active, bool turnIn, std::uint32_t botZone, std:
 //   G2: a group copy outside the start zone was already deferred by the gate (SetBestTarget); 1 only logs it.
 //   G3: after FollowLeaveSeconds of refused follow in a row the bot leaves its group.
 //   V2-a: in the release window the first empty offer counts as the band step (the step rule wants one prior failure).
-// 0 off (default and rollback), 1 on; any other value acts like 0.
+// 0 off (rollback), 1 on (default since the SZM adoption 10.11.2026); any other value acts like 0.
 constexpr std::uint32_t FollowLeaveSeconds = 300;    // G3: refused follow in a row before the leave
 constexpr std::uint32_t RefusalFreshSeconds = 60;    // G3: the last refusal at most this old ("in a row")
 constexpr std::uint32_t GateLineSeconds = 600;       // follow_gate per bot and leader, group_copy_gate per bot
@@ -130,5 +142,54 @@ inline std::int32_t PushedPriorFailures(bool push, std::int32_t prior)
 inline bool LineDue(std::uint32_t lineUntil, std::uint32_t now)
 {
     return lineUntil == 0 || std::int32_t(now - lineUntil) >= 0;
+}
+
+// SZF-Q objective window (twow-repo#575 / BOT-14 #703; design ws-10/cli-pathfinding/szf/DESIGN-SZF-START-ZONE-FALLBACK-20261110.md
+// §3/§8/§9, OB-00 + OB-10 10.11.2026; AiPlayerbot.QuestFirstProgression.StartZoneMinLevel.ObjectiveWindow). SZM R3: a bot held
+// below StartZoneMinLevel stalled with quests in its log one level outside the objective rule "quest level <= L + 1" (q21 / q60145
+// ql5 accepted at L3, q459 ql3 at L1, q757 ql4 at L2; OB-50 data check 15c41a7c). For a held bot the objective check of a quest that
+// is in its log and not complete accepts up to L + AboveLevels instead. No new accept, no giver change, no grind (owner rule D1:
+// quest work, "es gibt immer eine Quest").
+//   ObjectiveWindow: 0 off (default, rollback), 1 all, 2 cohort B, 3 cohort A (CohortPolicy.h); any other value acts like 0.
+//   ObjectiveWindow.AboveLevels: default 2, clamped to 1..3.
+constexpr std::int32_t ObjectiveOldAboveLevels = 1;              // the old objective rule without a quest book: quest level <= L + 1
+constexpr std::uint32_t ObjectiveWindowAboveDefault = 2;
+constexpr std::uint32_t ObjectiveWindowAboveMin = 1;
+constexpr std::uint32_t ObjectiveWindowAboveMax = 3;
+
+inline std::uint32_t ClampObjectiveWindowMode(std::int32_t mode)
+{
+    return mode >= 0 && mode <= 3 ? std::uint32_t(mode) : 0u;
+}
+
+inline std::uint32_t ClampAboveLevels(std::int32_t above)
+{
+    return above < std::int32_t(ObjectiveWindowAboveMin) ? ObjectiveWindowAboveMin :
+        above > std::int32_t(ObjectiveWindowAboveMax) ? ObjectiveWindowAboveMax : std::uint32_t(above);
+}
+
+// The highest level above the bot that the objective check accepts. baseAbove = the rule without the window (1, or the quest
+// book's AboveLevels on the book path). The window widens it only for a held bot and a quest in its log that is not complete; it
+// never narrows it.
+inline std::int32_t ObjectiveAboveLimit(std::int32_t baseAbove, bool held, bool inLogIncomplete, std::uint32_t above)
+{
+    if (!held || !inLogIncomplete)
+        return baseAbove;
+    std::int32_t const window = std::int32_t(ClampAboveLevels(std::int32_t(above)));
+    return window > baseAbove ? window : baseAbove;
+}
+
+// The objective level test: questLevel <= botLevel + limit (a scaled quest, level <= 0, always passes, as the old test).
+inline bool ObjectiveAllowed(std::int32_t questLevel, std::int32_t botLevel, std::int32_t baseAbove, bool held, bool inLogIncomplete,
+    std::uint32_t above)
+{
+    return questLevel <= botLevel + ObjectiveAboveLimit(baseAbove, held, inLogIncomplete, above);
+}
+
+// Passes only because of the window (the [ZoneKeep] state=objective_window line and the minute counter).
+inline bool ObjectiveWindowOnly(std::int32_t questLevel, std::int32_t botLevel, std::int32_t baseAbove, bool held, bool inLogIncomplete,
+    std::uint32_t above)
+{
+    return ObjectiveAllowed(questLevel, botLevel, baseAbove, held, inLogIncomplete, above) && questLevel > botLevel + baseAbove;
 }
 }
