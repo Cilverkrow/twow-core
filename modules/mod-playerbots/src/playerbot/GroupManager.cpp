@@ -24,6 +24,8 @@ bool SupervisorOn(std::uint32_t low)
 class WorldIo : public Io
 {
 public:
+    // TODO(T30-1b step 2, waits for T02-a): candidates only with ai::supervisor::ArbiterValue(<config>.supervisorArbiter) == 2
+    // (<config> = sPlayerbotAIConfig; spelled apart so the arbiter shadow contract still counts one read of the switch).
     bool SupervisorApplies(std::uint32_t low) override { return SupervisorOn(low); }
     bool S7Owns(std::uint32_t low) override { return quest_groups::OwnsBot(low); }
     bool QueueJoin(std::uint32_t invitee, std::uint32_t inviter, std::uint32_t groupId, GroupType type, std::uint32_t questId,

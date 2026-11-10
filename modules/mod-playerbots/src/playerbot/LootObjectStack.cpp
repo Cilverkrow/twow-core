@@ -6,6 +6,7 @@
 #include "playerbot/CohortPolicy.h"
 #include "playerbot/GatherNodePolicy.h"
 #include "playerbot/LootHoldPolicy.h"   // twow-repo#575 H1: Loot.HoldTravelWhileLootable
+#include "playerbot/strategy/triggers/ProfessionUseTriggers.h"   // twow-repo#333 T28b: IsRosterBotOnItsOwn
 #include <cstdlib>   // twow-repo#575 H1: strtoull
 #include "playerbot/strategy/values/SharedValueContext.h"
 
@@ -424,6 +425,11 @@ std::vector<LootObject> LootObjectStack::OrderByDistance(float maxDistance)
         sLog.outDebug("[BOT LOOT] %s: loot stack expired %zu corpse(s) (>30s old, dropped before looting)",
             bot->GetName(), beforeShrink - availableLoot.size());
 
+    // twow-repo#333 T28b (AiPlayerbot.Gathering.PaceReach): the one place the reach rule lives - the "has available loot" value,
+    // LootAction and the travel / rpg pauses all read this list, so they agree on a far node. Off (or out of scope): nullptr.
+    PlayerbotAI* const paceAi = (maxDistance > 0 && sPlayerbotAIConfig.gatheringPaceReach) ? GatheringPaceScope(bot) : nullptr;
+    uint32 const paceNow = paceAi ? uint32(time(nullptr)) : 0;
+
     std::map<float, LootObject> sortedMap;
     LootTargetList safeCopy(availableLoot);
     for (LootTargetList::iterator i = safeCopy.begin(); i != safeCopy.end(); i++)
@@ -436,6 +442,8 @@ std::vector<LootObject> LootObjectStack::OrderByDistance(float maxDistance)
         float distance = bot->GetDistance(lootObject.GetWorldObject(bot));
         if (!maxDistance || distance <= maxDistance)
             sortedMap[distance] = lootObject;
+        else if (paceAi && distance <= float(sPlayerbotAIConfig.gatheringPaceReachYards) && PaceFarOk(paceAi, lootObject, paceNow))
+            sortedMap[distance] = lootObject;
     }
 
     std::vector<LootObject> result;
@@ -443,6 +451,99 @@ std::vector<LootObject> LootObjectStack::OrderByDistance(float maxDistance)
         result.push_back(i->second);
     return result;
 }
+
+// twow-repo#333 T28b begin (AiPlayerbot.Gathering.PaceReach, plan A3-PLAN-ZIEL T28b, OB-00 09.11.2026; GatheringPacePolicy.h).
+// Writes only this bot's far-pick state (its loot stack), its [Gathering] window counters and - when a far pick ends without
+// an open (20 s, or a strong hostile near its node) - its "loot target". No travel target, quest, strategy, chance, drop or price.
+PlayerbotAI* ai::GatheringPaceScope(Player* bot)
+{
+    PlayerbotAI* const botAi = bot ? GetBotAI(bot) : nullptr;
+    if (!botAi || !ai::cohort::Applies(sPlayerbotAIConfig.gatheringPaceReach, bot->GetGUIDLow()) || bot->GetGroup() ||
+        !IsRosterBotOnItsOwn(botAi))
+        return nullptr;
+    return botAi;
+}
+
+// A node beyond the loot distance, within the reach: herbalism / mining behind its target, orange or yellow, not missed, budget
+// left, 0 strong hostiles within 30 yd of the node (one scan per node and 10 s).
+bool LootObjectStack::PaceFarOk(PlayerbotAI* ai, LootObject& lootObject, uint32 now)
+{
+    if (!gathering_pace::IsPaceSkill(lootObject.skillId))
+        return false;
+    // The target of the gather purpose (TravelValues.cpp): min(GetSkillMax, GetSkillMaxForLevel = 5 x level).
+    uint32 const value = bot->GetSkillValue(lootObject.skillId);
+    if (!gathering_pace::Behind(value, bot->GetSkillMax(lootObject.skillId), bot->GetSkillMaxForLevel(bot)) ||
+        !gathering_pace::FarColorOk(lootObject.reqSkillValue, value))
+        return false;
+    uint64 const guid = lootObject.guid.GetRawValue();
+    if (!pace.FarOk(guid, now))
+        return false;
+    // Not yet picked: offered only while "loot available" can fire for it (no "all targets", not mounted, LootTriggers.cpp) -
+    // else the travel / rpg pause would hold for a node LootAction never picks, and its clock (from the pick) never starts.
+    AiObjectContext* const context = ai->GetAiObjectContext();
+    if (pace.pending != guid && (!context->GetValue<std::list<ObjectGuid>>("all targets")->Get().empty() ||
+        context->GetValue<bool>("mounted", "self target")->Get()))
+        return false;
+    int clear = pace.HostilesClear(guid, now);
+    if (clear < 0)
+    {
+        WorldObject* wo = lootObject.GetWorldObject(bot);
+        clear = wo ? 1 : 0;
+        if (wo)
+            for (Unit* hostile : ai->GetAllHostileNPCNonPetUnitsAroundWO(wo, gathering_pace::HostileYards))
+                if (gathering_pace::Strong(bot->GetLevel(), hostile->GetLevel()))
+                {
+                    clear = 0;
+                    break;
+                }
+        pace.PutHostiles(guid, now, clear == 1);
+    }
+    return clear == 1;
+}
+
+void ai::GatheringPacePick(PlayerbotAI* ai, LootObject& lootObject)
+{
+    Player* bot = ai->GetBot();
+    if (!GatheringPaceScope(bot))
+        return;
+    gathering_pace::State& pace = ai->GetAiObjectContext()->GetValue<LootObjectStack*>("available loot")->Get()->Pace();
+    uint32 const now = uint32(time(nullptr));
+    uint64 const guid = lootObject.guid.GetRawValue();
+    WorldObject* wo = lootObject.GetWorldObject(bot);
+    bool const far = wo && bot->GetDistance(wo) > sPlayerbotAIConfig.lootDistance;
+    if (pace.pending && pace.pending != guid && pace.Leave(now))
+        ai->GetGatheringTrace().NoteFar(gathering_trace::FarEvent::Timeout);
+    if (far && pace.Pick(guid, now))
+        ai->GetGatheringTrace().NoteFar(gathering_trace::FarEvent::Pick);
+}
+
+bool ai::GatheringPaceTimeout(PlayerbotAI* ai, LootObject const& lootObject)
+{
+    gathering_pace::State& pace = ai->GetAiObjectContext()->GetValue<LootObjectStack*>("available loot")->Get()->Pace();
+    uint64 const guid = lootObject.guid.GetRawValue();
+    uint32 const now = uint32(time(nullptr));
+    if (!pace.EndDue(guid, now))
+        return false;
+    // Within the loot distance the near rules apply as before: a node reached at 19.8 s still opens (and counts as a far open).
+    Player* bot = ai->GetBot();
+    LootObject target = lootObject;
+    WorldObject* wo = target.GetWorldObject(bot);
+    if (wo && bot->GetDistance(wo) <= sPlayerbotAIConfig.lootDistance)
+        return false;
+    // MoveToLootAction follows the loot target without a distance cap: the far pick ends here.
+    pace.End(guid, now);
+    ai->GetAiObjectContext()->GetValue<LootObject>("loot target")->Set(LootObject());
+    ai->GetGatheringTrace().NoteFar(gathering_trace::FarEvent::Timeout);
+    return true;
+}
+
+void ai::GatheringPaceOpened(PlayerbotAI* ai, LootObject const& lootObject)
+{
+    gathering_pace::State& pace = ai->GetAiObjectContext()->GetValue<LootObjectStack*>("available loot")->Get()->Pace();
+    if (pace.Opened(lootObject.guid.GetRawValue()))
+        ai->GetGatheringTrace().NoteFar(gathering_trace::FarEvent::Open);
+}
+// twow-repo#333 T28b end
 
 
 // twow-repo#575 H1 (AiPlayerbot.Loot.HoldTravelWhileLootable, LootHoldPolicy.h): the bot's loot target is open for a hold - set,

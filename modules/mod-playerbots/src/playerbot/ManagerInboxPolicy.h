@@ -41,10 +41,14 @@ inline std::size_t KindIndex(Kind kind)
     return i < kKinds ? i : kKinds;
 }
 
-// DirectiveAck states (carried in Event::mapOrDungeon).
+// DirectiveAck states (carried in Event::mapOrDungeon). The 32-bit state word: b0-7 the state, b8-15 0, b16-31 the low 16 bits
+// of the group serial the bot holds (only kAckLeft sets them; states 1-3 leave them 0). kAckLeft (T30-1b, agreed with
+// CLI-Projekt 10.11.): the bot left the GROUP mode on its own (T02-GROUP handler), posted with seq 0 and the reason 26
+// goal_done, 27 goal_lost or 22 arbiter_off (the handler disarmed).
 constexpr std::uint8_t kAckReceived = 1;
 constexpr std::uint8_t kAckApplied = 2;
 constexpr std::uint8_t kAckRefused = 3;
+constexpr std::uint8_t kAckLeft = 4;
 
 // POD, 32 bytes, copied by value into the ring. The 7.2.11 fields add up to 28 bytes; reserved pads to the 32 the design
 // names and keeps the size fixed for a later field (always 0 today).

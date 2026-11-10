@@ -7660,16 +7660,22 @@ std::vector<WorldLocation> RandomPlayerbotMgr::QuestRescueTargets(Player* bot)
     };
     PlayerInfo const* own = firstInfo(bot->getRace());
 
+    // SZM adoption review (10.11.2026): the start-zone rules of the rescue (HomeHubs and R1 below) act on the bots the travel gate holds
+    // (ai::zone_keep::StartZoneHolds): roster bots without a real player master. Other bots that ask for a rescue (Rescue.RepopDeadOnly)
+    // keep the legacy targets.
+    PlayerbotAI* const rescueAi = GetBotAI(bot);
+    bool const startZoneRules = IsPersistentRosterMember(bot->GetGUIDLow()) && !(rescueAi && rescueAi->HasRealPlayerMaster());
+
     // twow-repo#575 RG-a (AiPlayerbot.QuestRescue.HomeHubs, OB-00 08.11.2026): the anchor table first (RescueHubPolicy.h). own_hub = the
     // race's start-zone hub below L5 (also for R1-gated bots inside their start zone, which got no target), next_zone = night elf /
     // undead L5-10 to the next zone on the home continent unless R1 gates the level. No row or no spawn left: the legacy targets.
-    if (ai::cohort::Applies(sPlayerbotAIConfig.questRescueHomeHubs, bot->GetGUIDLow()))
+    if (startZoneRules && ai::cohort::Applies(sPlayerbotAIConfig.questRescueHomeHubs, bot->GetGUIDLow()))
     {
         namespace rh = ai::rescue_hub;
         rh::Counters& counters = rh::SharedCounters();
         bool const startZoneGated = ai::zone_keep::StartZoneGated(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevel, level) &&
             ai::cohort::Applies(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevelCohort, bot->GetGUIDLow());
-        rh::Row const* const row = rh::RowFor(bot->getRace(), level);
+        rh::Row const* const row = rh::RowFor(bot->getRace(), level, sPlayerbotAIConfig.customRaceStartZones);
         if (row && !rh::Usable(row, startZoneGated))
             counters.gated.fetch_add(1, std::memory_order_relaxed);
         else if (row)
@@ -7713,7 +7719,7 @@ std::vector<WorldLocation> RandomPlayerbotMgr::QuestRescueTargets(Player* bot)
     // twow-repo#601 owner rule R1 (QuestFirstProgression.StartZoneMinLevel, ZoneKeepPolicy.h): below it a bot is never rescued out of its
     // start zone - inside it there is no rescue (it keeps questing / grinding there), outside it the rescue takes it to its race's
     // start point. Custom start races outside their zone: no rescue (their start-zone rules decide the way back). Unknown start: as before.
-    if (ai::zone_keep::StartZoneGated(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevel, level) &&
+    if (startZoneRules && ai::zone_keep::StartZoneGated(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevel, level) &&
         ai::cohort::Applies(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevelCohort, bot->GetGUIDLow()))
     {
         PlayerInfo const* const info = sObjectMgr.GetPlayerInfo(bot->getRace(), bot->getClass());
