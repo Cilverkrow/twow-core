@@ -303,6 +303,7 @@ struct Bench
     PlaceTable places;
     GatherShadow shadow;
     std::vector<std::string> lines;
+    std::vector<SweptGroup> swept;   // what the directive pass swept (the test sets it per pass)
     ShadowInput in;
 
     Bench()
@@ -312,7 +313,10 @@ struct Bench
         in.rules = LiveRules(PlaceMaxAgeMs(10, 1000));
         in.status = &status;
         in.places = &places;
+        in.swept = &swept;
     }
+
+    Bench(Bench const&) = delete;   // in points into this object
 
     void Pass(std::uint32_t nowMs, std::uint64_t mgrMs, bool resumed = false)
     {
@@ -526,17 +530,91 @@ void TestShadowDeadline()
     t.groups[2].endReason = EndReason::RendezvousTimeout;
     t.groups[3].state = GroupState::Ending;
     t.groups[3].endReason = EndReason::TooSmall;
-    t.Pass(3000, 60500);
+    t.Pass(3000, 58000);
     Require(t.shadow.Totals().legExpired == 0 && t.shadow.Totals().t30Cut == 1, "T30 timeout before the virtual deadline: t30_cut");
     Require(!t.shadow.Meetings().at(2).open && !t.shadow.Meetings().at(3).open, "both meetings closed");
-    Require(t.Count("[GroupMgr] event=shadow_end group=2 gather=1 result=t30_cut ms=59499 arrived=0/1") == 1 &&
-        t.Count("[GroupMgr] event=shadow_end group=3 gather=1 result=closed ms=59499 arrived=0/1") == 1, "t30_cut and closed lines");
+    Require(t.Count("[GroupMgr] event=shadow_end group=2 gather=1 result=t30_cut ms=56999 arrived=0/1") == 1 &&
+        t.Count("[GroupMgr] event=shadow_end group=3 gather=1 result=closed ms=56999 arrived=0/1") == 1, "t30_cut and closed lines");
     Require(t.shadow.Totals().disagree == 0, "an ending pass is not compared");
     t.groups[4].state = GroupState::Ending;
     t.groups[4].endReason = EndReason::RendezvousTimeout;
     t.Pass(4000, 61001);
     Require(t.shadow.Totals().legExpired == 1 && t.shadow.Totals().t30Cut == 1, "T30 timeout at the virtual deadline: expired");
     Require(t.Count("[GroupMgr] event=shadow_end group=4 gather=1 result=expired ms=60000 arrived=0/1") == 1, "expired line");
+}
+
+void TestShadowSecondSlack()
+{
+    // T30 counts whole seconds from formedSec, the shadow ms from the same pass: a group formed at 100.9 s ends at 160.0 s
+    // (T30: 160 - 100 >= 60), 59.1 s later on the manager clock. Within kT30SecondSlackMs that is the shadow's expiry.
+    Require(kT30SecondSlackMs == 1100, "the slack: T30's second plus 100 ms clock-read skew");
+    Require(T30EndVerdict(EndReason::RendezvousTimeout, false, 60101, 61001) == ShadowEnd::Expired, "a second fraction: expired");
+    Require(T30EndVerdict(EndReason::RendezvousTimeout, false, 59901, 61001) == ShadowEnd::Expired, "exactly the slack: expired");
+    Require(T30EndVerdict(EndReason::RendezvousTimeout, false, 59900, 61001) == ShadowEnd::T30Cut, "1 ms more: t30_cut");
+    // One clamped world gap (AdvanceClock at a 1 s interval loses >= 1001 ms) with the same 0.9 s fraction: still a T30 cut.
+    Require(T30EndVerdict(EndReason::RendezvousTimeout, false, 60101 - 1001, 61001) == ShadowEnd::T30Cut, "a gap: t30_cut");
+    Require(T30EndVerdict(EndReason::RendezvousTimeout, true, 70000, 61001) == ShadowEnd::T30Cut, "a resumed pass is never expired");
+    Require(T30EndVerdict(EndReason::TooSmall, false, 70000, 61001) == ShadowEnd::Closed, "another end: no verdict");
+
+    Bench b;
+    b.groups[2] = QuestGroup(2, 81, 82);
+    b.Pass(1000, 1);
+    Form(b.groups[2]);
+    b.Pass(2000, 1001);
+    b.groups[2].state = GroupState::Ending;
+    b.groups[2].endReason = EndReason::RendezvousTimeout;
+    b.Pass(61100, 60101);
+    Require(b.shadow.Totals().legExpired == 1 && b.shadow.Totals().t30Cut == 0, "a plain timeout counts as shadow_leg_expired");
+    Require(b.Count("[GroupMgr] event=shadow_end group=2 gather=1 result=expired ms=59100 arrived=0/1") == 1, "expired line");
+}
+
+void TestShadowSwept()
+{
+    // T30 ends a group and the directive pass sweeps it in the same pass (every member Left at once): the shadow never sees
+    // it Ending, but the swept list still gives the meeting its verdict.
+    Bench b;
+    b.groups[2] = QuestGroup(2, 20, 22);   // rendezvous_timeout, swept at the virtual deadline
+    b.groups[3] = QuestGroup(3, 31, 32);   // rendezvous_timeout, swept early (a gap): t30_cut
+    b.groups[4] = QuestGroup(4, 40, 42);   // another end, swept: closed
+    b.groups[5] = QuestGroup(5, 51, 52);   // gone without a swept entry: closed
+    b.Pass(1000, 1);
+    for (auto& entry : b.groups)
+        Form(entry.second);
+    b.Pass(2000, 1001);
+
+    b.groups.erase(3);
+    b.swept = {SweptGroup{3, EndReason::RendezvousTimeout}};
+    b.Pass(3000, 30001);
+    Require(b.Count("[GroupMgr] event=shadow_end group=3 gather=1 result=t30_cut ms=29000 arrived=0/1") == 1, "swept early: t30_cut");
+
+    b.groups.erase(2);
+    b.groups.erase(4);
+    b.groups.erase(5);
+    b.swept = {SweptGroup{2, EndReason::RendezvousTimeout}, SweptGroup{4, EndReason::TooSmall}};
+    b.Pass(4000, 60101);
+    Require(b.Count("[GroupMgr] event=shadow_end group=2 gather=0 result=expired ms=59100 arrived=0/1") == 1, "swept: expired");
+    Require(b.Count("[GroupMgr] event=shadow_end group=4 gather=0 result=closed ms=59100 arrived=0/1") == 1, "swept other: closed");
+    Require(b.Count("[GroupMgr] event=shadow_end group=5 gather=1 result=closed ms=59100 arrived=0/1") == 1, "gone: closed");
+    Require(b.shadow.Totals().legExpired == 1 && b.shadow.Totals().t30Cut == 1, "swept verdicts counted once each");
+    Require(b.shadow.Meetings().empty() && b.Count("event=shadow_end") == 4, "every meeting ends exactly once");
+}
+
+void TestPlaceJumpStale()
+{
+    // A previous place older than maxAgeMs (the bot stopped posting between two groups) is no base for place_jump.
+    Bench t;
+    std::uint32_t const age = t.in.rules.maxAgeMs;
+    Require(age == 12000, "PlaceMaxAgeMs(10 s, 1 s) = 12 s");
+    t.status[14] = StatusAt(1000);
+    t.shadow.StorePlace(t.places, t.status, MakeGatherPlace(14, PlaceAt(0, 0.0f, 0.0f, 0).place), 1000, age);
+    t.shadow.StorePlace(t.places, t.status, MakeGatherPlace(14, PlaceAt(0, 1000.0f, 0.0f, 0).place), 1000 + age + 1, age);
+    Require(t.shadow.Totals().jumpSame == 0 && t.places.at(14).place.x == 1000.0f, "stale base: no jump, the new place kept");
+    t.shadow.StorePlace(t.places, t.status, MakeGatherPlace(14, PlaceAt(0, 1300.0f, 0.0f, 0).place), 2000 + 2 * age + 1, age);
+    Require(t.shadow.Totals().jumpSame == 0, "a base 13 s old (> maxAgeMs): still no jump");
+    t.shadow.StorePlace(t.places, t.status, MakeGatherPlace(14, PlaceAt(0, 1600.0f, 0.0f, 0).place), 2000 + 3 * age + 1, age);
+    Require(t.shadow.Totals().jumpSame == 1, "a base exactly maxAgeMs old is fresh: a jump");
+    t.shadow.StorePlace(t.places, t.status, MakeGatherPlace(14, PlaceAt(1, 1600.0f, 0.0f, 0).place), 2000 + 4 * age + 2, age);
+    Require(t.shadow.Totals().jumpOther == 0, "another map after a stale base: no jump either");
 }
 
 void TestShadowScope()
@@ -588,11 +666,11 @@ void TestShadowMinute()
     b.Fresh(12, 10.0f, 2000);
     // Two places of bot 13 for the jump counters (StorePlace from the drain).
     mi::Event e = MakeGatherPlace(13, PlaceAt(0, 0.0f, 0.0f, 0).place);
-    b.shadow.StorePlace(b.places, b.status, e, 2000);
+    b.shadow.StorePlace(b.places, b.status, e, 2000, b.in.rules.maxAgeMs);
     e = MakeGatherPlace(13, PlaceAt(0, 300.0f, 0.0f, 0).place);
-    b.shadow.StorePlace(b.places, b.status, e, 2500);
+    b.shadow.StorePlace(b.places, b.status, e, 2500, b.in.rules.maxAgeMs);
     e = MakeGatherPlace(13, PlaceAt(1, 300.0f, 0.0f, 0).place);
-    b.shadow.StorePlace(b.places, b.status, e, 2600);
+    b.shadow.StorePlace(b.places, b.status, e, 2600, b.in.rules.maxAgeMs);
     Require(b.places.at(13).receivedMs == 2600 && b.places.at(13).place.mapId == 1, "the latest place per bot");
     b.Pass(2000, 1001);
     b.Pass(60999, 60000);
@@ -653,14 +731,14 @@ void TestShadowEnd()
     // place_jump_same skips taxi flights: no jump while the bot is busy at either place.
     Bench t;
     t.status[14] = StatusAt(1000);
-    t.shadow.StorePlace(t.places, t.status, MakeGatherPlace(14, PlaceAt(0, 0.0f, 0.0f, 0).place), 1000);
+    t.shadow.StorePlace(t.places, t.status, MakeGatherPlace(14, PlaceAt(0, 0.0f, 0.0f, 0).place), 1000, t.in.rules.maxAgeMs);
     t.status[14] = StatusAt(11000, true, true);   // on a taxi
-    t.shadow.StorePlace(t.places, t.status, MakeGatherPlace(14, PlaceAt(0, 300.0f, 0.0f, 0).place), 11000);
-    t.shadow.StorePlace(t.places, t.status, MakeGatherPlace(14, PlaceAt(0, 600.0f, 0.0f, 0).place), 21000);
+    t.shadow.StorePlace(t.places, t.status, MakeGatherPlace(14, PlaceAt(0, 300.0f, 0.0f, 0).place), 11000, t.in.rules.maxAgeMs);
+    t.shadow.StorePlace(t.places, t.status, MakeGatherPlace(14, PlaceAt(0, 600.0f, 0.0f, 0).place), 21000, t.in.rules.maxAgeMs);
     t.status[14] = StatusAt(31000);               // landed
-    t.shadow.StorePlace(t.places, t.status, MakeGatherPlace(14, PlaceAt(0, 900.0f, 0.0f, 0).place), 31000);
+    t.shadow.StorePlace(t.places, t.status, MakeGatherPlace(14, PlaceAt(0, 900.0f, 0.0f, 0).place), 31000, t.in.rules.maxAgeMs);
     Require(t.shadow.Totals().jumpSame == 0 && t.places.at(14).place.x == 900.0f, "taxi: no jump, the place still kept");
-    t.shadow.StorePlace(t.places, t.status, MakeGatherPlace(14, PlaceAt(0, 1200.0f, 0.0f, 0).place), 41000);
+    t.shadow.StorePlace(t.places, t.status, MakeGatherPlace(14, PlaceAt(0, 1200.0f, 0.0f, 0).place), 41000, t.in.rules.maxAgeMs);
     Require(t.shadow.Totals().jumpSame == 1, "on foot at both places: a far place is a jump");
 }
 }
@@ -679,6 +757,9 @@ int main()
     TestShadowScope();
     TestShadowMinute();
     TestShadowEnd();
+    TestShadowSecondSlack();
+    TestShadowSwept();
+    TestPlaceJumpStale();
     std::cout << "group_gather_policy_tests: OK\n";
     return 0;
 }

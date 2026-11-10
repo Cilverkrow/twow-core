@@ -109,6 +109,24 @@ inline char const* ShadowEndName(ShadowEnd r)
     return "closed";
 }
 
+// T30's rendezvous timeout runs on whole seconds of time() from formedSec (QuestGroupPolicy), the virtual deadline on the
+// manager's ms clock from the same pass: without a gap T30 fires up to 1 s (the second's fraction at formed) before the
+// virtual deadline. Within this slack (that second plus 100 ms for clock-read skew) the timeout is the shadow's expiry; only
+// an earlier one - the wall clock ran ahead of the manager clock, a world gap (AdvanceClock loses > 1 interval) - is a T30
+// cut. Kept narrow so a single clamped gap still shows as t30_cut.
+constexpr std::uint64_t kT30SecondSlackMs = 1100;
+
+// The verdict of a meeting T30 ended (in the pass, or ended and swept in one pass): its rendezvous timeout is an expiry or a
+// T30 cut; any other end closes the meeting without a verdict.
+inline ShadowEnd T30EndVerdict(EndReason why, bool resumed, std::uint64_t mgrMs, std::uint64_t deadlineMs)
+{
+    if (why != EndReason::RendezvousTimeout)
+        return ShadowEnd::Closed;
+    GatherPoint leg;
+    leg.deadlineMs = deadlineMs;
+    return !resumed && LegExpired(mgrMs + kT30SecondSlackMs, leg) ? ShadowEnd::Expired : ShadowEnd::T30Cut;
+}
+
 // "[GroupMgr] event=shadow_end ...": one line per measured meeting when it closes, with the group's arm, so the A/B splits
 // the shadow measures per arm (8.3); ms = formed -> close on the manager clock; arrived = members counted arrived in the
 // meeting / members judged in its last verdict.
@@ -129,6 +147,7 @@ struct ShadowInput
     GatherRules rules;
     StatusTable const* status = nullptr;
     PlaceTable const* places = nullptr;
+    std::vector<SweptGroup> const* swept = nullptr;   // the groups the directive pass ended and swept (Engine::Swept)
 };
 
 // One shadow meeting per manager QUEST group the shadow saw forming.
@@ -153,8 +172,11 @@ class GatherShadow
 public:
     // From the inbox drain: the latest GatherPlace of a bot. A far jump from its previous place is counted, except while the
     // bot is busy (taxi, teleport, band trip) at either place: a taxi covers > 200 yd per status and is not a 2.8 source. The
-    // drain stores the bot's Status before its GatherPlace (posted in that order), so status holds the current flags.
-    void StorePlace(PlaceTable& places, StatusTable const& status, manager_inbox::Event const& e, std::uint32_t nowMs)
+    // drain stores the bot's Status before its GatherPlace (posted in that order), so status holds the current flags. A
+    // previous place older than maxAgeMs (PlaceMaxAgeMs: the bot stopped posting, e.g. between two groups) is no base for a
+    // jump: walking between two group memberships is not a 2.8 source.
+    void StorePlace(PlaceTable& places, StatusTable const& status, manager_inbox::Event const& e, std::uint32_t nowMs,
+        std::uint32_t maxAgeMs)
     {
         PlaceSnapshot s = PlaceSnapshotOf(e, nowMs);
         auto const st = status.find(e.botLow);
@@ -165,7 +187,8 @@ public:
             places.emplace(e.botLow, s);
             return;
         }
-        PlaceJump const jump = it->second.busy || s.busy ? PlaceJump::None : JumpOf(it->second.place, s.place, kPlaceJumpYards);
+        bool const base = !it->second.busy && !s.busy && manager_inbox::Fresh(it->second.receivedMs, nowMs, maxAgeMs);
+        PlaceJump const jump = base ? JumpOf(it->second.place, s.place, kPlaceJumpYards) : PlaceJump::None;
         counts_.jumpSame += jump == PlaceJump::SameMap ? 1 : 0;
         counts_.jumpOther += jump == PlaceJump::OtherMap ? 1 : 0;
         it->second = s;
@@ -218,7 +241,8 @@ public:
                 PhaseLine(line, g, g.phase, s, in);
             }
         }
-        // A group the registry no longer holds: its meeting is over (closed without a verdict if still open).
+        // A group the registry no longer holds: its meeting is over. Still open: if the directive pass ended and swept it in
+        // this pass, the verdict of that end (T30EndVerdict), else closed without a verdict.
         for (auto it = meetings_.begin(); it != meetings_.end();)
         {
             if (it->second.seenPass == passNo_)
@@ -227,7 +251,15 @@ public:
                 continue;
             }
             if (it->second.open)
-                EndLine(line, it->first, it->second, ShadowEnd::Closed, in);
+            {
+                ShadowEnd r = ShadowEnd::Closed;
+                if (in.swept)
+                    for (SweptGroup const& sg : *in.swept)
+                        if (sg.serial == it->first)
+                            r = T30EndVerdict(sg.why, in.resumed, in.mgrMs, it->second.deadlineMs);
+                CountEnd(r);
+                EndLine(line, it->first, it->second, r, in);
+            }
             it = meetings_.erase(it);
         }
         MinuteLine(in, line);
@@ -267,14 +299,11 @@ private:
         if (s.open && ending)
         {
             // T30 ended the group. Its rendezvous timeout runs on wall-clock seconds without the gap rule, so it is the
-            // shadow's expiry only once the virtual deadline on the manager clock has passed too; before that it is a T30 cut.
-            // Any other end closes the meeting without a verdict.
+            // shadow's expiry only once the virtual deadline on the manager clock has passed too (within T30's second,
+            // kT30SecondSlackMs); before that it is a T30 cut. Any other end closes the meeting without a verdict.
             s.open = false;
-            ShadowEnd r = ShadowEnd::Closed;
-            if (g.endReason == EndReason::RendezvousTimeout)
-                r = !in.resumed && LegExpired(in.mgrMs, leg) ? ShadowEnd::Expired : ShadowEnd::T30Cut;
-            counts_.legExpired += r == ShadowEnd::Expired ? 1 : 0;
-            counts_.t30Cut += r == ShadowEnd::T30Cut ? 1 : 0;
+            ShadowEnd const r = T30EndVerdict(g.endReason, in.resumed, in.mgrMs, s.deadlineMs);
+            CountEnd(r);
             EndLine(line, g.serial, s, r, in);
             return;
         }
@@ -328,6 +357,12 @@ private:
             ++counts_.legExpired;
             EndLine(line, g.serial, s, ShadowEnd::Expired, in);
         }
+    }
+
+    void CountEnd(ShadowEnd r)
+    {
+        counts_.legExpired += r == ShadowEnd::Expired ? 1 : 0;
+        counts_.t30Cut += r == ShadowEnd::T30Cut ? 1 : 0;
     }
 
     // The shadow's event line budget (kLinesPerMinute per minute, like the engine's, kept apart from it because the shadow

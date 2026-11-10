@@ -13,8 +13,10 @@ cmake_policy(VERSION 3.16)
 #       while Gather is on; the place table is dropped with the other tables;
 #   (d) the shadow: pure headers (no game header, no config, no log), the registry read through a const view only, the T33
 #       arrival rule only in ArrivedForGroup (group_mgr::Arrived, S7's rule), the virtual deadline on the manager clock and not
-#       in a resumed pass, T30's wall-clock rendezvous_timeout counted as expired only past the virtual deadline (else
-#       t30_cut), both leader snapshots fresh, the fixed minute3 field list, the event=phase and event=shadow_end lines;
+#       in a resumed pass, T30's wall-clock rendezvous_timeout counted as expired only past the virtual deadline less T30's
+#       whole second (kT30SecondSlackMs; else t30_cut), also for a group the directive pass ended and swept in one pass (the
+#       engine's swept list, read only), no place_jump from a stale previous place, both leader snapshots fresh, the fixed
+#       minute3 field list, the event=phase and event=shadow_end lines;
 #   (e) T33-1 is absent: no Update verb sender, no b15, no MaskRendezvous/NextRung/ReanchorDue, no new caller of NextFallback,
 #       the ack reasons 19/20 unused; no movement, teleport or action in the manager, facts or shadow files; supervisor::Post(
 #       and ->Tick( keep their counts;
@@ -276,7 +278,7 @@ endfunction()
 # ---- (c) the manager side ----------------------------------------------------------------------------------------------------
 set(UPDATE "void WorldThreadManager::Update(std::map<std::uint32_t, Player*> const& bots, std::uint32_t now)\n{\n    ++passes_;\n    std::uint32_t const nowMs = WorldTimer::getMSTime();\n    mgrMs_ = AdvanceClock(mgrMs_, clockLastMs_, nowMs, sPlayerbotAIConfig.randomBotUpdateInterval);\n    DrainInbox(bots, nowMs);\n    RunDirectives(bots, nowMs, now);\n    RunGather(nowMs);\n}")
 set(OFF "void WorldThreadManager::RunGather(std::uint32_t nowMs)\n{\n    // The loader keeps Gather 0 while Types is 0 (EffectiveGather).\n    std::uint32_t const gather = sPlayerbotAIConfig.botGroupsManagerGather;\n    if (!gather)\n    {\n        if (!places_.empty())\n            places_.clear();\n        gather_.Off();\n        return;\n    }")
-set(STORE "        case manager_inbox::Kind::GatherPlace:\n            // T33-0: the bot's own place for the meeting shadow; kept only while Gather is on (no table when 0).\n            if (sPlayerbotAIConfig.botGroupsManagerGather)\n                gather_.StorePlace(places_, status_, event, nowMs);\n            break;")
+set(STORE "        case manager_inbox::Kind::GatherPlace:\n            // T33-0: the bot's own place for the meeting shadow; kept only while Gather is on (no table when 0).\n            if (sPlayerbotAIConfig.botGroupsManagerGather)\n                gather_.StorePlace(places_, status_, event, nowMs,\n                    PlaceMaxAgeMs(sPlayerbotAIConfig.botGroupsManagerStatusSeconds, sPlayerbotAIConfig.randomBotUpdateInterval));\n            break;")
 
 function(check_manager mgr_h mgr_cpp out)
   string(FIND "${mgr_cpp}" "${UPDATE}" at)
@@ -298,6 +300,7 @@ function(check_manager mgr_h mgr_cpp out)
       "    in.rules.zBand = kZUnknown;"
       "    in.rules.deadCounts = true;"
       "    in.rules.maxAgeMs = PlaceMaxAgeMs(sPlayerbotAIConfig.botGroupsManagerStatusSeconds, sPlayerbotAIConfig.randomBotUpdateInterval);"
+      "    in.swept = &engine_.Swept();"
       "    gather_.Pass(engine_.Groups(), in, [&io](char const* line) { io.Line(line); });\n}")
     string(FIND "${run}" "${needle}" at)
     if(at EQUAL -1)
@@ -305,8 +308,9 @@ function(check_manager mgr_h mgr_cpp out)
       return()
     endif()
   endforeach()
-  # The shadow reads the registry: no other engine call, no op, no directive, no post in RunGather.
+  # The shadow reads the registry and the swept list: no other engine call, no op, no directive, no post in RunGather.
   string(REPLACE "engine_.Groups()" "" rest "${run}")
+  string(REPLACE "engine_.Swept()" "" rest "${rest}")
   foreach(bad "engine_" "group_ops::" "supervisor::" "Post(" "Enqueue" "Directive")
     string(FIND "${rest}" "${bad}" at)
     if(NOT at EQUAL -1)
@@ -346,7 +350,15 @@ endfunction()
 set(MINUTE3 "\"[GroupMgr] minute3 gather=%u region_mismatch=%llu z_out=%llu place_jump_same=%llu\"\n        \" place_jump_other=%llu gather_resume=%llu shadow_arrived=%llu shadow_disagree=%llu shadow_leg_expired=%llu places=%llu\"\n        \" open=%llu shadow_gathered=%llu shadow_compared=%llu shadow_t33_first=%llu shadow_t30_first=%llu shadow_t30_cut=%llu\"\n        \" dead_at_point=%llu shadow_lines_dropped=%llu\"")
 set(PHASE "\"[GroupMgr] event=phase group=%u phase=%s ms=%llu gather=%u\"")
 set(SHADOW_END "\"[GroupMgr] event=shadow_end group=%u gather=%u result=%s ms=%llu arrived=%u/%u\"")
-set(T30_TIMEOUT "            if (g.endReason == EndReason::RendezvousTimeout)\n                r = !in.resumed && LegExpired(in.mgrMs, leg) ? ShadowEnd::Expired : ShadowEnd::T30Cut;")
+set(T30_TIMEOUT "    if (why != EndReason::RendezvousTimeout)\n        return ShadowEnd::Closed;\n    GatherPoint leg;\n    leg.deadlineMs = deadlineMs;\n    return !resumed && LegExpired(mgrMs + kT30SecondSlackMs, leg) ? ShadowEnd::Expired : ShadowEnd::T30Cut;")
+# Review fixes (CLI-GRP 10.11.): T30's whole second as slack, the verdict for a meeting ended and swept in one pass, and no
+# place_jump from a stale previous place.
+set(T30_SLACK "constexpr std::uint64_t kT30SecondSlackMs = 1100;")
+set(T30_ENDING "            ShadowEnd const r = T30EndVerdict(g.endReason, in.resumed, in.mgrMs, s.deadlineMs);")
+set(T30_SWEPT "                if (in.swept)\n                    for (SweptGroup const& sg : *in.swept)\n                        if (sg.serial == it->first)\n                            r = T30EndVerdict(sg.why, in.resumed, in.mgrMs, it->second.deadlineMs);\n                CountEnd(r);")
+set(JUMP_FRESH "        bool const base = !it->second.busy && !s.busy && manager_inbox::Fresh(it->second.receivedMs, nowMs, maxAgeMs);")
+set(ENGINE_SWEPT_CLEAR "        ++passNo_;\n        swept_.clear();")
+set(ENGINE_SWEPT_PUSH "            pendingDissolved_.push_back(g);\n            swept_.push_back(SweptGroup{g.serial, g.endReason});\n            it = groups_.erase(it);")
 set(LEADER_FRESH "    if (lp != places.end() && ls != status.end() && manager_inbox::Fresh(lp->second.receivedMs, nowMs, r.maxAgeMs) &&\n        manager_inbox::Fresh(ls->second.receivedMs, nowMs, r.maxAgeMs))\n        leader = &lp->second;")
 
 function(check_shadow gather_h shadow_h mgr_cpp all_sources out)
@@ -411,6 +423,10 @@ function(check_shadow gather_h shadow_h mgr_cpp all_sources out)
       "                    entry.second.deadlineMs = in.mgrMs + legMs;"
       "        if (!in.resumed && LegExpired(in.mgrMs, leg))"
       "${T30_TIMEOUT}"
+      "${T30_SLACK}"
+      "${T30_ENDING}"
+      "${T30_SWEPT}"
+      "${JUMP_FRESH}"
       "        bool const compare = s.phase == quest_groups::Phase::Rendezvous && !ending && !in.resumed &&\n            g.phase != quest_groups::Phase::TurnIn;"
       "            if (g.type != GroupType::Quest)\n                continue;"
       "    void Off()\n    {\n        if (!on_)\n            return;"
@@ -434,6 +450,25 @@ function(check_shadow gather_h shadow_h mgr_cpp all_sources out)
   count_text("${shadow_h}" "line(buf);" k)
   if(NOT n EQUAL 2 OR NOT m EQUAL 1 OR NOT k EQUAL 1)
     set(${out} "shadow: event lines bypass the budget (EventLine ${n} of 2, line(text) ${m} of 1, line(buf) ${k} of 1)" PARENT_SCOPE)
+    return()
+  endif()
+  set(${out} "" PARENT_SCOPE)
+endfunction()
+
+# The engine's swept list for the shadow: cleared at every pass start, one entry per group Sweep erases (serial and end
+# reason), read through a const accessor only; the engine never reads it back (no behaviour depends on it).
+function(check_swept directive_h out)
+  foreach(needle "${ENGINE_SWEPT_CLEAR}" "${ENGINE_SWEPT_PUSH}"
+      "    std::vector<SweptGroup> const& Swept() const { return swept_; }")
+    string(FIND "${directive_h}" "${needle}" at)
+    if(at EQUAL -1)
+      set(${out} "swept: GroupDirectivePolicy.h missing ${needle}" PARENT_SCOPE)
+      return()
+    endif()
+  endforeach()
+  count_text("${directive_h}" "swept_" n)
+  if(NOT n EQUAL 4)
+    set(${out} "swept: swept_ appears ${n} times in GroupDirectivePolicy.h (4: clear, push, accessor, member)" PARENT_SCOPE)
     return()
   endif()
   set(${out} "" PARENT_SCOPE)
@@ -482,7 +517,7 @@ function(check_unit tests_cmake unit_test out)
   endforeach()
   foreach(needle "    TestSwitch();" "    TestPack();" "    TestJump();" "    TestPlaceOf();" "    TestGatherPoint();" "    TestArrivedForGroup();"
       "    TestAdvanceClock();" "    TestShadowVerdicts();" "    TestShadowDeadline();" "    TestShadowScope();" "    TestShadowMinute();"
-      "    TestShadowEnd();")
+      "    TestShadowEnd();" "    TestShadowSecondSlack();" "    TestShadowSwept();" "    TestPlaceJumpStale();")
     string(FIND "${unit_test}" "${needle}" at)
     if(at EQUAL -1)
       set(${out} "unit: t/group_gather_policy_tests.cpp main misses ${needle}" PARENT_SCOPE)
@@ -500,6 +535,8 @@ fail_if("${r}")
 check_manager("${mgr_h}" "${mgr_cpp}" r)
 fail_if("${r}")
 check_shadow("${gather_h}" "${shadow_h}" "${mgr_cpp}" "${all_sources}" r)
+fail_if("${r}")
+check_swept("${directive_h}" r)
 fail_if("${r}")
 check_absent("${mgr_h}" "${mgr_cpp}" "${facts_cpp}" "${gather_h}" "${shadow_h}" "${all_sources}" r)
 fail_if("${r}")
@@ -588,12 +625,32 @@ expect_reason("the arrival rule in the manager" "${r}" "Arrived\\( 1 times in Gr
 string(REPLACE "        if (!in.resumed && LegExpired(in.mgrMs, leg))" "        if (LegExpired(in.mgrMs, leg))" m "${shadow_h}")
 check_shadow("${gather_h}" "${m}" "${mgr_cpp}" "${all_sources}" r)
 expect_reason("a deadline in a resumed pass" "${r}" "GroupGatherShadow.h missing")
-string(REPLACE "            if (g.endReason == EndReason::RendezvousTimeout)\n" "            if (true)\n" m "${shadow_h}")
+string(REPLACE "    if (why != EndReason::RendezvousTimeout)\n        return ShadowEnd::Closed;\n" "" m "${shadow_h}")
 check_shadow("${gather_h}" "${m}" "${mgr_cpp}" "${all_sources}" r)
 expect_reason("every T30 end counted as leg expired" "${r}" "GroupGatherShadow.h missing")
-string(REPLACE "r = !in.resumed && LegExpired(in.mgrMs, leg) ? ShadowEnd::Expired : ShadowEnd::T30Cut;" "r = ShadowEnd::Expired;" m "${shadow_h}")
+string(REPLACE "? ShadowEnd::Expired : ShadowEnd::T30Cut;" "? ShadowEnd::Expired : ShadowEnd::Expired;" m "${shadow_h}")
 check_shadow("${gather_h}" "${m}" "${mgr_cpp}" "${all_sources}" r)
 expect_reason("T30's wall-clock timeout counted as expired" "${r}" "GroupGatherShadow.h missing")
+string(REPLACE "LegExpired(mgrMs + kT30SecondSlackMs, leg)" "LegExpired(mgrMs, leg)" m "${shadow_h}")
+check_shadow("${gather_h}" "${m}" "${mgr_cpp}" "${all_sources}" r)
+expect_reason("T30's second not allowed for (a plain timeout as t30_cut)" "${r}" "GroupGatherShadow.h missing")
+string(REPLACE "                            r = T30EndVerdict(sg.why, in.resumed, in.mgrMs, it->second.deadlineMs);\n" "" m "${shadow_h}")
+check_shadow("${gather_h}" "${m}" "${mgr_cpp}" "${all_sources}" r)
+expect_reason("a swept meeting closed without its verdict" "${r}" "GroupGatherShadow.h missing")
+string(REPLACE " && manager_inbox::Fresh(it->second.receivedMs, nowMs, maxAgeMs);" ";" m "${shadow_h}")
+check_shadow("${gather_h}" "${m}" "${mgr_cpp}" "${all_sources}" r)
+expect_reason("a jump from a stale previous place" "${r}" "GroupGatherShadow.h missing")
+string(REPLACE "        swept_.clear();\n" "" m "${directive_h}")
+check_swept("${m}" r)
+expect_reason("the swept list kept across passes" "${r}" "GroupDirectivePolicy.h missing")
+string(REPLACE "            swept_.push_back(SweptGroup{g.serial, g.endReason});\n" "" m "${directive_h}")
+check_swept("${m}" r)
+expect_reason("Sweep does not record the group" "${r}" "GroupDirectivePolicy.h missing")
+check_swept("${directive_h}\n        if (!swept_.empty()) return;" r)
+expect_reason("the engine reads the swept list" "${r}" "swept_ appears 5 times")
+string(REPLACE "    in.swept = &engine_.Swept();" "" m "${mgr_cpp}")
+check_manager("${mgr_h}" "${m}" r)
+expect_reason("RunGather without the swept list" "${r}" "RunGather missing")
 string(REPLACE " && ls != status.end() && " " && " m "${gather_h}")
 check_shadow("${m}" "${shadow_h}" "${mgr_cpp}" "${all_sources}" r)
 expect_reason("the leader's status not checked" "${r}" "GroupGatherPolicy.h missing")
