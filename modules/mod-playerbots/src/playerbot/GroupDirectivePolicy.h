@@ -584,6 +584,15 @@ inline manager_inbox::WishSnapshot const* FindWish(WishTable const* t, std::uint
     return it == t->end() ? nullptr : &it->second;
 }
 
+// OB-10 note on #984: a Status lost to a full inbox ring leaves the previous wish in the table until the next Status
+// ("no wish" posts nothing). The manager therefore acts on a wish only while it is from the latest status period:
+// 1.5 periods, not the 3 periods of kStaleMs. A dropped Status then costs the bot one period as a QUEST candidate (fail-closed).
+inline std::uint32_t WishFreshMs(std::uint32_t statusSeconds)
+{
+    std::uint64_t const ms = std::uint64_t(statusSeconds) * 1500u;
+    return ms > 0xFFFFFFFFu ? 0xFFFFFFFFu : std::uint32_t(ms);
+}
+
 inline float Dist2d(float ax, float ay, float bx, float by)
 {
     float const dx = ax - bx;
@@ -808,6 +817,7 @@ public:
         now_ = in.nowMs;
         nowSec_ = in.nowSec;
         staleMs_ = manager_inbox::StaleMs(r.statusSeconds);
+        wishMs_ = WishFreshMs(r.statusSeconds);
         ++passNo_;
         retryCooldownSec_ = r.retryCooldownMinutes * 60;
         Count(Cnt::Passes);
@@ -940,10 +950,21 @@ private:
     // 30-120 s makes no member silent and ends no group.
     bool Fresh(std::uint32_t receivedMs) const
     {
+        return AgeMs(receivedMs) <= staleMs_;
+    }
+
+    // A wish is usable only from the latest status period (WishFreshMs), with the same stale-anchor credit as Fresh.
+    bool FreshWish(std::uint32_t receivedMs) const
+    {
+        return AgeMs(receivedMs) <= wishMs_;
+    }
+
+    std::uint32_t AgeMs(std::uint32_t receivedMs) const
+    {
         std::uint32_t age = now_ - receivedMs;
         if (gapShiftMs_ && age > std::uint32_t(now_ - gapAtMs_))
             age = age > gapShiftMs_ ? age - gapShiftMs_ : 0u;
-        return age <= staleMs_;
+        return age;
     }
 
     bool QuestBlocked(std::uint32_t low, std::uint32_t questId, std::uint32_t nowSec, std::uint32_t maxAttempts) const
@@ -1927,6 +1948,8 @@ private:
             if (bots_.count(low) || io.S7Owns(low))
                 continue;
             manager_inbox::WishSnapshot const* w = FindWish(in.wishes, low);
+            if (w && !FreshWish(w->receivedMs))
+                w = nullptr;   // a leftover wish of an older period (a Status lost to a full ring) is no wish
             bool blocked = false;
             if (w && TypeOn(r.types, GroupType::Quest) && w->wish.questId && Fresh(w->receivedMs))
             {
@@ -2468,6 +2491,7 @@ private:
     std::uint32_t now_ = 0;
     std::uint32_t nowSec_ = 0;
     std::uint32_t staleMs_ = manager_inbox::kStaleMinMs;
+    std::uint32_t wishMs_ = 0;       // WishFreshMs: a wish counts only from the latest status period (OB-10 note on #984)
     std::uint32_t lastPassMs_ = 0;
     bool passed_ = false;
     std::uint64_t passNo_ = 0;
