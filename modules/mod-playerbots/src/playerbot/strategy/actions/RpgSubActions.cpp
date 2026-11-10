@@ -729,6 +729,12 @@ bool RpgTradeUsefulAction::Execute(Event& event)
     if (!player)
         return false;
 
+    // twow-repo#707: the rpg target is a cached guid (found by a grid search of the bot's own Map when the value was built); a player who moved
+    // to the neighbouring region since is on another Map object / thread. The trade below runs the player's session handler and reads his trade
+    // data from this thread; it needs interaction distance anyway, so a target on another Map object cannot be traded with.
+    if (!SameMapObject(bot, player))
+        return false;
+
     std::list<Item*> items = AI_VALUE(std::list<Item*>, "items useful to give");
 
     if (items.empty())
@@ -797,6 +803,11 @@ bool RpgEnchantAction::Execute(Event& event)
         return false;
 
     if (!ai->IsSafe(player))
+        return false;
+
+    // twow-repo#707: IsSafe compares map id and instance id only. Below this reads the player's trade data and runs the player's own AI action
+    // (GetBotAI(player)->DoSpecificAction("trade", ...)) on this thread: only for a target on the bot's own Map object.
+    if (!SameMapObject(bot, player))
         return false;
 
     std::list<Item*> items = AI_VALUE(std::list<Item*>, "items useful to enchant");
