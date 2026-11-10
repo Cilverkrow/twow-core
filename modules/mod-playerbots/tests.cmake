@@ -4487,6 +4487,22 @@ add_test(NAME gathering_trace_policy
   COMMAND gathering_trace_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#333 T28b (AiPlayerbot.Gathering.PaceReach, default 0): the mining / herbalism reach - lag rule, colour, skills,
+# reach clamp, hostile cache, far-pick clock from the pick, timeout -> miss list, hourly budget, the appended far counters of
+# the [Gathering] event=share line (GatheringPacePolicy.h); source contract in t/contracts.d.
+add_executable(gathering_pace_policy_tests
+  "${PB_MODULE_DIR}/t/gathering_pace_policy_tests.cpp")
+
+target_include_directories(gathering_pace_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(gathering_pace_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME gathering_pace_policy
+  COMMAND gathering_pace_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # twow-repo#333 P1-v (AiPlayerbot.Travel.RpgAreaLevelFromSpawn): the area level of an RPG target from its spawn nearest to the bot.
 add_executable(rpg_area_level_policy_tests
   "${PB_MODULE_DIR}/t/rpg_area_level_policy_tests.cpp")
