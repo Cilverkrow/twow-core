@@ -52,6 +52,47 @@ inline char const* TypeName(GroupType type)
     return "unknown";
 }
 
+// ---- T30-1: AiPlayerbot.BotGroups.Manager.Types (design T30 v1.1 5.1, default 0) -------------------------------------------
+// A bit mask, bit = 1 << GroupType: 1 ADHOC, 2 QUEST. 4 DUNGEON (T34) and 8 FIXED (T31) are reserved and not active yet, so
+// they are masked like any unknown bit (the loader writes one error line). 0 = the manager forms nothing and no gate blocks.
+constexpr std::uint32_t kTypeAdhoc = 1u << std::uint32_t(GroupType::Adhoc);
+constexpr std::uint32_t kTypeQuest = 1u << std::uint32_t(GroupType::Quest);
+constexpr std::uint32_t kTypesActive = kTypeAdhoc | kTypeQuest;
+
+inline bool TypesValid(std::uint32_t raw)
+{
+    return (raw & ~kTypesActive) == 0;
+}
+
+inline std::uint32_t SanitizeTypes(std::uint32_t raw)
+{
+    return raw & kTypesActive;
+}
+
+// F9 (a): Types without status posts cannot work (the manager would see no bot): Types acts as 0 (one error line at load).
+inline std::uint32_t EffectiveTypes(std::uint32_t types, std::uint32_t statusSeconds)
+{
+    return statusSeconds ? SanitizeTypes(types) : 0u;
+}
+
+inline bool TypeOn(std::uint32_t types, GroupType type)
+{
+    return (SanitizeTypes(types) & (1u << std::uint32_t(type))) != 0;
+}
+
+// F1 (a): the manager owns a bot of its cohort once any type is on - whatever the bits, every legacy group writer is closed
+// for it (group_mgr::Blocks = Owns || the bot still stands in the manager's registry).
+inline bool Owns(std::uint32_t mode, std::uint32_t types, std::uint32_t guidLow)
+{
+    return SanitizeTypes(types) != 0 && Applies(mode, guidLow);
+}
+
+// T30-1 (agreed with CLI-Projekt 10.11.): the orphan grace of a bot in GROUP. The supervisor's GROUP handler (T02-GROUP) asks
+// group_mgr::IsManaged(guid, serial) at most once per 10 s; when it stays false for this long (the manager dropped the bot or
+// its group and no Exit reached it), the bot leaves GROUP on its own. Longer than an Exit, its ack timeout and the one retry,
+// so a late Exit still comes first.
+constexpr std::uint32_t kOrphanGraceMs = 60000;
+
 // ---- roles ----------------------------------------------------------------------------------------------------------------
 enum class Role : std::uint8_t
 {

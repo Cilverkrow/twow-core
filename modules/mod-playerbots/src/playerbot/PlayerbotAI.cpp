@@ -29,6 +29,7 @@
 #include "playerbot/GroupManagerPolicy.h"   // A3-GERUEST-L60 7.2.11: the manager's cohort rule for the status post
 #include "playerbot/ManagerInbox.h"         // A3-GERUEST-L60 7.2.11: the manager inbox (Status post)
 #include "playerbot/ManagerFacts.h"         // A3 step 6 T30-0: the bot's own facts for the status, edge and wish posts
+#include "playerbot/GroupManagerView.h"     // A3 step 6 T30-1: IsManaged (status gate), QuestRoleOf (PosStuck mark)
 #include "Maps/PathFinder.h"
 #include <stdarg.h>
 #include <array>
@@ -462,7 +463,11 @@ void PlayerbotAI::PostManagerStatus()
         return;
     uint32 const nowMs = WorldTimer::getMSTime();
     bool const due = ai::manager_inbox::StatusDue(managerStatusLastMs, nowMs, sPlayerbotAIConfig.botGroupsManagerStatusSeconds * 1000);
-    ai::manager_inbox::EdgeFacts const edge = ai::manager_facts::ReadEdge(bot);
+    ai::manager_inbox::EdgeFacts edge = ai::manager_facts::ReadEdge(bot);
+    // T30-1 (3.6): the PosStuck mark of a manager QUEST leader rides in the edge while the bot leads that group, then it drops.
+    if (managerPosStuck && ai::group_mgr::QuestRoleOf(bot->GetGUIDLow()) != 2)
+        managerPosStuck = false;
+    edge.posStuck = managerPosStuck;
     bool const edgeChanged = !managerEdgeKnown || edge != managerEdgeLast;
     managerEdgeLast = edge;
     managerEdgeKnown = true;
@@ -2509,8 +2514,10 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
 
         // A3-GERUEST-L60 7.2.11 (AiPlayerbot.BotGroups.Manager.StatusSeconds, default 0; measurement only): once per engine pass
         // the bot checks whether its status snapshot for the group manager's inbox is due; only while the manager applies to
-        // this bot. Before the progress reading and the quest book block, which stay adjacent (their contracts pin it).
-        if (sPlayerbotAIConfig.botGroupsManagerStatusSeconds && ai::group_mgr::Applies(sPlayerbotAIConfig.botGroupsManager, bot->GetGUIDLow()))
+        // this bot (T30-1: or the manager still holds it). Before the progress reading and the quest book block, which stay
+        // adjacent (their contracts pin it).
+        if (sPlayerbotAIConfig.botGroupsManagerStatusSeconds &&
+            (ai::group_mgr::Applies(sPlayerbotAIConfig.botGroupsManager, bot->GetGUIDLow()) || ai::group_mgr::IsManaged(bot->GetGUIDLow())))
             PostManagerStatus();
 
         // A3 step 5 (ADR-0041, AiPlayerbot.CombatRule.ProgressGuard, default 0): one reading of the combat progress clock per engine

@@ -4,13 +4,16 @@
 
 #include "playerbot/BotSlots.h"
 #include "playerbot/QuestGroupPolicy.h"   // OB-10 card R2: S7 group roles
+#include "playerbot/GroupManagerView.h"   // A3 step 6 T30-1: the role of a manager QUEST member (3.6)
 #include "playerbot/CombatStuckClockPolicy.h"   // twow-repo#575 / #601 (Unstuck.CombatFightClock)
 namespace ai
 {
     // OB-10 anti-stillstand card R2 (twow-repo#627 S7): a quest group member is left to the S7 manager (QuestGroupPolicy.h).
     inline bool S7GroupMember(PlayerbotAI* ai, Player* bot)
     {
-        return quest_groups::StuckTriggersExempt(ai->GetQuestGroupRole(), bot->GetGroup() != nullptr);
+        // 3.6 (T30-1): the S7 role or the role in a manager QUEST group.
+        uint8 const role = std::max<uint8>(ai->GetQuestGroupRole(), group_mgr::QuestRoleOf(bot->GetGUIDLow()));
+        return quest_groups::StuckTriggersExempt(role, bot->GetGroup() != nullptr);
     }
 
     // twow-repo#575 / #601 (AiPlayerbot.Unstuck.CombatFightClock, default 0; OB-00 04.11.2026): the seconds the combat stuck

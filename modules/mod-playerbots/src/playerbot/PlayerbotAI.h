@@ -450,6 +450,11 @@ private:
     // manager inbox when due (own thread, own values only); T30-0 adds the group edge (on a change and with every status) and
     // the group wish (with the status).
     void PostManagerStatus();
+public:
+    // A3 step 6 T30-1 (3.6 S7 mirror): PosStuck detected this bot as the leader of a manager QUEST group; the next group edge
+    // carries it (b5) and the manager ends the group with leader_stuck.
+    void NoteManagerLeaderStuck() { managerPosStuck = true; }
+private:
     // A3 step 3 (ADR-0041, AiPlayerbot.Supervisor, default 0): the supervisor of this bot, made on the first engine pass the
     // switch applies to it.
     ai::supervisor::Supervisor* EnsureSupervisor();
@@ -1460,6 +1465,7 @@ protected:
     uint32 managerStatusSeq = 0;      // 7.2.11: sequence of this bot's status posts
     ai::manager_inbox::EdgeFacts managerEdgeLast;   // T30-0: the group edge last compared (a change posts it)
     bool managerEdgeKnown = false;                  // T30-0: false until the first comparison (the first one always posts)
+    bool managerPosStuck = false;                   // T30-1: NoteManagerLeaderStuck; cleared once the bot leads no manager QUEST group
     // A3 step 3 (ADR-0041, AiPlayerbot.Supervisor, default 0): nullptr while the switch does not apply to this bot.
     std::unique_ptr<ai::supervisor::Supervisor> supervisor_;
     // A3 step 2 (ADR-0041, AiPlayerbot.QuestBook, default 0): nullptr while neither the switch nor the shadow applies to this bot.

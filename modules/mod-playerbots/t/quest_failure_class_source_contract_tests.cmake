@@ -341,7 +341,7 @@ require_text("${policy}" "        case FailureClass::GroupNeeded: return \"group
 require_text("${classify_block}" "                if (sPlayerbotAIConfig.questFirstProgressionFailureClassesGroupNeeded &&\n                    failureDecision.failureClass == ai::quest_failure_class::FailureClass::EmptyOffer)" "S7 hook: key first, empty offers only")
 require_order("${classify_block}" "failureDecision = ai::quest_failure_class::Classify(" "ai::quest_failure_class::WithGroupNeeded(failureDecision.failureClass, true," "S7 hook: after the classification")
 require_order("${classify_block}" "ai::quest_failure_class::WithGroupNeeded(failureDecision.failureClass, true," "transientStreak = uint32(" "S7 hook: before the transient streak reads the class")
-require_text("${classify_block}" "sPlayerbotAIConfig.questGroupsSuggestedPlayers) && ai::quest_groups::QueuedAge(bot->GetGUIDLow(), questId))" "S7 hook: one QueuedAge per open group quest")
+require_text("${classify_block}" "sPlayerbotAIConfig.questGroupsSuggestedPlayers) && (ai::quest_groups::QueuedAge(bot->GetGUIDLow(), questId) ||\n                                ai::group_mgr::QueuedAge(bot->GetGUIDLow(), questId)))" "S7 hook: one QueuedAge per open group quest (S7 or its T30-1 manager mirror)")
 forbid_text("${choose}" "OldestQueuedAge" "S7 hook: no full-queue scan in the choose action")
 count_text("${choose}" "WithGroupNeeded(" 1 "S7 hook: one class override")
 

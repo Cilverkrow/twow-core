@@ -9,6 +9,7 @@
 #include "playerbot/QuestFailureClassPolicy.h"
 #include "playerbot/QuestFeasibilityPolicy.h"
 #include "playerbot/QuestGroupWorld.h"     // twow-repo#627 S7 hook: the queue age for the band log gate
+#include "playerbot/GroupManagerView.h"    // A3 step 6 T30-1: the manager's queue age (3.6)
 #include "playerbot/QuestSearchPolicy.h"
 #include "playerbot/TravelMgr.h"          // twow-repo#601 R1 package V2-a: ai::zone_keep::ReleasePushApplies
 #include "playerbot/ZoneKeepPolicy.h"     // twow-repo#601 R1 package V2-a: PushedPriorFailures
@@ -538,7 +539,8 @@ bool ChooseTravelTargetAction::TryBandStep(Player* requester, TravelTarget* trav
                 ++eliteQuests;
             if (queuedFreeMinutes && bot->GetQuestStatus(questId) == QUEST_STATUS_INCOMPLETE &&
                 ai::quest_groups::IsGroupHelpQuest(quest->GetType(), quest->GetSuggestedPlayers(), sPlayerbotAIConfig.questGroupsSuggestedPlayers) &&
-                qb::QueuedFree(ai::quest_groups::QueuedAge(bot->GetGUIDLow(), questId), queuedFreeMinutes))
+                qb::QueuedFree(std::max(ai::quest_groups::QueuedAge(bot->GetGUIDLow(), questId),
+                    ai::group_mgr::QueuedAge(bot->GetGUIDLow(), questId)), queuedFreeMinutes))   // 3.6: S7 or the manager (T30-1)
                 ++queuedFree;
         }
     }

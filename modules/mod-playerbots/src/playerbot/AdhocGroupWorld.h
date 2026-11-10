@@ -19,7 +19,9 @@ namespace ai::adhoc_group
 
 // The quest objective the player's active travel target works on (invalid if none).
 ObjectiveKey CurrentObjective(Player* player);
-// Roster bot, no real player in charge, not in an instance, battleground or raid.
+// Roster bot, no real player in charge, not in an instance, battleground or raid (the group manager's status fact, T30-1 G2).
+bool CandidateFacts(Player* player);
+// CandidateFacts and not owned or held by the group manager (group_mgr::Blocks): an ad-hoc candidate or partner.
 bool IsCandidateBot(Player* player);
 std::uint32_t ObjectiveCounter(Player* player, ObjectiveKey const& key);
 bool ObjectiveDone(Player* player, ObjectiveKey const& key);
