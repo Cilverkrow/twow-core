@@ -235,7 +235,10 @@ void AdhocGroupAction::Scan(uint32 now)
     for (ObjectGuid const& guid : AI_VALUE(std::list<ObjectGuid>, "nearest friendly players"))
     {
         Player* other = sObjectMgr.GetPlayer(guid);
-        if (!other || other == bot || other->GetTeam() != bot->GetTeam() || other->GetMapId() != bot->GetMapId())
+        // twow-repo#707 (CLI-GRP side finding of #708): the list is a cache and this filter compared only the map id, so a neighbour that crossed to
+        // another region (same map id, other Map object, other thread) passed it; IsCandidateBot / PendingHint / CurrentObjective below read its
+        // AI context, quest map and group. The Map object test comes before any read of `other`.
+        if (!other || other == bot || !SameMapObject(bot, other) || other->GetTeam() != bot->GetTeam())
             continue;
         if (sServerFacade.GetDistance2d(bot, other) > radius || !IsCandidateBot(other))
             continue;
