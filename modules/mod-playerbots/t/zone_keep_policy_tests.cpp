@@ -37,6 +37,19 @@ int main()
         Require(InStartZone(sz::HighElfRace, true, 12, sz::ThalassianZone) && InStartZone(sz::HighElfRace, true, 12, sz::AlahThalasZone),
             "high elf: Thalassian Highlands and Alah'Thalas");
         Require(StartZoneKnown(sz::GoblinRace, true, 0) && StartZoneKnown(1, false, 12) && !StartZoneKnown(1, false, 0), "known start");
+        // SZM adoption review (10.11.2026): without CustomRaceStartZones a goblin / high elf lives at its proxy start while its
+        // playercreateinfo zone is the custom one (5536 / 5225): unknown, so the gate fails open (not held, no rescue_gate).
+        Require(!StartZoneKnown(sz::GoblinRace, false, sz::BlackstoneZone) && !StartZoneKnown(sz::HighElfRace, false, sz::ThalassianZone),
+            "custom start race without custom starts: unknown (fail open)");
+        Require(StartZoneKnown(sz::GoblinRace, true, sz::BlackstoneZone) && StartZoneKnown(sz::HighElfRace, true, sz::ThalassianZone),
+            "custom start race with custom starts: known");
+        Require(StartZoneDefers(true, StartZoneKnown(sz::GoblinRace, false, sz::BlackstoneZone), false, 14) == false,
+            "goblin in Durotar without custom starts: no deferral");
+        Require(CustomStartUngated(sz::GoblinRace, false) && CustomStartUngated(sz::HighElfRace, false),
+            "custom start race without custom starts: never held (StartZoneHolds, band-step hold)");
+        Require(!CustomStartUngated(sz::GoblinRace, true) && !CustomStartUngated(sz::HighElfRace, true), "with custom starts: held as any race");
+        for (std::uint32_t race = 1; race <= 8; ++race)
+            Require(!CustomStartUngated(race, false) && !CustomStartUngated(race, true), "standard races: never ungated");
     }
 
     // 2) StartZoneMinLevel: 0 off, gated below the level only.
@@ -91,6 +104,46 @@ int main()
 
         Require(LineDue(0, 5) && LineDue(1000, 1000) && !LineDue(1000, 999), "lines: once per window");
         Require(GateLineSeconds == 600 && FollowLeaveSeconds == 300 && ReleasePushLevels == 3, "constants of the design note");
+    }
+
+    // 3) SZF-Q objective window (StartZoneMinLevel.ObjectiveWindow, .AboveLevels).
+    {
+        Require(ClampObjectiveWindowMode(0) == 0 && ClampObjectiveWindowMode(1) == 1 && ClampObjectiveWindowMode(2) == 2 &&
+            ClampObjectiveWindowMode(3) == 3, "SZF-Q: modes 0..3 kept");
+        Require(ClampObjectiveWindowMode(4) == 0 && ClampObjectiveWindowMode(-1) == 0 && ClampObjectiveWindowMode(99) == 0,
+            "SZF-Q: any other mode acts like 0");
+        Require(ClampAboveLevels(0) == 1 && ClampAboveLevels(-5) == 1 && ClampAboveLevels(1) == 1 && ClampAboveLevels(2) == 2 &&
+            ClampAboveLevels(3) == 3 && ClampAboveLevels(4) == 3 && ClampAboveLevels(100) == 3, "SZF-Q: AboveLevels clamped to 1..3");
+        Require(ObjectiveWindowAboveDefault == 2 && ObjectiveOldAboveLevels == 1, "SZF-Q: default 2, old rule +1");
+
+        // The old rule (+1) unless held AND the quest is in the log and not complete.
+        std::int32_t const base = ObjectiveOldAboveLevels;
+        Require(ObjectiveAllowed(4, 3, base, false, false, 2) && !ObjectiveAllowed(5, 3, base, false, false, 2),
+            "SZF-Q: not held, not in log: L3 takes ql4, refuses ql5 (old rule)");
+        Require(!ObjectiveAllowed(5, 3, base, false, true, 2), "SZF-Q: an unheld bot keeps the old rule (q21 ql5 at L3 refused)");
+        Require(!ObjectiveAllowed(5, 3, base, true, false, 2), "SZF-Q: a quest outside the log / complete keeps the old rule");
+        Require(ObjectiveAllowed(5, 3, base, true, true, 2), "SZF-Q: held + in log: q21 / q60145 ql5 at L3 open");
+        Require(ObjectiveAllowed(3, 1, base, true, true, 2) && ObjectiveAllowed(4, 2, base, true, true, 2),
+            "SZF-Q: q459 ql3 at L1, q757 ql4 at L2 open (OB-50 15c41a7c)");
+        Require(!ObjectiveAllowed(6, 2, base, true, true, 2) && !ObjectiveAllowed(7, 3, base, true, true, 2),
+            "SZF-Q: q745 ql6 at L2 and q60 ql7 at L3 stay closed at 2");
+        Require(ObjectiveAllowed(6, 3, base, true, true, 3) && !ObjectiveAllowed(7, 3, base, true, true, 3), "SZF-Q: AboveLevels 3: L+3");
+        Require(ObjectiveAllowed(6, 3, base, true, true, 9) && !ObjectiveAllowed(7, 3, base, true, true, 9), "SZF-Q: above clamped to 3");
+        Require(!ObjectiveAllowed(5, 3, base, true, true, 0) && ObjectiveAllowed(4, 3, base, true, true, 0),
+            "SZF-Q: above 0 clamps to 1 = the old rule");
+        Require(ObjectiveAllowed(0, 3, base, false, false, 2) && ObjectiveAllowed(-1, 3, base, true, true, 2),
+            "SZF-Q: a scaled quest (level <= 0) always passes, as before");
+
+        // The quest book path: the window never narrows the book's AboveLevels.
+        Require(ObjectiveAboveLimit(3, true, true, 2) == 3 && ObjectiveAboveLimit(1, true, true, 2) == 2 &&
+            ObjectiveAboveLimit(1, false, true, 2) == 1, "SZF-Q: max(book AboveLevels, window), only when held + in log");
+
+        // The line / counter: only a pass that the window made.
+        Require(ObjectiveWindowOnly(5, 3, base, true, true, 2), "SZF-Q: ql5 at L3 passes only because of the window");
+        Require(!ObjectiveWindowOnly(4, 3, base, true, true, 2), "SZF-Q: ql4 at L3 passes under the old rule: no line");
+        Require(!ObjectiveWindowOnly(6, 3, base, true, true, 2), "SZF-Q: refused: no line");
+        Require(!ObjectiveWindowOnly(5, 3, base, false, true, 2) && !ObjectiveWindowOnly(5, 3, base, true, false, 2),
+            "SZF-Q: OFF (unheld or not in the log): never a line");
     }
 
     std::cout << "zone_keep_policy_tests: all passed\n";

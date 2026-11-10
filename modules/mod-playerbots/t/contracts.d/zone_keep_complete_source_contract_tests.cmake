@@ -1,7 +1,7 @@
 cmake_policy(VERSION 3.16)
 # twow-repo#601 owner rule R1, package "start-zone rule complete" (OB-00 08.11.2026; CLI-Deep, ZoneKeepPolicy.h, design
 # ws-10/cli-quest-organic/r1/SZM-V2-RG-CAUSE-AND-GROUP-GATE-DESIGN-20261108.md): AiPlayerbot.QuestFirstProgression.StartZoneMinLevel.Complete
-# (0 off default and rollback, 1 on) - G1 no follow of a bot leader outside a held bot's start zone, G2 the refused group copy logged,
+# (0 off = rollback, 1 on = default since the SZM adoption 10.11.2026) - G1 no follow of a bot leader outside a held bot's start zone, G2 the refused group copy logged,
 # G3 the group leave after FollowLeaveSeconds of refused follow, V2-a the release push (first empty offer = band step in the window).
 # Pins the key, the pure rules, the four sites with the switch first (nothing read at 0), the real-player exemption, the lines and
 # the test registration.
@@ -63,14 +63,16 @@ read_source("strategy/actions/FollowActions.cpp" follow)
 read_source("strategy/actions/LeaveGroupAction.cpp" leave)
 read_source("strategy/actions/ChooseTravelTargetAction.cpp" choose)
 
-# 1. Key: member 0, parse 0 default with only 1 on (an unknown value off, logged), echoed in sorted order, documented in the dist.
-require_text("${config_h}" "uint32 questFirstProgressionStartZoneComplete = 0;" "Complete member off")
-require_text("${config_cpp}" "config.GetIntDefault(\"AiPlayerbot.QuestFirstProgression.StartZoneMinLevel.Complete\", 0);" "Complete default 0")
-require_text("${config_cpp}" "    questFirstProgressionStartZoneComplete = config.GetIntDefault(\"AiPlayerbot.QuestFirstProgression.StartZoneMinLevel.Complete\", 0);\n    if (questFirstProgressionStartZoneComplete != 0 && !ai::zone_keep::CompleteOn(int32(questFirstProgressionStartZoneComplete)))\n    {\n        sLog.outError(\"[ZoneKeep] config key=StartZoneMinLevel.Complete value=%u result=off (0 off, 1 on)\", questFirstProgressionStartZoneComplete);\n        questFirstProgressionStartZoneComplete = 0;\n    }" "only 1 is on, an unknown value off and logged")
+# 1. Key: member 1, parse 1 default (SZM adoption 10.11.2026, 0 = rollback) with only 1 on (an unknown value off, logged), echoed in
+#    sorted order, documented in the dist.
+require_text("${config_h}" "uint32 questFirstProgressionStartZoneComplete = 1;" "Complete member on (SZM adoption)")
+require_text("${config_cpp}" "config.GetIntDefault(\"AiPlayerbot.QuestFirstProgression.StartZoneMinLevel.Complete\", 1);" "Complete default 1")
+require_text("${config_cpp}" "    questFirstProgressionStartZoneComplete = config.GetIntDefault(\"AiPlayerbot.QuestFirstProgression.StartZoneMinLevel.Complete\", 1);\n    if (questFirstProgressionStartZoneComplete != 0 && !ai::zone_keep::CompleteOn(int32(questFirstProgressionStartZoneComplete)))\n    {\n        sLog.outError(\"[ZoneKeep] config key=StartZoneMinLevel.Complete value=%u result=off (0 off, 1 on)\", questFirstProgressionStartZoneComplete);\n        questFirstProgressionStartZoneComplete = 0;\n    }" "only 1 is on, an unknown value off and logged")
 require_text("${config_cpp}" "#include \"playerbot/ZoneKeepPolicy.h\"" "the policy include")
-require_text("${config_cpp}" "            {\"QuestFirstProgression.StartZoneMinLevel.Cohort\", Value(questFirstProgressionStartZoneMinLevelCohort)},\n            {\"QuestFirstProgression.StartZoneMinLevel.Complete\", Value(questFirstProgressionStartZoneComplete)},\n            {\"QuestFirstProgression.T" "[ConfigEcho] entry, sorted (owner rule #615, #710)")
-require_text("${conf_dist}" "\nAiPlayerbot.QuestFirstProgression.StartZoneMinLevel.Complete = 0\n" "dist key 0")
-require_order("${conf_dist}" "AiPlayerbot.QuestFirstProgression.StartZoneMinLevel.Cohort = 1" "AiPlayerbot.QuestFirstProgression.StartZoneMinLevel.Complete = 0" "dist key after .Cohort")
+require_text("${config_cpp}" "            {\"QuestFirstProgression.StartZoneMinLevel.Cohort\", Value(questFirstProgressionStartZoneMinLevelCohort)},\n            {\"QuestFirstProgression.StartZoneMinLevel.Complete\", Value(questFirstProgressionStartZoneComplete)},\n            {\"QuestFirstProgression.StartZoneMinLevel.ObjectiveWindow\"" "[ConfigEcho] entry, sorted (owner rule #615, #710; the next key is SZF-Q's .ObjectiveWindow, twow-repo#575)")
+require_text("${conf_dist}" "\nAiPlayerbot.QuestFirstProgression.StartZoneMinLevel.Complete = 1\n" "dist key 1")
+require_order("${conf_dist}" "AiPlayerbot.QuestFirstProgression.StartZoneMinLevel.Cohort = 1" "AiPlayerbot.QuestFirstProgression.StartZoneMinLevel.Complete = 1" "dist key after .Cohort")
+require_text("${conf_dist}" "#   0 = off (rollback), 1 = on (default since the SZM adoption, 10.11.2026); other values act like 0." "dist mode text: 0 = rollback, 1 = default")
 foreach(line follow_gate group_copy_gate group_leave release_push)
   require_text("${conf_dist}" "state=${line}" "dist names the ${line} line")
 endforeach()
@@ -92,7 +94,7 @@ forbid_text("${policy}" "#include \"Player" "no game header in the policy")
 require_text("${travel_h}" "bool FollowGated(Player* bot, PlayerbotAI* botAI, Player* leader);" "G1 helper declared")
 require_text("${travel_h}" "bool ReleasePushApplies(Player* bot, PlayerbotAI* botAI);" "V2-a helper declared")
 require_text("${travel}" "return sPlayerbotAIConfig.questFirstProgressionStartZoneComplete && ai::zone_keep::StartZoneHolds(bot, botAI);" "CompleteHolds = switch + StartZoneHolds")
-require_text("${travel}" "sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !(botAI && botAI->HasRealPlayerMaster());" "StartZoneHolds: roster bots without a real player master")
+require_text("${travel}" "sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !(botAI && botAI->HasRealPlayerMaster()) &&" "StartZoneHolds: roster bots without a real player master (then the custom start exception)")
 between("${travel}" "bool ai::zone_keep::FollowGated(" "bool ai::zone_keep::GroupLeaveDue(" follow_gated)
 require_order("${follow_gated}" "!ai::zone_keep::CompleteHolds(bot, botAI)" "OutsideStartZone(bot, &leaderPos)" "G1: held before the area lookup")
 require_text("${follow_gated}" "if (!ai::zone_keep::FollowDefers(true, leaderZone != 0))" "G1 rule used")

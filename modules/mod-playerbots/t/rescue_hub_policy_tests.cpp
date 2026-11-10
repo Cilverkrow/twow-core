@@ -19,7 +19,7 @@ void Require(bool condition, char const* message)
 
 std::uint32_t FirstEntry(std::uint32_t race, std::uint32_t level)
 {
-    ai::rescue_hub::Row const* row = ai::rescue_hub::RowFor(race, level);
+    ai::rescue_hub::Row const* row = ai::rescue_hub::RowFor(race, level, true);
     return row ? row->entries[0] : 0;
 }
 }
@@ -44,37 +44,49 @@ int main()
         Require(FirstEntry(6, 4) == 6747, "tauren: Bloodhoof (Kauth), not Thunder Bluff (Pala 6746)");
         for (std::uint32_t race : { 1u, 2u, 3u, 4u, 5u, 6u, 7u, 8u })
         {
-            Row const* row = RowFor(race, 4);
+            Row const* row = RowFor(race, 4, true);
             Require(row && row->step == Step::OwnHub && row->minDistance == OwnHubMinDistance, "L4: own_hub with the short distance");
         }
     }
 
     // 3. Next zone: night elf / undead L5-10 only; the other races go back to legacy at L5.
     {
-        Row const* ne = RowFor(4, 5);
+        Row const* ne = RowFor(4, 5, true);
         Require(ne && ne->step == Step::NextZone && ne->entries[0] == 6737 && ne->minDistance == NextZoneMinDistance, "night elf L5: Auberdine");
         Require(FirstEntry(4, 10) == 6737, "night elf L10: Auberdine");
-        Require(FirstEntry(5, 7) == 6739 && RowFor(5, 7)->step == Step::NextZone, "undead L7: The Sepulcher");
-        Require(!RowFor(4, 11) && !RowFor(5, 11), "L11: legacy (inns by level)");
+        Require(FirstEntry(5, 7) == 6739 && RowFor(5, 7, true)->step == Step::NextZone, "undead L7: The Sepulcher");
+        Require(!RowFor(4, 11, true) && !RowFor(5, 11, true), "L11: legacy (inns by level)");
         for (std::uint32_t race : { 1u, 2u, 3u, 6u, 7u, 8u })
-            Require(!RowFor(race, 5), "L5 of a race whose faction has another start on its continent: legacy");
+            Require(!RowFor(race, 5, true), "L5 of a race whose faction has another start on its continent: legacy");
     }
 
     // 4. High elf (OB-00 08.11.): own hub up to L9 (two innkeepers), no next-zone row; goblin: no row (island rules).
     {
-        Row const* he = RowFor(10, 9);
+        Row const* he = RowFor(10, 9, true);
         Require(he && he->step == Step::OwnHub && he->entries[0] == 80227 && he->entries[1] == 61831, "high elf L9: Brinthilien / Alah'Thalas");
-        Require(!RowFor(10, 10), "high elf L10: legacy (cross-continent rule)");
+        Require(!RowFor(10, 10, true), "high elf L10: legacy (cross-continent rule)");
         for (std::uint32_t level = 1; level <= 60; ++level)
-            Require(!RowFor(9, level), "goblin: never a row");
-        Require(!RowFor(0, 1) && !RowFor(11, 1), "unknown race: no row");
-        Require(!RowFor(1, 0), "level 0: no row");
+            Require(!RowFor(9, level, true), "goblin: never a row");
+        Require(!RowFor(0, 1, true) && !RowFor(11, 1, true), "unknown race: no row");
+        Require(!RowFor(1, 0, true), "level 0: no row");
+    }
+
+    // 4b. Without CustomRaceStartZones (SZM adoption review 10.11.2026): no high-elf row (proxy start Northshire, legacy targets);
+    //     goblins still none; every other race gets the same row as with custom starts.
+    {
+        for (std::uint32_t level = 1; level <= 60; ++level)
+        {
+            Require(!RowFor(10, level, false), "high elf without custom starts: no row");
+            Require(!RowFor(9, level, false), "goblin without custom starts: no row");
+            for (std::uint32_t race : { 1u, 2u, 3u, 4u, 5u, 6u, 7u, 8u })
+                Require(RowFor(race, level, false) == RowFor(race, level, true), "standard races: custom starts change nothing");
+        }
     }
 
     // 5. The R1 gate holds back next_zone rows only.
     {
-        Require(Usable(RowFor(4, 6), false) && !Usable(RowFor(4, 6), true), "next_zone gated by R1");
-        Require(Usable(RowFor(4, 2), true), "own_hub stays in the start zone: R1 does not gate it");
+        Require(Usable(RowFor(4, 6, true), false) && !Usable(RowFor(4, 6, true), true), "next_zone gated by R1");
+        Require(Usable(RowFor(4, 2, true), true), "own_hub stays in the start zone: R1 does not gate it");
         Require(!Usable(nullptr, false), "no row: not usable");
     }
 

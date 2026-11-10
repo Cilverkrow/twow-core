@@ -45,6 +45,17 @@ bool PostDirectiveAck(std::uint32_t guidLow, std::uint32_t seq, std::uint8_t sta
     return Post(event);
 }
 
+bool PostDirectiveLeft(std::uint32_t guidLow, std::uint16_t serial, std::uint8_t reason)
+{
+    Event event{};
+    event.botLow = guidLow;
+    event.kind = Kind::DirectiveAck;
+    event.seq = 0;
+    event.mapOrDungeon = std::uint32_t(kAckLeft) | (std::uint32_t(serial) << 16);
+    event.reason = reason;
+    return Post(event);
+}
+
 std::size_t Drain(std::vector<Event>& out, std::size_t max)
 {
     // Grow the vector before taking the lock, so the lock only covers the copy.

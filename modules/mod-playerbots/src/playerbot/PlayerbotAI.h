@@ -385,6 +385,7 @@ enum class ChatCommandKind : uint8
     Logout,            // logout (whisper reply to owner, SetShouldLogOut)
     Wait,              // "wait <seconds>": delay + reply to owner; command = the text after "wait "
     QueueWalk,         // "queue <command>": the group walk runs on the bot thread, then the command is delayed by the index
+    Incoming,          // twow-repo#563 part 3: raw incoming chat; ProcessIncomingChat (security check, chat filter, dispatch) runs on the bot thread
 };
 
 // twow-repo#563 part 2: the holder keeps the owner as an ObjectGuid, never as a Player*. The Player of the sender can be logged out and freed
@@ -402,6 +403,8 @@ public:
         this->type = other.type;
         this->time = other.time;
         this->kind = other.kind;
+        this->replyChannel = other.replyChannel;
+        this->inviteCheckDone = other.inviteCheckDone;
     }
 
 public:
@@ -410,6 +413,11 @@ public:
     uint32 GetType() { return type; }
     time_t GetTime() { return time; }
     ChatCommandKind GetKind() const { return kind; }
+    // reply channel of the sender (a ChatMsg, -1 = whisper); applied to currentChat when the command runs, on the bot thread
+    int32 GetReplyChannel() const { return replyChannel; }
+    void SetReplyChannel(int32 channel) { replyChannel = channel; }
+    bool GetInviteCheckDone() const { return inviteCheckDone; }
+    void SetInviteCheckDone(bool done) { inviteCheckDone = done; }
 
 private:
     std::string command;
@@ -417,6 +425,8 @@ private:
     uint32 type;
     time_t time;
     ChatCommandKind kind;
+    int32 replyChannel = -1;
+    bool inviteCheckDone = false;
 };
 
 class PlayerbotAI : public PlayerbotAIBase
@@ -450,6 +460,11 @@ private:
     // manager inbox when due (own thread, own values only); T30-0 adds the group edge (on a change and with every status) and
     // the group wish (with the status).
     void PostManagerStatus();
+public:
+    // A3 step 6 T30-1 (3.6 S7 mirror): PosStuck detected this bot as the leader of a manager QUEST group; the next group edge
+    // carries it (b5) and the manager ends the group with leader_stuck.
+    void NoteManagerLeaderStuck() { managerPosStuck = true; }
+private:
     // A3 step 3 (ADR-0041, AiPlayerbot.Supervisor, default 0): the supervisor of this bot, made on the first engine pass the
     // switch applies to it.
     ai::supervisor::Supervisor* EnsureSupervisor();
@@ -462,6 +477,8 @@ public:
     void EnsureDefaultMovementStrategy(Player* requester = nullptr);
 	std::string HandleRemoteCommand(std::string command);
     void HandleCommand(uint32 type, const std::string& text, Player& fromPlayer, const uint32 lang = LANG_UNIVERSAL);
+    // twow-repo#563 part 3: the part of the chat handling that reads bot state (security check, chat filter, dispatch); runs from HandleCommands on the bot thread.
+    void ProcessIncomingChat(uint32 type, std::string text, Player& fromPlayer, int32 replyChannel, bool inviteCheckDone);
     void QueueChatResponse(uint32 msgType, ObjectGuid guid1, ObjectGuid guid2, std::string message, std::string chanName, std::string name, bool noDelay = false);
 	void HandleBotOutgoingPacket(const WorldPacket& packet);
     // twow-repo#563 (X1): any thread may queue a packet for this bot; UpdateAI handles it on the bot's thread.
@@ -653,6 +670,9 @@ public:
     uint32 GetEquipStatsValue(Player* player);
     bool HasSkill(SkillType skill);
     bool IsAllowedCommand(std::string text);
+    // twow-repo#698: one atomic load, safe from any thread; 0 = never published (see RosterSnapshotPolicy.h)
+    uint32 GetRosterSnapshot() const { return rosterSnapshot.load(std::memory_order_relaxed); }
+    void PublishRosterSnapshot();   // bot thread only
     float GetRange(std::string type);
 
     static ReputationRank GetFactionReaction(FactionTemplateEntry const* thisTemplate, FactionTemplateEntry const* otherTemplate);
@@ -1429,7 +1449,6 @@ protected:
     PlayerbotSecurity security;
     std::map<std::string, time_t> whispers;
     std::pair<ChatMsg, time_t> currentChat;
-    static std::set<std::string> unsecuredCommands;
     bool allowActive[MAX_ACTIVITY_TYPE];
     time_t allowActiveCheckTimer[MAX_ACTIVITY_TYPE];
     bool inCombat = false;
@@ -1451,6 +1470,9 @@ protected:
     ai::supervisor::Event combatLoopEvent;
     ai::combat_rule::TargetBackoff targetBackoff;   // A3 step 5 P5 (CombatRule.TargetRule): armed after an empty pick
     uint32 tankKitLevel = 0;   // twow-repo#602 (Rotation.TankKitFromLevel): the level the strategies were last built for; a crossing of the tank key level rebuilds them
+    // twow-repo#698: role and group state for readers on other threads (the roster list); written only by this bot's own thread in UpdateAIInternal
+    std::atomic<uint32> rosterSnapshot{0};
+    uint32 rosterSnapshotAtMs = 0;
     ObjectGuid losCacheGuid;   // twow-repo#602 (Rotation.LosCacheMs): the target of the cached line-of-sight verdict
     bool losCacheInLos = true;   // the cached verdict
     uint32 losCacheAt = 0;   // when it was taken (WorldTimer ms)
@@ -1460,6 +1482,7 @@ protected:
     uint32 managerStatusSeq = 0;      // 7.2.11: sequence of this bot's status posts
     ai::manager_inbox::EdgeFacts managerEdgeLast;   // T30-0: the group edge last compared (a change posts it)
     bool managerEdgeKnown = false;                  // T30-0: false until the first comparison (the first one always posts)
+    bool managerPosStuck = false;                   // T30-1: NoteManagerLeaderStuck; cleared once the bot leads no manager QUEST group
     // A3 step 3 (ADR-0041, AiPlayerbot.Supervisor, default 0): nullptr while the switch does not apply to this bot.
     std::unique_ptr<ai::supervisor::Supervisor> supervisor_;
     // A3 step 2 (ADR-0041, AiPlayerbot.QuestBook, default 0): nullptr while neither the switch nor the shadow applies to this bot.

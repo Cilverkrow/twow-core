@@ -7,12 +7,22 @@
 #include "playerbot/QuestGroupWorld.h"
 #include "playerbot/GroupOps.h"   // A3 lever 2: BotGroups.WritePath
 #include "playerbot/TravelMgr.h"   // twow-repo#601 R1 package G3: ai::zone_keep::GroupLeaveDue
+#include "playerbot/GroupManagerView.h"   // A3 step 6 T30-1: the manager gate (G6, G11)
 
 namespace ai
 {
     bool LeaveGroupAction::Execute(Event& event)
     {
         Player* master = event.getOwner();
+
+        // G11 (T30-1): a bot the group manager holds leaves only by the manager's op (RunLeave), by itself or by a real
+        // player's word; another bot's "leave" is refused.
+        if (master && master != bot && group_mgr::IsManaged(bot->GetGUIDLow()))
+        {
+            PlayerbotAI* const masterAi = GetBotAI(master);
+            if (masterAi && !masterAi->IsRealPlayer())
+                return false;
+        }
 
         // #292: a persistent roster bot is sent away only by itself, its master,
         // the group leader or a GM - and saying it twice is not an error.
@@ -128,6 +138,10 @@ namespace ai
     {
         // twow-repo#627 S7: a help group is left by its own rules in the world-thread manager (QuestGroupWorld.cpp).
         if (quest_groups::IsMember(ai))
+            return false;
+
+        // G6 (T30-1, F14 (a)): a manager group is left by the manager's end rules; LeaveFarAway stays off for its bots.
+        if (group_mgr::Blocks(bot->GetGUIDLow()))
             return false;
 
         if (bot->InBattleGround())

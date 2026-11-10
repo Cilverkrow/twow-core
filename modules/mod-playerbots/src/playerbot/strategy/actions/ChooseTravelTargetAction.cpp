@@ -30,6 +30,7 @@
 #include "playerbot/QuestFirstOrderPolicy.h"   // twow-repo#601 decision order (Grind.QuestFirstOrder)
 #include "playerbot/QuestBandPolicy.h"         // twow-repo#601 S5a F1: the band empty streak value
 #include "playerbot/QuestGroupWorld.h"         // twow-repo#627 S7 hook: the queue age for FailureClasses.GroupNeeded
+#include "playerbot/GroupManagerView.h"        // A3 step 6 T30-1: the manager's queue age (3.6)
 #include "playerbot/StartupTravelPolicy.h"
 #include "playerbot/ZoneExitPolicy.h"
 #include "playerbot/DirectTargetDestinations.h"
@@ -1036,7 +1037,8 @@ bool ChooseTravelTargetAction::Execute(Event& event)
                 ai::zone_keep::KeepsZone(ai::cohort::Applies(sPlayerbotAIConfig.questFirstProgressionStaleKeepZone, bot->GetGUIDLow()), lastStaleObjective);
             bool const startZoneHold = zoneRuleBot &&
                 ai::zone_keep::StartZoneGated(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevel, bot->GetLevel()) &&
-                ai::cohort::Applies(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevelCohort, bot->GetGUIDLow());
+                ai::cohort::Applies(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevelCohort, bot->GetGUIDLow()) &&
+                !ai::zone_keep::CustomStartUngated(bot->getRace(), sPlayerbotAIConfig.customRaceStartZones);   // SZM adoption review 10.11.2026
             if (staleKeepZone)
             {
                 uint32 const until = uint32(time(nullptr)) + sPlayerbotAIConfig.questFirstProgressionStaleKeepZoneSeconds;
@@ -1104,7 +1106,8 @@ bool ChooseTravelTargetAction::Execute(Event& event)
                             continue;
                         Quest const* quest = sObjectMgr.GetQuestTemplate(questId);
                         if (quest && ai::quest_groups::IsGroupHelpQuest(quest->GetType(), quest->GetSuggestedPlayers(),
-                                sPlayerbotAIConfig.questGroupsSuggestedPlayers) && ai::quest_groups::QueuedAge(bot->GetGUIDLow(), questId))
+                                sPlayerbotAIConfig.questGroupsSuggestedPlayers) && (ai::quest_groups::QueuedAge(bot->GetGUIDLow(), questId) ||
+                                ai::group_mgr::QueuedAge(bot->GetGUIDLow(), questId)))   // 3.6: S7 or the manager (T30-1)
                             ++queuedGroupQuests;
                         else
                             ++otherOpenQuests;

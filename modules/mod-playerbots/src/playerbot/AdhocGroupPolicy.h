@@ -154,13 +154,14 @@ struct HelperFacts
     bool helping = false;      // seen helping in this pass (its ad-hoc group, HelpsGroup)
     bool otherGroup = false;   // in a group other than the one it helped
     bool realMaster = false;
+    bool managerOwns = false;  // T30-1 (G4): the group manager owns or holds the bot: no longer kept as a helper
 };
 
 inline HelperExit DecideHelperExit(HelperFacts const& f)
 {
     if (f.loggedOut || f.s7Owns)
         return HelperExit::Forget;
-    if (f.transient || f.helping)
+    if (f.transient || (f.helping && !f.managerOwns))
         return HelperExit::Keep;
     if (f.otherGroup || f.realMaster)
         return HelperExit::RoleOnly;

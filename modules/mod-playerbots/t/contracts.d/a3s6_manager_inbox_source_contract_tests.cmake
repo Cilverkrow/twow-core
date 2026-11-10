@@ -174,7 +174,8 @@ function(check_switch config_h config_cpp conf_dist policy out)
 endfunction()
 
 # ---- (b) + (c) the status hook: one Post site, gated, in its place ------------------------------------------------------------
-set(HOOK "        if (sPlayerbotAIConfig.botGroupsManagerStatusSeconds && ai::group_mgr::Applies(sPlayerbotAIConfig.botGroupsManager, bot->GetGUIDLow()))\n            PostManagerStatus();\n")
+# T30-1: a bot the manager holds (IsManaged; false while Manager.Types = 0) keeps posting outside the S1 scope.
+set(HOOK "        if (sPlayerbotAIConfig.botGroupsManagerStatusSeconds &&\n            (ai::group_mgr::Applies(sPlayerbotAIConfig.botGroupsManager, bot->GetGUIDLow()) || ai::group_mgr::IsManaged(bot->GetGUIDLow())))\n            PostManagerStatus();\n")
 set(REACTION "    if(!UpdateAIReaction(elapsed, doMinimalReaction, bot->IsTaxiFlying()) && CanUpdateAIInternal())")
 set(PROGRESS "        // A3 step 5 (ADR-0041, AiPlayerbot.CombatRule.ProgressGuard, default 0): one reading")
 set(QB_K "        // A3 step 2 (ADR-0041, AiPlayerbot.QuestBook, default 0)")
@@ -286,7 +287,7 @@ function(check_drain mgr_cpp inbox_cpp inbox_h policy all_sources out)
     return()
   endif()
   foreach(needle
-      "void WorldThreadManager::Update(std::map<std::uint32_t, Player*> const& bots, std::uint32_t /*now*/)\n{\n    ++passes_;\n    DrainInbox(bots, WorldTimer::getMSTime());\n}"
+      "void WorldThreadManager::Update(std::map<std::uint32_t, Player*> const& bots, std::uint32_t now)\n{\n    ++passes_;\n    std::uint32_t const nowMs = WorldTimer::getMSTime();\n    DrainInbox(bots, nowMs);\n    RunDirectives(bots, nowMs, now);\n}"
       "    bool const resumed = minuteStarted_ && manager_inbox::ResumedAfterGap(lastPassMs_, nowMs);\n    lastPassMs_ = nowMs;\n    if (resumed)\n    {\n        minuteStarted_ = false;\n        status_.clear();\n        edges_.clear();\n        wishes_.clear();\n    }"
       "        if (!resumed)\n            StoreEvent(event, nowMs);"
       "        case manager_inbox::Kind::Status:\n            status_[event.botLow] = manager_inbox::SnapshotOf(event, nowMs);"
@@ -313,7 +314,15 @@ endfunction()
 # ---- (e) no supervisor postbox, no group write -------------------------------------------------------------------------------
 function(check_isolation policy inbox_h inbox_cpp mgr_h mgr_cpp ai_cpp out)
   region("${ai_cpp}" "void PlayerbotAI::PostManagerStatus()\n{" "\n}\n" post_body)
-  set(pair "${policy}\n${inbox_h}\n${inbox_cpp}\n${mgr_h}\n${mgr_cpp}\n${post_body}")
+  # T30-1: the manager's one directive post (R10 gate, a3s6_t30_directives pins it) is the only allowed supervisor call.
+  set(r10 "        if (sPlayerbotAIConfig.supervisor && ai::supervisor::Applies(sPlayerbotAIConfig.supervisor, low))\n            return ai::supervisor::Post(low, event);")
+  count_text("${mgr_cpp}" "${r10}" n)
+  if(NOT n EQUAL 1)
+    set(${out} "GroupManager.cpp: the R10-gated directive post found ${n} times (1 expected)" PARENT_SCOPE)
+    return()
+  endif()
+  string(REPLACE "${r10}" "" mgr_rest "${mgr_cpp}")
+  set(pair "${policy}\n${inbox_h}\n${inbox_cpp}\n${mgr_h}\n${mgr_rest}\n${post_body}")
   string(REGEX MATCH "supervisor::(Post|Drain|Forget)|namespace (ai::)?supervisor" bad "${pair}")
   if(NOT bad STREQUAL "")
     set(${out} "the pair touches the supervisor's postbox: ${bad}" PARENT_SCOPE)
@@ -479,13 +488,40 @@ function(check_ack policy inbox_h inbox_cpp all_sources out)
     set(${out} "PostDirectiveAck( appears ${n} times in the module (2 expected: declaration and definition, no caller yet)" PARENT_SCOPE)
     return()
   endif()
-  # The unqualified Post( inside the namespace: exactly one call (PostDirectiveAck), next to the declaration and definition.
+  # T30-1b (G2, agreed with CLI-Projekt 10.11.): PostDirectiveLeft packs state kAckLeft (b0-7) and the held serial (b16-31),
+  # seq 0; declared, defined, no caller yet (T02-GROUP wires it).
+  string(FIND "${inbox_h}" "bool PostDirectiveLeft(std::uint32_t guidLow, std::uint16_t serial, std::uint8_t reason);" at)
+  if(at EQUAL -1)
+    set(${out} "ManagerInbox.h: PostDirectiveLeft is not declared as agreed" PARENT_SCOPE)
+    return()
+  endif()
+  region("${inbox_cpp}" "bool PostDirectiveLeft(std::uint32_t guidLow, std::uint16_t serial, std::uint8_t reason)\n{" "\n}\n" lbody)
+  if(lbody STREQUAL "")
+    set(${out} "ManagerInbox.cpp: PostDirectiveLeft not defined" PARENT_SCOPE)
+    return()
+  endif()
+  foreach(needle "    event.kind = Kind::DirectiveAck;" "    event.seq = 0;"
+      "    event.mapOrDungeon = std::uint32_t(kAckLeft) | (std::uint32_t(serial) << 16);" "    event.reason = reason;"
+      "    return Post(event);\n}")
+    string(FIND "${lbody}" "${needle}" at)
+    if(at EQUAL -1)
+      set(${out} "PostDirectiveLeft: missing ${needle}" PARENT_SCOPE)
+      return()
+    endif()
+  endforeach()
+  count_text("${all_sources}" "PostDirectiveLeft(" n)
+  if(NOT n EQUAL 2)
+    set(${out} "PostDirectiveLeft( appears ${n} times in the module (2 expected: declaration and definition, no caller yet)" PARENT_SCOPE)
+    return()
+  endif()
+  # The unqualified Post( inside the namespace: exactly two calls (PostDirectiveAck, PostDirectiveLeft), next to the
+  # declaration and definition.
   set(code "${policy}\n${inbox_h}\n${inbox_cpp}")
   string(REPLACE "bool Post(Event const& event)" "" code "${code}")
   string(REGEX MATCHALL "[^A-Za-z0-9_:]Post\\(" calls "${code}")
   list(LENGTH calls nc)
-  if(NOT nc EQUAL 1)
-    set(${out} "ManagerInbox: ${nc} unqualified Post( call(s) in the inbox files (1 expected: PostDirectiveAck)" PARENT_SCOPE)
+  if(NOT nc EQUAL 2)
+    set(${out} "ManagerInbox: ${nc} unqualified Post( call(s) in the inbox files (2 expected: PostDirectiveAck, PostDirectiveLeft)" PARENT_SCOPE)
     return()
   endif()
   # Nobody else opens the inbox namespace (an unqualified Post( there would pass the qualified count).
@@ -554,10 +590,10 @@ string(REPLACE "            {\"BotGroups.Manager.StatusSeconds\", Value(botGroup
 check_switch("${config_h}" "${m}" "${conf_dist}" "${policy}" r)
 expect_caught("echo entry dropped" "${r}")
 # (b) the hook without its gates, a second Post site, the roster rule dropped.
-string(REPLACE "        if (sPlayerbotAIConfig.botGroupsManagerStatusSeconds && ai::group_mgr::Applies(sPlayerbotAIConfig.botGroupsManager, bot->GetGUIDLow()))\n" "        if (sPlayerbotAIConfig.botGroupsManagerStatusSeconds)\n" m "${ai_cpp}")
+string(REPLACE "            (ai::group_mgr::Applies(sPlayerbotAIConfig.botGroupsManager, bot->GetGUIDLow()) || ai::group_mgr::IsManaged(bot->GetGUIDLow())))\n" "            true)\n" m "${ai_cpp}")
 check_hook("${m}" "${ai_h}" "${all_sources}" r)
 expect_caught("hook not gated on the manager's mode" "${r}")
-string(REPLACE "        if (sPlayerbotAIConfig.botGroupsManagerStatusSeconds && ai::group_mgr::Applies(" "        if (ai::group_mgr::Applies(" m "${ai_cpp}")
+string(REPLACE "        if (sPlayerbotAIConfig.botGroupsManagerStatusSeconds &&\n            (ai::group_mgr::Applies(" "        if (\n            (ai::group_mgr::Applies(" m "${ai_cpp}")
 check_hook("${m}" "${ai_h}" "${all_sources}" r)
 expect_caught("hook not gated on StatusSeconds" "${r}")
 check_hook("${ai_cpp}" "${ai_h}" "${all_sources}\n    ai::manager_inbox::Post(other);" r)
@@ -597,6 +633,9 @@ expect_reason("the table kept over the off time" "${r}" "GroupManager.cpp: missi
 string(REPLACE "    manager_inbox::LogMinute(line);" "    manager_inbox::LogMinute(line);\n    ai::supervisor::Post(1, ev);" m "${mgr_cpp}")
 check_isolation("${policy}" "${inbox_h}" "${inbox_cpp}" "${mgr_h}" "${m}" "${ai_cpp}" r)
 expect_caught("supervisor postbox called" "${r}")
+string(REPLACE "        if (sPlayerbotAIConfig.supervisor && ai::supervisor::Applies(sPlayerbotAIConfig.supervisor, low))\n            return ai::supervisor::Post(" "        return ai::supervisor::Post(" m "${mgr_cpp}")
+check_isolation("${policy}" "${inbox_h}" "${inbox_cpp}" "${mgr_h}" "${m}" "${ai_cpp}" r)
+expect_caught("directive post without the R10 gate" "${r}")
 check_isolation("${policy}" "${inbox_h}" "${inbox_cpp}\nnamespace ai::supervisor\n{\nbool Post(std::uint32_t, Event const&) { return true; }\n}" "${mgr_h}" "${mgr_cpp}" "${ai_cpp}" r)
 expect_caught("supervisor postbox defined" "${r}")
 string(REPLACE "    return InboxRing().Push(event);" "    session->HandleGroupDisbandOpcode(packet);\n    return InboxRing().Push(event);" m "${inbox_cpp}")
@@ -658,7 +697,16 @@ expect_reason("kind totals without the other bucket" "${r}" "not sized kKindBuck
 check_ack("${policy}" "${inbox_h}" "${inbox_cpp}" "${all_sources}\n    ai::manager_inbox::PostDirectiveAck(1, 2, 3, 0);" r)
 expect_reason("PostDirectiveAck called" "${r}" "no caller yet")
 check_ack("${policy}" "${inbox_h}" "${inbox_cpp}\nbool Y() { return Post(Event{}); }" "${all_sources}" r)
-expect_reason("a second unqualified Post(" "${r}" "2 unqualified Post")
+expect_reason("a third unqualified Post(" "${r}" "3 unqualified Post")
+# T30-1b: PostDirectiveLeft called, its serial not packed, its seq not 0.
+check_ack("${policy}" "${inbox_h}" "${inbox_cpp}" "${all_sources}\n    ai::manager_inbox::PostDirectiveLeft(1, 2, 26);" r)
+expect_reason("PostDirectiveLeft called" "${r}" "PostDirectiveLeft\\( appears 3 times")
+string(REPLACE " | (std::uint32_t(serial) << 16);" ";" m "${inbox_cpp}")
+check_ack("${policy}" "${inbox_h}" "${m}" "${all_sources}" r)
+expect_reason("the left serial not packed" "${r}" "PostDirectiveLeft: missing")
+string(REPLACE "    event.seq = 0;" "    event.seq = 1;" m "${inbox_cpp}")
+check_ack("${policy}" "${inbox_h}" "${m}" "${all_sources}" r)
+expect_reason("the left seq not 0" "${r}" "PostDirectiveLeft: missing")
 string(REPLACE "    event.kind = Kind::DirectiveAck;" "    event.kind = Kind::Status;" m "${inbox_cpp}")
 check_ack("${policy}" "${inbox_h}" "${m}" "${all_sources}" r)
 expect_reason("the ack posted as Status" "${r}" "PostDirectiveAck: missing")

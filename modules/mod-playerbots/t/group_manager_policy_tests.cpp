@@ -33,6 +33,17 @@ void TestMode()
     Require(Applies(2, 3) && !Applies(2, 4), "mode 2 = cohort B (odd low guid)");
     Require(Applies(3, 4) && !Applies(3, 3), "mode 3 = cohort A (even low guid)");
     Require(!Applies(5, 1), "an unknown mode applies to nobody");
+    // T30-1 (BotGroups.Manager.Types, F1 (a), F9 (a)).
+    Require(kTypeAdhoc == 1 && kTypeQuest == 2 && kTypesActive == 3, "Types: bit 1 ADHOC, bit 2 QUEST");
+    Require(TypesValid(0) && TypesValid(3) && !TypesValid(4) && !TypesValid(7), "reserved bits are not valid");
+    Require(SanitizeTypes(7) == 3 && SanitizeTypes(4) == 0, "reserved bits are masked");
+    Require(EffectiveTypes(3, 0) == 0 && EffectiveTypes(3, 10) == 3 && EffectiveTypes(6, 10) == 2, "StatusSeconds 0: Types acts as 0");
+    Require(TypeOn(1, GroupType::Adhoc) && !TypeOn(1, GroupType::Quest) && TypeOn(2, GroupType::Quest), "one type per bit");
+    Require(!TypeOn(7, GroupType::Dungeon), "no DUNGEON type in T30-1");
+    Require(!Owns(1, 0, 1) && !Owns(1, 0, 2), "Types 0: the manager owns nobody (the default)");
+    Require(Owns(1, 3, 1) && Owns(1, 1, 2), "mode 1 and a type: every bot");
+    Require(Owns(2, 2, 3) && !Owns(2, 2, 4), "mode 2: cohort B only");
+    Require(!Owns(0, 3, 1) && !Owns(2, 4, 3), "mode 0 or reserved bits only: nobody");
 }
 
 void TestNames()

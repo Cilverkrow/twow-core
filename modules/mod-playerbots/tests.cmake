@@ -394,6 +394,26 @@ add_test(NAME roster_list_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/roster_list_source_contract_tests.cmake")
 
+# twow-repo#698: role/group snapshot a bot publishes from its own thread for the roster list (pure packing + refresh timing).
+add_executable(roster_snapshot_policy_tests
+  "${PB_MODULE_DIR}/t/roster_snapshot_policy_tests.cpp")
+
+target_include_directories(roster_snapshot_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(roster_snapshot_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME roster_snapshot_policy
+  COMMAND roster_snapshot_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#698: the roster list builder (command thread) reads no strategy map / Group of a bot; negative probe inside.
+add_test(NAME roster_snapshot_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/roster_snapshot_source_contract_tests.cmake")
+
 # #276: a dead bot waits for an active real-player master only for
 # AiPlayerbot.DeadWaitForRealMasterSeconds, never indefinitely.
 add_executable(master_wait_policy_tests
@@ -1733,6 +1753,25 @@ add_test(NAME group_manager_policy
   COMMAND group_manager_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# A3 step 6 T30-1 (AiPlayerbot.BotGroups.Manager.Types, default 0): the directive engine of the group manager
+# (GroupDirectivePolicy.h; no game header). The game side is pinned by
+# t/contracts.d/a3s6_t30_directives_source_contract_tests.cmake.
+add_executable(group_directive_policy_tests
+  "${PB_MODULE_DIR}/t/group_directive_policy_tests.cpp")
+
+target_include_directories(group_directive_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+# The read view's mutex (std::mutex).
+target_link_libraries(group_directive_policy_tests PRIVATE Threads::Threads)
+
+set_target_properties(group_directive_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME group_directive_policy
+  COMMAND group_directive_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # A3-GERUEST-L60 7.2.11 (AiPlayerbot.BotGroups.Manager.StatusSeconds, default 0): the pure rules of the manager inbox
 # (ManagerInboxPolicy.h; no game header). The game side is pinned by
 # t/contracts.d/a3s6_manager_inbox_source_contract_tests.cmake.
@@ -2428,6 +2467,12 @@ add_test(NAME chat_command_owner_guid_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/chat_command_owner_guid_source_contract_tests.cmake")
+
+# twow-repo#563 part 3 (HARM): HandleCommand only handles the text; security check, chat filter and dispatch run on the bot thread; negative probe inside.
+add_test(NAME chat_handler_bot_thread_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/chat_handler_bot_thread_source_contract_tests.cmake")
 
 # twow-repo#601 S2 diagnostic: [GrindPick] grind-target sources (BotUpdateTrace).
 add_executable(grind_pick_policy_tests
@@ -4486,6 +4531,22 @@ set_target_properties(gathering_trace_policy_tests PROPERTIES
 
 add_test(NAME gathering_trace_policy
   COMMAND gathering_trace_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#333 T28b (AiPlayerbot.Gathering.PaceReach, default 0): the mining / herbalism reach - lag rule, colour, skills,
+# reach clamp, hostile cache, far-pick clock from the pick, timeout -> miss list, hourly budget, the appended far counters of
+# the [Gathering] event=share line (GatheringPacePolicy.h); source contract in t/contracts.d.
+add_executable(gathering_pace_policy_tests
+  "${PB_MODULE_DIR}/t/gathering_pace_policy_tests.cpp")
+
+target_include_directories(gathering_pace_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(gathering_pace_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME gathering_pace_policy
+  COMMAND gathering_pace_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
 # twow-repo#333 P1-v (AiPlayerbot.Travel.RpgAreaLevelFromSpawn): the area level of an RPG target from its spawn nearest to the bot.

@@ -1,7 +1,7 @@
 cmake_policy(VERSION 3.16)
 # twow-repo#575 RG-a (OB-00 08.11.2026 decision A with widening; design ws-10/cli-pathfinding/a3-step4-route/
 # DESIGN-RG-A-HOMEHUBS-20261108.md; OB-50 anchors SUMS 7c52ff88; CLI-PATH): AiPlayerbot.QuestRescue.HomeHubs (cohort modes,
-# default 0). Pins: the pure anchor table, the block before the R1 gate, the R1 gate for next_zone rows, the legacy fallback, the
+# default 1 since the SZM adoption 10.11.2026, 0 = rollback). Pins: the pure anchor table, the block before the R1 gate, the R1 gate for next_zone rows, the legacy fallback, the
 # lines, config and dist.
 
 if(NOT DEFINED PB_SOURCE_DIR)
@@ -83,10 +83,12 @@ forbid_text("${policy}" "{ 9," "goblin row (its island rules decide)")
 require_text("${policy}" "return row && !(row->step == Step::NextZone && startZoneGated);" "R1 gates next_zone rows only")
 
 # 2. Config.
-require_text("${config_h}" "uint32 questRescueHomeHubs = 0;" "default off")
-require_text("${config_cpp}" "questRescueHomeHubs = ai::rescue_hub::ClampMode(config.GetIntDefault(\"AiPlayerbot.QuestRescue.HomeHubs\", 0));" "mode loader")
+require_text("${config_h}" "uint32 questRescueHomeHubs = 1;" "default 1 (SZM adoption)")
+require_text("${config_cpp}" "questRescueHomeHubs = ai::rescue_hub::ClampMode(config.GetIntDefault(\"AiPlayerbot.QuestRescue.HomeHubs\", 1));" "mode loader, default 1")
 require_order("${config_cpp}" "{\"QuestRescue.HomeHubs\", Value(questRescueHomeHubs)}," "{\"QuestRescue.KeepRequestWhenFull\"" "echo, sorted")
-require_text("${conf_dist}" "\nAiPlayerbot.QuestRescue.HomeHubs = 0\n" "dist default 0")
+require_text("${conf_dist}" "\nAiPlayerbot.QuestRescue.HomeHubs = 1\n" "dist default 1")
+require_text("${conf_dist}" "# Cohort mode: 0 = off (rollback), 1 = all bots (default), 2 = cohort B (odd guid), 3 = cohort A (even guid); other values act like 0.\nAiPlayerbot.QuestRescue.HomeHubs = 1\n" "dist mode text: 0 = rollback, 1 = default")
+require_text("${conf_dist}" "HomeHubs has no A/B of its own yet" "dist states the adoption came with SZM, not from its own A/B")
 
 # 3. QuestRescueTargets: the table block first (before R1, the goblin island and the legacy race loop); targets found = return;
 #    nothing found = fall through to the unchanged legacy code.
@@ -97,7 +99,13 @@ require_order("${targets_fn}" "ai::cohort::Applies(sPlayerbotAIConfig.questRescu
   "UsesGoblinStartRescue(bot->getRace(), level)" "table block before the goblin island rules")
 between("${targets_fn}" "ai::cohort::Applies(sPlayerbotAIConfig.questRescueHomeHubs" "// twow-repo#601 owner rule R1" block)
 require_text("${block}" "ai::zone_keep::StartZoneGated(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevel, level) &&\n            ai::cohort::Applies(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevelCohort, bot->GetGUIDLow());" "the bot's R1 gate, as R1 computes it")
-require_text("${block}" "rh::Row const* const row = rh::RowFor(bot->getRace(), level);" "row lookup")
+require_text("${block}" "rh::Row const* const row = rh::RowFor(bot->getRace(), level, sPlayerbotAIConfig.customRaceStartZones);" "row lookup with the custom starts switch")
+# SZM adoption review (10.11.2026): the start-zone rules of the rescue act only on roster bots without a real player master (as
+# StartZoneHolds), and the high-elf row needs CustomRaceStartZones.
+require_order("${targets_fn}" "bool const startZoneRules = IsPersistentRosterMember(bot->GetGUIDLow()) && !(rescueAi && rescueAi->HasRealPlayerMaster());"
+  "if (startZoneRules && ai::cohort::Applies(sPlayerbotAIConfig.questRescueHomeHubs, bot->GetGUIDLow()))" "HomeHubs only for roster bots on their own")
+require_text("${policy}" "inline Row const* RowFor(std::uint32_t race, std::uint32_t level, bool customStarts)\n{\n    if (race == HighElfRace && !customStarts)\n        return nullptr;" "high-elf row only with custom starts")
+forbid_text("${targets_fn}" "rh::RowFor(bot->getRace(), level);" "a row lookup without the custom starts switch")
 require_text("${block}" "if (row && !rh::Usable(row, startZoneGated))" "R1 holds back next_zone")
 require_text("${block}" "if (botPos.distance(WorldPosition(spawn)) > row->minDistance)" "per-row distance")
 require_text("${block}" "\"[RescueHub] bot=%u race=%u level=%u map=%u zone=%u step=%s anchors=%s targets=%u result=%s\"" "race + anchor line")
