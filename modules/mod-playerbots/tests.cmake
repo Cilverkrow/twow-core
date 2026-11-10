@@ -4723,6 +4723,21 @@ add_test(NAME rescue_hub_policy
   COMMAND rescue_hub_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#703 item 1 (AiPlayerbot.QuestRescue.NoTargetFreeSlot, default 0): the rescue targets before the global limiter, no
+# slot for a no_target (QuestRescueSlotPolicy.h); source contract in t/contracts.d.
+add_executable(quest_rescue_slot_policy_tests
+  "${PB_MODULE_DIR}/t/quest_rescue_slot_policy_tests.cpp")
+
+target_include_directories(quest_rescue_slot_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(quest_rescue_slot_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME quest_rescue_slot_policy
+  COMMAND quest_rescue_slot_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 add_test(NAME profession_travel_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
