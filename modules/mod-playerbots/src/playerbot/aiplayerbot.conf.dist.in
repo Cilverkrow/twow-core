@@ -2065,6 +2065,16 @@ AiPlayerbot.RosterFarMove.ArriveSafe = 0
 AiPlayerbot.RosterFarMove.LevelGuard = 0
 AiPlayerbot.RosterFarMove.LevelGuard.Margin = 3
 AiPlayerbot.RosterFarMove.LevelGuard.Radius = 50
+# twow-repo#575 / #703 item 5 (CLI-PATH 10.11.2026): two sub-keys against LevelGuard false alarms; both 0 = the rule above
+# unchanged, and without LevelGuard they do nothing.
+# ZWindow: a spawn counts only if its z is within ZWindow yd of the travel point's z (not the bot's). 0 = off (2D, default),
+# 5..100 yd; any other value is 0 (logged). The skip line gets dz=, [FarMove] gets guard_zfiltered (ZWindow on).
+# SkipHarmless: 1 = spawns whose template never attacks (flags_extra NO_AGGRO 0x2) or is a trigger (INVISIBLE 0x80) are left
+# out of the grid; a spawn that exists only during a game event counts only while that event is active (a normal spawn that
+# an event removes for a while always counts). The grid line gets skipped_harmless= event_spawns= ms=, [FarMove] gets
+# guard_eventfiltered (SkipHarmless on). 0 = off (default).
+AiPlayerbot.RosterFarMove.LevelGuard.SkipHarmless = 0
+AiPlayerbot.RosterFarMove.LevelGuard.ZWindow = 0
 # twow-repo#601 A3 step 1 (owner 04.11.2026 via OB-00, A3-BOT-LOGIK.md 1.3): the RPG sequencing of upstream mangosbot - the generic
 # "rpg" action picks ONE sub-action by a weighted random draw (relevance - 1) x 1000, RpgActionMultiplier then gives every other RPG
 # action x0.1, and after each RPG action a 10 % (30 % in a group or with a real master) "rpg cancel" leaves the target - made a

@@ -1225,6 +1225,17 @@ bool PlayerbotAIConfig::Initialize()
         rpgTurnInFirst = 0;
     rosterFarMoveLevelGuardMargin = ai::level_guard::ClampMargin(config.GetIntDefault("AiPlayerbot.RosterFarMove.LevelGuard.Margin", 3));
     rosterFarMoveLevelGuardRadius = ai::level_guard::ClampRadius(config.GetFloatDefault("AiPlayerbot.RosterFarMove.LevelGuard.Radius", 50.0f));
+    // twow-repo#575 / #703 item 5 (LevelGuardPolicy.h): ZWindow 0 off or 5..100 yd, SkipHarmless 0/1; any other value is 0 (logged).
+    rosterFarMoveLevelGuardZWindow = config.GetIntDefault("AiPlayerbot.RosterFarMove.LevelGuard.ZWindow", 0);
+    int32 const levelGuardZWindowRaw = int32(rosterFarMoveLevelGuardZWindow);
+    rosterFarMoveLevelGuardZWindow = ai::level_guard::ClampZWindow(levelGuardZWindowRaw);
+    if (int32(rosterFarMoveLevelGuardZWindow) != levelGuardZWindowRaw)
+        sLog.outError("[FarMoveGuard] config key=LevelGuard.ZWindow value=%d result=off (0 off, 5..100 yd)", levelGuardZWindowRaw);
+    rosterFarMoveLevelGuardSkipHarmless = config.GetIntDefault("AiPlayerbot.RosterFarMove.LevelGuard.SkipHarmless", 0);
+    int32 const levelGuardSkipHarmlessRaw = int32(rosterFarMoveLevelGuardSkipHarmless);
+    rosterFarMoveLevelGuardSkipHarmless = ai::level_guard::ClampSkipHarmless(levelGuardSkipHarmlessRaw);
+    if (int32(rosterFarMoveLevelGuardSkipHarmless) != levelGuardSkipHarmlessRaw)
+        sLog.outError("[FarMoveGuard] config key=LevelGuard.SkipHarmless value=%d result=off (0 off, 1 on)", levelGuardSkipHarmlessRaw);
     shortcutNearScope = ai::shortcut::ClampScope(config.GetIntDefault("AiPlayerbot.Shortcut.NearScope", 0));
     shortcutNearRadius = std::max(0.0f, config.GetFloatDefault("AiPlayerbot.Shortcut.NearRadius", 0.0f));
     shortcutTestWatcherGuids = ai::shortcut::ParseGuidList(config.GetStringDefault("AiPlayerbot.Shortcut.TestWatcherGuids", ""));
@@ -2288,6 +2299,8 @@ bool PlayerbotAIConfig::Initialize()
             {"RosterFarMove.LevelGuard", Value(rosterFarMoveLevelGuard)},
             {"RosterFarMove.LevelGuard.Margin", Value(rosterFarMoveLevelGuardMargin)},
             {"RosterFarMove.LevelGuard.Radius", Value(rosterFarMoveLevelGuardRadius)},
+            {"RosterFarMove.LevelGuard.SkipHarmless", Value(rosterFarMoveLevelGuardSkipHarmless)},
+            {"RosterFarMove.LevelGuard.ZWindow", Value(rosterFarMoveLevelGuardZWindow)},
             {"Rotation.CastLosGate", Value(rotationCastLosGate)},
             {"Rotation.CastStopFirst", Value(rotationCastStopFirst)},
             {"Rotation.DarkRuneGate", Value(rotationDarkRuneGate)},
