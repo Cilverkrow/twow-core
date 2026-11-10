@@ -114,7 +114,6 @@ char * strstri (std::string str1, std::string str2);
 uint64 extractGuid(WorldPacket& packet);
 std::string &trim(std::string &s);
 
-std::set<std::string> PlayerbotAI::unsecuredCommands;
 
 namespace
 {
@@ -3269,7 +3268,8 @@ void PlayerbotAI::HandleCommands()
         Player* directiveOwner = nullptr;
         if (!holder.GetOwnerGuid().IsEmpty())
         {
-            directiveOwner = ObjectAccessor::FindPlayer(holder.GetOwnerGuid());
+            // the bot's own commands (HandleCommand(..., *bot) from actions) resolve to the bot itself, also while it is not in the world
+            directiveOwner = holder.GetOwnerGuid() == bot->GetObjectGuid() ? bot : ObjectAccessor::FindPlayer(holder.GetOwnerGuid());
             if (!directiveOwner)
             {
                 static std::atomic<uint32> ownerGoneDrops{0};
@@ -3280,11 +3280,35 @@ void PlayerbotAI::HandleCommands()
             }
         }
 
+        // twow-repo#563 part 3: measurement only - how often the resolved owner stands on another Map object (another region thread) than the bot;
+        // the actions still read that owner from this thread (named in the PR as the follow-up, no behaviour change).
+        if (directiveOwner && !SameMapObject(bot, directiveOwner))
+        {
+            static std::atomic<uint32> ownerOtherMap{0};
+            uint32 const n = ownerOtherMap.fetch_add(1, std::memory_order_relaxed) + 1;
+            if (n == 1 || n % 100 == 0)
+                sLog.outBasic("[ChatCmd] owner on another Map object bot=%u kind=%u count=%u", bot ? bot->GetGUIDLow() : 0, uint32(holder.GetKind()), n);
+        }
+
+        // twow-repo#563 part 3: currentChat is written here, on the bot's thread, from the channel the sender used (it used to be written by
+        // HandleCommand on the AsyncPackets thread and read by TellPlayer on the bot thread)
+        auto applyReplyChannel = [this](ChatCommandHolder& h)
+        {
+            currentChat = h.GetReplyChannel() < 0 ? std::pair<ChatMsg, time_t>(CHAT_MSG_WHISPER, 0)
+                                                  : std::pair<ChatMsg, time_t>(ChatMsg(h.GetReplyChannel()), time(0) + 3);
+        };
+
         // twow-repo#563: directives queued by HandleCommand run here, on the bot's thread, in queue order.
         if (holder.GetKind() != ChatCommandKind::Chat)
         {
+            applyReplyChannel(holder);
             switch (holder.GetKind())
             {
+                case ChatCommandKind::Incoming:
+                    // security check, chat filter and dispatch: everything that reads the bot (twow-repo#563 part 3)
+                    if (directiveOwner)
+                        ProcessIncomingChat(holder.GetType(), holder.GetCommand(), *directiveOwner, holder.GetReplyChannel(), holder.GetInviteCheckDone());
+                    break;
                 case ChatCommandKind::DoAction:
                 {
                     Event event("do", "", directiveOwner);
@@ -3349,7 +3373,9 @@ void PlayerbotAI::HandleCommands()
                             index++;
                         }
                     }
-                    delayed.push_back(ChatCommandHolder(holder.GetCommand(), holder.GetOwnerGuid(), holder.GetType(), time(0) + index, ChatCommandKind::Chat));
+                    ChatCommandHolder walked(holder.GetCommand(), holder.GetOwnerGuid(), holder.GetType(), time(0) + index, ChatCommandKind::Chat);
+                    walked.SetReplyChannel(holder.GetReplyChannel());
+                    delayed.push_back(walked);
                     break;
                 }
                 default:
@@ -3365,6 +3391,7 @@ void PlayerbotAI::HandleCommands()
             continue;
         }
 
+        applyReplyChannel(holder);
         std::string command = holder.GetCommand();
         Player* owner = directiveOwner;
         if (!helper.ParseChatCommand(command, owner) && holder.GetType() == CHAT_MSG_WHISPER)
@@ -3385,6 +3412,16 @@ void PlayerbotAI::HandleCommands()
 void PlayerbotAI::QueueChatCommand(ChatCommandHolder const& cmd)
 {
     std::scoped_lock lock(chatCommandsMutex);
+    // twow-repo#563 part 3: raw chat is queued before the security check (which now runs on the bot thread), so a stalled bot must not collect
+    // unbounded chat. 256 pending raw chats per bot is far above any real use; drops are counted and logged.
+    if (cmd.GetKind() == ChatCommandKind::Incoming && chatCommands.size() >= 256)
+    {
+        static std::atomic<uint32> incomingDrops{0};
+        uint32 const n = incomingDrops.fetch_add(1, std::memory_order_relaxed) + 1;
+        if (n == 1 || n % 100 == 0)
+            sLog.outBasic("[ChatCmd] incoming chat dropped, queue full bot=%u drops=%u", bot ? bot->GetGUIDLow() : 0, n);
+        return;
+    }
     chatCommands.push(cmd);
 }
 
@@ -3642,30 +3679,28 @@ void PlayerbotAI::Reset(bool full)
     }
 }
 
-std::map<std::string,ChatMsg> chatMap;
+namespace
+{
+    // twow-repo#563 part 3: constant tables, never written after start (the former lazily filled shared channel map and unsecured-command set were
+    // written by whichever bot handled the first chat, off-thread and shared by all bots).
+    struct ChatChannelPrefix { char const* prefix; ChatMsg channel; };
+    ChatChannelPrefix const kChatChannelPrefixes[] =
+    {
+        { "#w ", CHAT_MSG_WHISPER }, { "#p ", CHAT_MSG_PARTY }, { "#r ", CHAT_MSG_RAID }, { "#a ", CHAT_MSG_ADDON }, { "#g ", CHAT_MSG_GUILD },
+    };
+
+    char const* const kUnsecuredCommands[] =
+    {
+        "who", "where", "wts", "sendmail", "invite", "leave", "join", "lfg", "guild invite", "guild leave",
+    };
+}
 
 bool PlayerbotAI::IsAllowedCommand(std::string text)
 {
-    if (unsecuredCommands.empty())
+    for (char const* command : kUnsecuredCommands)
     {
-        unsecuredCommands.insert("who");
-        unsecuredCommands.insert("where");
-        unsecuredCommands.insert("wts");
-        unsecuredCommands.insert("sendmail");
-        unsecuredCommands.insert("invite");
-        unsecuredCommands.insert("leave");
-        unsecuredCommands.insert("join");
-        unsecuredCommands.insert("lfg");
-        unsecuredCommands.insert("guild invite");
-        unsecuredCommands.insert("guild leave");
-    }
-
-    for (std::set<std::string>::iterator i = unsecuredCommands.begin(); i != unsecuredCommands.end(); ++i)
-    {
-        if (text.find(*i) == 0)
-        {
+        if (text.find(command) == 0)
             return true;
-        }
     }
 
     return false;
@@ -3673,10 +3708,12 @@ bool PlayerbotAI::IsAllowedCommand(std::string text)
 
 void PlayerbotAI::HandleCommand(uint32 type, const std::string& text, Player& fromPlayer, const uint32 lang)
 {
+    // twow-repo#563 part 3: this function runs on the AsyncPackets thread and only handles the text. Everything that reads the bot (security
+    // check, chat filter, dispatch) is queued as ChatCommandKind::Incoming and runs in ProcessIncomingChat on the bot's own thread.
     std::string filtered = text;
 
-    if (!IsAllowedCommand(filtered) && !GetSecurity()->CheckLevelFor(PlayerbotSecurityLevel::PLAYERBOT_SECURITY_INVITE, type != CHAT_MSG_WHISPER, &fromPlayer))
-        return;
+    // pure string test; the INVITE security check itself runs in ProcessIncomingChat
+    bool const inviteCheckDone = IsAllowedCommand(filtered);
 
     if (type == CHAT_MSG_ADDON)
         return;
@@ -3708,26 +3745,41 @@ void PlayerbotAI::HandleCommand(uint32 type, const std::string& text, Player& fr
         filtered = filtered.substr(sPlayerbotAIConfig.commandPrefix.size());
     }
 
-    if (chatMap.empty())
+    // reply channel of the sender: stored in the holder, applied by the bot thread when the command runs
+    int32 replyChannel = -1;
+    for (ChatChannelPrefix const& entry : kChatChannelPrefixes)
     {
-        chatMap["#w "] = CHAT_MSG_WHISPER;
-        chatMap["#p "] = CHAT_MSG_PARTY;
-        chatMap["#r "] = CHAT_MSG_RAID;
-        chatMap["#a "] = CHAT_MSG_ADDON;
-        chatMap["#g "] = CHAT_MSG_GUILD;
-    }
-    currentChat = std::pair<ChatMsg, time_t>(CHAT_MSG_WHISPER, 0);
-    for (std::map<std::string,ChatMsg>::iterator i = chatMap.begin(); i != chatMap.end(); ++i)
-    {
-        if (filtered.find(i->first) == 0)
+        if (filtered.find(entry.prefix) == 0)
         {
             filtered = filtered.substr(3);
-            currentChat = std::pair<ChatMsg, time_t>(i->second, time(0) + 3);
+            replyChannel = int32(entry.channel);
             break;
         }
     }
 
-    filtered = chatFilter.Filter(trim((std::string&)filtered));
+    filtered = trim(filtered);
+    ChatCommandHolder incoming(filtered, &fromPlayer, type, 0, ChatCommandKind::Incoming);
+    incoming.SetReplyChannel(replyChannel);
+    incoming.SetInviteCheckDone(inviteCheckDone);
+    QueueChatCommand(incoming);
+}
+
+void PlayerbotAI::ProcessIncomingChat(uint32 type, std::string text, Player& fromPlayer, int32 replyChannel, bool inviteCheckDone)
+{
+    // twow-repo#563 part 3: bot thread (called from HandleCommands). The reads of the bot below used to run on the AsyncPackets thread.
+    if (!inviteCheckDone && !GetSecurity()->CheckLevelFor(PlayerbotSecurityLevel::PLAYERBOT_SECURITY_INVITE, type != CHAT_MSG_WHISPER, &fromPlayer))
+        return;
+
+    currentChat = replyChannel < 0 ? std::pair<ChatMsg, time_t>(CHAT_MSG_WHISPER, 0) : std::pair<ChatMsg, time_t>(ChatMsg(replyChannel), time(0) + 3);
+
+    // directives and commands queued from here keep the sender's reply channel
+    auto enqueue = [this, replyChannel](ChatCommandHolder holder)
+    {
+        holder.SetReplyChannel(replyChannel);
+        QueueChatCommand(holder);
+    };
+
+    std::string filtered = chatFilter.Filter(text);
     if (filtered.empty())
         return;
 
@@ -3748,7 +3800,7 @@ void PlayerbotAI::HandleCommand(uint32 type, const std::string& text, Player& fr
     if (type == CHAT_MSG_RAID_WARNING && filtered.find(bot->GetName()) != std::string::npos && filtered.find("award") == std::string::npos)
     {
         ChatCommandHolder cmd("warning", &fromPlayer, type);
-        QueueChatCommand(cmd);
+        enqueue(cmd);
         return;
     }
 
@@ -3756,39 +3808,39 @@ void PlayerbotAI::HandleCommand(uint32 type, const std::string& text, Player& fr
     {
         // twow-repo#563: queued, run by HandleCommands on the bot's thread (this function runs on the AsyncPackets thread).
         std::string action = filtered.substr(filtered.find(" ") + 1);
-        QueueChatCommand(ChatCommandHolder(action, &fromPlayer, type, 0, ChatCommandKind::DoAction));
+        enqueue(ChatCommandHolder(action, &fromPlayer, type, 0, ChatCommandKind::DoAction));
     }
     if (ChatHelper::parseValue("command", filtered).substr(0, 3) == "do ")
     {
         std::string action = ChatHelper::parseValue("command", filtered);
         action = action.substr(3);
-        QueueChatCommand(ChatCommandHolder(action, &fromPlayer, type, 0, ChatCommandKind::DoAction));
+        enqueue(ChatCommandHolder(action, &fromPlayer, type, 0, ChatCommandKind::DoAction));
     }
     else if (type != CHAT_MSG_WHISPER && filtered.size() > 6 && filtered.substr(0, 6) == "queue ")
     {
         // twow-repo#563 part 2: the group walk (bot->GetGroup, master) runs in HandleCommands on the bot's thread
         std::string remaining = filtered.substr(filtered.find(" ") + 1);
-        QueueChatCommand(ChatCommandHolder(remaining, &fromPlayer, type, 0, ChatCommandKind::QueueWalk));
+        enqueue(ChatCommandHolder(remaining, &fromPlayer, type, 0, ChatCommandKind::QueueWalk));
     }
     else if (filtered == "reset")
     {
-        QueueChatCommand(ChatCommandHolder(filtered, &fromPlayer, type, 0, ChatCommandKind::Reset));   // twow-repo#563
+        enqueue(ChatCommandHolder(filtered, &fromPlayer, type, 0, ChatCommandKind::Reset));   // twow-repo#563
     }
     else if (filtered == "logout")
     {
         // twow-repo#563 part 2: state check, reply and SetShouldLogOut run in HandleCommands on the bot's thread
-        QueueChatCommand(ChatCommandHolder(filtered, &fromPlayer, type, 0, ChatCommandKind::Logout));
+        enqueue(ChatCommandHolder(filtered, &fromPlayer, type, 0, ChatCommandKind::Logout));
     }
     else if (filtered == "logout cancel")
     {
         // twow-repo#563: the state check and the cancel run in HandleCommands on the bot's thread.
-        QueueChatCommand(ChatCommandHolder(filtered, &fromPlayer, type, 0, ChatCommandKind::LogoutCancel));
+        enqueue(ChatCommandHolder(filtered, &fromPlayer, type, 0, ChatCommandKind::LogoutCancel));
     }
     else if ((filtered.size() > 5) && (filtered.substr(0, 5) == "wait ") && (filtered.find("wait for attack") == std::string::npos))
     {
         // twow-repo#563 part 2: delay, isWaiting and the replies run in HandleCommands on the bot's thread
         std::string remaining = filtered.substr(filtered.find(" ") + 1);
-        QueueChatCommand(ChatCommandHolder(remaining, &fromPlayer, type, 0, ChatCommandKind::Wait));
+        enqueue(ChatCommandHolder(remaining, &fromPlayer, type, 0, ChatCommandKind::Wait));
         return;
     }
     else
@@ -3799,7 +3851,7 @@ void PlayerbotAI::HandleCommand(uint32 type, const std::string& text, Player& fr
                (unsigned)type,
                filtered.c_str());
         ChatCommandHolder cmd(filtered, &fromPlayer, type);
-        QueueChatCommand(cmd);
+        enqueue(cmd);
     }
 }
 
