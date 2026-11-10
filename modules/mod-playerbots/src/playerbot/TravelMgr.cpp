@@ -2021,7 +2021,8 @@ bool ai::zone_keep::StartZoneHolds(Player* bot, PlayerbotAI* botAI)
     return bot && sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevel &&
         ai::zone_keep::StartZoneGated(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevel, bot->GetLevel()) &&
         ai::cohort::Applies(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevelCohort, bot->GetGUIDLow()) &&
-        sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !(botAI && botAI->HasRealPlayerMaster());
+        sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !(botAI && botAI->HasRealPlayerMaster()) &&
+        !ai::zone_keep::CustomStartUngated(bot->getRace(), sPlayerbotAIConfig.customRaceStartZones);   // SZM adoption review 10.11.2026
 }
 
 uint32 ai::zone_keep::OutsideStartZone(Player* bot, WorldPosition const* point)

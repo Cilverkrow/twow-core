@@ -78,9 +78,15 @@ constexpr std::array<Row, 11> Table{{
     { 10, 1, 9, Step::OwnHub, OwnHubMinDistance, { 80227, 61831 } },  // high elf: Ashanya 2580824 (Brinthilien), Tiriel 2581602 (Alah'Thalas)
 }};
 
-// The row for a bot, or nullptr (= legacy). Goblins have no row: their island rules (CustomRaceStartZones) decide.
-inline Row const* RowFor(std::uint32_t race, std::uint32_t level)
+constexpr std::uint32_t HighElfRace = 10;   // = ai::start_zone::HighElfRace (StartZonePolicy.h)
+
+// The row for a bot, or nullptr (= legacy). Goblins have no row: their island rules (CustomRaceStartZones) decide. The high-elf row
+// needs CustomRaceStartZones (customStarts): without it high elves live at the proxy start Northshire and avoid the Thalassian
+// Highlands, so the legacy targets apply (SZM adoption review 10.11.2026).
+inline Row const* RowFor(std::uint32_t race, std::uint32_t level, bool customStarts)
 {
+    if (race == HighElfRace && !customStarts)
+        return nullptr;
     for (Row const& row : Table)
         if (row.race == race && level >= row.minLevel && level <= row.maxLevel)
             return &row;

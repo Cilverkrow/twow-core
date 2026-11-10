@@ -1249,8 +1249,13 @@ AiPlayerbot.QuestRescue.KeepRequestWhenFull = 0
 # up to L9 Brinthilien / Alah'Thalas) instead of no target (R1) or another race's start point; night elves and undead L5-10 go to
 # the next zone on their home continent (Auberdine, The Sepulcher), unless StartZoneMinLevel still gates the level. No row or no
 # spawn left: the legacy targets as before. Logs [RescueHub] and [RescueHubMin].
-# Cohort mode: 0 = off (default), 1 = all bots, 2 = cohort B (odd guid), 3 = cohort A (even guid).
-AiPlayerbot.QuestRescue.HomeHubs = 0
+# Default 1 since the SZM adoption (10.11.2026, owner decision via OB-00): it is the base the SZM A/B measured on (RESULT SZM main R3,
+# both arms HomeHubs = 1). HomeHubs has no A/B of its own yet; that A/B runs on this base later.
+# Acts only on roster bots without a real player master (as StartZoneMinLevel); the high-elf row only with CustomRaceStartZones = 1
+# (without it high elves start at the proxy Northshire). A rescue rebinds the bot's hearthstone at its target; a rollback to 0 does
+# not move hearthstones set before.
+# Cohort mode: 0 = off (rollback), 1 = all bots (default), 2 = cohort B (odd guid), 3 = cohort A (even guid); other values act like 0.
+AiPlayerbot.QuestRescue.HomeHubs = 1
 # A creature entry that killed the bot GrindAvoid.MaxDeaths times within
 # WindowSeconds is skipped as a grind target for AvoidSeconds. 0 = off.
 AiPlayerbot.GrindAvoid.MaxDeaths = 0
@@ -1850,12 +1855,16 @@ AiPlayerbot.QuestFirstProgression.StaleKeepZone.Seconds = 900
 # twow-repo#601 owner rule R1: below this level a roster bot on its own takes no travel target outside its start zone (any purpose;
 # the search line counts start_zone=), no band step, and no quest rescue out of it - inside the zone there is no rescue, outside it
 # the rescue takes it to its race's start point ([ZoneKeep] state=rescue_gate). Start zone = the playercreateinfo zone of its race,
-# with CustomRaceStartZones the goblin / high-elf start zones. An unknown start zone is not gated. Forced trips too (guild meeting /
+# with CustomRaceStartZones the goblin / high-elf start zones; without it a goblin / high elf (proxy start Durotar / Northshire) has
+# an unknown start zone. An unknown start zone is not gated. Forced trips too (guild meeting /
 # order, petition, group quest help): a held one writes one [ZoneKeep] state=forced_hold line and is not requested again for 600 s.
-#   0 = off (default), 2..60; other values act like 0. Owner value 5.
+#   0 = off (rollback), 2..60, default 5 (the owner value); other values act like 0.
+#   SZM A/B (one unit, in-realm cohorts by guid parity, PREREG-R1-SZM 90e32b4d, bot brain off, HomeHubs = 1 in both arms): ADOPT 10.11.2026
+#   (RESULT SZM main R3 0d2d5c58): treated bots leaving the start zone below L5 0 / 100 (control 20 / 100), deaths 1.068 (0.835-1.366),
+#   time to L5 0.980 (hi95 1.14), idle+stuck share 0.961; OB-10 OK, owner standing approval 09.11.2026. Since then 5 with .Complete = 1.
 #   .Cohort picks the bots for an in-realm A/B: 0 = none, 1 = every roster bot (default), 2 = only cohort B (odd low guid), 3 = only cohort A
 #   (even low guid); other values act like 1. Without StartZoneMinLevel it does nothing.
-AiPlayerbot.QuestFirstProgression.StartZoneMinLevel = 0
+AiPlayerbot.QuestFirstProgression.StartZoneMinLevel = 5
 AiPlayerbot.QuestFirstProgression.StartZoneMinLevel.Cohort = 1
 # twow-repo#601 owner rule R1, package "start-zone rule complete" (OB-00 08.11.2026): it acts only on bots StartZoneMinLevel holds (the
 # .Cohort selection, roster bots without a real player master). 1 = on:
@@ -1867,8 +1876,9 @@ AiPlayerbot.QuestFirstProgression.StartZoneMinLevel.Cohort = 1
 #       not ad-hoc or quest help groups, which have their own leave rules).
 #   V2-a: at the release (level StartZoneMinLevel .. StartZoneMinLevel + 2, still in its start zone) the bot's first empty quest offer
 #       counts as the band step at once instead of the second ([ZoneKeep] state=release_push; needs BandLadder).
-#   0 = off (default and rollback); other values act like 0. Without StartZoneMinLevel it does nothing.
-AiPlayerbot.QuestFirstProgression.StartZoneMinLevel.Complete = 0
+#   0 = off (rollback), 1 = on (default since the SZM adoption, 10.11.2026); other values act like 0. Without StartZoneMinLevel it
+#   does nothing.
+AiPlayerbot.QuestFirstProgression.StartZoneMinLevel.Complete = 1
 # twow-repo#601 quest acceptance lever (iv) (OB-00 28.10.2026, BUG FIX behind a switch, cli-quest-organic/quest-acceptance/STEP2.md):
 # the radius quest giver fetch of a quest route request (GiverRadius, the #421 B stages) asked TravelMgr for entry 0, but every
 # quest giver is filed under its quest id - so it never returned a giver. Givers reached the route choice only through the
