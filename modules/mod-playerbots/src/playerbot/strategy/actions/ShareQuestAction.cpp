@@ -151,6 +151,13 @@ bool AutoShareQuestAction::Execute(Event& event)
             if (!player || player == bot || !player->IsInWorld() || !ai->IsSafe(player))         // skip self
                 continue;
 
+            // twow-repo#707: IsSafe compares map id and instance id only; a member in the NEIGHBOURING region (same map id, other Map
+            // object, other region thread) passes it, and the reads below (quest map, quest log, the member bot's AiObjectContext) and the
+            // packet post would race with that thread. Such a member is skipped for this pass; it is picked up when it stands on the same
+            // Map object (the quest share is a convenience). Before any read of the member.
+            if (!SameMapObject(bot, player))
+                continue;
+
             if (bot->GetDistance(player) > 10)
                 continue;
 

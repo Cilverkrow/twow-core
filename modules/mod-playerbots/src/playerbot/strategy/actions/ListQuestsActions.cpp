@@ -84,7 +84,9 @@ int ListQuestsAction::ListQuests(Player* requester, bool completed, bool silent,
         if (travelDetail == QUEST_TRAVEL_DETAIL_NONE && player != bot)
             continue;
 
-        if (player->GetMapId() != bot->GetMapId())
+        // twow-repo#707: map id alone lets a group member of the neighbouring region (other Map object, other thread) through; its quest log and
+        // quest map are read below
+        if (!SameMapObject(bot, player))
             continue;
 
         if (!GetBotAI(player))
