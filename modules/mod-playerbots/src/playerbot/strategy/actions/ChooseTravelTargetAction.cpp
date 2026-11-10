@@ -3485,7 +3485,9 @@ bool RequestQuestTravelTargetAction::Execute(Event& event)
         if (!player)
             continue;
 
-        if (player->GetMapId() != bot->GetMapId())
+        // twow-repo#707: map id alone lets a group member of the neighbouring region (other Map object, other thread) through; its quest
+        // status map is read below
+        if (!SameMapObject(bot, player))
             continue;
 
         if (!GetBotAI(player))
