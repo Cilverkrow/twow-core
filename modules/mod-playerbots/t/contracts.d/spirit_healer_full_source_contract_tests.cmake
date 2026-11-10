@@ -42,7 +42,8 @@ require_text("${config_cpp}" "reviveSpiritHealerFull = config.GetIntDefault(\"Ai
 # twow-repo#575 A3 step 4 S4-1/S4-2: Revive.CorpseRunFirst(.MaxSeconds) sort in before Revive.SpiritHealerFull; only the direct
 # neighbours are pinned here (the generic config_echo contract checks the full order).
 # twow-repo#575 H3: Revive.DelayResurrectRequest sorts in between them.
-require_text("${config_cpp}" "            {\"Revive.CorpseRunFirst.MaxSeconds\", Value(reviveCorpseRunFirstMaxSeconds)},\n            {\"Revive.DelayResurrectRequest\", Value(reviveDelayResurrectRequest)},\n            {\"Revive.SpiritHealerFull\", Value(reviveSpiritHealerFull)},\n            {\"RosterFarMove.ArriveSafe\"" "parsed mode in [ConfigEcho], sorted (owner rule #615, #710)")
+# T24 echo pair (OB-00 10.11.2026): RndBotCheats is now the direct neighbour after Revive.SpiritHealerFull.
+require_text("${config_cpp}" "            {\"Revive.CorpseRunFirst.MaxSeconds\", Value(reviveCorpseRunFirstMaxSeconds)},\n            {\"Revive.DelayResurrectRequest\", Value(reviveDelayResurrectRequest)},\n            {\"Revive.SpiritHealerFull\", Value(reviveSpiritHealerFull)},\n            {\"RndBotCheats\"" "parsed mode in [ConfigEcho], sorted (owner rule #615, #710)")
 
 # 2. Pure policy (std + the cohort rule only).
 string(REGEX MATCHALL "#include [<\"][^>\"]+[>\"]" incs "${policy}")
