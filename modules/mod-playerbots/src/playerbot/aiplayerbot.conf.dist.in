@@ -1407,6 +1407,8 @@ AiPlayerbot.BotGroups.Manager.StatusSeconds = 0
 # Exit); a refused or unanswered directive ends the membership. Existing bot-only groups of owned bots are dissolved
 # (foreign_group). Needs Manager.StatusSeconds > 0 (else it acts like 0, one error line); other bits are ignored (one error
 # line). Lines: "[GroupMgr] event=..." per op / directive / ack / end and "[GroupMgr] minute ..." / "[GroupMgr] minute2 ...".
+# All [GroupMgr] and [ManagerInbox] lines are key=value pairs; later pairs only append fields at the end. Evaluators parse the
+# key=value pairs and ignore keys they do not know (OB-10 rule).
 AiPlayerbot.BotGroups.Manager.Types = 0
 # L1 (owner 07.11.2026, owner-ordered behaviour change): a bot resets its raid lockouts ("reset raids", which drops every bind
 # except the one of its current map, PERM included) only when a real player invites it. An invite by another bot or by a

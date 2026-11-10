@@ -520,6 +520,29 @@ function(check_resume_drain out)
   set(${out} "" PARENT_SCOPE)
 endfunction()
 
+# ---- (h3b) the wish of the latest period (OB-10 note on #984) -----------------------------------------------------------------
+# A Status lost to a full ring leaves the old wish behind until the next Status. The manager uses a wish only while it is
+# younger than WishFreshMs (1.5 status periods), with the stale-anchor credit, and drops it before the candidate test.
+function(check_wish out)
+  foreach(needle "    std::uint64_t const ms = std::uint64_t(statusSeconds) * 1500u;" "        wishMs_ = WishFreshMs(r.statusSeconds);"
+      "        return AgeMs(receivedMs) <= wishMs_;"
+      "            manager_inbox::WishSnapshot const* w = FindWish(in.wishes, low);
+            if (w && !FreshWish(w->receivedMs))
+                w = nullptr;")
+    string(FIND "${dpol}" "${needle}" at)
+    if(at EQUAL -1)
+      set(${out} "wish: GroupDirectivePolicy.h missing ${needle}" PARENT_SCOPE)
+      return()
+    endif()
+  endforeach()
+  count_text("${dpol}" "FindWish(in.wishes, " n)
+  if(NOT n EQUAL 1)
+    set(${out} "wish: FindWish(in.wishes, ...) appears ${n} times (one lookup, filtered by FreshWish)" PARENT_SCOPE)
+    return()
+  endif()
+  set(${out} "" PARENT_SCOPE)
+endfunction()
+
 # ---- (h4) seq, serial and the ack match (9b R3/R4) --------------------------------------------------------------------------------
 function(check_serial out)
   foreach(needle
@@ -623,7 +646,7 @@ function(check_unit out)
   endforeach()
   foreach(needle "    TestDirectiveBits();" "    TestTypesZero();" "    TestAckTimeoutFailClosed();" "    TestJoinClock();" "    TestGapRule();"
       "    TestResume();" "    TestDirectiveDropped();" "    TestExitRetry();" "    TestSwitchOff();" "    TestForeignGroup();"
-      "    TestQuestAttempts();" "    TestMinuteLine();" "    TestWrap();" "    TestFormingNoAttempt();" "    TestQuestViewKey();"
+      "    TestQuestAttempts();" "    TestWishLeftover();" "    TestMinuteLine();" "    TestWrap();" "    TestFormingNoAttempt();" "    TestQuestViewKey();"
       "    TestLeaveEdgeLag();" "    TestGapSameMs();" "    TestGapStaleAnchor();" "    TestExitNoSupervisor();" "    TestEndWhileJoinQueued();"
       "    TestCohort();" "    TestSilentMember();" "    TestRealPlayerLeaving();" "    TestSerialAcrossOffOn();" "    TestSerialLow16();"
       "    TestAckStale();" "    TestSwitchOffExits();" "    TestManagedSerialView();")
@@ -672,6 +695,8 @@ function(run_check check out)
     check_cohort(r)
   elseif(check STREQUAL "check_resume_drain")
     check_resume_drain(r)
+  elseif(check STREQUAL "check_wish")
+    check_wish(r)
   elseif(check STREQUAL "check_serial")
     check_serial(r)
   elseif(check STREQUAL "check_view")
@@ -686,7 +711,7 @@ endfunction()
 
 # ---- the real sources ----------------------------------------------------------------------------------------------------------
 foreach(check check_switch check_noop check_post check_ops check_pure check_gates check_mirrors check_order check_minute check_cohort
-    check_resume_drain check_serial check_view check_unit)
+    check_resume_drain check_wish check_serial check_view check_unit)
   run_check(${check} r)
   fail_if("${r}")
 endforeach()
@@ -782,6 +807,11 @@ probe(mgr_cpp "    void Line(char const* line) override { sLog.outBasic(\"%s\", 
 probe(mgr_cpp "        if (!resumed || !taken || inboxBuf_.size() >= manager_inbox::Capacity)\n            break;" "        break;" check_resume_drain "resume drain:" "one kDrainMaxPerPass pass after a resume (old leftovers stored as fresh later)")
 probe(mgr_cpp " || inboxBuf_.size() >= manager_inbox::Capacity)\n            break;" ")\n            break;" check_resume_drain "resume drain:" "the resume drain without the capacity bound (may spin)")
 probe(mgr_cpp "        if (!resumed)\n            StoreEvent(event, nowMs);" "        StoreEvent(event, nowMs);" check_resume_drain "resume drain:" "the resumed pass stores its old events")
+# (h3b) the wish of the latest period.
+probe(dpol "            if (w && !FreshWish(w->receivedMs))
+                w = nullptr;" "            if (false)
+                w = nullptr;" check_wish "wish: GroupDirectivePolicy.h missing" "a leftover wish of an older period used")
+probe(dpol "    std::uint64_t const ms = std::uint64_t(statusSeconds) * 1500u;" "    std::uint64_t const ms = std::uint64_t(statusSeconds) * 3000u;" check_wish "wish: GroupDirectivePolicy.h missing" "the wish window widened to kStaleMs")
 # (h4) seq and serial.
 probe(dpol "        if (low16 && !inUse(low16))" "        if (!inUse(low16))" check_serial "serial: GroupDirectivePolicy.h missing" "a serial with low 16 bits 0 handed out")
 probe(dpol "        for (auto const& entry : groups_)\n            if (std::uint16_t(entry.first) == low16)" "        for (auto const& entry : groups_)\n            if (entry.first == low16)" check_serial "serial: GroupDirectivePolicy.h missing" "the collision check on the full 32-bit serial")
