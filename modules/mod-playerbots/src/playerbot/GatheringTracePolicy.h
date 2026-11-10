@@ -11,6 +11,8 @@ namespace ai::gathering_trace
 // at its end one line
 //   [Gathering] event=share bot= level= play_s= purpose_s= trip_s= cast_s= opens_herb= opens_ore= opens_skin= crafts=
 //     s182=<value>/<max> s186=<value>/<max> s393=<value>/<max>
+// T28b (AiPlayerbot.Gathering.PaceReach) appends far_picks= far_opens= far_timeouts= at the end; the fields above keep their
+// place and meaning.
 // Every counter is the increment of its window. No game types, no config, no logging here: the caller samples the bot,
 // notes the casts it starts and writes the line this header formats.
 //
@@ -76,6 +78,14 @@ struct Skill
     uint32_t max = 0;
 };
 
+// twow-repo#333 T28b (AiPlayerbot.Gathering.PaceReach, GatheringPacePolicy.h): a far pick, its open, its timeout.
+enum class FarEvent : uint8_t
+{
+    Pick,
+    Open,
+    Timeout
+};
+
 struct Window
 {
     uint32_t start = 0;        // 0 = no window yet (the first sample opens one)
@@ -88,6 +98,9 @@ struct Window
     uint32_t opensOre = 0;
     uint32_t opensSkin = 0;
     uint32_t crafts = 0;
+    uint32_t farPicks = 0;      // T28b, appended at the end of the line
+    uint32_t farOpens = 0;
+    uint32_t farTimeouts = 0;
 
     bool Open() const { return start != 0; }
 
@@ -115,6 +128,19 @@ struct Window
             return;
         ++crafts;
         castMs += castDurationMs;
+    }
+
+    // T28b: a far pick, its open or its timeout; only inside an open window (Gathering.Trace 1).
+    void NoteFar(FarEvent event)
+    {
+        if (!Open())
+            return;
+        if (event == FarEvent::Pick)
+            ++farPicks;
+        else if (event == FarEvent::Open)
+            ++farOpens;
+        else
+            ++farTimeouts;
     }
 
     // One sample at now. Credits the seconds since the previous sample to the previous activity and keeps the current one
@@ -158,14 +184,17 @@ struct Window
 // The line, field order fixed (the format above).
 inline std::string ShareLine(uint32_t bot, uint32_t level, Window const& window, Skill herbalism, Skill mining, Skill skinning)
 {
-    char buffer[384];
+    // T28b appends its far-pick counters after the T28-M fields; the earlier fields keep their place and meaning.
+    char buffer[448];
     std::snprintf(buffer, sizeof(buffer),
         "[Gathering] event=share bot=%u level=%u play_s=%u purpose_s=%u trip_s=%u cast_s=%u opens_herb=%u opens_ore=%u "
-        "opens_skin=%u crafts=%u s182=%u/%u s186=%u/%u s393=%u/%u",
+        "opens_skin=%u crafts=%u s182=%u/%u s186=%u/%u s393=%u/%u"
+        " far_picks=%u far_opens=%u far_timeouts=%u",
         unsigned(bot), unsigned(level), unsigned(window.PlaySeconds()), unsigned(window.purposeSeconds),
         unsigned(window.tripSeconds), unsigned(window.CastSeconds()), unsigned(window.opensHerb), unsigned(window.opensOre),
         unsigned(window.opensSkin), unsigned(window.crafts), unsigned(herbalism.value), unsigned(herbalism.max),
-        unsigned(mining.value), unsigned(mining.max), unsigned(skinning.value), unsigned(skinning.max));
+        unsigned(mining.value), unsigned(mining.max), unsigned(skinning.value), unsigned(skinning.max),
+        unsigned(window.farPicks), unsigned(window.farOpens), unsigned(window.farTimeouts));
     return buffer;
 }
 }

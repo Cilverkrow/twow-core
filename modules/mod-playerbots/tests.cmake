@@ -2448,6 +2448,12 @@ add_test(NAME chat_command_owner_guid_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/chat_command_owner_guid_source_contract_tests.cmake")
 
+# twow-repo#563 part 3 (HARM): HandleCommand only handles the text; security check, chat filter and dispatch run on the bot thread; negative probe inside.
+add_test(NAME chat_handler_bot_thread_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/chat_handler_bot_thread_source_contract_tests.cmake")
+
 # twow-repo#601 S2 diagnostic: [GrindPick] grind-target sources (BotUpdateTrace).
 add_executable(grind_pick_policy_tests
   "${PB_MODULE_DIR}/t/grind_pick_policy_tests.cpp")
@@ -4505,6 +4511,22 @@ set_target_properties(gathering_trace_policy_tests PROPERTIES
 
 add_test(NAME gathering_trace_policy
   COMMAND gathering_trace_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#333 T28b (AiPlayerbot.Gathering.PaceReach, default 0): the mining / herbalism reach - lag rule, colour, skills,
+# reach clamp, hostile cache, far-pick clock from the pick, timeout -> miss list, hourly budget, the appended far counters of
+# the [Gathering] event=share line (GatheringPacePolicy.h); source contract in t/contracts.d.
+add_executable(gathering_pace_policy_tests
+  "${PB_MODULE_DIR}/t/gathering_pace_policy_tests.cpp")
+
+target_include_directories(gathering_pace_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(gathering_pace_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME gathering_pace_policy
+  COMMAND gathering_pace_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
 # twow-repo#333 P1-v (AiPlayerbot.Travel.RpgAreaLevelFromSpawn): the area level of an RPG target from its spawn nearest to the bot.
