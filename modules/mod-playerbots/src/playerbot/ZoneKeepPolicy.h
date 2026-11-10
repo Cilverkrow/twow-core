@@ -18,7 +18,7 @@
 namespace ai::zone_keep
 {
 // The bot's start zone: the custom start zones with CustomRaceStartZones (goblin Blackstone Island; high elf Thalassian Highlands
-// and Alah'Thalas), otherwise the zone of its race's playercreateinfo row. 0 = unknown (fail open: not gated, logged once).
+// and Alah'Thalas), otherwise the zone of its race's playercreateinfo row. 0 = unknown (fail open: not gated, no line).
 // A custom start race WITHOUT CustomRaceStartZones is unknown too (SZM adoption review 10.11.2026): it lives at a proxy start
 // (goblin Durotar, high elf Northshire; StartZonePolicy.h), while its playercreateinfo row names the custom zone (goblin 5536, high
 // elf 5225), so the gate would hold every such bot "outside" its start zone and the rescue would take it to an avoided zone.
@@ -27,6 +27,13 @@ inline bool StartZoneKnown(std::uint32_t race, bool customStarts, std::uint32_t 
     if (start_zone::IsCustomStartRace(race))
         return customStarts;
     return createZone != 0;
+}
+
+// The same case for the level holds (StartZoneHolds, the band-step hold below StartZoneMinLevel): a custom start race without
+// CustomRaceStartZones is never held, so it keeps its behaviour from before the SZM adoption (it was not in the SZM A/B).
+inline bool CustomStartUngated(std::uint32_t race, bool customStarts)
+{
+    return start_zone::IsCustomStartRace(race) && !customStarts;
 }
 
 inline bool InStartZone(std::uint32_t race, bool customStarts, std::uint32_t createZone, std::uint32_t zoneId)

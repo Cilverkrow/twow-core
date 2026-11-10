@@ -45,6 +45,11 @@ int main()
             "custom start race with custom starts: known");
         Require(StartZoneDefers(true, StartZoneKnown(sz::GoblinRace, false, sz::BlackstoneZone), false, 14) == false,
             "goblin in Durotar without custom starts: no deferral");
+        Require(CustomStartUngated(sz::GoblinRace, false) && CustomStartUngated(sz::HighElfRace, false),
+            "custom start race without custom starts: never held (StartZoneHolds, band-step hold)");
+        Require(!CustomStartUngated(sz::GoblinRace, true) && !CustomStartUngated(sz::HighElfRace, true), "with custom starts: held as any race");
+        for (std::uint32_t race = 1; race <= 8; ++race)
+            Require(!CustomStartUngated(race, false) && !CustomStartUngated(race, true), "standard races: never ungated");
     }
 
     // 2) StartZoneMinLevel: 0 off, gated below the level only.
