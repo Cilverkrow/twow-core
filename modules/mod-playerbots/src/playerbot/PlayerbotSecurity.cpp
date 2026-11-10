@@ -32,15 +32,14 @@ PlayerbotSecurityLevel PlayerbotSecurity::LevelFor(Player* from, DenyReason* rea
     // If a bot is a random bot
     else
     {
-        Group* group = from->GetGroup();
-        if (group && !ignoreGroup)
+        // twow-repo#563 part 4: "the sender and the bot share a group" is asked from the bot's side. The sender's Group is not read any more
+        // (the sender can stand on another Map object, i.e. be updated on another region thread, and its pointer would dangle); the bot's own
+        // group is read like everywhere else on the bot's thread - no worse than those reads, it only drops the reads through the sender.
+        if (!ignoreGroup)
         {
-            for (GroupReference *gref = group->GetFirstMember(); gref; gref = gref->next())
-            {
-                Player* player = gref->getSource();
-                if (player == bot)
-                    return PlayerbotSecurityLevel::PLAYERBOT_SECURITY_ALLOW_ALL;
-            }
+            Group* botGroup = bot->GetGroup();
+            if (botGroup && botGroup->IsMember(from->GetObjectGuid()))
+                return PlayerbotSecurityLevel::PLAYERBOT_SECURITY_ALLOW_ALL;
         }
 
         if (GetBotAI(bot)->IsOpposing(from))
@@ -63,6 +62,13 @@ PlayerbotSecurityLevel PlayerbotSecurity::LevelFor(Player* from, DenyReason* rea
         if (sPlayerbotAIConfig.gearscorecheck)
         {
             uint32 botGS = GetBotAI(bot)->GetEquipGearScore(bot, false, false);
+            // twow-repo#563 part 4, fail closed: the gear score is the sender's inventory/equipment. A sender on another Map object is updated
+            // on another thread - his containers are not read; the check cannot be passed from behind a region border (OB-00 10.11.2026).
+            if (from != bot && botGS && bot->GetLevel() > 15 && !SameMapObject(bot, from))
+            {
+                if (reason) *reason = DenyReason::PLAYERBOT_DENY_CROSS_REGION;
+                return PlayerbotSecurityLevel::PLAYERBOT_SECURITY_TALK;
+            }
             uint32 fromGS = GetBotAI(bot)->GetEquipGearScore(from, false, false);
             if (botGS && bot->GetLevel() > 15 && botGS > fromGS && (100 * (botGS - fromGS) / botGS) >= 12 * sWorld.getConfig(CONFIG_UINT32_MAX_PLAYER_LEVEL) / from->GetLevel())
             {
@@ -103,7 +109,7 @@ PlayerbotSecurityLevel PlayerbotSecurity::LevelFor(Player* from, DenyReason* rea
             return PlayerbotSecurityLevel::PLAYERBOT_SECURITY_TALK;
         }*/
 
-        group = bot->GetGroup();
+        Group* group = bot->GetGroup();
         if (!group)
         {
             /*if (bot->GetMapId() != from->GetMapId() || bot->GetDistance(from) > sPlayerbotAIConfig.whisperDistance)
@@ -236,6 +242,9 @@ bool PlayerbotSecurity::CheckLevelFor(PlayerbotSecurityLevel level, bool silent,
             break;
         case DenyReason::PLAYERBOT_DENY_LFG:
             out << "I am in a queue for dungeon. Will do it later";
+            break;
+        case DenyReason::PLAYERBOT_DENY_CROSS_REGION:
+            out << "You are in another area; I can't check your gear from here. Come closer";
             break;
         default:
             out << "I can't do that";
