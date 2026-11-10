@@ -1409,6 +1409,14 @@ AiPlayerbot.BotGroups.Manager.StatusSeconds = 0
 # line). Lines: "[GroupMgr] event=..." per op / directive / ack / end and "[GroupMgr] minute ..." / "[GroupMgr] minute2 ...".
 # All [GroupMgr] and [ManagerInbox] lines are key=value pairs; later pairs only append fields at the end. Evaluators parse the
 # key=value pairs and ignore keys they do not know (OB-10 rule).
+# T30-1b: a bot that leaves the GROUP mode itself (T02-GROUP; ack state 4 "left", seq 0, the group serial it held) ends its
+# membership only while its Enter is applied, the serial is that of its current group and no Exit of it is open; then
+# "[GroupMgr] event=self_left group= bot= reason=" and the member ends with bot_left_done (goal_done, a natural end),
+# bot_left_lost (goal_lost) or bot_left_off (arbiter_off; both no QUEST attempt, the retry cooldown only) with its Exit and
+# leave as usual; any other left ack counts as ack_stale. The minute2 line ends with osc= (memberships that ended less than
+# 15 minutes after their Enter was applied without a natural end - turned in, objective or group done, bot_left_done - and
+# not as too_small or switch_off; an increment), self_left= (an increment) and skip_unknown_30m= (a level, not an increment: the bots the manager skipped as
+# skip_unknown without a break for 30 minutes or more at the line).
 AiPlayerbot.BotGroups.Manager.Types = 0
 # L1 (owner 07.11.2026, owner-ordered behaviour change): a bot resets its raid lockouts ("reset raids", which drops every bind
 # except the one of its current map, PERM included) only when a real player invites it. An invite by another bot or by a
