@@ -86,7 +86,7 @@ string(FIND "${progress}" "questLoopInactiveReselect" in_progress)
 if(NOT in_progress EQUAL -1)
   message(FATAL_ERROR "inactive reselect: the progress branch (InactiveAfterProgress) must stay without it")
 endif()
-between("${travel}" "void TravelTarget::SetTarget(" "\n}\n" set_target)
+between("${travel}" "void TravelTarget::SetTargetUnchecked(" "\n}\n" set_target)
 require_text("${set_target}" "if (tDestination1 != tDestination)\n        inactiveReselectPending = false;" "a new destination drops the fallback")
 
 # 4. The search: an objective in a remembered camp is skipped (after QL-1, before the map rules), counted, never chosen.

@@ -45,7 +45,8 @@ private:
 };
 
 // RAII writer family of the running entry function (design 4.3, E1 a): a thread_local stack of depth 4, the innermost entry
-// counts, an empty stack is Unknown. IfEmpty pushes only on an empty stack (the bot brain fallback in setNewTarget).
+// counts, an empty stack is Unknown. IfEmpty pushes only on an empty stack (the bot brain fallback in setNewTarget). A push past
+// depth 4 is counted (depth_overflow in [ArbiterMin], A3 step 3 T02-a) while a shadow is on.
 class WriterScope
 {
 public:
@@ -104,10 +105,41 @@ void ShadowDrop(ShadowState& state);
 
 // Live arbiter switch (OB-00 09.11.2026; SupervisorPolicy.h ParseArbiterSwitch / ArbiterEffective). One process-wide atomic, no
 // config reload: PlayerbotAIConfig::Initialize is never called for it (map threads read the config without a lock).
-// ArbiterOn is the gate's value (PlayerbotAI::UpdateAI, once per engine pass; configValue = AiPlayerbot.Supervisor.Arbiter).
-// SetArbiterOverride (console "rndbot arbiter on|off", world thread) stores kArbiterOn / kArbiterOff and returns the override
-// before the call (kArbiterFollowConfig while the console never set it). A bot sees the new value at its next engine pass; the
-// shadow's own on/off handling (ShadowTick) is the same as for a reload of the key.
+// ArbiterValue is the gate's value (PlayerbotAI::UpdateAI, once per engine pass; configValue = AiPlayerbot.Supervisor.Arbiter):
+// 0 off, 1 shadow, 2 enforce (A3 step 3 T02-a, AiPlayerbot.Supervisor.Arbiter = 2, default 0). ArbiterOn = ArbiterValue >= 1
+// (the shadow runs), kept for the console contract. SetArbiterOverride (console "rndbot arbiter on|off|enforce", world thread)
+// stores kArbiterOff / kArbiterOn / kArbiterEnforce (any other value changes nothing) and returns the override before the call
+// (kArbiterFollowConfig while the console never set it). A bot sees the new value at its next engine pass; the shadow's own
+// on/off handling (ShadowTick) is the same as for a reload of the key.
+std::uint32_t ArbiterValue(std::uint32_t configValue);
 bool ArbiterOn(std::uint32_t configValue);
-int SetArbiterOverride(bool on);
+int SetArbiterOverride(int value);
+
+// ---- A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2, default 0): what the enforcing gate needs from the shadow ----------
+// The writer family of the running entry: the innermost WriterScope, Unknown on an empty stack (the same value the observer
+// records).
+WriterId CurrentWriterId();
+
+// The calling thread is this bot's own map update (ThreadTag Bot with this owner): only then may the gate read the bot's
+// supervisor. World, untagged and other bots' threads are always admitted (their write raises the write generation, which ends
+// any ownership).
+bool OnOwnThread(PlayerbotAI const* ai);
+
+// The enforcement counters of the [ArbiterMin] minute (SupervisorPolicy.h ArbiterMinute), per cohort, under the shadow's mutex.
+// Counted only while a shadow minute runs (enforcement implies the shadow, 2 >= 1).
+enum class EnforceCount : std::uint8_t
+{
+    Deny,
+    DenyProbe,
+    HeldRequest,
+    HeldErrand,
+    ProbePass,
+    ProbeFail,
+    ProbeShadow,
+};
+void CountEnforce(std::uint32_t guidLow, EnforceCount what);
+
+// One enforcement line (ev=deny, ev=probe, ev=mode) from the shared budget of 300 lines per minute; a refused line counts as
+// dropped. The text is written as given (already formatted and sanitized by the caller).
+void EmitEnforceLine(std::uint32_t guidLow, char const* text);
 }

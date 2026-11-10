@@ -2541,11 +2541,12 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
         // A3 step 3 (ADR-0041, AiPlayerbot.Supervisor, default 0): the supervisor ticks once per engine pass (after the
         // countdown, the reaction gate and the cast-delay returns, so it counts decision passes, not world ticks). Tick counts and,
         // with AiPlayerbot.Supervisor.Arbiter = 1 (behaviour pair 1, default 0; only under the parent switch), runs the arbiter
-        // shadow, which only watches the travel target. When the switch stops applying (reload to 0, other cohort) the instance
-        // is released and dropped. The console "rndbot arbiter on|off" (OB-00 09.11.2026) overrides the arbiter key at run time
-        // (ArbiterOn, SupervisorShadow.h); the key stays the start value.
+        // shadow, which only watches the travel target; with 2 (A3 step 3 T02-a, default 0) the shadow plus enforcement on the
+        // travel target (SupervisorEnforce.h). When the switch stops applying (reload to 0, other cohort) the instance is
+        // released and dropped. The console "rndbot arbiter on|off|enforce" (OB-00 09.11.2026) overrides the arbiter key at run
+        // time (ArbiterValue: 0 off, 1 shadow, 2 enforce; SupervisorShadow.h); the key stays the start value.
         if (sPlayerbotAIConfig.supervisor && ai::supervisor::Applies(sPlayerbotAIConfig.supervisor, bot->GetGUIDLow()))
-            EnsureSupervisor()->Tick(WorldTimer::getMSTime(), ai::supervisor::ArbiterOn(sPlayerbotAIConfig.supervisorArbiter));
+            EnsureSupervisor()->Tick(WorldTimer::getMSTime(), ai::supervisor::ArbiterValue(sPlayerbotAIConfig.supervisorArbiter));
         else if (supervisor_)
         {
             supervisor_->Release();

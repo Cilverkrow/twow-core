@@ -168,7 +168,11 @@ bool ForceQuestTravel(Player* bot, std::uint32_t questId, int objIdx)
             ai::zone_keep::NoteForcedHold(bot, ai, "group_quest", outsideZone);
             return false;
         }
-    t->SetTarget(dest, point);
+    // A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2, default 0): denied = nothing else written (the manager forces again on a
+    // later pass, as after no destination).
+    bool const admitted = t->SetTarget(dest, point);
+    if (!admitted)
+        return false;
     t->SetForced(true);
     t->SetRelevance(196);   // below guild order 198 and guild founding 197
     std::string const cond = objIdx >= 0
@@ -231,7 +235,9 @@ SavedTravel SaveTravel(TravelTarget* t)
 
 // Back to the bot's own travel: the saved target if it was a real one, else none (a fresh choice on the next tick).
 // A stale target (inactive since) is ended by TravelTarget::CheckStatus itself.
-void RestoreTravel(PlayerbotAI* ai, SavedTravel const& s)
+// A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2, default 0): false = the arbiter denied the restore and nothing else was
+// written (only on the bot's own thread; the world-thread release is always admitted). The null restore is neutral.
+bool RestoreTravel(PlayerbotAI* ai, SavedTravel const& s)
 {
     ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::Select);
     TravelTarget* t = Target(ai);
@@ -240,9 +246,10 @@ void RestoreTravel(PlayerbotAI* ai, SavedTravel const& s)
         sTravelMgr.SetNullTravelTarget(t);
         t->SetForced(false);
         ResetTravelValues(ai);
-        return;
+        return true;
     }
-    t->SetTarget(s.dest, s.pos);
+    if (!t->SetTarget(s.dest, s.pos))
+        return false;
     t->SetConditions(s.conditions);
     t->SetForced(s.forced);
     t->SetRelevance(s.relevance);
@@ -250,6 +257,7 @@ void RestoreTravel(PlayerbotAI* ai, SavedTravel const& s)
     if (s.forced)
         t->SetExpireIn(HOUR * IN_MILLISECONDS);
     ResetTravelValues(ai);
+    return true;
 }
 
 // A plain follower of the leader while the group works: no own travel, rpg, grind or group leaving.
@@ -402,7 +410,10 @@ void WorldThreadManager::Release(Player* bot, Member const& m, bool leaveGroup)
     ai->SetMaster(nullptr);
     // twow-repo#628 fix: the strategy rebuild and the reset on the bot's own thread (it also drops a pending S7 set).
     ai->RequestGroupAi(group_ai_refresh::LeaveReset);
-    RestoreTravel(ai, m.travel);
+    // A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2, default 0): the release runs on the world thread, where the arbiter
+    // admits every write; a denied restore would leave the target as it is, and nothing follows it here.
+    if (!RestoreTravel(ai, m.travel))
+        return;
 }
 
 void WorldThreadManager::DissolveGroup(std::map<std::uint32_t, Player*> const& bots, HelpGroup& g, Dissolve reason, std::uint32_t now)

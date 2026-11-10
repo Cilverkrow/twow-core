@@ -41,6 +41,10 @@ thread_local std::uint32_t t_depth = 0;   // may pass kWriterDepth; only the fir
 // True while at least one shadow is on (g_on > 0; set and cleared under g_mutex). Off, an observed write costs this one load.
 std::atomic<bool> g_armed{false};
 
+// A3 step 3 T02-a: WriterScope pushes past kWriterDepth while a shadow is on. Process-wide (the stacks are thread_local and
+// carry no bot), moved into one cohort's minute by RollLocked.
+std::atomic<std::uint32_t> g_depthOverflow{0};
+
 // Build rule 1 (OB-00 07.11.): one short file-local mutex around the line budget, the minute sums and every ShadowState.
 std::mutex g_mutex;
 std::uint32_t g_on = 0;             // shadows with on = true
@@ -106,6 +110,7 @@ void DropLocked(ShadowState& state)
             g_active[i] = false;
         }
         g_minute = 0;
+        g_depthOverflow.store(0, std::memory_order_relaxed);
     }
     state = ShadowState();
 }
@@ -163,6 +168,9 @@ MinuteOut RollLocked(std::uint32_t nowSec)
         return out;
     g_minute = minute;
     out.due = true;
+    // A3 step 3 T02-a: the WriterScope overflow count is process-wide (no bot, no cohort); it is reported once, in cohort B's
+    // minute when B ticked in it, else in A's.
+    g_min[g_active[1] ? 1 : 0].depthOverflow += g_depthOverflow.exchange(0, std::memory_order_relaxed);
     for (std::size_t i = 0; i < 2; ++i)
     {
         out.active[i] = g_active[i];
@@ -230,6 +238,8 @@ WriterScope::WriterScope(WriterId writer, bool onlyIfEmpty) : pushed_(!onlyIfEmp
         return;
     if (t_depth < kWriterDepth)
         t_writers[t_depth] = writer;
+    else if (g_armed.load(std::memory_order_relaxed))
+        g_depthOverflow.fetch_add(1, std::memory_order_relaxed);   // A3 step 3 T02-a: depth_overflow (shadow on only)
     ++t_depth;
 }
 
@@ -375,13 +385,75 @@ namespace
 std::atomic<int> g_arbiterOverride{kArbiterFollowConfig};
 }
 
-bool ArbiterOn(std::uint32_t configValue)
+std::uint32_t ArbiterValue(std::uint32_t configValue)
 {
     return ArbiterEffective(g_arbiterOverride.load(std::memory_order_relaxed), configValue);
 }
 
-int SetArbiterOverride(bool on)
+bool ArbiterOn(std::uint32_t configValue)
 {
-    return g_arbiterOverride.exchange(on ? kArbiterOn : kArbiterOff, std::memory_order_relaxed);
+    return ArbiterValue(configValue) >= 1;
+}
+
+int SetArbiterOverride(int value)
+{
+    if (value != kArbiterOff && value != kArbiterOn && value != kArbiterEnforce)
+        return g_arbiterOverride.load(std::memory_order_relaxed);
+    return g_arbiterOverride.exchange(value, std::memory_order_relaxed);
+}
+
+// ---- A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2, default 0) --------------------------------------------------------
+WriterId CurrentWriterId()
+{
+    return CurrentWriter();
+}
+
+bool OnOwnThread(PlayerbotAI const* ai)
+{
+    return ai && t_tag.kind == ThreadKind::Bot && t_tag.owner == ai;
+}
+
+void CountEnforce(std::uint32_t guidLow, EnforceCount what)
+{
+    if (!g_armed.load(std::memory_order_relaxed))
+        return;
+    std::size_t const cohortIdx = CohortIndex(guidLow);
+    std::lock_guard<std::mutex> lock(g_mutex);
+    if (g_on == 0)
+        return;
+    ArbiterMinute& m = g_min[cohortIdx];
+    switch (what)
+    {
+        case EnforceCount::Deny: ++m.deny; break;
+        case EnforceCount::DenyProbe: ++m.denyProbe; break;
+        case EnforceCount::HeldRequest: ++m.heldRequest; break;
+        case EnforceCount::HeldErrand: ++m.heldErrand; break;
+        case EnforceCount::ProbePass: ++m.probePass; break;
+        case EnforceCount::ProbeFail: ++m.probeFail; break;
+        case EnforceCount::ProbeShadow: ++m.probeShadow; break;
+    }
+}
+
+// The shared budget of the shadow's lines (E2 a, 300 per minute). lines / dropped are counted only while a shadow minute runs,
+// so a line after the last shadow went off (ev=mode cause=arbiter_disarm) leaves no stale count in the next minute.
+void EmitEnforceLine(std::uint32_t guidLow, char const* text)
+{
+    if (!text)
+        return;
+    std::size_t const cohortIdx = CohortIndex(guidLow);
+    bool taken = false;
+    {
+        std::lock_guard<std::mutex> lock(g_mutex);
+        taken = ai::rot_cast::BudgetTake(g_window, g_used, std::uint32_t(time(nullptr)), LinesPerMinute);
+        if (g_on > 0)
+        {
+            if (taken)
+                ++g_min[cohortIdx].lines;
+            else
+                ++g_min[cohortIdx].dropped;
+        }
+    }
+    if (taken)
+        sLog.outBasic("%s", text);
 }
 }

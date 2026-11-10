@@ -943,8 +943,13 @@ public:
     // passes and decides nothing. 0 off, 1 all, 2 cohort B, 3 cohort A; other = 0 + error line.
     uint32 supervisor = 0;
     // A3 step 3 behaviour pair 1: the arbiter shadow (SupervisorShadow.cpp), only where the supervisor runs. 0 off, 1 shadow
-    // (watch and log, no write); other = 0 + error line (no enforcement code yet).
+    // (watch and log, no write), 2 enforce (A3 step 3 T02-a: the shadow plus the arbiter gate on the travel target,
+    // SupervisorEnforce.cpp); other = 0 + error line.
     uint32 supervisorArbiter = 0;
+    // A3 step 3 T02-a (AiPlayerbot.Supervisor.ArbiterProbe, default 0): the arbiter probe on the probe bots (cohort B, every 25th
+    // guid pair; ArbiterLanePolicy.h IsProbeBot). 0 off, 1 probe (at arbiter 2 three refused writes every 10 minutes, at 1 only
+    // the paired count); other = 0 + error line.
+    uint32 supervisorArbiterProbe = 0;
     // A3 step 5 (ADR-0041, OB-00 07.11.2026): the combat rule (CombatRulePolicy.h, CombatRule.cpp), one switch per part.
     // HealerStart: a holy paladin / restoration druid may attack like a healer with "offdps" (their contexts have no offdps
     // creator, so the healer gate refused every attack). 0 off (default, the old rule), 1 all, 2 cohort B, 3 cohort A; other = 0.
