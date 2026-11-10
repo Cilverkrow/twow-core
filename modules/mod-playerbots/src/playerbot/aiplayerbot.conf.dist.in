@@ -2227,8 +2227,8 @@ AiPlayerbot.Path.TransportBoardFix = 0
 # still waits as before ("different map"), with no candidate vessel: no boarding is possible there either way. A dock on
 # the bot's map is scanned on the bot's own map instance (the old scan took the first instance of that map, under the
 # region layout any region). The [TransportWait] trace keeps counting the wait (cand=0 on a cross-map wait).
-# 0 = as before (default until the acceptance unit; then 1 by default, 0 = rollback).
-AiPlayerbot.Path.TransportSameMapGuard = 0
+# 1 = the guard (default since its acceptance unit passed: H1+H4 u1, 10.11.2026, OB-10 OK); 0 = as before (rollback).
+AiPlayerbot.Path.TransportSameMapGuard = 1
 # twow-repo#575 (PATH-01 b, flight A/B 18.10.2026): a res=failed [TaxiUse] line names the refusal: reason=logout|combat|
 # disable_move|unknown_node|mounted|shapeshift|casting|no_path|money|other (first core check that holds; trace only).
 # twow-repo#575 (PATH-01 b, BUG FIX, profile 1 after the A/B): with a flight master the core refuses a flight in a
