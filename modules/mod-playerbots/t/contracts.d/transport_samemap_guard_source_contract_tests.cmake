@@ -56,11 +56,12 @@ read_source("${PB_SOURCE_DIR}/TransportSameMapPolicy.h" policy)
 read_source("${PB_SOURCE_DIR}/strategy/actions/MovementActions.cpp" move)
 read_source("${PB_MODULE_DIR}/tests.cmake" tests)
 
-# 1. The key: dist default 0, member default false, read with default false, [ConfigEcho] in sorted place.
-require_text("${dist}" "\nAiPlayerbot.Path.TransportSameMapGuard = 0\n" "dist default 0")
+# 1. The key (flip pair 10.11.2026, after the acceptance unit H1+H4 u1 passed for H4 and OB-10 OK): dist default 1, member default true,
+# read with default true, [ConfigEcho] in sorted place. 0 stays the rollback.
+require_text("${dist}" "\nAiPlayerbot.Path.TransportSameMapGuard = 1\n" "dist default 1")
 count_text("${dist}" "AiPlayerbot.Path.TransportSameMapGuard =" 1 "one dist line")
-require_text("${config_h}" "    bool pathTransportSameMapGuard = false;" "member default false")
-require_text("${config_cpp}" "    pathTransportSameMapGuard = config.GetBoolDefault(\"AiPlayerbot.Path.TransportSameMapGuard\", false);" "read with default false")
+require_text("${config_h}" "    bool pathTransportSameMapGuard = true;" "member default true")
+require_text("${config_cpp}" "    pathTransportSameMapGuard = config.GetBoolDefault(\"AiPlayerbot.Path.TransportSameMapGuard\", true);" "read with default true")
 require_text("${config_cpp}" "            {\"Path.TransportEdgeTrace\", Value(pathTransportEdgeTrace)},\n            {\"Path.TransportSameMapGuard\", Value(pathTransportSameMapGuard)},\n            {\"Path.TransportWaitTimeoutMin\", Value(pathTransportWaitTimeoutMin)}," "[ConfigEcho] sorted")
 
 # 2. The policy: guard off = always the scan; guard on = only on the bot's map.
