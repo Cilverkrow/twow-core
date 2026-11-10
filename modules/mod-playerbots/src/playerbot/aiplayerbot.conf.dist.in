@@ -1418,10 +1418,15 @@ AiPlayerbot.BotGroups.Manager.StatusSeconds = 0
 # membership only while its Enter is applied, the serial is that of its current group and no Exit of it is open; then
 # "[GroupMgr] event=self_left group= bot= reason=" and the member ends with bot_left_done (goal_done, a natural end),
 # bot_left_lost (goal_lost) or bot_left_off (arbiter_off; both no QUEST attempt, the retry cooldown only) with its Exit and
-# leave as usual; any other left ack counts as ack_stale. The minute2 line ends with osc= (memberships that ended less than
+# leave as usual; any other left ack counts as left_stale (T30-1c). The minute2 line ends with osc= (memberships that ended less than
 # 15 minutes after their Enter was applied without a natural end - turned in, objective or group done, bot_left_done - and
 # not as too_small or switch_off; an increment), self_left= (an increment) and skip_unknown_30m= (a level, not an increment: the bots the manager skipped as
-# skip_unknown without a break for 30 minutes or more at the line).
+# skip_unknown without a break for 30 minutes or more at the line), then left_stale= (T30-1c, an increment: left acks that did
+# not match).
+# T30-1c: the manager acts only while the arbiter enforces, i.e. AiPlayerbot.Supervisor.Arbiter = 2 or the console
+# "rndbot arbiter enforce" (the T02-GROUP handler refuses Enter and Update below 2). Below 2, Types acts like 0 (no own line;
+# the config echo and the console line show the arbiter): the manager owns no bot, the legacy paths are open again and its
+# open groups end with switch_off.
 AiPlayerbot.BotGroups.Manager.Types = 0
 # A3 step 6 T33-0 (design T33 v1.1, owner decisions F1-F17 = (a)): MEASUREMENT ONLY, default 0, no behaviour change. The
 # meeting shadow of the manager's QUEST groups ("Gather" = meeting up; not the gather strategy or GatherTravelDestination).
@@ -1517,8 +1522,24 @@ AiPlayerbot.Supervisor = 0
 # (same cohort). It watches the bot's own travel target, bundles the writes of one engine pass and writes a [Supervisor]
 # ev=write / ev=expire line only for an open target closed by another family, a cooldown expiry or a writer without scope
 # (at most 300 lines per minute), plus one [ArbiterMin] sum per minute and cohort. It never writes the target or the bot.
-# 0 = off (default, rollback), 1 = shadow. Any other value acts like 0 (one error line at load; no enforcement yet).
+# A3 step 3 T02-a (OB-00 10.11.2026, design A3-S3-T02-ENTWURF.md v0.3): 2 = enforcement, the shadow plus one gate on every
+# write of the bot's own live travel target. The lane that set an open target (questbook, group) owns it until the target
+# changes or closes; a writer of a lower lane is refused and writes nothing (one [Supervisor] ev=deny line, deny in
+# [ArbiterMin]); a close-then-request errand or the travel target request waits (held_errand / held_request). Closes, the
+# null target, execution, survival, manager and commands (go, debug) are always admitted. Arming 2 moves the bots in the
+# quest book scope (roster, no real player master, not in a battleground, not parked) from Passive to Quest (one ev=mode
+# line); leaving 2 moves them back. Without group mode (a later pair) only a write without writer scope (unknown, test) on a
+# questbook-owned target is refused outside the probe.
+# 0 = off (default, rollback), 1 = shadow, 2 = enforce. Any other value acts like 0 (one error line at load). The console
+# "rndbot arbiter on|off|enforce" overrides it until the next restart.
 AiPlayerbot.Supervisor.Arbiter = 0
+# A3 step 3 T02-a: the arbiter probe, a self test of the gate on fixed probe bots (cohort B, low guid / 2 a multiple of 25),
+# at most once per bot every 10 minutes and only on an open travel target. With AiPlayerbot.Supervisor.Arbiter = 2 the group
+# lane owns the target for one engine pass, then a select write, a select copy and a questbook lane check must all be refused
+# with the target unchanged (one [Supervisor] ev=probe line, probe_pass / probe_fail in [ArbiterMin]); with 1 it writes
+# nothing and only counts probe_shadow (the paired control). 0 = off (default), 1 = probe. Any other value acts like 0
+# (one error line at load).
+AiPlayerbot.Supervisor.ArbiterProbe = 0
 # A3 step 5 (ADR-0041, OB-00 07.11.2026): the combat rule - one module that owns the combat decisions (who may start a fight,
 # rest before the pull, target choice, flee point, loop guard), one switch per part. Design: A3-S5-KAMPFREGEL-ENTWURF.md.
 # Part HealerStart (A3-AKTIONS-VERDRAHTUNG F2 (a)): the healer gate of attack my target / attack RTI target / attack anything
@@ -1916,6 +1937,18 @@ AiPlayerbot.QuestFirstProgression.StartZoneMinLevel.Cohort = 1
 #   0 = off (rollback), 1 = on (default since the SZM adoption, 10.11.2026); other values act like 0. Without StartZoneMinLevel it
 #   does nothing.
 AiPlayerbot.QuestFirstProgression.StartZoneMinLevel.Complete = 1
+# twow-repo#575 SZF-Q, objective window (BOT-14 #703; design ws-10/cli-pathfinding/szf, OB-00 + OB-10 10.11.2026): for a bot that
+# StartZoneMinLevel holds (the .Cohort selection, roster bots without a real player master), the objective travel check of a quest that
+# is in its log and not complete accepts quest levels up to L + .AboveLevels instead of L + 1 (SZM R3: held bots stalled with quests in
+# the log one level outside the old rule, e.g. ql5 at L3). No new accept, the giver rules, "can fight equal", the mob level check and
+# the start-zone gate stay. With a quest book only its "above the window" refusal is lifted, up to L + .AboveLevels; the QB5 list stays.
+# The first objective a bot may take only because of the window writes [ZoneKeep] state=objective_window bot= quest= qlevel= level=
+# zone= (once per bot and quest); once per minute [ZoneKeepMin] cohort=A|B objective_window= objective_window_new= (mode on only).
+#   A cohort key with its own meaning (switch audit twow-repo#679): 0 = off (default, rollback), 1 = every held bot, 2 = only cohort B
+#   (odd low guid), 3 = only cohort A (even low guid) (CohortPolicy.h, the same split as .Cohort); other values act like 0.
+#   .AboveLevels 1..3 (default 2; other values are clamped). Without StartZoneMinLevel it does nothing.
+AiPlayerbot.QuestFirstProgression.StartZoneMinLevel.ObjectiveWindow = 0
+AiPlayerbot.QuestFirstProgression.StartZoneMinLevel.ObjectiveWindow.AboveLevels = 2
 # twow-repo#601 quest acceptance lever (iv) (OB-00 28.10.2026, BUG FIX behind a switch, cli-quest-organic/quest-acceptance/STEP2.md):
 # the radius quest giver fetch of a quest route request (GiverRadius, the #421 B stages) asked TravelMgr for entry 0, but every
 # quest giver is filed under its quest id - so it never returned a giver. Givers reached the route choice only through the

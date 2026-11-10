@@ -968,12 +968,20 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[Supervisor] config key=Supervisor value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", supervisor);
         supervisor = 0;
     }
-    // A3 step 3 behaviour pair 1 (SupervisorShadow.cpp): the arbiter shadow; 2 (enforcement) has no code yet, so above 1 is off.
+    // A3 step 3 behaviour pair 1 (SupervisorShadow.cpp): the arbiter shadow; A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2,
+    // default 0): 2 = enforcement on the travel target (SupervisorEnforce.cpp, the shadow stays on). Above 2 is off.
     supervisorArbiter = uint32(config.GetIntDefault("AiPlayerbot.Supervisor.Arbiter", 0));
     if (!ai::supervisor::ValidArbiter(supervisorArbiter))
     {
-        sLog.outError("[Supervisor] config key=Supervisor.Arbiter value=%u result=off (0 off, 1 shadow)", supervisorArbiter);
+        sLog.outError("[Supervisor] config key=Supervisor.Arbiter value=%u result=off (0 off, 1 shadow, 2 enforce)", supervisorArbiter);
         supervisorArbiter = 0;
+    }
+    // A3 step 3 T02-a: the arbiter probe (Supervisor::ProbeTick, SupervisorEnforce.cpp) on the probe bots; above 1 is off.
+    supervisorArbiterProbe = uint32(config.GetIntDefault("AiPlayerbot.Supervisor.ArbiterProbe", 0));
+    if (supervisorArbiterProbe > 1)
+    {
+        sLog.outError("[Supervisor] config key=Supervisor.ArbiterProbe value=%u result=off (0 off, 1 probe)", supervisorArbiterProbe);
+        supervisorArbiterProbe = 0;
     }
     // A3 step 5 (ADR-0041): the combat rule, parts HealerStart, PriestOverlay, RestBeforePull and ProgressGuard (CombatRulePolicy.h); an unknown
     // mode is off.
@@ -1154,6 +1162,21 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[ZoneKeep] config key=StartZoneMinLevel.Complete value=%u result=off (0 off, 1 on)", questFirstProgressionStartZoneComplete);
         questFirstProgressionStartZoneComplete = 0;
     }
+    // twow-repo#575 SZF-Q (BOT-14 #703, ZoneKeepPolicy.h): the objective window of a held bot. Mode: 0 off (default, rollback),
+    // 1 all, 2 cohort B, 3 cohort A; any other value acts like 0 (logged). .AboveLevels clamped to 1..3 (logged), default 2.
+    questFirstProgressionStartZoneObjectiveWindow = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.StartZoneMinLevel.ObjectiveWindow", 0);
+    int32 const objectiveWindowRaw = int32(questFirstProgressionStartZoneObjectiveWindow);
+    questFirstProgressionStartZoneObjectiveWindow = ai::zone_keep::ClampObjectiveWindowMode(objectiveWindowRaw);
+    if (int32(questFirstProgressionStartZoneObjectiveWindow) != objectiveWindowRaw)
+        sLog.outError("[ZoneKeep] config key=StartZoneMinLevel.ObjectiveWindow value=%d result=off (0 off, 1 all, 2 cohort B, 3 cohort A)",
+            objectiveWindowRaw);
+    questFirstProgressionStartZoneObjectiveWindowAbove = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.StartZoneMinLevel.ObjectiveWindow.AboveLevels",
+        int32(ai::zone_keep::ObjectiveWindowAboveDefault));
+    int32 const objectiveWindowAboveRaw = int32(questFirstProgressionStartZoneObjectiveWindowAbove);
+    questFirstProgressionStartZoneObjectiveWindowAbove = ai::zone_keep::ClampAboveLevels(objectiveWindowAboveRaw);
+    if (int32(questFirstProgressionStartZoneObjectiveWindowAbove) != objectiveWindowAboveRaw)
+        sLog.outError("[ZoneKeep] config key=StartZoneMinLevel.ObjectiveWindow.AboveLevels value=%d result=%u (1..3)", objectiveWindowAboveRaw,
+            questFirstProgressionStartZoneObjectiveWindowAbove);
     // twow-repo#601 S5a F4 (OB-00 24.10.2026): the backoff walk toward the next rung, 0 = off, 1..10.
     questFirstProgressionBandWalkAfterEmptySearches = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.BandWalkAfterEmptySearches", 0);
     if (questFirstProgressionBandWalkAfterEmptySearches > 10)
@@ -2252,6 +2275,8 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestFirstProgression.StartZoneMinLevel", Value(questFirstProgressionStartZoneMinLevel)},
             {"QuestFirstProgression.StartZoneMinLevel.Cohort", Value(questFirstProgressionStartZoneMinLevelCohort)},
             {"QuestFirstProgression.StartZoneMinLevel.Complete", Value(questFirstProgressionStartZoneComplete)},
+            {"QuestFirstProgression.StartZoneMinLevel.ObjectiveWindow", Value(questFirstProgressionStartZoneObjectiveWindow)},
+            {"QuestFirstProgression.StartZoneMinLevel.ObjectiveWindow.AboveLevels", Value(questFirstProgressionStartZoneObjectiveWindowAbove)},
             {"QuestFirstProgression.TransientCountsAfter", Value(questFirstProgressionTransientCountsAfter)},
             {"QuestFirstProgression.TurnInParkFailures", Value(questFirstProgressionTurnInParkFailures)},
             {"QuestGroups.Enable", Value(questGroupsEnable)},
@@ -2314,6 +2339,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Rpg.TurnInFirst", Value(rpgTurnInFirst)},
             {"Supervisor", Value(supervisor)},
             {"Supervisor.Arbiter", Value(supervisorArbiter)},
+            {"Supervisor.ArbiterProbe", Value(supervisorArbiterProbe)},
             {"ThreadSafeTeleportAck", Value(threadSafeTeleportAck)},
             {"ThrownUsageFix", Value(thrownUsageFix)},
             {"Travel.ElevatorScanCache", Value(travelElevatorScanCache)},

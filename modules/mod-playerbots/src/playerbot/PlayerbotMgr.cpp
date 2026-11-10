@@ -32,6 +32,7 @@
 #include "ObjectMgr.h"
 #include "Handlers/LoginQueryHolder.h"
 #include "RosterListPolicy.h"
+#include "RosterSnapshotPolicy.h"
 #include "PlayerbotSecurity.h"
 
 #ifdef GenerateBotTests
@@ -1827,11 +1828,15 @@ void BuildRosterListEntries(std::vector<ai::roster_list::Entry>& out)
             e.raceId = bot->getRace();
             e.level = bot->GetLevel();
             e.online = true;
-            e.role = PlayerbotAI::IsTankFor(bot, bot) ? ai::roster_list::Role::TANK
-                : PlayerbotAI::IsHealFor(bot, bot) ? ai::roster_list::Role::HEAL
+            // twow-repo#698: role and group state come from the snapshot the bot publishes from its OWN thread (one atomic load). This
+            // function runs in the issuing player's command thread: it must not read the bot's strategy maps or its Group.
+            ai::roster_snapshot::Unpacked const snap = ai::roster_snapshot::Unpack(GetBotAI(bot)->GetRosterSnapshot());
+            e.role = snap.role == ai::roster_snapshot::RoleTank ? ai::roster_list::Role::TANK
+                : snap.role == ai::roster_snapshot::RoleHeal ? ai::roster_list::Role::HEAL
                 : ai::roster_list::Role::DPS;
-            if (Group* group = bot->GetGroup())
-                e.group = group->IsRaidGroup() ? ai::roster_list::GroupState::RAID : ai::roster_list::GroupState::GROUP;
+            e.group = snap.group == ai::roster_snapshot::GroupRaid ? ai::roster_list::GroupState::RAID
+                : snap.group == ai::roster_snapshot::GroupParty ? ai::roster_list::GroupState::GROUP
+                : ai::roster_list::GroupState::FREE;
             e.zone = RosterZoneName(bot->GetCachedZoneId());
             if (bot->GetGuildId())
                 e.guild = sGuildMgr.GetGuildNameById(bot->GetGuildId());

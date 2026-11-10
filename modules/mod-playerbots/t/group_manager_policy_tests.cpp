@@ -46,6 +46,16 @@ void TestMode()
     Require(!Owns(0, 3, 1) && !Owns(2, 4, 3), "mode 0 or reserved bits only: nobody");
 }
 
+// T30-1c: the manager acts only while the arbiter enforces (2); off (0) and shadow (1) make Types act like 0.
+void TestLiveTypes()
+{
+    Require(kManagerArbiter == 2, "the manager needs arbiter 2 (enforce)");
+    Require(LiveTypes(3, 10, 2) == 3 && LiveTypes(6, 10, 2) == 2, "arbiter 2: Types after the StatusSeconds rule");
+    Require(LiveTypes(3, 10, 0) == 0 && LiveTypes(3, 10, 1) == 0, "arbiter off or shadow: Types acts like 0");
+    Require(LiveTypes(3, 0, 2) == 0, "arbiter 2 without StatusSeconds: still 0");
+    Require(!Owns(1, LiveTypes(3, 10, 1), 1) && Owns(1, LiveTypes(3, 10, 2), 1), "ownership follows the arbiter");
+}
+
 void TestNames()
 {
     Require(std::string(TypeName(GroupType::Adhoc)) == "adhoc", "type name adhoc");
@@ -245,6 +255,7 @@ void TestFallback()
 int main()
 {
     TestMode();
+    TestLiveTypes();
     TestNames();
     TestRole();
     TestComposition();

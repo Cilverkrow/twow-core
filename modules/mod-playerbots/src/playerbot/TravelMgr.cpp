@@ -16,6 +16,7 @@
 #include "playerbot/AdhocGroupWorld.h"   // twow-repo#601 F5b: a bot-only group shares the kill credit (CLI-GRP 25.10.)
 #include "playerbot/CohortPolicy.h"
 #include "playerbot/SupervisorShadow.h"   // A3 step 3 arbiter shadow (AiPlayerbot.Supervisor.Arbiter): the observer in the status write
+#include "playerbot/SupervisorEnforce.h"  // A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2, default 0): the gate of the destination writes
 #include "playerbot/ZoneKeepPolicy.h"      // twow-repo#601 owner rule R1 (StartZoneMinLevel, forced trip hold)
 #include "Group/Group.h"                     // twow-repo#601 R1 package G3: no leave from a group with a real player
 #include "playerbot/RpgAreaLevelPolicy.h"
@@ -54,6 +55,13 @@ using namespace MaNGOS;
 
 namespace
 {
+// A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2, default 0): the null target (no destination or the null destination) is
+// neutral for the arbiter. The same rule as the shadow's IsNullDest (SupervisorShadow.cpp).
+bool IsNullDest(TravelDestination const* dest)
+{
+    return !dest || dynamic_cast<NullTravelDestination const*>(dest) != nullptr;
+}
+
 // twow-repo#601 (QuestLoop.InactiveAfterProgress): the bot's count on a quest objective destination - quest items for a loot
 // objective, kill / use credit otherwise; -1 when the destination is no objective or the quest is not in the log.
 int32 ObjectiveCountOf(Player* bot, TravelDestination const* destination)
@@ -206,6 +214,23 @@ PlayerTravelInfo::PlayerTravelInfo(Player* player, bool gapGrind)
     // fetch job (every giver in range) and QuestRelationTravelDestination::IsActive (the destination's own quest) only as a value.
     giverAnyQuest = sPlayerbotAIConfig.questFirstProgressionEnabled && sRandomPlayerbotMgr.IsPersistentRosterMember(player->GetGUIDLow()) &&
         !ai->HasRealPlayerMaster() && ai::cohort::Applies(sPlayerbotAIConfig.questFirstProgressionGiverFetchAnyQuest, player->GetGUIDLow());
+
+    // twow-repo#575 SZF-Q (QuestFirstProgression.StartZoneMinLevel.ObjectiveWindow, ZoneKeepPolicy.h): the window bit, here on the bot
+    // thread - the mode's cohort and a bot StartZoneMinLevel holds (roster, no real player master, below the level, .Cohort). Then the
+    // quests in the log that are not complete, the level window, guid and zone; the objective check of IsPossible reads them only as
+    // values. Mode 0 (default): the switch first, nothing else is read; false / empty for every other bot.
+    objectiveWindow = sPlayerbotAIConfig.questFirstProgressionStartZoneObjectiveWindow &&
+        ai::cohort::Applies(sPlayerbotAIConfig.questFirstProgressionStartZoneObjectiveWindow, player->GetGUIDLow()) &&
+        ai::zone_keep::StartZoneHolds(player, ai);
+    if (objectiveWindow)
+    {
+        objectiveWindowAbove = sPlayerbotAIConfig.questFirstProgressionStartZoneObjectiveWindowAbove;
+        objectiveWindowGuid = player->GetGUIDLow();
+        objectiveWindowZone = player->GetZoneId();
+        for (auto const& [questId, status] : player->getQuestStatusMap())
+            if (!status.m_rewarded && status.m_status == QUEST_STATUS_INCOMPLETE)
+                objectiveWindowQuests.push_back(questId);
+    }
 }
 
 std::string EntryTravelDestination::GetShortName() const
@@ -476,11 +501,23 @@ bool QuestObjectiveTravelDestination::IsPossible(const PlayerTravelInfo& info) c
                 ai::questbook::Note(info.GetQuestBookGuid(), ai::questbook::Count::TargetNoExcluded);
                 return false;
             }
-            if (ai::questbook::TemplateWindow(GetQuestTemplate(), info.GetLevel(), info.GetQuestBookGreyLevel()) != ai::questbook::NoReason::None)
+            // twow-repo#575 SZF-Q: only the "above the window" refusal yields to the objective window (a held bot, a quest in its log
+            // that is not complete, up to L + ObjectiveWindow.AboveLevels); every other reason and the QB5 list stay.
+            ai::questbook::NoReason const windowReason = ai::questbook::TemplateWindow(GetQuestTemplate(), info.GetLevel(), info.GetQuestBookGreyLevel());
+            if (windowReason != ai::questbook::NoReason::None &&
+                !(windowReason == ai::questbook::NoReason::AboveWindow && info.HasObjectiveWindow() &&
+                    ai::zone_keep::ObjectiveLevelAllowed(info, GetQuestTemplate(), int32(sPlayerbotAIConfig.questBookAboveLevels))))
             {
                 ai::questbook::Note(info.GetQuestBookGuid(), ai::questbook::Count::TargetNoWindow);
                 return false;
             }
+        }
+        // twow-repo#575 SZF-Q (StartZoneMinLevel.ObjectiveWindow): a bot with the window uses the one helper (old rule +1, widened for a
+        // quest in its log that is not complete); every other bot keeps the old +1 rule below, unchanged.
+        else if (info.HasObjectiveWindow())
+        {
+            if (!ai::zone_keep::ObjectiveLevelAllowed(info, GetQuestTemplate(), ai::zone_keep::ObjectiveOldAboveLevels))
+                return false;
         }
         else if ((int32)GetQuestTemplate()->GetQuestLevel() > (int32)info.GetLevel() + (int32)1)
             return false;
@@ -1194,7 +1231,22 @@ TravelTarget::TravelTarget(PlayerbotAI* ai) : AiObject(ai)
     SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);
 }
 
-void TravelTarget::SetTarget(TravelDestination* tDestination1, WorldPosition* wPosition1) {
+bool TravelTarget::SetTarget(TravelDestination* tDestination1, WorldPosition* wPosition1) {
+    if (live_ && !ai::supervisor::AdmitTargetWrite(ai, this, IsNullDest(tDestination1), "set_target"))
+    {
+        // A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2, default 0): denied, nothing written. The caller handed over a
+        // temporary destination the target did not take: free it (never the one the target holds).
+        if (dynamic_cast<TemporaryTravelDestination*>(tDestination1) && tDestination1 != tDestination)
+            delete tDestination1;
+        return false;
+    }
+    SetTargetUnchecked(tDestination1, wPosition1);
+    if (live_)
+        ai::supervisor::CommitTargetWrite(ai, this);
+    return true;
+}
+
+void TravelTarget::SetTargetUnchecked(TravelDestination* tDestination1, WorldPosition* wPosition1) {
     // twow-repo#594 / P3-b: a direct-target trip ends where its target leaves the destination - a reset (null target),
     // a group copy, any new choice ([DirectTarget] state=trip_end).
     if (ai::direct_targets::AnyBuilt())
@@ -1226,6 +1278,9 @@ void TravelTarget::SetTarget(TravelDestination* tDestination1, WorldPosition* wP
 
     wPosition = wPosition1;
     tDestination = tDestination1;
+    // A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2, default 0): the only raise of the destination generation; it ends any
+    // arbiter owner's claim on the previous write.
+    writeGen_.fetch_add(1, std::memory_order_relaxed);
 
     // #329: only a different quest target restarts the observed progress;
     // re-selecting the same one (or passing through no target) keeps it, so
@@ -1310,6 +1365,22 @@ void TravelTarget::SetProfessionTripRpgTarget(uint8 kind, bool stockArrival)
 }
 
 bool TravelTarget::CopyTarget(TravelTarget* const target) {
+    arbiterDenied_ = false;
+    if (live_ && !ai::supervisor::AdmitTargetWrite(ai, this, IsNullDest(target->tDestination), "copy_target"))
+    {
+        // A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2, default 0): denied before the #485 check, nothing written. The
+        // choice's temporary destination would leak: free it and clear the choice's pointer (never the one this target holds,
+        // nor a group copy's, which a member's live target still holds).
+        arbiterDenied_ = true;
+        if (dynamic_cast<TemporaryTravelDestination*>(target->tDestination) && target->tDestination != tDestination &&
+            !target->IsGroupCopy())
+        {
+            delete target->tDestination;
+            target->tDestination = nullptr;
+        }
+        return false;
+    }
+
     // Every applied choice (stock or BotBrain intent) passes here.
     // twow-repo#485: so the taker of a parked turn-in is refused here - a BotBrain
     // turn_in_quest intent, or a list fetched before the park. A group copy follows a
@@ -1335,7 +1406,9 @@ bool TravelTarget::CopyTarget(TravelTarget* const target) {
     else if (oldQuest)
         TraceQuestCommit(oldQuest, "drop", "replaced_by_non_quest_target");
 
-    SetTarget(target->tDestination, target->wPosition);
+    SetTargetUnchecked(target->tDestination, target->wPosition);   // A3 step 3 T02-a: the gate ran at the head
+    if (live_)
+        ai::supervisor::CommitTargetWrite(ai, this);
     // twow-repo#601 S2 / S4 R2: the choice's window end (0 for every target but a GrindMode 1 gap grind trip); setNewTarget
     // sets READY next, which applies it.
     gapWindowEnd = target->gapWindowEnd;
@@ -2146,6 +2219,74 @@ void ai::zone_keep::NoteGroupCopyGate(Player* bot, PlayerbotAI* botAI, uint32 st
     SetZoneKeepClock(botAI, CopyLineUntilValue, now + ai::zone_keep::GateLineSeconds);
     sLog.outBasic("[ZoneKeep] state=group_copy_gate bot=%u level=%u zone=%u rejects=%u chosen=%u", bot->GetGUIDLow(), bot->GetLevel(),
         bot->GetZoneId(), startZoneRejects, chosen ? 1u : 0u);
+}
+
+// twow-repo#575 SZF-Q (StartZoneMinLevel.ObjectiveWindow): the objective level helper and its line / minute counters. IsPossible runs
+// in the async travel search, so it never logs: a pass made only by the window is counted (atomic, per cohort) and, the first time
+// for the bot and quest, queued; the world thread writes the queued lines and the [ZoneKeepMin] lines once per minute.
+namespace
+{
+    struct ObjectiveWindowLine
+    {
+        uint32 guid = 0;
+        uint32 questId = 0;
+        int32 questLevel = 0;
+        uint32 level = 0;
+        uint32 zone = 0;
+    };
+    std::mutex objectiveWindowMutex;
+    std::set<uint64> objectiveWindowSeen;                 // guid << 32 | quest: one line per bot and quest (process lifetime)
+    std::vector<ObjectiveWindowLine> objectiveWindowPending;
+    std::atomic<uint64> objectiveWindowPasses[2];         // [cohort A, B]: passes made only by the window, this minute
+    std::atomic<uint64> objectiveWindowNew[2];            // [cohort A, B]: new bot + quest pairs, this minute
+}
+
+bool ai::zone_keep::ObjectiveLevelAllowed(PlayerTravelInfo const& info, Quest const* quest, int32 baseAbove)
+{
+    if (!quest)
+        return true;
+    int32 const questLevel = int32(quest->GetQuestLevel());
+    int32 const level = int32(info.GetLevel());
+    bool const held = info.HasObjectiveWindow();
+    bool const inLog = held && info.ObjectiveWindowInLog(quest->GetQuestId());
+    uint32 const above = info.GetObjectiveWindowAbove();
+    if (!ai::zone_keep::ObjectiveAllowed(questLevel, level, baseAbove, held, inLog, above))
+        return false;
+    if (ai::zone_keep::ObjectiveWindowOnly(questLevel, level, baseAbove, held, inLog, above))
+    {
+        uint32 const guid = info.GetObjectiveWindowGuid();
+        std::size_t const c = ai::cohort::InB(guid) ? 1 : 0;
+        objectiveWindowPasses[c].fetch_add(1, std::memory_order_relaxed);
+        std::lock_guard<std::mutex> lock(objectiveWindowMutex);
+        if (objectiveWindowSeen.insert((uint64(guid) << 32) | quest->GetQuestId()).second)
+        {
+            objectiveWindowNew[c].fetch_add(1, std::memory_order_relaxed);
+            objectiveWindowPending.push_back({ guid, quest->GetQuestId(), questLevel, info.GetLevel(), info.GetObjectiveWindowZone() });
+        }
+    }
+    return true;
+}
+
+void ai::zone_keep::ReportObjectiveWindowMinute()
+{
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (!sPlayerbotAIConfig.questFirstProgressionStartZoneObjectiveWindow || now < lastReport + 60)
+        return;
+    lastReport = now;
+    std::vector<ObjectiveWindowLine> lines;
+    {
+        std::lock_guard<std::mutex> lock(objectiveWindowMutex);
+        lines.swap(objectiveWindowPending);
+    }
+    for (ObjectiveWindowLine const& l : lines)
+        sLog.outBasic("[ZoneKeep] state=objective_window bot=%u quest=%u qlevel=%d level=%u zone=%u", l.guid, l.questId, l.questLevel,
+            l.level, l.zone);
+    for (std::size_t c = 0; c < 2; ++c)
+        sLog.outBasic("[ZoneKeepMin] cohort=%c mode=%u above=%u objective_window=%llu objective_window_new=%llu", c ? 'B' : 'A',
+            sPlayerbotAIConfig.questFirstProgressionStartZoneObjectiveWindow, sPlayerbotAIConfig.questFirstProgressionStartZoneObjectiveWindowAbove,
+            (unsigned long long)objectiveWindowPasses[c].exchange(0, std::memory_order_relaxed),
+            (unsigned long long)objectiveWindowNew[c].exchange(0, std::memory_order_relaxed));
 }
 
 bool ai::zone_keep::ReleasePushApplies(Player* bot, PlayerbotAI* botAI)

@@ -143,4 +143,53 @@ inline bool LineDue(std::uint32_t lineUntil, std::uint32_t now)
 {
     return lineUntil == 0 || std::int32_t(now - lineUntil) >= 0;
 }
+
+// SZF-Q objective window (twow-repo#575 / BOT-14 #703; design ws-10/cli-pathfinding/szf/DESIGN-SZF-START-ZONE-FALLBACK-20261110.md
+// §3/§8/§9, OB-00 + OB-10 10.11.2026; AiPlayerbot.QuestFirstProgression.StartZoneMinLevel.ObjectiveWindow). SZM R3: a bot held
+// below StartZoneMinLevel stalled with quests in its log one level outside the objective rule "quest level <= L + 1" (q21 / q60145
+// ql5 accepted at L3, q459 ql3 at L1, q757 ql4 at L2; OB-50 data check 15c41a7c). For a held bot the objective check of a quest that
+// is in its log and not complete accepts up to L + AboveLevels instead. No new accept, no giver change, no grind (owner rule D1:
+// quest work, "es gibt immer eine Quest").
+//   ObjectiveWindow: 0 off (default, rollback), 1 all, 2 cohort B, 3 cohort A (CohortPolicy.h); any other value acts like 0.
+//   ObjectiveWindow.AboveLevels: default 2, clamped to 1..3.
+constexpr std::int32_t ObjectiveOldAboveLevels = 1;              // the old objective rule without a quest book: quest level <= L + 1
+constexpr std::uint32_t ObjectiveWindowAboveDefault = 2;
+constexpr std::uint32_t ObjectiveWindowAboveMin = 1;
+constexpr std::uint32_t ObjectiveWindowAboveMax = 3;
+
+inline std::uint32_t ClampObjectiveWindowMode(std::int32_t mode)
+{
+    return mode >= 0 && mode <= 3 ? std::uint32_t(mode) : 0u;
+}
+
+inline std::uint32_t ClampAboveLevels(std::int32_t above)
+{
+    return above < std::int32_t(ObjectiveWindowAboveMin) ? ObjectiveWindowAboveMin :
+        above > std::int32_t(ObjectiveWindowAboveMax) ? ObjectiveWindowAboveMax : std::uint32_t(above);
+}
+
+// The highest level above the bot that the objective check accepts. baseAbove = the rule without the window (1, or the quest
+// book's AboveLevels on the book path). The window widens it only for a held bot and a quest in its log that is not complete; it
+// never narrows it.
+inline std::int32_t ObjectiveAboveLimit(std::int32_t baseAbove, bool held, bool inLogIncomplete, std::uint32_t above)
+{
+    if (!held || !inLogIncomplete)
+        return baseAbove;
+    std::int32_t const window = std::int32_t(ClampAboveLevels(std::int32_t(above)));
+    return window > baseAbove ? window : baseAbove;
+}
+
+// The objective level test: questLevel <= botLevel + limit (a scaled quest, level <= 0, always passes, as the old test).
+inline bool ObjectiveAllowed(std::int32_t questLevel, std::int32_t botLevel, std::int32_t baseAbove, bool held, bool inLogIncomplete,
+    std::uint32_t above)
+{
+    return questLevel <= botLevel + ObjectiveAboveLimit(baseAbove, held, inLogIncomplete, above);
+}
+
+// Passes only because of the window (the [ZoneKeep] state=objective_window line and the minute counter).
+inline bool ObjectiveWindowOnly(std::int32_t questLevel, std::int32_t botLevel, std::int32_t baseAbove, bool held, bool inLogIncomplete,
+    std::uint32_t above)
+{
+    return ObjectiveAllowed(questLevel, botLevel, baseAbove, held, inLogIncomplete, above) && questLevel > botLevel + baseAbove;
+}
 }

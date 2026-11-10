@@ -1,6 +1,6 @@
 cmake_policy(VERSION 3.16)
 # A3 step 3, behaviour pair 1 (ADR-0041; OB-00 07.11.2026 E1-E4 a and build rules 1-4; owner OK 08.11.2026): the arbiter shadow,
-# AiPlayerbot.Supervisor.Arbiter (0 off = default, 1 shadow; other = 0 + error line). Design
+# AiPlayerbot.Supervisor.Arbiter (0 off = default, 1 shadow, 2 enforce = A3 step 3 T02-a, a3s3_arbiter_enforce_source_contract_tests.cmake; other = 0 + error line). Design
 # ws-00/projekt-durchleuchtung/A3-S3-ARBITER-SCHATTEN-ENTWURF.md v1.2, section 6.1. The shadow only watches. This contract pins:
 #   - the hook: one observer call in the module, the last statement of TravelTarget::SetStatus (after the band clamp), one line
 #     without a block, only for the live target;
@@ -12,7 +12,7 @@ cmake_policy(VERSION 3.16)
 #   - the scopes: every entry function of the writer inventory carries its WriterScope before its first writer call;
 #     setNewTarget falls back to Brain only on an empty stack; the setNewTarget call sites stay the known ones;
 #   - the thread tags: the bot's UpdateAI, the world hook and the console handler (build rule 2);
-#   - the switch: default 0, clamp > 1 -> 0 with an error line, documented 0, echoed; read only at the gate, parent switch first;
+#   - the switch: default 0, clamp > 2 -> 0 with an error line, documented 0, echoed; read only at the gate, parent switch first;
 #   - "random bot update" stays dormant (no setter) and nothing replaces the live travel target pointer.
 # Pure rules: t/supervisor_policy_tests.cpp (TestArbiter). Every check_* returns "" when it holds, else the reason; the negative
 # probes at the end reuse them on mutated text.
@@ -24,7 +24,7 @@ if(NOT DEFINED PB_MODULE_DIR)
 endif()
 
 set(TAG "a3s3 arbiter shadow")
-set(RATCHET_BASE 97)   # (SetTarget|SetStatus|SetNullTravelTarget)\( in the module at release/9.x 55cd53f8
+set(RATCHET_BASE 98)   # (SetTarget|SetStatus|SetNullTravelTarget)( in the module: 97 at release/9.x 55cd53f8, 98 with A3 step 3 T02-a (the probe in SupervisorEnforce.cpp: r1 on the live target and the local copy; pair a3s3_arbiter_enforce_source_contract_tests.cmake)
 
 function(read_source path out_var)
   if(NOT EXISTS "${PB_SOURCE_DIR}/${path}")
@@ -219,8 +219,16 @@ function(check_shadow shadow_h shadow_cpp out)
     return()
   endif()
   count_regex("${shadow_cpp}" "BudgetTake\\(" n)
-  if(NOT n EQUAL 1)
-    set(${out} "SupervisorShadow.cpp: the line budget is taken in ${n} places (1 expected, under the lock)" PARENT_SCOPE)
+  # A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2, default 0): two places, CloseLocked and EmitEnforceLine (the enforcement lines
+  # share the 300 per minute budget); the second one is pinned to sit under the lock below.
+  if(NOT n EQUAL 2)
+    set(${out} "SupervisorShadow.cpp: the line budget is taken in ${n} places (2 expected: CloseLocked and EmitEnforceLine, under the lock)" PARENT_SCOPE)
+    return()
+  endif()
+  region("${shadow_cpp}" "void EmitEnforceLine(std::uint32_t guidLow, char const* text)" "\n}\n" enforce_line)
+  string(FIND "${enforce_line}" "        std::lock_guard<std::mutex> lock(g_mutex);\n        taken = ai::rot_cast::BudgetTake(g_window, g_used, std::uint32_t(time(nullptr)), LinesPerMinute);" at)
+  if(at EQUAL -1)
+    set(${out} "SupervisorShadow.cpp: EmitEnforceLine does not take the budget under the lock" PARENT_SCOPE)
     return()
   endif()
   region("${shadow_cpp}" "Closed CloseLocked(" "\n}\n" close_locked)
@@ -340,18 +348,18 @@ set(SCOPES
   "band_cpp|bool ChooseTravelTargetAction::TryBandStep(|Select|${END_FN}"
   "band_cpp|bool ChooseTravelTargetAction::StartBandWalk(|Select|${END_FN}"
   "group_world_cpp|bool ForceQuestTravel(Player* bot, std::uint32_t questId, int objIdx)|Select|${END_FN}"
-  "group_world_cpp|void RestoreTravel(PlayerbotAI* ai, SavedTravel const& s)|Select|${END_FN}"
+  "group_world_cpp|bool RestoreTravel(PlayerbotAI* ai, SavedTravel const& s)|Select|${END_FN}"
   "move_cpp|bool MoveToTravelTargetAction::Execute(Event& event)|Execution|${END_FN}"
   "travel_cpp|void TravelTarget::CheckStatus()|Execution|${END_FN}"
   "travel_cpp|void TravelTarget::OnDeathOnTurnInRoute()|Lifecycle|${END_FN}"
   "travel_cpp|void TravelTarget::OnDeathAtDestination()|Lifecycle|${END_FN}"
   "travel_cpp|void TravelMgr::Clear()|Manager|${END_FN}"
-  "travel_values_cpp|void ai::ProfessionTripTick(PlayerbotAI* ai)|Lifecycle|${END_FN}"
+  "travel_values_cpp|void ai::ProfessionTripTick(PlayerbotAI* ai)|Errand|${END_FN}"
   "release_h|class RepopAction : public SpiritHealerAction|Lifecycle|\n        }\n"
   "escape_cpp|bool ZoneEscapeAction::Execute(Event& event)|Lifecycle|${END_FN}"
-  "station_cpp|bool StationCraftTrigger::IsActive()|Lifecycle|${END_FN}"
-  "guild_cpp|bool PetitionTurnInAction::Execute(Event& event)|Lifecycle|${END_FN}"
-  "guild_cpp|bool RosterGuildFoundTripAction::Execute(Event& event)|Lifecycle|${END_FN}"
+  "station_cpp|bool StationCraftTrigger::IsActive()|Errand|${END_FN}"
+  "guild_cpp|bool PetitionTurnInAction::Execute(Event& event)|Errand|${END_FN}"
+  "guild_cpp|bool RosterGuildFoundTripAction::Execute(Event& event)|Errand|${END_FN}"
   "rnd_cpp|void RandomPlayerbotMgr::UpdateBgFillMembers()|Manager|${END_FN}"
   "rnd_cpp|void RandomPlayerbotMgr::RandomTeleportForRpg(Player* bot, bool activeOnly)|Manager|${END_FN}"
   "rnd_cpp|bool RandomPlayerbotMgr::ParkBot(Player* bot, std::string const& teleName, std::string& reason)|Manager|${END_FN}"
@@ -409,7 +417,7 @@ function(check_scopes probe_var probe_text out)
   if(probe_var STREQUAL "choose_cpp")
     set(text "${probe_text}")
   endif()
-  string(FIND "${text}" "void ChooseTravelTargetAction::setNewTarget(Player* requester, TravelTarget* newTarget, TravelTarget* oldTarget)\n{\n    // A3 step 3 arbiter shadow: every module caller has its own scope; an empty stack here is the bot brain's override.\n    ai::supervisor::WriterScope const writerScope = ai::supervisor::WriterScope::IfEmpty(ai::supervisor::WriterId::Brain);\n" at)
+  string(FIND "${text}" "bool ChooseTravelTargetAction::setNewTarget(Player* requester, TravelTarget* newTarget, TravelTarget* oldTarget)\n{\n    // A3 step 3 arbiter shadow: every module caller has its own scope; an empty stack here is the bot brain's override.\n    ai::supervisor::WriterScope const writerScope = ai::supervisor::WriterScope::IfEmpty(ai::supervisor::WriterId::Brain);\n" at)
   if(at EQUAL -1)
     set(${out} "ChooseTravelTargetAction.cpp: setNewTarget lacks the Brain fallback as its first statement" PARENT_SCOPE)
     return()
@@ -474,7 +482,7 @@ function(check_tags ai_cpp scripts_cpp rnd_cpp all_sources out)
 endfunction()
 
 # ---- the switch ----------------------------------------------------------------------------------------------------------
-set(ARB_GATE "        if (sPlayerbotAIConfig.supervisor && ai::supervisor::Applies(sPlayerbotAIConfig.supervisor, bot->GetGUIDLow()))\n            EnsureSupervisor()->Tick(WorldTimer::getMSTime(), ai::supervisor::ArbiterOn(sPlayerbotAIConfig.supervisorArbiter));\n")
+set(ARB_GATE "        if (sPlayerbotAIConfig.supervisor && ai::supervisor::Applies(sPlayerbotAIConfig.supervisor, bot->GetGUIDLow()))\n            EnsureSupervisor()->Tick(WorldTimer::getMSTime(), ai::supervisor::ArbiterValue(sPlayerbotAIConfig.supervisorArbiter));\n")
 
 function(check_switch config_h config_cpp conf_dist ai_cpp policy all_sources out)
   string(FIND "${config_h}" "    uint32 supervisorArbiter = 0;" at)
@@ -483,17 +491,17 @@ function(check_switch config_h config_cpp conf_dist ai_cpp policy all_sources ou
     return()
   endif()
   foreach(needle
-      "    supervisorArbiter = uint32(config.GetIntDefault(\"AiPlayerbot.Supervisor.Arbiter\", 0));\n    if (!ai::supervisor::ValidArbiter(supervisorArbiter))\n    {\n        sLog.outError(\"[Supervisor] config key=Supervisor.Arbiter value=%u result=off (0 off, 1 shadow)\", supervisorArbiter);\n        supervisorArbiter = 0;\n    }"
-      "            {\"Supervisor\", Value(supervisor)},\n            {\"Supervisor.Arbiter\", Value(supervisorArbiter)},\n            {\"ThreadSafeTeleportAck\"")
+      "    supervisorArbiter = uint32(config.GetIntDefault(\"AiPlayerbot.Supervisor.Arbiter\", 0));\n    if (!ai::supervisor::ValidArbiter(supervisorArbiter))\n    {\n        sLog.outError(\"[Supervisor] config key=Supervisor.Arbiter value=%u result=off (0 off, 1 shadow, 2 enforce)\", supervisorArbiter);\n        supervisorArbiter = 0;\n    }"
+      "            {\"Supervisor\", Value(supervisor)},\n            {\"Supervisor.Arbiter\", Value(supervisorArbiter)},\n            {\"Supervisor.ArbiterProbe\", Value(supervisorArbiterProbe)},\n            {\"ThreadSafeTeleportAck\"")
     string(FIND "${config_cpp}" "${needle}" at)
     if(at EQUAL -1)
       set(${out} "PlayerbotAIConfig.cpp: missing ${needle}" PARENT_SCOPE)
       return()
     endif()
   endforeach()
-  string(FIND "${policy}" "inline bool ValidArbiter(std::uint32_t value)\n{\n    return value <= 1;\n}" at)
+  string(FIND "${policy}" "inline bool ValidArbiter(std::uint32_t value)\n{\n    return value <= 2;\n}" at)
   if(at EQUAL -1)
-    set(${out} "SupervisorPolicy.h: ValidArbiter is not 0 or 1 only" PARENT_SCOPE)
+    set(${out} "SupervisorPolicy.h: ValidArbiter is not 0, 1 or 2 only" PARENT_SCOPE)
     return()
   endif()
   string(REGEX MATCHALL "\nAiPlayerbot\\.Supervisor\\.Arbiter = [^\n]*" lines "${conf_dist}")
@@ -508,9 +516,12 @@ function(check_switch config_h config_cpp conf_dist ai_cpp policy all_sources ou
     set(${out} "PlayerbotAI.cpp: the arbiter switch is not read at the supervisor gate, parent switch first" PARENT_SCOPE)
     return()
   endif()
-  count_regex("${all_sources}" "sPlayerbotAIConfig\\.supervisorArbiter" n)
-  if(NOT n EQUAL 1)
-    set(${out} "the arbiter switch is read in ${n} places (1 expected: the gate)" PARENT_SCOPE)
+  # A3 step 3 T02-a: the probe key (supervisorArbiterProbe) is a different member; it is pinned by the enforce contract.
+  # CLI-GRP T30-1c (agreed with CLI-Projekt 10.11.): the group manager reads the switch through ArbiterValue in LiveTypesNow
+  # (GroupManager.cpp; pinned by a3s6_t30_directives check_t30_1c), so 2.
+  count_regex("${all_sources}" "sPlayerbotAIConfig\\.supervisorArbiter[^A-Za-z0-9_]" n)
+  if(NOT n EQUAL 2)
+    set(${out} "the arbiter switch is read in ${n} places (2 expected: the gate, the group manager)" PARENT_SCOPE)
     return()
   endif()
   set(${out} "" PARENT_SCOPE)
@@ -725,15 +736,15 @@ string(REPLACE "    if (!ai::supervisor::ValidArbiter(supervisorArbiter))\n" "  
 check_switch("${config_h}" "${m}" "${conf_dist}" "${ai_cpp}" "${policy}" "${all_sources}" r)
 expect_caught("${r}" "no clamp")
 
-string(REPLACE "    return value <= 1;" "    return value <= 2;" m "${policy}")
+string(REPLACE "    return value <= 2;" "    return value <= 3;" m "${policy}")
 check_switch("${config_h}" "${config_cpp}" "${conf_dist}" "${ai_cpp}" "${m}" "${all_sources}" r)
-expect_caught("${r}" "enforcement (2) let through")
+expect_caught("${r}" "a value above 2 let through")
 
 string(REPLACE "            {\"Supervisor.Arbiter\", Value(supervisorArbiter)},\n" "" m "${config_cpp}")
 check_switch("${config_h}" "${m}" "${conf_dist}" "${ai_cpp}" "${policy}" "${all_sources}" r)
 expect_caught("${r}" "not in [ConfigEcho]")
 
-string(REPLACE "ai::supervisor::ArbiterOn(sPlayerbotAIConfig.supervisorArbiter));" "true);" m "${ai_cpp}")
+string(REPLACE "ai::supervisor::ArbiterValue(sPlayerbotAIConfig.supervisorArbiter));" "true);" m "${ai_cpp}")
 check_switch("${config_h}" "${config_cpp}" "${conf_dist}" "${m}" "${policy}" "${all_sources}" r)
 expect_caught("${r}" "the shadow on without its switch")
 

@@ -955,8 +955,13 @@ public:
     // passes and decides nothing. 0 off, 1 all, 2 cohort B, 3 cohort A; other = 0 + error line.
     uint32 supervisor = 0;
     // A3 step 3 behaviour pair 1: the arbiter shadow (SupervisorShadow.cpp), only where the supervisor runs. 0 off, 1 shadow
-    // (watch and log, no write); other = 0 + error line (no enforcement code yet).
+    // (watch and log, no write), 2 enforce (A3 step 3 T02-a: the shadow plus the arbiter gate on the travel target,
+    // SupervisorEnforce.cpp); other = 0 + error line.
     uint32 supervisorArbiter = 0;
+    // A3 step 3 T02-a (AiPlayerbot.Supervisor.ArbiterProbe, default 0): the arbiter probe on the probe bots (cohort B, every 25th
+    // guid pair; ArbiterLanePolicy.h IsProbeBot). 0 off, 1 probe (at arbiter 2 three refused writes every 10 minutes, at 1 only
+    // the paired count); other = 0 + error line.
+    uint32 supervisorArbiterProbe = 0;
     // A3 step 5 (ADR-0041, OB-00 07.11.2026): the combat rule (CombatRulePolicy.h, CombatRule.cpp), one switch per part.
     // HealerStart: a holy paladin / restoration druid may attack like a healer with "offdps" (their contexts have no offdps
     // creator, so the healer gate refused every attack). 0 off (default, the old rule), 1 all, 2 cohort B, 3 cohort A; other = 0.
@@ -1113,6 +1118,11 @@ public:
     // group after FollowLeaveSeconds of refused follow (G3), and at the release (level StartZoneMinLevel .. +2, still in its start zone)
     // its first empty offer counts as the band step (V2-a). 1 = default (SZM adoption 10.11.2026), 0 = rollback.
     uint32 questFirstProgressionStartZoneComplete = 1;
+    // twow-repo#575 SZF-Q (BOT-14 #703, ZoneKeepPolicy.h): for a bot StartZoneMinLevel holds, the objective check of a quest in its log
+    // that is not complete accepts up to L + .AboveLevels instead of L + 1 (no new accept, no giver change). Mode 0 off (default,
+    // rollback), 1 all, 2 cohort B, 3 cohort A (the shared guid parity); .AboveLevels 1..3, default 2.
+    uint32 questFirstProgressionStartZoneObjectiveWindow = 0;
+    uint32 questFirstProgressionStartZoneObjectiveWindowAbove = 2;
     // twow-repo#601 S5a F4 (OB-00 24.10.2026, owner D1 "rumstehen ist keine Option"): from this many quest searches in a row
     // without a route on (the F1 streak), a search that does not step walks toward the rung the step would take until the
     // route backoff ends. 0 = off (default), 1..10; other values act like 0.
