@@ -689,7 +689,9 @@ bool WorldBuffTravelSetTargetAction::Execute(Event& event)
     if (!point)
         return false;
 
-    travelTarget->SetTarget(dest, point);
+    // A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2, default 0): denied = no forced flag, expiry, READY or value resets.
+    if (!travelTarget->SetTarget(dest, point))
+        return false;
     travelTarget->SetForced(true);
     travelTarget->SetExpireIn(HOUR * IN_MILLISECONDS);
     travelTarget->SetStatus(TravelStatus::TRAVEL_STATUS_READY);

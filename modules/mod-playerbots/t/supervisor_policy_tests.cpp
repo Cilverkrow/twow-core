@@ -3,6 +3,7 @@
 // the one gated tick, nothing written by the supervisor) is pinned by
 // t/contracts.d/a3s3_supervisor_scaffold_source_contract_tests.cmake.
 
+#include "ArbiterLanePolicy.h"
 #include "SupervisorPolicy.h"
 
 #include <cstdint>
@@ -243,8 +244,13 @@ Bundle Steps(std::uint8_t fromStatus, bool fromNull, std::uint32_t fromSinceMs)
 
 void TestArbiter()
 {
-    Require(ValidArbiter(0) && ValidArbiter(1), "arbiter 0 and 1 are valid");
-    Require(!ValidArbiter(2) && !ValidArbiter(0xFFFFFFFFu), "arbiter 2 (enforcement) and above are off");
+    Require(ValidArbiter(0) && ValidArbiter(1) && ValidArbiter(2), "arbiter 0, 1 and 2 (enforce) are valid");
+    Require(!ValidArbiter(3) && !ValidArbiter(0xFFFFFFFFu), "arbiter 3 and above are off");
+    Require(kWriterIds == 12 && std::string(WriterName(WriterId::Group)) == "Group" &&
+        std::string(WriterName(WriterId::Errand)) == "Errand", "A3 step 3 T02-a: Group and Errand writer names");
+    Require(std::size_t(WriterId::Test) == 9 && std::size_t(WriterId::Group) == 10 && std::size_t(WriterId::Errand) == 11,
+        "existing writer ids stay, Group = 10, Errand = 11");
+    Require(CloserIsLine(WriterId::Group) && !CloserIsLine(WriterId::Errand), "Group closes with a line, Errand like Lifecycle");
 
     Require(IsOpen(kStatusReady, false) && IsOpen(kStatusTravel, false) && IsOpen(kStatusWork, false), "ready, travel, work are open");
     Require(IsOpen(kStatusCooldown, false), "a cooldown is no end");
@@ -353,7 +359,24 @@ void TestArbiter()
     std::string const min(buf);
     Require(mn == min.size(), "minute line length");
     Require(min == "[ArbiterMin] cohort=B bundles=4 lines=3 dropped=1 unknown=1 offthread_writes=2 cross_writes=4 gaps=1 closes_open=1 "
-        "expire_cooldown=1 sel=1 req=0 exe=2 life=0 mgr=0 grp=0 cmd=0 brain=0 test=0", "minute line");
+        "expire_cooldown=1 sel=1 req=0 exe=2 life=0 mgr=0 grp=0 cmd=0 brain=0 test=0 grp_t02=0 errand=0 deny=0 deny_probe=0 "
+        "held_request=0 held_errand=0 probe_pass=0 probe_fail=0 probe_shadow=0 depth_overflow=0", "minute line");
+    ArbiterMinute e;
+    e.family[std::size_t(WriterId::Group)] = 11;
+    e.family[std::size_t(WriterId::Errand)] = 12;
+    e.deny = 1;
+    e.denyProbe = 2;
+    e.heldRequest = 3;
+    e.heldErrand = 4;
+    e.probePass = 5;
+    e.probeFail = 6;
+    e.probeShadow = 7;
+    e.depthOverflow = 8;
+    FormatArbiterMin(buf, sizeof(buf), 'A', e);
+    std::string const emin(buf);
+    Require(emin.find(" grp_t02=11 errand=12 deny=1 deny_probe=2 held_request=3 held_errand=4 probe_pass=5 probe_fail=6 "
+        "probe_shadow=7 depth_overflow=8") != std::string::npos, "minute line enforcement fields");
+    Require(emin.size() < 512, "minute line fits the 512 byte log buffer");
 
     // Buffers: cut and terminated, a zero buffer writes nothing, no line break survives.
     char small[16];
@@ -376,14 +399,110 @@ void TestArbiterConsole()
     Require(ParseArbiterSwitch("  on \r\n") == kArbiterOn && ParseArbiterSwitch("\toff ") == kArbiterOff, "blanks around");
     Require(ParseArbiterSwitch("") == kArbiterFollowConfig && ParseArbiterSwitch(nullptr) == kArbiterFollowConfig &&
         ParseArbiterSwitch("   ") == kArbiterFollowConfig, "empty = usage");
-    Require(ParseArbiterSwitch("2") == kArbiterFollowConfig && ParseArbiterSwitch("onn") == kArbiterFollowConfig &&
+    Require(ParseArbiterSwitch("enforce") == kArbiterEnforce && ParseArbiterSwitch("2") == kArbiterEnforce &&
+        ParseArbiterSwitch(" enforce\n") == kArbiterEnforce, "enforce / 2 (A3 step 3 T02-a)");
+    Require(ParseArbiterSwitch("3") == kArbiterFollowConfig && ParseArbiterSwitch("onn") == kArbiterFollowConfig &&
         ParseArbiterSwitch("o") == kArbiterFollowConfig && ParseArbiterSwitch("ON") == kArbiterFollowConfig &&
-        ParseArbiterSwitch("of") == kArbiterFollowConfig && ParseArbiterSwitch("on off") == kArbiterFollowConfig,
-        "anything else = usage (enforcement 2 never via the console)");
-    Require(!ArbiterEffective(kArbiterFollowConfig, 0) && ArbiterEffective(kArbiterFollowConfig, 1) &&
-        !ArbiterEffective(kArbiterFollowConfig, 2), "no override: the config value, only 1 is the shadow");
-    Require(ArbiterEffective(kArbiterOn, 0) && !ArbiterEffective(kArbiterOff, 1), "the override wins over the config");
-    Require(ArbiterEffective(7, 1) && !ArbiterEffective(-5, 0),"an unknown override follows the config");
+        ParseArbiterSwitch("of") == kArbiterFollowConfig && ParseArbiterSwitch("on off") == kArbiterFollowConfig &&
+        ParseArbiterSwitch("enforc") == kArbiterFollowConfig && ParseArbiterSwitch("enforce2") == kArbiterFollowConfig &&
+        ParseArbiterSwitch("Enforce") == kArbiterFollowConfig, "anything else = usage");
+    // ArbiterEffective: all four overrides x configs 0..3.
+    Require(ArbiterEffective(kArbiterFollowConfig, 0) == 0 && ArbiterEffective(kArbiterFollowConfig, 1) == 1 &&
+        ArbiterEffective(kArbiterFollowConfig, 2) == 2 && ArbiterEffective(kArbiterFollowConfig, 3) == 0 &&
+        ArbiterEffective(kArbiterFollowConfig, 0xFFFFFFFFu) == 0, "no override: the config value, above 2 is off");
+    for (std::uint32_t cfg = 0; cfg <= 3; ++cfg)
+    {
+        Require(ArbiterEffective(kArbiterOff, cfg) == 0, "override off wins");
+        Require(ArbiterEffective(kArbiterOn, cfg) == 1, "override on wins");
+        Require(ArbiterEffective(kArbiterEnforce, cfg) == 2, "override enforce wins");
+    }
+    Require(ArbiterEffective(7, 1) == 1 && ArbiterEffective(-5, 0) == 0 && ArbiterEffective(7, 2) == 2 && ArbiterEffective(7, 3) == 0,
+        "an unknown override follows the config");
+}
+
+// A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2, default 0): the lane rules (ArbiterLanePolicy.h).
+void TestArbiterLanes()
+{
+    Require(std::string(LaneName(Lane::None)) == "none" && std::string(LaneName(Lane::Questbook)) == "questbook" &&
+        std::string(LaneName(Lane::Group)) == "group" && std::string(LaneName(Lane::Command)) == "command", "lane names");
+
+    // LaneOfWriter, every id 0..11 and beyond.
+    struct Row { WriterId w; bool neutral; Lane lane; };
+    Row const rows[] = {
+        {WriterId::Unknown, false, Lane::None}, {WriterId::Select, false, Lane::Questbook},
+        {WriterId::Requester, false, Lane::Questbook}, {WriterId::Execution, true, Lane::None},
+        {WriterId::Lifecycle, true, Lane::None}, {WriterId::Manager, true, Lane::None},
+        {WriterId::GroupFollow, false, Lane::Questbook}, {WriterId::Command, true, Lane::None},
+        {WriterId::Brain, false, Lane::Questbook}, {WriterId::Test, false, Lane::None},
+        {WriterId::Group, false, Lane::Group}, {WriterId::Errand, false, Lane::Questbook},
+    };
+    Require(sizeof(rows) / sizeof(rows[0]) == kWriterIds, "the table covers every writer id");
+    for (std::size_t i = 0; i < kWriterIds; ++i)
+    {
+        Require(std::size_t(rows[i].w) == i, "the table is in id order");
+        WriterLane const wl = LaneOfWriter(rows[i].w);
+        Require(wl.neutral == rows[i].neutral && wl.lane == rows[i].lane, "LaneOfWriter row");
+    }
+    WriterLane const beyond = LaneOfWriter(WriterId(200));
+    Require(!beyond.neutral && beyond.lane == Lane::None, "a writer id >= kWriterIds is Unknown-like");
+
+    // DecideAdmit: every writer x held x nullDest x enforce, against an independent expectation.
+    Lane const helds[] = {Lane::None, Lane::Questbook, Lane::Group};
+    for (std::size_t i = 0; i < kWriterIds; ++i)
+        for (Lane held : helds)
+            for (int nd = 0; nd < 2; ++nd)
+                for (int en = 0; en < 2; ++en)
+                {
+                    WriterId const w = WriterId(i);
+                    AdmitVerdict const v = DecideAdmit(en != 0, w, nd != 0, held);
+                    AdmitVerdict want;
+                    if (!en)
+                        want = AdmitVerdict::Off;
+                    else if (nd || rows[i].neutral)
+                        want = AdmitVerdict::Neutral;
+                    else
+                        want = std::uint8_t(rows[i].lane) >= std::uint8_t(held) ? AdmitVerdict::Admit : AdmitVerdict::DenyLane;
+                    Require(v == want, "DecideAdmit table");
+                    Lane const after = OwnerAfter(v, w);
+                    Require(after == (v == AdmitVerdict::Admit ? rows[i].lane : Lane::None), "OwnerAfter table");
+                }
+    // Spot checks of the cases the design names.
+    Require(DecideAdmit(true, WriterId::Select, false, Lane::Group) == AdmitVerdict::DenyLane, "a questbook write is denied by group");
+    Require(DecideAdmit(true, WriterId::Group, false, Lane::Questbook) == AdmitVerdict::Admit, "group replaces questbook");
+    Require(DecideAdmit(true, WriterId::Errand, false, Lane::Questbook) == AdmitVerdict::Admit, "errand = questbook lane");
+    Require(DecideAdmit(true, WriterId::Unknown, false, Lane::None) == AdmitVerdict::Admit && OwnerAfter(AdmitVerdict::Admit,
+        WriterId::Unknown) == Lane::None, "Unknown admitted at no owner, takes no lane");
+    Require(DecideAdmit(true, WriterId::Test, false, Lane::Questbook) == AdmitVerdict::DenyLane, "Test is lane none");
+    Require(DecideAdmit(true, WriterId(200), false, Lane::Questbook) == AdmitVerdict::DenyLane, "an out-of-range writer is lane none");
+
+    // LaneFreeFor.
+    Require(LaneFreeFor(Lane::Questbook, Lane::None) && LaneFreeFor(Lane::Questbook, Lane::Questbook) &&
+        !LaneFreeFor(Lane::Questbook, Lane::Group) && LaneFreeFor(Lane::Group, Lane::Questbook) &&
+        LaneFreeFor(Lane::None, Lane::None) && !LaneFreeFor(Lane::None, Lane::Questbook), "LaneFreeFor");
+
+    // OwnerHolds: every owner x status 0..6 x groupMode x gen equal/unequal x nullDest.
+    Lane const owners[] = {Lane::None, Lane::Questbook, Lane::Group, Lane::Command};
+    for (Lane owner : owners)
+        for (std::uint8_t st = 0; st <= 6; ++st)
+            for (int gm = 0; gm < 2; ++gm)
+                for (int same = 0; same < 2; ++same)
+                    for (int nd = 0; nd < 2; ++nd)
+                    {
+                        bool const want = owner != Lane::None && same && IsOpen(st, nd != 0) && (owner != Lane::Group || gm);
+                        Require(OwnerHolds(owner, 5u, same ? 5u : 6u, st, nd != 0, gm != 0) == want, "OwnerHolds table");
+                    }
+    Require(OwnerHolds(Lane::Questbook, 1, 1, kStatusTravel, false, false) && !OwnerHolds(Lane::Questbook, 1, 1, kStatusExpired, false,
+        false) && !OwnerHolds(Lane::Group, 1, 1, kStatusTravel, false, false) && OwnerHolds(Lane::Group, 1, 1, kStatusTravel, false,
+        true), "OwnerHolds spot checks");
+
+    // IsProbeBot: cohort B (odd) and (guid / 2) % 25 == 0.
+    Require(IsProbeBot(1) && IsProbeBot(51) && IsProbeBot(101) && IsProbeBot(2501), "probe bots");
+    Require(!IsProbeBot(0) && !IsProbeBot(50) && !IsProbeBot(3) && !IsProbeBot(49) && !IsProbeBot(53), "not probe bots");
+    std::uint32_t probes = 0;
+    for (std::uint32_t g = 0; g < 5000; ++g)
+        if (IsProbeBot(g))
+            ++probes;
+    Require(probes == 100, "one bot in 50 is a probe bot");
 }
 
 int main()
@@ -400,6 +519,7 @@ int main()
     TestCadence();
     TestFormatters();
     TestArbiter();
+    TestArbiterLanes();
     std::cout << "supervisor_policy_tests: OK\n";
     return 0;
 }

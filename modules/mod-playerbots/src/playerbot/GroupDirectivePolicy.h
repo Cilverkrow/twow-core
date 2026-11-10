@@ -752,10 +752,13 @@ enum class Cnt : std::uint8_t
     // two go to the end of the minute2 line (G5: osc at the end of minute2), after its leave reasons.
     Osc,
     SelfLeft,
+    // T30-1c (OB-10 note on #992): appended after skip_unknown_30m, at the very end of minute2 (kCountsMinute2Loop).
+    LeftStale,
     Count,
 };
 constexpr std::size_t kCounts = std::size_t(Cnt::Count);
 constexpr std::size_t kCountsMinuteLoop = std::size_t(Cnt::LinesDropped) + 1;   // the counters of the minute line's loop
+constexpr std::size_t kCountsMinute2Loop = std::size_t(Cnt::SelfLeft) + 1;      // minute2's counters before skip_unknown_30m
 
 inline char const* CntName(Cnt c)
 {
@@ -800,6 +803,7 @@ inline char const* CntName(Cnt c)
         case Cnt::LinesDropped: return "lines_dropped";
         case Cnt::Osc: return "osc";                       // G5: a membership ended < kOscSec after its ack 2, no natural end
         case Cnt::SelfLeft: return "self_left";            // a left ack (state 4) that ended its member
+        case Cnt::LeftStale: return "left_stale";          // T30-1c: a left ack that did not match (not counted as ack_stale)
         case Cnt::Count: break;
     }
     return "unknown";
@@ -853,17 +857,20 @@ inline int FormatMinute(char* buf, std::size_t size, MinuteCounts const& m, Stan
     return n;
 }
 
-// "[GroupMgr] minute2 leave_<reason>=.. osc= self_left= skip_unknown_30m=": every reason, 0 included (increments), then the
-// T30-1b counters osc and self_left (increments) and skip_unknown_30m (a level), appended at the end.
+// "[GroupMgr] minute2 leave_<reason>=.. osc= self_left= skip_unknown_30m= left_stale=": every reason, 0 included (increments),
+// then the T30-1b counters osc and self_left (increments), skip_unknown_30m (a level) and the T30-1c left_stale (an increment),
+// each appended at the end.
 inline int FormatMinute2(char* buf, std::size_t size, MinuteCounts const& m)
 {
     int n = std::snprintf(buf, size, "[GroupMgr] minute2");
     for (std::size_t i = 1; i < kEndReasons && n > 0 && std::size_t(n) < size; ++i)
         n += std::snprintf(buf + n, size - std::size_t(n), " leave_%s=%llu", EndReasonName(EndReason(i)), (unsigned long long)m.leave[i]);
-    for (std::size_t i = kCountsMinuteLoop; i < kCounts && n > 0 && std::size_t(n) < size; ++i)
+    for (std::size_t i = kCountsMinuteLoop; i < kCountsMinute2Loop && n > 0 && std::size_t(n) < size; ++i)
         n += std::snprintf(buf + n, size - std::size_t(n), " %s=%llu", CntName(Cnt(i)), (unsigned long long)m.c[i]);
     if (n > 0 && std::size_t(n) < size)
         n += std::snprintf(buf + n, size - std::size_t(n), " skip_unknown_30m=%llu", (unsigned long long)m.skipUnknown30m);
+    for (std::size_t i = kCountsMinute2Loop; i < kCounts && n > 0 && std::size_t(n) < size; ++i)
+        n += std::snprintf(buf + n, size - std::size_t(n), " %s=%llu", CntName(Cnt(i)), (unsigned long long)m.c[i]);
     return n;
 }
 
@@ -1213,7 +1220,8 @@ private:
     // T30-1b (G2, agreed with CLI-Projekt 10.11.): the bot left the GROUP mode itself (ack state 4, seq 0, the serial it held in
     // b16-31). It counts only for the bot's current group under that serial, while its Enter is applied (Acked) and no Exit
     // of the bot is open; then the member ends with bot_left_* and the usual path sends the tracked Exit and the leave op.
-    // Anything else (a seq, another serial, no group, not Acked, an Exit open) is ack_stale and nothing else.
+    // Anything else (a seq, another serial, no group, not Acked, an Exit open) is left_stale (T30-1c, OB-10 note on #992; its
+    // own counter, not ack_stale) and nothing else.
     void ApplyLeftAck(Ack const& a, Io& io)
     {
         BotEntry const* entry = FindBot(a.low);
@@ -1221,7 +1229,7 @@ private:
         ManagedGroup* g = a.seq == 0 ? GroupOf(a.low, &m) : nullptr;
         if (!g || std::uint16_t(g->serial) != a.serial || m->state != MemberState::Acked || (entry && entry->exitOpen))
         {
-            Count(Cnt::AckStale);
+            Count(Cnt::LeftStale);
             return;
         }
         Count(Cnt::SelfLeft);

@@ -161,7 +161,12 @@ TestResult CommandSetupSetDestination::Execute(const std::string& params, Player
     if (target)
     {
         TemporaryTravelDestination* tempDest = new TemporaryTravelDestination(loc);
-        target->SetTarget(tempDest, tempDest->GetPosition());
+        // A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2, default 0): denied = SetTarget freed tempDest and wrote nothing.
+        if (!target->SetTarget(tempDest, tempDest->GetPosition()))
+        {
+            message = "Travel target held by the arbiter (AiPlayerbot.Supervisor.Arbiter = 2)";
+            return TestResult::IMPOSSIBLE;
+        }
         target->SetStatus(TravelStatus::TRAVEL_STATUS_TRAVEL);
         target->SetForced(true);
         target->SetConditions({"not::manual bool::is travel refresh"});

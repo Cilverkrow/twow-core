@@ -118,13 +118,13 @@ require_order("${move_to}" "target->OnMoveRetryCooldown();" "target->SetStatus(T
 # group copy follows a member's target and is taken up.
 require_text("${travel_mgr}" "bool TravelTarget::CopyTarget(TravelTarget* const target) {" "CopyTarget returns the verdict")
 require_text("${travel_mgr}" "if (taker && taker->GetRelation() && !target->IsGroupCopy() && IsTurnInParked(taker->GetQuestId()))" "a group copy is not refused")
-require_order("${travel_mgr}" "TraceQuestCommit(taker, \"drop\", \"parked_intent\");" "SetTarget(target->tDestination, target->wPosition);" "refusal before the copy")
+require_order("${travel_mgr}" "TraceQuestCommit(taker, \"drop\", \"parked_intent\");" "SetTargetUnchecked(target->tDestination, target->wPosition);" "refusal before the copy")
 require_text("${choose}" "if (!oldTarget->CopyTarget(newTarget))" "setNewTarget stops on a refused choice")
 
 # Critic B1.1: move retries are reset when the destination changes, and DecRetry takes the right
 # counter - both only with the key on; with 0 the old one-liner stays for every bot.
 require_order("${travel_mgr}" "if (sPlayerbotAIConfig.questFirstProgressionTurnInParkFailures && target->tDestination != tDestination)"
-  "SetTarget(target->tDestination, target->wPosition);" "move retries reset before the copy")
+  "SetTargetUnchecked(target->tDestination, target->wPosition);" "move retries reset before the copy")
 reject_text("${travel_h}" "void DecRetry(bool isMove) { if (isMove && moveRetryCount > 0)" "old inline DecRetry")
 extract_between("${travel_mgr}" "void TravelTarget::DecRetry(bool isMove)" "bool TravelTarget::IsDestinationActive()" dec_retry "DecRetry out of line")
 require_order("${dec_retry}"
@@ -158,7 +158,7 @@ require_text("${no_target}" "chooseBudgetExceeded, lastRejects.crossMap + lastRe
 require_text("${no_target}"
   "lastRejects.movedAway + lastRejects.rangeSkip + lastRejects.resumeSkipped + lastRejects.startZone + lastRejects.staleKeepZone,\n                sPlayerbotAIConfig.questFirstProgressionTurnInParkCountsRouteDanger)))\n            {\n                SET_AI_VALUE2(bool, \"no active travel destinations\", futureTravelPurpose, false);\n                SET_AI_VALUE2(int, \"manual int\", \"quest route failures\", 0);\n                SET_AI_VALUE2(int, \"manual int\", \"quest route backoff until\", 0);\n            }"
   "every way a taker goes unjudged and the route danger switch; only a park ends the backoff")
-extract_between("${choose}" "// Hotfix 8.1: a route was found - no more backoff." "setNewTarget(requester, &newTarget, travelTarget);" chosen "no_route after a choice")
+extract_between("${choose}" "// Hotfix 8.1: a route was found - no more backoff." "setNewTarget(requester, &newTarget, travelTarget))" chosen "no_route after a choice")
 require_text("${chosen}" "ai::turnin_park::RouteOutcome::Taker : ai::turnin_park::RouteOutcome::Fallback," "the quest giver fallback counts, a taker does not")
 require_text("${chosen}" "chooseBudgetExceeded, lastRejects.crossMap + lastRejects.zoneLevel + lastRejects.dangerMap, lastRejects.turnInSuppressed,"
   "same route danger inputs after a choice")

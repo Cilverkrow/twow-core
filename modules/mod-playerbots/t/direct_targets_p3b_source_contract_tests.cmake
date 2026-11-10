@@ -254,7 +254,7 @@ require_text("${travel_mgr}" "            // twow-repo#594 / P3-b: arrivals of t
 require_order("${travel_mgr}" "TraceQuestCommit(tDestination, \"progress\", \"arrived\");" "ai::direct_targets::OnArrive(tDestination, ai, wPosition);" "arrival hook after the arrived trace")
 # OB-10 (18.10.): the trip ends where the target leaves its destination - every path (reset, group copy, purpose end, travel
 # once, cooldown, expiry) goes through SetTarget or SetStatus.
-region("${travel_mgr}" "void TravelTarget::SetTarget(TravelDestination* tDestination1, WorldPosition* wPosition1) {" "wPosition = wPosition1;" set_target)
+region("${travel_mgr}" "void TravelTarget::SetTargetUnchecked(TravelDestination* tDestination1, WorldPosition* wPosition1) {" "wPosition = wPosition1;" set_target)
 require_text("${set_target}" "    if (ai::direct_targets::AnyBuilt())\n        ai::direct_targets::OnTargetChange(ai, tDestination, tDestination1);" "trip end on a new destination, before it is set")
 region("${travel_mgr}" "void TravelTarget::SetStatus(TravelStatus status) {" "startTime = WorldTimer::getMSTime();" set_status)
 require_order("${set_status}" "    if (ai::direct_targets::AnyBuilt())\n        ai::direct_targets::OnTargetStatus(ai, tDestination, status);" "m_status = status;" "trip end on an ending status, before it is set")
@@ -267,7 +267,7 @@ count_regex("${travel_mgr}" "ai::direct_targets::On[A-Za-z]+\\(" 5 "TravelMgr.cp
 
 region("${choose}" "ai->TellDebug(ai->GetMaster(), \"No target set\", \"debug travel\");" "if (futureTravelPurpose == \"quest\")" no_target)
 require_text("${no_target}" "if (ai::direct_targets::AnyBuilt())\n            ai::direct_targets::NoteEmpty(ai, futureTravelPurpose);" "NoteEmpty before the quest branch")
-region("${choose}" "// Hotfix 8.1: a route was found - no more backoff." "    setNewTarget(requester, &newTarget, travelTarget);\n    \n    return true;" chosen)
+region("${choose}" "// Hotfix 8.1: a route was found - no more backoff." "    if (!setNewTarget(requester, &newTarget, travelTarget))\n        return false;\n    \n    return true;" chosen)
 require_text("${chosen}" "    if (ai::direct_targets::AnyBuilt())\n        ai::direct_targets::OnChoice(ai, newTarget);\n" "OnChoice right before setNewTarget")
 require_order("${chosen}" "ai::quest_search::DirectTargetStats().freshGrind.fetch_add(1, std::memory_order_relaxed);" "ai::direct_targets::OnChoice(ai, newTarget);" "after the grind branch")
 require_text("${choose}" "        destination->GetPurpose() == TravelDestinationPurpose::GatherSkinning ||\n        ai::direct_targets::IsSilentTrip(destination));" "direct-target trips silent like gathering")

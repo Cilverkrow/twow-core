@@ -2160,6 +2160,7 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     ReportQuestBook();      // A3 step 2: [QuestBookMin] once per minute (AiPlayerbot.QuestBook / QuestBook.Shadow)
     ReportStaleTarget();    // A3-HARM-UPSTREAM H6 (T40): [StaleTarget] once per minute (AiPlayerbot.Rotation.ReleaseStaleTarget / .Shadow)
     ai::stale_objective::ReportMinute();   // A3-GERUEST-L60 8.4 lever 3: [StaleObjectiveMin] once per minute (StaleObjectiveFilter on)
+    ai::zone_keep::ReportObjectiveWindowMinute();   // twow-repo#575 SZF-Q: objective_window lines + [ZoneKeepMin] (ObjectiveWindow on)
     ReportTankKit();        // twow-repo#602: [TankKit] once per minute (AiPlayerbot.Rotation.TankKitFromLevel)
     ReportParkSleep();    // twow-repo#541: core switches + cell source lines once per minute (AiPlayerbot.Park.CellSourceStats)
     ReportCombatIdle();   // twow-repo#541 (audit A17): [CombatIdle] once per minute (AiPlayerbot.Perf.CombatIdleYield)
@@ -8639,9 +8640,10 @@ bool RandomPlayerbotMgr::HandlePlayerbotConsoleCommand(ChatHandler* handler, cha
         return true;
     }
 
-    // Live arbiter switch (OB-00 09.11.2026, arbiter shadow run): "rndbot arbiter on|off" sets only the process-wide override of
-    // AiPlayerbot.Supervisor.Arbiter (SupervisorShadow.h ArbiterOn), no config reload. Local mangosd console only (no game
-    // session, no remote admin). One [ArbiterCtl] line with the new value; prev = the override before (conf = never set).
+    // Live arbiter switch (OB-00 09.11.2026, arbiter shadow run): "rndbot arbiter on|off|enforce" sets only the process-wide
+    // override of AiPlayerbot.Supervisor.Arbiter (SupervisorShadow.h ArbiterValue; enforce = 2, A3 step 3 T02-a, default 0), no
+    // config reload. Local mangosd console only (no game session, no remote admin). One [ArbiterCtl] line with the new value;
+    // prev = the override before (conf = never set).
     if (cmd == "arbiter" || cmd.find("arbiter ") == 0)
     {
         if (isRA)
@@ -8653,12 +8655,13 @@ bool RandomPlayerbotMgr::HandlePlayerbotConsoleCommand(ChatHandler* handler, cha
         int const value = ai::supervisor::ParseArbiterSwitch(cmd.c_str() + 7);
         if (value == ai::supervisor::kArbiterFollowConfig)
         {
-            sLog.outError("[ArbiterCtl] usage: rndbot arbiter on|off");
+            sLog.outError("[ArbiterCtl] usage: rndbot arbiter on|off|enforce");
             return true;
         }
-        int const prev = ai::supervisor::SetArbiterOverride(value == ai::supervisor::kArbiterOn);
+        int const prev = ai::supervisor::SetArbiterOverride(value);
         sLog.outString("[ArbiterCtl] arbiter=%d prev=%s source=console", value,
-            prev == ai::supervisor::kArbiterFollowConfig ? "conf" : (prev == ai::supervisor::kArbiterOn ? "1" : "0"));
+            prev == ai::supervisor::kArbiterFollowConfig ? "conf" : (prev == ai::supervisor::kArbiterEnforce ? "2" :
+            (prev == ai::supervisor::kArbiterOn ? "1" : "0")));
         return true;
     }
 

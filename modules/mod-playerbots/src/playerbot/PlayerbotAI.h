@@ -670,6 +670,9 @@ public:
     uint32 GetEquipStatsValue(Player* player);
     bool HasSkill(SkillType skill);
     bool IsAllowedCommand(std::string text);
+    // twow-repo#698: one atomic load, safe from any thread; 0 = never published (see RosterSnapshotPolicy.h)
+    uint32 GetRosterSnapshot() const { return rosterSnapshot.load(std::memory_order_relaxed); }
+    void PublishRosterSnapshot();   // bot thread only
     float GetRange(std::string type);
 
     static ReputationRank GetFactionReaction(FactionTemplateEntry const* thisTemplate, FactionTemplateEntry const* otherTemplate);
@@ -1467,6 +1470,9 @@ protected:
     ai::supervisor::Event combatLoopEvent;
     ai::combat_rule::TargetBackoff targetBackoff;   // A3 step 5 P5 (CombatRule.TargetRule): armed after an empty pick
     uint32 tankKitLevel = 0;   // twow-repo#602 (Rotation.TankKitFromLevel): the level the strategies were last built for; a crossing of the tank key level rebuilds them
+    // twow-repo#698: role and group state for readers on other threads (the roster list); written only by this bot's own thread in UpdateAIInternal
+    std::atomic<uint32> rosterSnapshot{0};
+    uint32 rosterSnapshotAtMs = 0;
     ObjectGuid losCacheGuid;   // twow-repo#602 (Rotation.LosCacheMs): the target of the cached line-of-sight verdict
     bool losCacheInLos = true;   // the cached verdict
     uint32 losCacheAt = 0;   // when it was taken (WorldTimer ms)
