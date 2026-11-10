@@ -83,6 +83,7 @@
 #include "playerbot/MeleeSkipPolicy.h"   // twow-repo#602 (Rotation.MeleeSkipAttacking): [MeleeSkip] minute line
 #include "playerbot/InvalidTargetPolicy.h"   // twow-repo#602 (Rotation.InvalidTargetQuiet): [InvalidTarget] minute line
 #include "playerbot/DuelRulePolicy.h"   // twow-repo#602 W24 (Rotation.DuelRule): [DuelRule] minute line
+#include "playerbot/StaleTargetPolicy.h"   // A3-HARM-UPSTREAM H6 (T40) (Rotation.ReleaseStaleTarget): [StaleTarget] minute line
 #include "playerbot/QuestBook.h"        // A3 step 2 (AiPlayerbot.QuestBook): [QuestBookMin] minute line
 #include "playerbot/TankKitPolicy.h"   // twow-repo#602 (Rotation.TankKitFromLevel): [TankKit] minute line
 #include "playerbot/PathReusePolicy.h"
@@ -1361,6 +1362,38 @@ void ReportDuelRule()
         (unsigned long long)ai::duel_rule::cancelled.exchange(0, std::memory_order_relaxed));
 }
 
+// A3-HARM-UPSTREAM H6 (T40) (AiPlayerbot.Rotation.ReleaseStaleTarget, StaleTargetPolicy.h): one [StaleTarget] line per minute; every
+// counter is an A/B pair of increments (A = even low guid, B = odd, CohortPolicy.h). Nothing is written when the mode and the shadow are 0.
+static unsigned long long TakeStaleTarget(std::atomic<std::uint64_t>& counter)
+{
+    return (unsigned long long)counter.exchange(0, std::memory_order_relaxed);
+}
+
+void ReportStaleTarget()
+{
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if ((!sPlayerbotAIConfig.rotationReleaseStaleTarget && !sPlayerbotAIConfig.rotationReleaseStaleTargetShadow) || now < lastReport + 60)
+        return;
+    lastReport = now;
+    using ai::stale_target::Hold;
+    sLog.outBasic("[StaleTarget] mode=%u shadow=%u still_s=%u stopped_s=%u elig_bot_min=%llu/%llu released=%llu/%llu by_still=%llu/%llu by_stopped=%llu/%llu shadow_would=%llu/%llu re_same=%llu/%llu moved_on=%llu/%llu held_pull=%llu/%llu held_wait=%llu/%llu held_loot=%llu/%llu held_cast=%llu/%llu held_rest=%llu/%llu",
+        sPlayerbotAIConfig.rotationReleaseStaleTarget, sPlayerbotAIConfig.rotationReleaseStaleTargetShadow,
+        sPlayerbotAIConfig.rotationReleaseStaleTargetStillSeconds, sPlayerbotAIConfig.rotationReleaseStaleTargetStoppedSeconds,
+        TakeStaleTarget(ai::stale_target::eligBotMin[0]), TakeStaleTarget(ai::stale_target::eligBotMin[1]),
+        TakeStaleTarget(ai::stale_target::released[0]), TakeStaleTarget(ai::stale_target::released[1]),
+        TakeStaleTarget(ai::stale_target::byStill[0]), TakeStaleTarget(ai::stale_target::byStill[1]),
+        TakeStaleTarget(ai::stale_target::byStopped[0]), TakeStaleTarget(ai::stale_target::byStopped[1]),
+        TakeStaleTarget(ai::stale_target::shadow[0]), TakeStaleTarget(ai::stale_target::shadow[1]),
+        TakeStaleTarget(ai::stale_target::reSame[0]), TakeStaleTarget(ai::stale_target::reSame[1]),
+        TakeStaleTarget(ai::stale_target::movedOn[0]), TakeStaleTarget(ai::stale_target::movedOn[1]),
+        TakeStaleTarget(ai::stale_target::held[unsigned(Hold::Pull)][0]), TakeStaleTarget(ai::stale_target::held[unsigned(Hold::Pull)][1]),
+        TakeStaleTarget(ai::stale_target::held[unsigned(Hold::Wait)][0]), TakeStaleTarget(ai::stale_target::held[unsigned(Hold::Wait)][1]),
+        TakeStaleTarget(ai::stale_target::held[unsigned(Hold::Loot)][0]), TakeStaleTarget(ai::stale_target::held[unsigned(Hold::Loot)][1]),
+        TakeStaleTarget(ai::stale_target::held[unsigned(Hold::Cast)][0]), TakeStaleTarget(ai::stale_target::held[unsigned(Hold::Cast)][1]),
+        TakeStaleTarget(ai::stale_target::held[unsigned(Hold::Rest)][0]), TakeStaleTarget(ai::stale_target::held[unsigned(Hold::Rest)][1]));
+}
+
 // twow-repo#602 (AiPlayerbot.Rotation.InvalidTargetQuiet): one [InvalidTarget] line per minute - "invalid target" checks kept quiet (quiet),
 // and the trace for the follow-up (b): "select new target" dropped a live current target (dropped_live), while casting (interrupted_live).
 // Nothing is written when off.
@@ -2125,6 +2158,7 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     ReportInvalidTarget();  // twow-repo#602: [InvalidTarget] once per minute (AiPlayerbot.Rotation.InvalidTargetQuiet)
     ReportDuelRule();       // twow-repo#602 W24: [DuelRule] once per minute (AiPlayerbot.Rotation.DuelRule)
     ReportQuestBook();      // A3 step 2: [QuestBookMin] once per minute (AiPlayerbot.QuestBook / QuestBook.Shadow)
+    ReportStaleTarget();    // A3-HARM-UPSTREAM H6 (T40): [StaleTarget] once per minute (AiPlayerbot.Rotation.ReleaseStaleTarget / .Shadow)
     ai::stale_objective::ReportMinute();   // A3-GERUEST-L60 8.4 lever 3: [StaleObjectiveMin] once per minute (StaleObjectiveFilter on)
     ReportTankKit();        // twow-repo#602: [TankKit] once per minute (AiPlayerbot.Rotation.TankKitFromLevel)
     ReportParkSleep();    // twow-repo#541: core switches + cell source lines once per minute (AiPlayerbot.Park.CellSourceStats)

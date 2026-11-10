@@ -1321,6 +1321,35 @@ add_test(NAME loot_chance_policy
   COMMAND loot_chance_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#575 H1 (A3-HARM-UPSTREAM, bug fix, default 0 until acceptance): AiPlayerbot.Loot.HoldTravelWhileLootable, loot
+# ping-pong (LootHoldPolicy.h); source contract in t/contracts.d.
+add_executable(loot_hold_policy_tests
+  "${PB_MODULE_DIR}/t/loot_hold_policy_tests.cpp")
+
+target_include_directories(loot_hold_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(loot_hold_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME loot_hold_policy
+  COMMAND loot_hold_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#575 H3: Revive.DelayResurrectRequest mode (guid bit 1, orthogonal to the cohort parity).
+add_executable(resurrect_delay_policy_tests
+  "${PB_MODULE_DIR}/t/resurrect_delay_policy_tests.cpp")
+
+target_include_directories(resurrect_delay_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(resurrect_delay_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME resurrect_delay_policy
+  COMMAND resurrect_delay_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # #416 (7.3): area levels without a world creature scan at runtime.
 add_executable(area_level_policy_tests
   "${PB_MODULE_DIR}/t/area_level_policy_tests.cpp")
@@ -1734,6 +1763,21 @@ set_target_properties(supervisor_policy_tests PROPERTIES
 
 add_test(NAME supervisor_policy
   COMMAND supervisor_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# A3 step 3, mailbox pair (agreed with CLI-GRP 09.11.2026): the pure rules of the supervisor's mailbox (SupervisorMailPolicy.h; no
+# game header). The game side is pinned by t/contracts.d/a3s3_supervisor_mailbox_source_contract_tests.cmake.
+add_executable(supervisor_mail_policy_tests
+  "${PB_MODULE_DIR}/t/supervisor_mail_policy_tests.cpp")
+
+target_include_directories(supervisor_mail_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(supervisor_mail_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME supervisor_mail_policy
+  COMMAND supervisor_mail_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
 # A3 step 2 quest book core QB-K (QuestBookPolicy.h, AiPlayerbot.QuestBook); source contract in t/contracts.d.
@@ -3918,6 +3962,21 @@ add_test(NAME duel_rule_policy
   COMMAND duel_rule_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# A3-HARM-UPSTREAM H6 (T40) (AiPlayerbot.Rotation.ReleaseStaleTarget, default 0): modes and shadow, Reset, holds, the still / stopped
+# clocks, due, release, once-per-episode counts and the re_same / moved_on follow-up.
+add_executable(stale_target_policy_tests
+  "${PB_MODULE_DIR}/t/stale_target_policy_tests.cpp")
+
+target_include_directories(stale_target_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(stale_target_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME stale_target_policy
+  COMMAND stale_target_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # twow-repo#602 (spell-name audit): the names that resolve in the image's spell data, the warlock stone ranks.
 add_executable(spell_name_policy_tests
   "${PB_MODULE_DIR}/t/spell_name_policy_tests.cpp")
@@ -3999,6 +4058,21 @@ add_test(NAME fishing_skill_check_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/fishing_skill_check_source_contract_tests.cmake")
 
+
+# twow-repo#575 H4 (A3-HARM-UPSTREAM, bug fix, default 0 until acceptance): AiPlayerbot.Path.TransportSameMapGuard, UseTransport scans a
+# dock's vessels only on the bot's map (TransportSameMapPolicy.h); source contract in t/contracts.d.
+add_executable(transport_samemap_policy_tests
+  "${PB_MODULE_DIR}/t/transport_samemap_policy_tests.cpp")
+
+target_include_directories(transport_samemap_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(transport_samemap_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME transport_samemap_policy
+  COMMAND transport_samemap_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
 # twow-repo#342 (S3b-0, no behaviour change): AiPlayerbot.Path.TransportWaitTimeoutMin is the S1 wait threshold the callers
 # pass (default 15 = 900 s), and AiPlayerbot.Path.TransportDeckProbe (default 0) probes the vessel deck once per dock wait:
@@ -4396,6 +4470,22 @@ set_target_properties(profession_travel_policy_tests PROPERTIES
 
 add_test(NAME profession_travel_policy
   COMMAND profession_travel_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#333 T28-M (AiPlayerbot.Gathering.Trace, default 0, log only): the [Gathering] event=share window - left-point time
+# accounting, the trip-over-purpose overlap rule, the hour rollover and the line's field order (GatheringTracePolicy.h); source
+# contract in t/contracts.d.
+add_executable(gathering_trace_policy_tests
+  "${PB_MODULE_DIR}/t/gathering_trace_policy_tests.cpp")
+
+target_include_directories(gathering_trace_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(gathering_trace_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME gathering_trace_policy
+  COMMAND gathering_trace_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
 # twow-repo#333 P1-v (AiPlayerbot.Travel.RpgAreaLevelFromSpawn): the area level of an RPG target from its spawn nearest to the bot.

@@ -4,6 +4,7 @@
 #include "playerbot/PathFailPolicy.h"
 #include "playerbot/IslandGuardPolicy.h"   // twow-repo#575 A3 step 4 M-c: Path.IslandGuard loader clamps
 #include "playerbot/CorpseRunFirstPolicy.h"   // twow-repo#575 A3 step 4 S4-1: Revive.CorpseRunFirst loader clamps
+#include "playerbot/LootHoldPolicy.h"   // twow-repo#575 H1: Loot.HoldTravelWhileLootable.MaxSeconds clamp
 #include "playerbot/RepopDeadOnlyPolicy.h"    // twow-repo#575 A3 step 4 S4-2: Rescue.RepopDeadOnly loader clamp
 #include "playerbot/PosStuckPolicy.h"
 #include "playerbot/CombatRulePolicy.h"   // A3 step 5: CombatRule.RestStartHp / RestStartMana loader clamps
@@ -51,6 +52,7 @@
 #include "playerbot/R01CohortPolicy.h"
 #include "playerbot/LosCachePolicy.h"   // twow-repo#602 (Rotation.LosCacheMs): the read's bounds
 #include "playerbot/RescueHubPolicy.h"   // twow-repo#575 RG-a (QuestRescue.HomeHubs): the mode clamp
+#include "playerbot/ResurrectDelayPolicy.h"   // twow-repo#575 H3 (Revive.DelayResurrectRequest): the mode clamp
 
 #include <iostream>
 #include <numeric>
@@ -510,6 +512,8 @@ bool PlayerbotAIConfig::Initialize()
     parkHideFromBots = config.GetBoolDefault("AiPlayerbot.Park.HideFromBots", false);
     buffRealPlayerStyle = config.GetBoolDefault("AiPlayerbot.Buff.RealPlayerStyle", false);
     buffStrangerCooldownSeconds = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.Buff.StrangerCooldownSeconds", 900)));
+    lootHoldTravelWhileLootable = config.GetBoolDefault("AiPlayerbot.Loot.HoldTravelWhileLootable", false);   // twow-repo#575 H1
+    lootHoldTravelWhileLootableMaxSeconds = ai::loot_hold::ClampMaxSeconds(config.GetIntDefault("AiPlayerbot.Loot.HoldTravelWhileLootable.MaxSeconds", int(ai::loot_hold::DefaultMaxSeconds)));   // twow-repo#575 H1
     lootRoleWeights = std::min<uint32>(2, uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.Loot.RoleWeights", 0))));
     lootFeralFixedSpec = config.GetBoolDefault("AiPlayerbot.Loot.FeralFixedSpec", true);
     // OB-00 08.11.2026 (bug fix: code default 1, 0 = rollback, an unknown value = 1): "loot chance" of a game object
@@ -644,6 +648,14 @@ bool PlayerbotAIConfig::Initialize()
     rotationInvalidTargetQuiet = config.GetIntDefault("AiPlayerbot.Rotation.InvalidTargetQuiet", 1);   // twow-repo#602 failure census
     if (rotationInvalidTargetQuiet > 2)
         rotationInvalidTargetQuiet = 1;   // an unknown mode is the default (0 off = rollback, 1 all, 2 cohort B)
+    rotationReleaseStaleTarget = config.GetIntDefault("AiPlayerbot.Rotation.ReleaseStaleTarget", 0);   // A3-HARM-UPSTREAM H6 (T40)
+    if (rotationReleaseStaleTarget > 2)
+        rotationReleaseStaleTarget = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
+    rotationReleaseStaleTargetShadow = config.GetIntDefault("AiPlayerbot.Rotation.ReleaseStaleTarget.Shadow", 0);
+    if (rotationReleaseStaleTargetShadow > 1)
+        rotationReleaseStaleTargetShadow = 0;   // an unknown value is off
+    rotationReleaseStaleTargetStillSeconds = config.GetIntDefault("AiPlayerbot.Rotation.ReleaseStaleTarget.StillSeconds", 60);
+    rotationReleaseStaleTargetStoppedSeconds = config.GetIntDefault("AiPlayerbot.Rotation.ReleaseStaleTarget.StoppedSeconds", 5);
     perfCombatIdleYield = config.GetBoolDefault("AiPlayerbot.Perf.CombatIdleYield", false);
     castWaitPreparing = config.GetIntDefault("AiPlayerbot.CastWait.Preparing", 0);
     if (castWaitPreparing > 2)
@@ -1199,12 +1211,13 @@ bool PlayerbotAIConfig::Initialize()
     pathTransportDeckProbe = config.GetBoolDefault("AiPlayerbot.Path.TransportDeckProbe", false);
     pathTransportWaitTimeoutMin = ai::transport_board::ClampWaitTimeoutMin(config.GetIntDefault("AiPlayerbot.Path.TransportWaitTimeoutMin", 15));
     pathTransportBoardFix = config.GetBoolDefault("AiPlayerbot.Path.TransportBoardFix", false);
+    pathTransportSameMapGuard = config.GetBoolDefault("AiPlayerbot.Path.TransportSameMapGuard", false);   // twow-repo#575 H4
     if (pathTransportBoardFix && transportTeleportType == 0)   // twow-repo#342 (S3b-1)
         sLog.outError("AiPlayerbot.Path.TransportBoardFix is built for TransportTeleportType 1 / 2; walking onto transports (0) is not supported");
     pathTaxiCancelForm = config.GetBoolDefault("AiPlayerbot.Path.TaxiCancelForm", false);
     pathRescueSkipCustomStarts = config.GetBoolDefault("AiPlayerbot.Path.RescueSkipCustomStarts", false);
     // twow-repo#575 A3 step 4 M-c (Path.IslandGuard): an unknown mode is off (CohortPolicy.h); the others clamped (IslandGuardPolicy.h).
-    pathIslandGuard = ai::island::ClampMode(config.GetIntDefault("AiPlayerbot.Path.IslandGuard", 0));
+    pathIslandGuard = ai::island::ClampMode(config.GetIntDefault("AiPlayerbot.Path.IslandGuard", 1));   // default 1 since the IslandGuard A/B (ACCEPT 09.11.2026)
     pathIslandMaxPolys = ai::island::ClampMaxPolys(config.GetIntDefault("AiPlayerbot.Path.IslandMaxPolys", int(ai::island::DefaultMaxPolys)));
     pathIslandSnapDz = ai::island::ClampSnapDz(config.GetFloatDefault("AiPlayerbot.Path.IslandSnapDz", ai::island::DefaultSnapDz));
     pathIslandStepOffYards = ai::island::ClampStepOffYards(config.GetFloatDefault("AiPlayerbot.Path.IslandStepOffYards", ai::island::DefaultStepOffYards));
@@ -1213,6 +1226,7 @@ bool PlayerbotAIConfig::Initialize()
     // twow-repo#575 A3 step 4 S4-1 (Revive.CorpseRunFirst): an unknown mode is off; MaxSeconds clamped to 120..1800 (CorpseRunFirstPolicy.h).
     reviveCorpseRunFirst = ai::corpse_first::ClampMode(config.GetIntDefault("AiPlayerbot.Revive.CorpseRunFirst", 0));
     reviveCorpseRunFirstMaxSeconds = ai::corpse_first::ClampMaxSeconds(config.GetIntDefault("AiPlayerbot.Revive.CorpseRunFirst.MaxSeconds", int(ai::corpse_first::DefaultMaxSeconds)));
+    reviveDelayResurrectRequest = ai::resurrect_delay::ClampMode(config.GetIntDefault("AiPlayerbot.Revive.DelayResurrectRequest", 0));   // twow-repo#575 H3
     // twow-repo#575 A3 step 4 S4-2 (Rescue.RepopDeadOnly): an unknown mode is off (RepopDeadOnlyPolicy.h).
     rescueRepopDeadOnly = ai::repop_dead_only::ClampMode(config.GetIntDefault("AiPlayerbot.Rescue.RepopDeadOnly", 0));
     questFirstProgressionTurnInDeathRouteCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInDeathRouteCooldownSeconds", 3600));
@@ -1692,8 +1706,9 @@ bool PlayerbotAIConfig::Initialize()
     professionTrainingTrace = config.GetBoolDefault("AiPlayerbot.ProfessionTraining.Trace", false);
     professionTrainingTraceCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.ProfessionTraining.TraceCooldownSeconds", 300));
     // twow-repo#333 Berufe P1-a / P1-b: an unknown mode is off (0 off, 1 all, 2 cohort B).
+    // T28a crossover (OB-00 09.11.2026, plan A3-PLAN-ZIEL T28a): Travel and ProfessionUse.ToolBuy also take 3 = only cohort A.
     professionTrainingTravel = config.GetIntDefault("AiPlayerbot.ProfessionTraining.Travel", 0);
-    if (professionTrainingTravel > 2)
+    if (professionTrainingTravel > 3)
         professionTrainingTravel = 0;
     // P1-n: yards, 0 = off, at most 1000 (ProfessionTravelPolicy.h ClampNearRadius); the mode and cohort of ProfessionTraining.Travel.
     professionTrainingNearRadius = ai::profession_travel::ClampNearRadius(config.GetIntDefault("AiPlayerbot.ProfessionTraining.NearRadius", 0));
@@ -1767,8 +1782,9 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[Crafting] config key=Fishing value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", craftingFishing);
         craftingFishing = 0;
     }
+    // T28a crossover (OB-00 09.11.2026): 3 = only cohort A, as ProfessionTraining.Travel.
     professionUseToolBuy = config.GetIntDefault("AiPlayerbot.ProfessionUse.ToolBuy", 0);
-    if (professionUseToolBuy > 2)
+    if (professionUseToolBuy > 3)
         professionUseToolBuy = 0;
     buyVendorTemplateItems = config.GetIntDefault("AiPlayerbot.Buy.VendorTemplateItems", 1);   // twow-repo#333 P1-z vendor templates
     if (buyVendorTemplateItems > 2)
@@ -1787,6 +1803,13 @@ bool PlayerbotAIConfig::Initialize()
     professionUseCraftIntervalSeconds = std::max<uint32>(10, config.GetIntDefault("AiPlayerbot.ProfessionUse.CraftIntervalSeconds", 300));
     professionUseTrace = config.GetBoolDefault("AiPlayerbot.ProfessionUse.Trace", false);
     professionUseTraceCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.ProfessionUse.TraceCooldownSeconds", 300));
+    // twow-repo#333 T28-M (OB-00 09.11.2026): the [Gathering] event=share line; an unknown value is off.
+    gatheringTrace = config.GetIntDefault("AiPlayerbot.Gathering.Trace", 0);
+    if (gatheringTrace > 1)
+    {
+        sLog.outError("[Gathering] config key=Trace value=%u result=off (0 off, 1 on)", gatheringTrace);
+        gatheringTrace = 0;
+    }
     professionUseRealReagents = config.GetBoolDefault("AiPlayerbot.ProfessionUse.RealReagents", false);
     // Clamped as int32 first: a negative value must not wrap to ~136 years.
     professionUseCraftFailBackoffSeconds = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.ProfessionUse.CraftFailBackoffSeconds", 1800)));
@@ -2092,6 +2115,7 @@ bool PlayerbotAIConfig::Initialize()
             {"EquipDiagnostics.Trace", Value(equipDiagnosticsTrace)},
             {"Gather.FishingSkillCheck", Value(gatherFishingSkillCheck)},
             {"Gather.QuestHerbFilter", Value(gatherQuestHerbFilter)},
+            {"Gathering.Trace", Value(gatheringTrace)},
             {"Grind.GreyByLevel", Value(grindGreyByLevel)},
             {"Grind.NeighbourAware", Value(grindNeighbourAware)},
             {"Grind.QuestFirstOrder", Value(grindQuestFirstOrder)},
@@ -2099,6 +2123,8 @@ bool PlayerbotAIConfig::Initialize()
             {"Grind.SafePull.ReadyHp", Value(grindSafePullReadyHp)},
             {"Grind.SafePull.ReadyMana", Value(grindSafePullReadyMana)},
             {"LogInGroupOnly", Value(logInGroupOnly)},
+            {"Loot.HoldTravelWhileLootable", Value(lootHoldTravelWhileLootable)},
+            {"Loot.HoldTravelWhileLootable.MaxSeconds", Value(lootHoldTravelWhileLootableMaxSeconds)},
             {"Loot.RoleWeights", Value(lootRoleWeights)},
             {"LootChance.GameObjectEntryFix", Value(lootChanceGameObjectEntryFix)},
             {"Path.IslandGuard", Value(pathIslandGuard)},
@@ -2112,6 +2138,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Path.TransportBoardFix", Value(pathTransportBoardFix)},
             {"Path.TransportDeckProbe", Value(pathTransportDeckProbe)},
             {"Path.TransportEdgeTrace", Value(pathTransportEdgeTrace)},
+            {"Path.TransportSameMapGuard", Value(pathTransportSameMapGuard)},
             {"Path.TransportWaitTimeoutMin", Value(pathTransportWaitTimeoutMin)},
             {"Perf.BindAreaFromHomebind", Value(perfBindAreaFromHomebind)},
             {"Perf.DispatchPrecomputedPath", Value(perfDispatchPrecomputedPath)},
@@ -2192,6 +2219,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Rescue.RepopDeadOnly", Value(rescueRepopDeadOnly)},
             {"Revive.CorpseRunFirst", Value(reviveCorpseRunFirst)},
             {"Revive.CorpseRunFirst.MaxSeconds", Value(reviveCorpseRunFirstMaxSeconds)},
+            {"Revive.DelayResurrectRequest", Value(reviveDelayResurrectRequest)},
             {"Revive.SpiritHealerFull", Value(reviveSpiritHealerFull)},
             {"RosterFarMove.ArriveSafe", Value(rosterFarMoveArriveSafe)},
             {"RosterFarMove.LevelGuard", Value(rosterFarMoveLevelGuard)},
@@ -2218,6 +2246,10 @@ bool PlayerbotAIConfig::Initialize()
             {"Rotation.ReachDropEngagement", Value(rotationReachDropEngagement)},
             {"Rotation.ReachLosClose", Value(rotationReachLosClose)},
             {"Rotation.ReachPlayerMaster", Value(rotationReachPlayerMaster)},
+            {"Rotation.ReleaseStaleTarget", Value(rotationReleaseStaleTarget)},
+            {"Rotation.ReleaseStaleTarget.Shadow", Value(rotationReleaseStaleTargetShadow)},
+            {"Rotation.ReleaseStaleTarget.StillSeconds", Value(rotationReleaseStaleTargetStillSeconds)},
+            {"Rotation.ReleaseStaleTarget.StoppedSeconds", Value(rotationReleaseStaleTargetStoppedSeconds)},
             {"Rotation.RestGate", Value(rotationRestGate)},
             {"Rotation.RestoShamanOffdps", Value(rotationRestoShamanOffdps)},
             {"Rotation.RetargetEmptyTrace", Value(rotationRetargetEmptyTrace)},
