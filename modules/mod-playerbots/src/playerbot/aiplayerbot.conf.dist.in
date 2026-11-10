@@ -1898,6 +1898,18 @@ AiPlayerbot.QuestFirstProgression.StartZoneMinLevel.Cohort = 1
 #   0 = off (rollback), 1 = on (default since the SZM adoption, 10.11.2026); other values act like 0. Without StartZoneMinLevel it
 #   does nothing.
 AiPlayerbot.QuestFirstProgression.StartZoneMinLevel.Complete = 1
+# twow-repo#575 SZF-Q, objective window (BOT-14 #703; design ws-10/cli-pathfinding/szf, OB-00 + OB-10 10.11.2026): for a bot that
+# StartZoneMinLevel holds (the .Cohort selection, roster bots without a real player master), the objective travel check of a quest that
+# is in its log and not complete accepts quest levels up to L + .AboveLevels instead of L + 1 (SZM R3: held bots stalled with quests in
+# the log one level outside the old rule, e.g. ql5 at L3). No new accept, the giver rules, "can fight equal", the mob level check and
+# the start-zone gate stay. With a quest book only its "above the window" refusal is lifted, up to L + .AboveLevels; the QB5 list stays.
+# The first objective a bot may take only because of the window writes [ZoneKeep] state=objective_window bot= quest= qlevel= level=
+# zone= (once per bot and quest); once per minute [ZoneKeepMin] cohort=A|B objective_window= objective_window_new= (mode on only).
+#   A cohort key with its own meaning (switch audit twow-repo#679): 0 = off (default, rollback), 1 = every held bot, 2 = only cohort B
+#   (odd low guid), 3 = only cohort A (even low guid) (CohortPolicy.h, the same split as .Cohort); other values act like 0.
+#   .AboveLevels 1..3 (default 2; other values are clamped). Without StartZoneMinLevel it does nothing.
+AiPlayerbot.QuestFirstProgression.StartZoneMinLevel.ObjectiveWindow = 0
+AiPlayerbot.QuestFirstProgression.StartZoneMinLevel.ObjectiveWindow.AboveLevels = 2
 # twow-repo#601 quest acceptance lever (iv) (OB-00 28.10.2026, BUG FIX behind a switch, cli-quest-organic/quest-acceptance/STEP2.md):
 # the radius quest giver fetch of a quest route request (GiverRadius, the #421 B stages) asked TravelMgr for entry 0, but every
 # quest giver is filed under its quest id - so it never returned a giver. Givers reached the route choice only through the
