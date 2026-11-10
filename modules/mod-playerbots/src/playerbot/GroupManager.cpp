@@ -3,6 +3,7 @@
 #include "playerbot/ManagerInbox.h"
 #include "playerbot/SupervisorPolicy.h"   // T30-0: supervisor::Applies for the shadow candidates
 #include "playerbot/Supervisor.h"         // T30-1: the one directive post (R10)
+#include "playerbot/SupervisorShadow.h"   // T30-1c: supervisor::ArbiterValue (the live arbiter value)
 #include "playerbot/GroupManagerView.h"
 #include "playerbot/GroupOps.h"           // T30-1: QueueManagerJoin / QueueManagerLeave / TakeManagerOutcomes
 #include "playerbot/QuestGroupWorld.h"    // T30-1: S7 still owns a bot (quest_groups::OwnsBot)
@@ -20,12 +21,19 @@ bool SupervisorOn(std::uint32_t low)
     return sPlayerbotAIConfig.supervisor && ai::supervisor::Applies(sPlayerbotAIConfig.supervisor, low);
 }
 
+// T30-1c: the live owner switch - Types after the StatusSeconds rule, and only while the arbiter enforces (LiveTypes,
+// GroupManagerPolicy.h). The arbiter value is global (one relaxed load plus the key, any thread; the console override of
+// "rndbot arbiter" included), so it gates every candidate and the bot-thread view (OwnsBot) alike.
+std::uint32_t LiveTypesNow()
+{
+    return LiveTypes(sPlayerbotAIConfig.botGroupsManagerTypes, sPlayerbotAIConfig.botGroupsManagerStatusSeconds,
+        ai::supervisor::ArbiterValue(sPlayerbotAIConfig.supervisorArbiter));
+}
+
 // The engine's I/O on the world thread: guids only (the op path looks the bots up itself, m2), the one Post, the log.
 class WorldIo : public Io
 {
 public:
-    // TODO(T30-1b step 2, waits for T02-a): candidates only with ai::supervisor::ArbiterValue(<config>.supervisorArbiter) == 2
-    // (<config> = sPlayerbotAIConfig; spelled apart so the arbiter shadow contract still counts one read of the switch).
     bool SupervisorApplies(std::uint32_t low) override { return SupervisorOn(low); }
     bool S7Owns(std::uint32_t low) override { return quest_groups::OwnsBot(low); }
     bool QueueJoin(std::uint32_t invitee, std::uint32_t inviter, std::uint32_t groupId, GroupType type, std::uint32_t questId,
@@ -71,7 +79,7 @@ void WorldThreadManager::Update(std::map<std::uint32_t, Player*> const& bots, st
 
 void WorldThreadManager::RunDirectives(std::map<std::uint32_t, Player*> const& bots, std::uint32_t nowMs, std::uint32_t nowSec)
 {
-    std::uint32_t const types = EffectiveTypes(sPlayerbotAIConfig.botGroupsManagerTypes, sPlayerbotAIConfig.botGroupsManagerStatusSeconds);
+    std::uint32_t const types = LiveTypesNow();
     if (!types && !engine_.HasGroups())
     {
         acks_.clear();
@@ -235,8 +243,8 @@ WorldThreadManager& WorldManager()
 // ---- T30-1 read views (GroupManagerView.h): any thread; the registry view answers from one atomic while it is empty ----------
 bool OwnsBot(std::uint32_t guidLow)
 {
-    return Owns(sPlayerbotAIConfig.botGroupsManager,
-        EffectiveTypes(sPlayerbotAIConfig.botGroupsManagerTypes, sPlayerbotAIConfig.botGroupsManagerStatusSeconds), guidLow);
+    // T30-1c: below arbiter 2 the manager owns no bot (Types acts like 0), so the legacy paths stay open for the cohort.
+    return Owns(sPlayerbotAIConfig.botGroupsManager, LiveTypesNow(), guidLow);
 }
 
 bool IsManaged(std::uint32_t guidLow)

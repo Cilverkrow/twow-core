@@ -1418,10 +1418,15 @@ AiPlayerbot.BotGroups.Manager.StatusSeconds = 0
 # membership only while its Enter is applied, the serial is that of its current group and no Exit of it is open; then
 # "[GroupMgr] event=self_left group= bot= reason=" and the member ends with bot_left_done (goal_done, a natural end),
 # bot_left_lost (goal_lost) or bot_left_off (arbiter_off; both no QUEST attempt, the retry cooldown only) with its Exit and
-# leave as usual; any other left ack counts as ack_stale. The minute2 line ends with osc= (memberships that ended less than
+# leave as usual; any other left ack counts as left_stale (T30-1c). The minute2 line ends with osc= (memberships that ended less than
 # 15 minutes after their Enter was applied without a natural end - turned in, objective or group done, bot_left_done - and
 # not as too_small or switch_off; an increment), self_left= (an increment) and skip_unknown_30m= (a level, not an increment: the bots the manager skipped as
-# skip_unknown without a break for 30 minutes or more at the line).
+# skip_unknown without a break for 30 minutes or more at the line), then left_stale= (T30-1c, an increment: left acks that did
+# not match).
+# T30-1c: the manager acts only while the arbiter enforces, i.e. AiPlayerbot.Supervisor.Arbiter = 2 or the console
+# "rndbot arbiter enforce" (the T02-GROUP handler refuses Enter and Update below 2). Below 2, Types acts like 0 (no own line;
+# the config echo and the console line show the arbiter): the manager owns no bot, the legacy paths are open again and its
+# open groups end with switch_off.
 AiPlayerbot.BotGroups.Manager.Types = 0
 # L1 (owner 07.11.2026, owner-ordered behaviour change): a bot resets its raid lockouts ("reset raids", which drops every bind
 # except the one of its current map, PERM included) only when a real player invites it. An invite by another bot or by a

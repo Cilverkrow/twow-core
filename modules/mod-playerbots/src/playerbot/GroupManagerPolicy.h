@@ -75,6 +75,17 @@ inline std::uint32_t EffectiveTypes(std::uint32_t types, std::uint32_t statusSec
     return statusSeconds ? SanitizeTypes(types) : 0u;
 }
 
+// T30-1c (agreed with CLI-Projekt and OB-00 10.11.): the manager acts only while the arbiter enforces (arbiter = the value of
+// supervisor::ArbiterValue: 0 off, 1 shadow, 2 enforce; the key or the console override). The T02-GROUP handler refuses Enter
+// and Update below 2 (ack reason 22 arbiter_off), so a group would only form and end: below 2 Types acts like 0 - the manager
+// owns no bot (the legacy paths are open again) and its open groups end with switch_off.
+constexpr std::uint32_t kManagerArbiter = 2;   // = supervisor::kArbiterEnforce
+
+inline std::uint32_t LiveTypes(std::uint32_t types, std::uint32_t statusSeconds, std::uint32_t arbiter)
+{
+    return arbiter == kManagerArbiter ? EffectiveTypes(types, statusSeconds) : 0u;
+}
+
 inline bool TypeOn(std::uint32_t types, GroupType type)
 {
     return (SanitizeTypes(types) & (1u << std::uint32_t(type))) != 0;

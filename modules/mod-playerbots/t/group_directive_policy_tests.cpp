@@ -1426,7 +1426,7 @@ void TestSelfLeft()
     Require(e.TotalLeave(EndReason::TooSmall) == 1 && e.Total(Cnt::Osc) == 0, "osc: none for bot_left_done and its too_small");
 }
 
-// G2: every other left ack is ack_stale and nothing else.
+// G2: every other left ack is left_stale (T30-1c) and nothing else.
 void TestLeftAckStale()
 {
     Engine e;
@@ -1442,7 +1442,7 @@ void TestLeftAckStale()
     w.acks.push_back(LeftAck(1, serial, kAckReasonGoalDone, SeqOf(io, 1, Verb::Enter)));   // seq != 0
     w.acks.push_back(LeftAck(3, serial, kAckReasonGoalDone));   // a bot nobody holds
     Run(e, w, r, io, t);
-    Require(e.Total(Cnt::AckStale) == 3 && e.Total(Cnt::SelfLeft) == 0, "wrong serial, seq != 0, no group: ack_stale each");
+    Require(e.Total(Cnt::LeftStale) == 3 && e.Total(Cnt::AckStale) == 0 && e.Total(Cnt::SelfLeft) == 0, "wrong serial, seq != 0, no group: left_stale each");
     Require(e.Groups().size() == 1 && io.posts.size() == posts && io.leaves.empty() && io.CountLines("event=self_left") == 0 &&
         io.CountLines("event=leave ") == 0, "a stale left ack: no end, no Exit, no leave, no line");
     // The member is no longer Acked and its Exit is open (after a matching left ack): a second one is stale.
@@ -1456,8 +1456,8 @@ void TestLeftAckStale()
     Refresh(w, t);
     w.acks.push_back(LeftAck(1, serial, kAckReasonGoalLost));
     Run(e, w, r, io, t);
-    Require(e.Total(Cnt::SelfLeft) == 1 && e.Total(Cnt::AckStale) == 4 && e.TotalLeave(EndReason::BotLeftLost) == 1,
-        "a left ack while its Exit is open: ack_stale only");
+    Require(e.Total(Cnt::SelfLeft) == 1 && e.Total(Cnt::LeftStale) == 4 && e.Total(Cnt::AckStale) == 0 && e.TotalLeave(EndReason::BotLeftLost) == 1,
+        "a left ack while its Exit is open: left_stale only");
     // A member whose Enter is not applied yet (Directed): stale.
     Engine e2;
     World w2;
@@ -1468,8 +1468,8 @@ void TestLeftAckStale()
     Refresh(w2, t2);
     w2.acks.push_back(LeftAck(1, serial2, kAckReasonArbiterOff));
     Run(e2, w2, r, io2, t2);
-    Require(e2.Total(Cnt::AckStale) == 1 && e2.Total(Cnt::SelfLeft) == 0 && e2.TotalLeave(EndReason::BotLeftOff) == 0,
-        "a left ack before ack 2: ack_stale only");
+    Require(e2.Total(Cnt::LeftStale) == 1 && e2.Total(Cnt::AckStale) == 0 && e2.Total(Cnt::SelfLeft) == 0 && e2.TotalLeave(EndReason::BotLeftOff) == 0,
+        "a left ack before ack 2: left_stale only");
 }
 
 // G5: osc counts an end without a natural reason less than kOscSec after the Enter's ack 2.
@@ -1596,17 +1596,17 @@ void TestSkipUnknownLong()
     Run(e, w, r, io, 1000);
     std::uint32_t t = Tick(e, w, r, io, 1000, 1000 + 1700000);
     Require(io.CountLines(" skip_unknown_30m=1") == 0 && io.CountLines(" skip_unknown_30m=0") > 0, "under 30 minutes: 0");
-    Require(EndsWith(LastLine(io, "[GroupMgr] minute2 "), " osc=0 self_left=0 skip_unknown_30m=0"),
-        "minute2 ends with osc, self_left, skip_unknown_30m");
+    Require(EndsWith(LastLine(io, "[GroupMgr] minute2 "), " osc=0 self_left=0 skip_unknown_30m=0 left_stale=0"),
+        "minute2 ends with osc, self_left, skip_unknown_30m, left_stale");
     Require(LastLine(io, "[GroupMgr] minute types=").find(" osc=") == std::string::npos, "the minute line keeps its fields");
     t = Tick(e, w, r, io, t, 1000 + 1900000);
-    Require(EndsWith(LastLine(io, "[GroupMgr] minute2 "), " skip_unknown_30m=1"), "skip_unknown for over 30 minutes: 1");
+    Require(EndsWith(LastLine(io, "[GroupMgr] minute2 "), " skip_unknown_30m=1 left_stale=0"), "skip_unknown for over 30 minutes: 1");
     SetEdge(w, 3, t);   // out of the group: the run ends
     t = Tick(e, w, r, io, t, t + 61000);
-    Require(EndsWith(LastLine(io, "[GroupMgr] minute2 "), " skip_unknown_30m=0"), "no longer skip_unknown: 0 again (a level)");
+    Require(EndsWith(LastLine(io, "[GroupMgr] minute2 "), " skip_unknown_30m=0 left_stale=0"), "no longer skip_unknown: 0 again (a level)");
     SetEdge(w, 3, t, 60, 3, 2);   // back in: a new run starts from 0
     t = Tick(e, w, r, io, t, t + 61000);
-    Require(EndsWith(LastLine(io, "[GroupMgr] minute2 "), " skip_unknown_30m=0"), "a new run counts from its own start");
+    Require(EndsWith(LastLine(io, "[GroupMgr] minute2 "), " skip_unknown_30m=0 left_stale=0"), "a new run counts from its own start");
 }
 }
 
