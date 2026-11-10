@@ -468,7 +468,24 @@ void PlayerbotAI::PostManagerStatus()
     bool const edgeChanged = !managerEdgeKnown || edge != managerEdgeLast;
     managerEdgeLast = edge;
     managerEdgeKnown = true;
-    if (!due && !edgeChanged)
+    // T33-0 (design T33 v1.1 3.2, AiPlayerbot.BotGroups.Manager.Gather, default 0; measurement only): a bot of the Manager's
+    // cohort in a group (its own edge, no registry read) also posts its own place, with every status and at once on a map or
+    // instance change (compared every engine pass, like the edge). Gather 0: nothing is read, compared or posted.
+    bool const gather = sPlayerbotAIConfig.botGroupsManagerGather && edge.groupId &&
+        ai::group_mgr::Applies(sPlayerbotAIConfig.botGroupsManager, bot->GetGUIDLow());
+    ai::group_mgr::PlaceFacts place;
+    bool placeChanged = false;
+    if (gather)
+    {
+        place = ai::manager_facts::ReadPlace(bot);
+        placeChanged = !managerPlaceKnown || place.mapId != managerPlaceMap || place.instanceId != managerPlaceInstance;
+        managerPlaceMap = place.mapId;
+        managerPlaceInstance = place.instanceId;
+        managerPlaceKnown = true;
+    }
+    else
+        managerPlaceKnown = false;
+    if (!due && !edgeChanged && !placeChanged)
         return;
     if (!InQuestBookScope())
         return;
@@ -499,8 +516,14 @@ void PlayerbotAI::PostManagerStatus()
         ai::manager_inbox::Post(event);
     }
 
-    // The edge on a change and with every status (after it: the manager stores both from one drain, FIFO).
-    ai::manager_inbox::Post(ai::manager_inbox::MakeEdge(bot->GetGUIDLow(), edge, x, y));
+    // T33-0: the place right after its status (the manager judges it with that status' alive and busy flags).
+    if (gather && (due || placeChanged))
+        ai::manager_inbox::Post(ai::group_mgr::MakeGatherPlace(bot->GetGUIDLow(), place));
+
+    // The edge on a change and with every status (after it: the manager stores both from one drain, FIFO). Without Gather
+    // every pass that gets here is due or changed its edge.
+    if (due || edgeChanged)
+        ai::manager_inbox::Post(ai::manager_inbox::MakeEdge(bot->GetGUIDLow(), edge, x, y));
     if (!due)
         return;
 

@@ -20,6 +20,7 @@
 #include "playerbot/RestGatePolicy.h"
 #include "playerbot/GroupOpPolicy.h"   // BOT-12: BotGroups.OpQueue clamps
 #include "playerbot/GroupManagerPolicy.h"   // A3 step 6: BotGroups.Manager mode
+#include "playerbot/GroupGatherPolicy.h"   // A3 step 6 T33-0: BotGroups.Manager.Gather
 #include "playerbot/ManagerInboxPolicy.h"   // A3-GERUEST-L60 7.2.11: BotGroups.Manager.StatusSeconds clamp
 #include "playerbot/SupervisorPolicy.h"   // A3 step 3: Supervisor mode
 #include "playerbot/QuestBookPolicy.h"   // A3 step 2: QuestBook mode
@@ -933,6 +934,20 @@ bool PlayerbotAIConfig::Initialize()
     {
         sLog.outError("[GroupMgr] config key=Manager.Types value=%u result=0 (needs Manager.StatusSeconds > 0)", botGroupsManagerTypes);
         botGroupsManagerTypes = ai::group_mgr::EffectiveTypes(botGroupsManagerTypes, botGroupsManagerStatusSeconds);
+    }
+    // A3 step 6 T33-0 (design T33 v1.1 5.1, measurement only): the meeting shadow. An unknown or negative value is off; without
+    // a manager group type there is nothing to measure, so Types 0 turns it off too. One error line each.
+    botGroupsManagerGather = uint32(config.GetIntDefault("AiPlayerbot.BotGroups.Manager.Gather", 0));
+    if (!ai::group_mgr::GatherValid(botGroupsManagerGather))
+    {
+        sLog.outError("[GroupMgr] config key=Manager.Gather value=%d result=off (0 off, 1 all, 2 cohort B, 3 cohort A)",
+            int32(botGroupsManagerGather));
+        botGroupsManagerGather = 0;
+    }
+    if (botGroupsManagerGather && !botGroupsManagerTypes)
+    {
+        sLog.outError("[GroupMgr] config key=Manager.Gather value=%u result=0 (needs Manager.Types > 0)", botGroupsManagerGather);
+        botGroupsManagerGather = ai::group_mgr::EffectiveGather(botGroupsManagerGather, botGroupsManagerTypes);
     }
     // L1 (owner 07.11.2026): code default 1; only "0" is off, any other value is 1. Read as a string: GetIntDefault is atoi,
     // which would turn a non-numeric value such as "on" into 0 (rollback).
@@ -2077,6 +2092,7 @@ bool PlayerbotAIConfig::Initialize()
             {"BotGroups.LeaderOtherMap", Value(botGroupsLeaderOtherMap)},
             {"BotGroups.LeaderOtherMapSeconds", Value(botGroupsLeaderOtherMapSeconds)},
             {"BotGroups.Manager", Value(botGroupsManager)},
+            {"BotGroups.Manager.Gather", Value(botGroupsManagerGather)},
             {"BotGroups.Manager.StatusSeconds", Value(botGroupsManagerStatusSeconds)},
             {"BotGroups.Manager.Types", Value(botGroupsManagerTypes)},
             {"BotGroups.OpQueue", Value(botGroupsOpQueue)},
