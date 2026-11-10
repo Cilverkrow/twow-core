@@ -53,6 +53,7 @@
 #include "playerbot/R01CohortPolicy.h"
 #include "playerbot/LosCachePolicy.h"   // twow-repo#602 (Rotation.LosCacheMs): the read's bounds
 #include "playerbot/RescueHubPolicy.h"   // twow-repo#575 RG-a (QuestRescue.HomeHubs): the mode clamp
+#include "playerbot/QuestRescueSlotPolicy.h"   // twow-repo#703 item 1 (QuestRescue.NoTargetFreeSlot): the mode clamp
 #include "playerbot/ResurrectDelayPolicy.h"   // twow-repo#575 H3 (Revive.DelayResurrectRequest): the mode clamp
 
 #include <iostream>
@@ -867,6 +868,13 @@ bool PlayerbotAIConfig::Initialize()
     grindCapLowLevelMargin = config.GetIntDefault("AiPlayerbot.GrindCap.LowLevelMargin", 2);
     questRescueIdleMinutes = config.GetIntDefault("AiPlayerbot.QuestRescue.IdleMinutes", 30);
     questRescueKeepRequestWhenFull = config.GetBoolDefault("AiPlayerbot.QuestRescue.KeepRequestWhenFull", false);
+    // twow-repo#703 item 1 (QuestRescue.NoTargetFreeSlot): 0 off, 1 on; any other value is off (logged).
+    questRescueNoTargetFreeSlot = config.GetIntDefault("AiPlayerbot.QuestRescue.NoTargetFreeSlot", 0);
+    if (!ai::rescue_slot::ModeValid(int32(questRescueNoTargetFreeSlot)))
+    {
+        sLog.outError("[QuestRescue] config key=NoTargetFreeSlot value=%d result=off (0 off, 1 on)", int32(questRescueNoTargetFreeSlot));
+        questRescueNoTargetFreeSlot = 0;
+    }
     questRescueHomeHubs = ai::rescue_hub::ClampMode(config.GetIntDefault("AiPlayerbot.QuestRescue.HomeHubs", 1));   // default 1 since the SZM adoption (10.11.2026), 0 = rollback
     grindAvoidMaxDeaths = config.GetIntDefault("AiPlayerbot.GrindAvoid.MaxDeaths", 0);
     grindAvoidWindowSeconds = std::max<uint32>(60, config.GetIntDefault("AiPlayerbot.GrindAvoid.WindowSeconds", 3600));
@@ -2291,6 +2299,7 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestRelation.GameObjectChanceDrops", Value(questRelationGameObjectChanceDrops)},
             {"QuestRescue.HomeHubs", Value(questRescueHomeHubs)},
             {"QuestRescue.KeepRequestWhenFull", Value(questRescueKeepRequestWhenFull)},
+            {"QuestRescue.NoTargetFreeSlot", Value(questRescueNoTargetFreeSlot)},
             {"Rescue.RepopDeadOnly", Value(rescueRepopDeadOnly)},
             {"Revive.CorpseRunFirst", Value(reviveCorpseRunFirst)},
             {"Revive.CorpseRunFirst.MaxSeconds", Value(reviveCorpseRunFirstMaxSeconds)},

@@ -1256,6 +1256,12 @@ AiPlayerbot.QuestRescue.KeepRequestWhenFull = 0
 # not move hearthstones set before.
 # Cohort mode: 0 = off (rollback), 1 = all bots (default), 2 = cohort B (odd guid), 3 = cohort A (even guid); other values act like 0.
 AiPlayerbot.QuestRescue.HomeHubs = 1
+# twow-repo#703 item 1 (BUG FIX, CLI-PATH 11.11.2026; default 0 until its acceptance unit): a quest rescue took a global limiter
+# slot (5 per 10 min) before it computed its targets, so a rescue with no target (e.g. owner rule R1: no rescue inside the start
+# zone) used a slot and moved nothing. 1 = the targets first: an empty list takes no slot ([QuestRescue] state=no_target slot=0;
+# a pending band rescue is consumed, the 2 h per-bot rescue cooldown as before), a non-empty one asks the limiter as before.
+# Logs [QuestRescueMin] notarget_noslot= rung_mismatch= once per minute. 0 = as before (default); other values act like 0.
+AiPlayerbot.QuestRescue.NoTargetFreeSlot = 0
 # A creature entry that killed the bot GrindAvoid.MaxDeaths times within
 # WindowSeconds is skipped as a grind target for AvoidSeconds. 0 = off.
 AiPlayerbot.GrindAvoid.MaxDeaths = 0

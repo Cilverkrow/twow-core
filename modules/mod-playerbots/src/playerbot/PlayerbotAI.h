@@ -1362,6 +1362,9 @@ public:
     void OnBandExpired(uint32 now, uint32 rung, bool cooldown, float distLeft);
     // World thread (ProcessQuestRescues): the band rescue's rung + 1, 0 = a plain rescue (an old one is dropped).
     uint32 TakeBandRescueRung(uint32 now);
+    // twow-repo#703 item 1 (QuestRescue.NoTargetFreeSlot): the same rung + 1 as TakeBandRescueRung would give, read only - no
+    // exchange, no drop line (an expired request reads as 0, a plain rescue). The manager takes it only after the global limiter.
+    uint32 PeekBandRescueRung(uint32 now) const;
     // World thread: a band rescue waits (written only by OnBandExpired, BandLadder > 0). The global limiter refused its taken
     // request: it is put back for the next scan (no per-bot check - the band slot was already stamped).
     bool HasBandRescuePending() const { return bandRescue.load(std::memory_order_relaxed) != 0; }

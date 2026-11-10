@@ -333,7 +333,9 @@ require_order("${rescues}" "questRescueLimiter.TryAcquire(now)" "${requeue_block
 require_order("${rescues}" "${requeue_block}" "uint32 const bandRung = ai->TakeBandRescueRung(now);" "before the hub is taken")
 require_text("${ai_h}" "bool HasBandRescuePending() const { return bandRescue.load(std::memory_order_relaxed) != 0; }" "a peek, not a take")
 require_text("${ai_h}" "void RequeueBandRescue() { questRescueRequested = true; }" "the band request put back")
-require_text("${rescues}" "std::vector<WorldLocation> const targets = bandRung ? ai::quest_band::HubRescueTargets(bot, bandRung - 1) : QuestRescueTargets(bot);" "band rescue to the hub")
+# twow-repo#703 item 1: the line also reuses the list computed before the limiter (NoTargetFreeSlot 1, same rung only; pinned in
+# t/contracts.d/quest_rescue_notarget_slot_source_contract_tests.cmake); otherwise the band rescue goes to the hub as before.
+require_text("${rescues}" "std::vector<WorldLocation> const targets = reuseEarly ? std::move(earlyTargets) :\n            bandRung ? ai::quest_band::HubRescueTargets(bot, bandRung - 1) : QuestRescueTargets(bot);" "band rescue to the hub")
 set(rescue_block "        if (bandRung)\n        {\n            ai->RequestQuestRouteReset(ai::quest_failure_class::ResetBandStep);\n            ai::quest_band::LogRescueTeleport(bot, bandRung - 1);\n        }")
 require_text("${rescues}" "${rescue_block}" "band teleport: fresh quest search, one line")
 require_order("${rescues}" "bot->TeleportTo(target.mapid, target.coord_x, target.coord_y, target.coord_z, target.orientation);" "${rescue_block}" "after the teleport")
