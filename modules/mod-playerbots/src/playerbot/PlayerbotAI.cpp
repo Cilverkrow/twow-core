@@ -2,6 +2,7 @@
 #include "playerbot/playerbot.h"
 #include "playerbot/AiContextAugment.h"
 #include "playerbot/ParkPolicy.h"
+#include "playerbot/RosterSnapshotPolicy.h"
 #include "playerbot/StartZonePolicy.h"
 #include "playerbot/QuestFailureClassPolicy.h"
 #include "playerbot/QuestGrindModePolicy.h"
@@ -3432,11 +3433,31 @@ void PlayerbotAI::QueueChatCommand(ChatCommandHolder const& cmd)
     chatCommands.push(cmd);
 }
 
+void PlayerbotAI::PublishRosterSnapshot()
+{
+    // twow-repo#698 (bot thread only): the role and group state that other threads (the roster list, built in a player's command thread) used
+    // to read from the strategy maps and the Group. A role changes with strategy switches, not per tick: at most every RefreshIntervalMs.
+    uint32 const nowMs = WorldTimer::getMSTime();
+    if (!ai::roster_snapshot::RefreshDue(rosterSnapshotAtMs, nowMs, rosterSnapshot.load(std::memory_order_relaxed) != 0))
+        return;
+
+    rosterSnapshotAtMs = nowMs;
+    uint32 const role = PlayerbotAI::IsTankFor(bot, bot) ? ai::roster_snapshot::RoleTank
+        : PlayerbotAI::IsHealFor(bot, bot) ? ai::roster_snapshot::RoleHeal
+        : ai::roster_snapshot::RoleDps;
+    uint32 group = ai::roster_snapshot::GroupFree;
+    if (Group* botGroup = bot->GetGroup())
+        group = botGroup->IsRaidGroup() ? ai::roster_snapshot::GroupRaid : ai::roster_snapshot::GroupParty;
+    rosterSnapshot.store(ai::roster_snapshot::Pack(role, group), std::memory_order_relaxed);
+}
+
 void PlayerbotAI::UpdateAIInternal(uint32 elapsed, bool minimal)
 {
     SC_PHASE("UpdateAIInternal.entry", bot ? bot->GetName() : "(null)");
     if (bot->IsBeingTeleported() || !bot->IsInWorld())
         return;
+
+    PublishRosterSnapshot();   // twow-repo#698
 
     // twow-repo#602 (AiPlayerbot.Rotation.TankKitFromLevel, TankKitPolicy.h): a level-up does not rebuild the strategies, so a warrior
     // reaching 10 or a protection paladin reaching 16 would keep its DPS kit until the next relog; a level change across the key level

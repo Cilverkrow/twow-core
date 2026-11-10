@@ -394,6 +394,26 @@ add_test(NAME roster_list_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/roster_list_source_contract_tests.cmake")
 
+# twow-repo#698: role/group snapshot a bot publishes from its own thread for the roster list (pure packing + refresh timing).
+add_executable(roster_snapshot_policy_tests
+  "${PB_MODULE_DIR}/t/roster_snapshot_policy_tests.cpp")
+
+target_include_directories(roster_snapshot_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(roster_snapshot_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME roster_snapshot_policy
+  COMMAND roster_snapshot_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#698: the roster list builder (command thread) reads no strategy map / Group of a bot; negative probe inside.
+add_test(NAME roster_snapshot_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/roster_snapshot_source_contract_tests.cmake")
+
 # #276: a dead bot waits for an active real-player master only for
 # AiPlayerbot.DeadWaitForRealMasterSeconds, never indefinitely.
 add_executable(master_wait_policy_tests
