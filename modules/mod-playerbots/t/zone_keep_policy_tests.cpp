@@ -37,6 +37,14 @@ int main()
         Require(InStartZone(sz::HighElfRace, true, 12, sz::ThalassianZone) && InStartZone(sz::HighElfRace, true, 12, sz::AlahThalasZone),
             "high elf: Thalassian Highlands and Alah'Thalas");
         Require(StartZoneKnown(sz::GoblinRace, true, 0) && StartZoneKnown(1, false, 12) && !StartZoneKnown(1, false, 0), "known start");
+        // SZM adoption review (10.11.2026): without CustomRaceStartZones a goblin / high elf lives at its proxy start while its
+        // playercreateinfo zone is the custom one (5536 / 5225): unknown, so the gate fails open (not held, no rescue_gate).
+        Require(!StartZoneKnown(sz::GoblinRace, false, sz::BlackstoneZone) && !StartZoneKnown(sz::HighElfRace, false, sz::ThalassianZone),
+            "custom start race without custom starts: unknown (fail open)");
+        Require(StartZoneKnown(sz::GoblinRace, true, sz::BlackstoneZone) && StartZoneKnown(sz::HighElfRace, true, sz::ThalassianZone),
+            "custom start race with custom starts: known");
+        Require(StartZoneDefers(true, StartZoneKnown(sz::GoblinRace, false, sz::BlackstoneZone), false, 14) == false,
+            "goblin in Durotar without custom starts: no deferral");
     }
 
     // 2) StartZoneMinLevel: 0 off, gated below the level only.

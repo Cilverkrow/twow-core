@@ -115,8 +115,12 @@ require_text("${choose}" "if (sPlayerbotAIConfig.questFirstProgressionBandLadder
 
 # 5. The rescue: below StartZoneMinLevel never out of the start zone - before every other rescue rule.
 between("${random_mgr}" "std::vector<WorldLocation> RandomPlayerbotMgr::QuestRescueTargets(Player* bot)" "\n}\n" rescue_fn)
-require_order("${rescue_fn}" "if (ai::zone_keep::StartZoneGated(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevel, level) &&\n        ai::cohort::Applies(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevelCohort, bot->GetGUIDLow()))" "if (ai::quest_search::goblin_island::UsesGoblinStartRescue(" "gate first, cohort-selected")
+require_order("${rescue_fn}" "if (startZoneRules && ai::zone_keep::StartZoneGated(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevel, level) &&\n        ai::cohort::Applies(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevelCohort, bot->GetGUIDLow()))" "if (ai::quest_search::goblin_island::UsesGoblinStartRescue(" "gate first, cohort-selected")
 require_text("${rescue_fn}" "[ZoneKeep] state=rescue_gate bot=%u level=%u zone=%u start_zone=%u in_start=%u result=%s" "visible gate")
+# SZM adoption review (10.11.2026): roster bots without a real player master only (as StartZoneHolds); a custom start race without
+# CustomRaceStartZones has an unknown start zone (proxy start vs the playercreateinfo zone) and fails open.
+require_text("${rescue_fn}" "bool const startZoneRules = IsPersistentRosterMember(bot->GetGUIDLow()) && !(rescueAi && rescueAi->HasRealPlayerMaster());" "rescue gate scope = travel gate scope")
+require_text("${policy}" "inline bool StartZoneKnown(std::uint32_t race, bool customStarts, std::uint32_t createZone)\n{\n    if (start_zone::IsCustomStartRace(race))\n        return customStarts;\n    return createZone != 0;\n}" "custom start races known only with custom starts")
 
 # 6. The stale query: no lock while no mark is active; a per-thread snapshot rebuilt under the one mutex after a store change.
 between("${travel}" "bool ai::stale_objective::IsObjectiveStale(" "\n}\n" query_fn)
