@@ -127,6 +127,9 @@ bool ProfessionCraftAction::Execute(Event& event)
         {
             SetDuration(std::max(castDuration, sPlayerbotAIConfig.reactDelay));
             sPlayerbotAIConfig.logEvent(ai, "CraftCastStarted", spell->SpellName[0], std::to_string(spellId));
+            // twow-repo#333 T28-M (AiPlayerbot.Gathering.Trace): a started craft cast and its cast time.
+            if (sPlayerbotAIConfig.gatheringTrace)
+                GatheringTraceCraft(ai, castDuration);
             // twow-repo#333 M2 Crafting.Cooking: one line per started fire recipe of the switch's bots.
             if (cooking)
                 sLog.outBasic("[Crafting] kind=cooking event=cook spell=%u item=%u bot=%u level=%u cohort=%c", spellId,

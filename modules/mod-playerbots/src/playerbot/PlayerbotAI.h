@@ -41,6 +41,7 @@
 #include "playerbot/StuckCombatPolicy.h"
 #include "playerbot/FishingPolicy.h"
 #include "playerbot/ItemUseTrace.h"
+#include "playerbot/GatheringTracePolicy.h"   // twow-repo#333 T28-M (AiPlayerbot.Gathering.Trace)
 #include "playerbot/DeathSeriesPolicy.h"
 #include "playerbot/TankPathDiagPolicy.h"
 #include "playerbot/UnreachablePolicy.h"
@@ -818,6 +819,8 @@ public:
     ai::fishing::PurposeTrace& GetFishingTrace() { return fishingTrace; }
     // Hotfix 8.9 (twow-repo#474): [ItemUse] counters.
     ai::item_use::Trace& GetItemUseTrace() { return itemUseTrace; }
+    // twow-repo#333 T28-M (AiPlayerbot.Gathering.Trace): the [Gathering] event=share window (bot's own thread only).
+    ai::gathering_trace::Window& GetGatheringTrace() { return gatheringTrace; }
     bool IsGatherPurposeSuppressed(uint32 purpose) const { return gatherDeaths.Suppressed(purpose, uint32(time(nullptr))); }
     void ClearDeathLoop() { recentDeaths.clear(); lastDeathHostileArea = false; shortLife = ai::death_loop::ShortLife(); }
     // twow-repo#601/#602 G2 (AiPlayerbot.DeathLoop.FarEscape): a revive (short life after it) and the latest death.
@@ -1104,6 +1107,7 @@ protected:
     ai::gather_purpose::State gatherPurpose;
     ai::fishing::PurposeTrace fishingTrace;
     ai::item_use::Trace itemUseTrace;
+    ai::gathering_trace::Window gatheringTrace;   // twow-repo#333 T28-M
     std::string fishingLastBreak;
     std::atomic<uint32> lastQuestRescue{ 0 };
     std::atomic<bool> questRescueRequested{ false };

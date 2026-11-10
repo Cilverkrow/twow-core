@@ -589,6 +589,9 @@ public:
     uint32 professionUseCraftIntervalSeconds = 300;
     bool professionUseTrace = false;
     uint32 professionUseTraceCooldownSeconds = 300;
+    // twow-repo#333 T28-M (OB-00 09.11.2026): one [Gathering] event=share line per roster bot on its own and online hour (the time
+    // share of gathering purposes, profession trips and gathering / craft casts, GatheringTracePolicy.h); log only. 0 off, 1 on.
+    uint32 gatheringTrace = 0;
     // twow-repo#485: craft with real reagents from the bags (the item cheat
     // made every recipe look craftable). false = legacy "craft random item".
     bool professionUseRealReagents = false;
@@ -1191,7 +1194,7 @@ public:
     // the reclaim at the corpse runs, the spirit healer only with a reason (no corpse, sickness, durability, loop, timeout).
     uint32 reviveCorpseRunFirst = 0;
     uint32 reviveCorpseRunFirstMaxSeconds = 600;
-    bool reviveDelayResurrectRequest = false;  // twow-repo#575 H3 (bug fix; code default 0 until its acceptance unit, then the flip pair): a resurrect request is kept for the next packet pass while the trigger holds one (no drop), 0 = as before
+    uint32 reviveDelayResurrectRequest = 0;  // twow-repo#575 H3 (bug fix; code default 0 until its acceptance unit, then the flip pair): a resurrect request is kept for the next packet pass while the trigger holds one (no drop); mode 0 off / 1 all / 2 guid bit 1 set / 3 guid bit 1 clear (ResurrectDelayPolicy.h, not the CohortPolicy parity)
     // twow-repo#575 A3 step 4 S4-2 (AiPlayerbot.Rescue.RepopDeadOnly, RepopDeadOnlyPolicy.h): cohort mode 0 off / 1 all / 2 B / 3 A;
     // repop only for a dead bot; an alive bot without a usable hearthstone gets QuestRescue, else a reset.
     uint32 rescueRepopDeadOnly = 0;

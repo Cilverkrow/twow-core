@@ -6,6 +6,7 @@
 #include "playerbot/QuestFailureClassPolicy.h"
 #include "playerbot/QuestGrindModePolicy.h"
 #include "playerbot/QuestFirstOrderPolicy.h"   // twow-repo#601 decision order (Grind.QuestFirstOrder)
+#include "playerbot/ResurrectDelayPolicy.h"   // twow-repo#575 H3 (Revive.DelayResurrectRequest mode)
 #include "playerbot/AiJitterPolicy.h"
 #include "playerbot/CombatIdlePolicy.h"
 #include "playerbot/OomBackoffPolicy.h"   // twow-repo#602 ROT-01 3c-B (Rotation.OomBackoff)
@@ -304,7 +305,9 @@ PlayerbotAI::PlayerbotAI(Player* bot) :
     botOutgoingPacketHandlers.AddHandler(SMSG_FORCE_RUN_SPEED_CHANGE, "check mount state");
     // twow-repo#575 H3 (AiPlayerbot.Revive.DelayResurrectRequest): a resurrect request that arrives while the
     // trigger still holds an earlier one waits for the next pass (as loot response below) instead of being dropped. 0 = dropped.
-    botOutgoingPacketHandlers.AddHandler(SMSG_RESURRECT_REQUEST, "resurrect request", sPlayerbotAIConfig.reviveDelayResurrectRequest);
+    // The key is a mode (ResurrectDelayPolicy.h): 1 every bot, 2 / 3 the bots with guid bit 1 set / clear (T30-1 2x2, OB-00 09.11.).
+    botOutgoingPacketHandlers.AddHandler(SMSG_RESURRECT_REQUEST, "resurrect request",
+        ai::resurrect_delay::Applies(sPlayerbotAIConfig.reviveDelayResurrectRequest, bot->GetGUIDLow()));
     botOutgoingPacketHandlers.AddHandler(SMSG_INVENTORY_CHANGE_FAILURE, "cannot equip");
     botOutgoingPacketHandlers.AddHandler(SMSG_TRADE_STATUS, "trade status");
     botOutgoingPacketHandlers.AddHandler(SMSG_LOOT_RESPONSE, "loot response", true);

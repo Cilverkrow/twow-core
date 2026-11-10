@@ -2246,7 +2246,11 @@ AiPlayerbot.Revive.CorpseRunFirst.MaxSeconds = 600
 # is still open). Accepted resurrects shorten deaths and move the base for deaths and re-deaths in A/B units.
 # Read when the bot's AI is created (the packet handler table, at login): a config reload affects only bots logged in
 # afterwards.
-# 0 = as before (default until the acceptance unit; then 1 by default, 0 = rollback).
+# Mode (ResurrectDelayPolicy.h; OB-00 09.11.2026: the acceptance rides along in CLI-GRP's in-realm cohort test T30-1):
+#   0 = as before (default until the acceptance unit; then 1 by default, 0 = rollback), 1 = every bot,
+#   2 = only bots whose low guid has bit 1 set ((guid >> 1) & 1 = 1), 3 = only bots with bit 1 clear; any other value acts
+#   like 0. 2 / 3 are NOT the cohort B / A modes of other keys (those split by parity, bit 0): bit 1 is independent of
+#   the parity, so a parity A/B and this key give a balanced 2x2 in one realm.
 AiPlayerbot.Revive.DelayResurrectRequest = 0
 # twow-repo#575 A3 step 4 S4-2 (OB-00 07.11.2026): repop only when dead. "unstuck" sent an ALIVE bot to repop for "move long
 # stuck" / "combat long stuck" whenever its hearthstone was not useful (e.g. the homebind zone above its level): a teleport
@@ -2526,6 +2530,28 @@ AiPlayerbot.ProfessionUse.Craft = 0
 AiPlayerbot.ProfessionUse.CraftIntervalSeconds = 300
 AiPlayerbot.ProfessionUse.Trace = 0
 AiPlayerbot.ProfessionUse.TraceCooldownSeconds = 300
+# twow-repo#333 T28-M (CLI-BERUFE 09.11.2026): measurement only (plan A3-PLAN-ZIEL T28, OB-00 09.11.2026), no behaviour change -
+# no AI value, travel target, target or strategy is written. With 1, every roster bot on its own (the scope of the [ProfessionUse]
+# lines and of the [Purpose] start) writes ONE line per online hour (its first window starts at its first sample after login, the
+# line comes at the first sample after the hour; a window cut by a logout is lost):
+#   [Gathering] event=share bot= level= play_s= purpose_s= trip_s= cast_s= opens_herb= opens_ore= opens_skin= crafts=
+#     s182=<value>/<max> s186=<value>/<max> s393=<value>/<max>
+# play_s: seconds of the window; purpose_s: seconds a declared gathering purpose ([Purpose]) ran; trip_s: seconds a profession
+# trainer / tool trip ("trainer profession", "... near", "tool vendor", "... near") was the bot's travel target in READY,
+# TRAVEL or WORK. A trip outranks a purpose, so purpose_s + trip_s <= play_s. Both are sampled every 5 s (each sample counts
+# the seconds since the last one for the activity seen then; off by at most one sample per start / end). cast_s: the cast times
+# of the gathering opens (herb, ore, skinning, also the creature herb / ore casts) and of the profession crafts (the
+# RealReagents craft cast) started in the window; opens_*/crafts: their counts. s182 / s186 / s393: herbalism, mining,
+# skinning skill (without bonus) / its max at the line. Every number is the increment of the window except the skills.
+# Read the counts as started casts: opens_* and crafts include interrupted casts, cast_s is the planned cast time at the start.
+# purpose_s includes a fishing purpose (Crafting.Fishing). Not counted: a quest herb / ore object opened with its quest opening
+# spell (questing, not the profession), the campfire, the enchant and the legacy "craft random item" casts. With 1, the node
+# adds one checked node per bot pass to the [KnownSpellNodes] checked= / recomputes= counters (Rotation.KnownSpellNodes): do
+# not compare those counters between runs with Gathering.Trace 0 and 1.
+# The sampler is a trigger of the "default" strategy (combat, non-combat and dead engine), added only with the key on when
+# the strategies are built; skipped on minimal (throttled) passes. 0 = off (default), 1 = on. Any other value acts like 0
+# ("[Gathering] config key=Trace value= result=off" error line).
+AiPlayerbot.Gathering.Trace = 0
 # twow-repo#333 Berufe P1-b (CLI-BERUFE PLAN-B1, OB-00 go 25.10.2026; profile 1 after the A/B + owner go): a persistent
 # roster bot on its own (level 5+) with mining but no Mining Pick (2901), or skinning but no Skinning Knife (7005), may
 # travel to a vendor that sells it; "rpg buy" buys it there from the tradeskill budget (ItemUsage SKILL, as before).
