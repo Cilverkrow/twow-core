@@ -346,7 +346,7 @@ region("${accept}" "static bool SkipQuestForRosterBot(PlayerbotAI* ai, Player* b
 require_order("${skip_fn}" "if (SkipAbandonedQuest(ai, quest))\n        return true;" "bool const rosterOnItsOwn" "the mark first in the one accept rule (dialog, packet, accept all)")
 region("${accept}" "bool AcceptQuestShareAction::Execute(Event& event)" "\nbool ConfirmQuestAction::Execute" share_fn)
 require_order("${share_fn}" "quest = qInfo->GetQuestId();" "if (SkipAbandonedQuest(ai, qInfo))\n    {\n        bot->SetDividerGuid(ObjectGuid());\n        return false;\n    }" "share path checks the mark after the catch-up branch")
-require_order("${share_fn}" "if (SkipAbandonedQuest(ai, qInfo))" "bot->AddQuest( qInfo, requester);" "before the share adds the quest")
+require_order("${share_fn}" "if (SkipAbandonedQuest(ai, qInfo))" "bot->AddQuest(qInfo, QuestGiverObject(bot, requester));" "before the share adds the quest")
 forbid_text("${share_fn}" "SkipQuestForRosterBot(" "the whole accept rule on the share path (would change shares with the switch at 0)")
 # Review fix (F4): the escort confirm (SMSG_QUEST_CONFIRM_ACCEPT from a group member) checks the mark too.
 region("${accept}" "bool ConfirmQuestAction::Execute(Event& event)" "\nbool QuestDetailsAction::Execute" confirm_fn)
@@ -358,7 +358,7 @@ count_text("${accept}" "SkipAbandonedQuest(" 4 "definition, accept rule, share p
 forbid_text("${guild_quest_order}" "IsStructurallyAbandoned" "the abandon mark on the guild quest order (decided: the officer's order wins)")
 require_text("${guild_quest_order}" "bot->GetSession()->HandleQuestgiverAcceptQuestOpcode(p);" "the guild quest order accepts through the opcode handler")
 region("${accept}" "bool QuestDetailsAction::Execute(Event& event)" "\n}\n" details_fn)
-require_order("${details_fn}" "if (SkipQuestForRosterBot(ai, bot, qInfo))" "bot->AddQuest(qInfo, requester);" "the dialog path asks the accept rule before AddQuest")
+require_order("${details_fn}" "if (SkipQuestForRosterBot(ai, bot, qInfo))" "bot->AddQuest(qInfo, QuestGiverObject(bot, requester));" "the dialog path asks the accept rule before AddQuest")
 require_text("${accept}" "#include \"playerbot/TravelMgr.h\"" "include what you use (TravelTarget)")
 
 # ---- 13. Review fix (F10 / F11): the positive exceptions and the note sites, robustly ----------------

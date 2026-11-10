@@ -10,6 +10,14 @@
 #include "playerbot/TravelMgr.h"
 #include "Formulas.h"
 
+// twow-repo#563 part 4: Player::AddQuest(quest, questGiver) with a Player as giver reads - and with operator[] INSERTS into - the giver's quest map
+// for a shared timed quest. A giver on another Map object (another region thread) is not touched: no giver is passed, only the timer handover of a
+// shared timed quest is lost. A giver on the bot's own Map object (the common case) is passed as before.
+static Object* QuestGiverObject(Player* bot, Player* requester)
+{
+    return requester && (requester == bot || SameMapObject(bot, requester)) ? requester : nullptr;
+}
+
 // twow-repo#601 S1 recheck (AiPlayerbot.QuestFirstProgression.AbandonStructuralParked): a quest this bot abandoned after
 // two structural parks is not taken again on any autonomous accept path while the bot is on its own -
 // QuestAction::AcceptQuest had the check, the quest-giver dialog (QuestDetailsAction), accept-by-packet, the share path
@@ -240,7 +248,7 @@ bool AcceptQuestShareAction::Execute(Event& event)
 
     if( bot->CanAddQuest( qInfo, false ) )
     {
-        bot->AddQuest( qInfo, requester);
+        bot->AddQuest(qInfo, QuestGiverObject(bot, requester));   // twow-repo#563 part 4
 
         sPlayerbotAIConfig.logEvent(ai, "AcceptQuestShareAction", qInfo->GetTitle(), std::to_string(qInfo->GetQuestId()));
 
@@ -296,7 +304,7 @@ bool ConfirmQuestAction::Execute(Event& event)
 
     if( bot->CanAddQuest( qInfo, false ) )
     {
-        bot->AddQuest( qInfo, requester );
+        bot->AddQuest(qInfo, QuestGiverObject(bot, requester));   // twow-repo#563 part 4
 
         if( bot->CanCompleteQuest( quest ) )
             bot->CompleteQuest( quest );
@@ -350,7 +358,7 @@ bool QuestDetailsAction::Execute(Event& event)
 
     if (bot->CanAddQuest(qInfo, false))
     {
-        bot->AddQuest(qInfo, requester);
+        bot->AddQuest(qInfo, QuestGiverObject(bot, requester));   // twow-repo#563 part 4
 
         if (bot->CanCompleteQuest(quest))
             bot->CompleteQuest(quest);
