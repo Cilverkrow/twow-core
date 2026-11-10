@@ -161,6 +161,7 @@ void WorldThreadManager::RunGather(std::uint32_t nowMs)
     in.rules.maxAgeMs = PlaceMaxAgeMs(sPlayerbotAIConfig.botGroupsManagerStatusSeconds, sPlayerbotAIConfig.randomBotUpdateInterval);
     in.status = &status_;
     in.places = &places_;
+    in.swept = &engine_.Swept();   // groups this directive pass ended and swept: their meetings still get a verdict
     WorldIo io;
     gather_.Pass(engine_.Groups(), in, [&io](char const* line) { io.Line(line); });
 }
@@ -184,7 +185,8 @@ void WorldThreadManager::StoreEvent(manager_inbox::Event const& event, std::uint
         case manager_inbox::Kind::GatherPlace:
             // T33-0: the bot's own place for the meeting shadow; kept only while Gather is on (no table when 0).
             if (sPlayerbotAIConfig.botGroupsManagerGather)
-                gather_.StorePlace(places_, status_, event, nowMs);
+                gather_.StorePlace(places_, status_, event, nowMs,
+                    PlaceMaxAgeMs(sPlayerbotAIConfig.botGroupsManagerStatusSeconds, sPlayerbotAIConfig.randomBotUpdateInterval));
             break;
         case manager_inbox::Kind::GroupWish:
             wishes_[event.botLow] = manager_inbox::WishSnapshotOf(event, nowMs);
