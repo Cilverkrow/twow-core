@@ -27,7 +27,8 @@ enum class DenyReason : uint8
     PLAYERBOT_DENY_NOT_LEADER,
     PLAYERBOT_DENY_IS_LEADER,
     PLAYERBOT_DENY_BG,
-    PLAYERBOT_DENY_LFG
+    PLAYERBOT_DENY_LFG,
+    PLAYERBOT_DENY_CROSS_REGION   // twow-repo#563 part 4: the sender stands on another Map object (region thread); his inventory is not read
 };
 
 class PlayerbotSecurity

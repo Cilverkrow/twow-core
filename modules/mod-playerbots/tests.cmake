@@ -414,6 +414,26 @@ add_test(NAME roster_snapshot_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/roster_snapshot_source_contract_tests.cmake")
 
+# twow-repo#563 part 4: chat commands that read the owner's containers are restricted for an owner on another Map object (pure string list).
+add_executable(owner_container_command_policy_tests
+  "${PB_MODULE_DIR}/t/owner_container_command_policy_tests.cpp")
+
+target_include_directories(owner_container_command_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(owner_container_command_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME owner_container_command_policy
+  COMMAND owner_container_command_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#563 part 4: LevelFor from the bot's side + fail closed gear score, command gate, AddQuest giver; negative probes inside.
+add_test(NAME cross_region_owner_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/cross_region_owner_source_contract_tests.cmake")
+
 # #276: a dead bot waits for an active real-player master only for
 # AiPlayerbot.DeadWaitForRealMasterSeconds, never indefinitely.
 add_executable(master_wait_policy_tests
