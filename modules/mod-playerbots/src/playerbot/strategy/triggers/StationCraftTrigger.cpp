@@ -1,5 +1,6 @@
 #include "playerbot/playerbot.h"
 #include "playerbot/SupervisorShadow.h"   // A3 step 3 arbiter shadow: writer scopes
+#include "playerbot/SupervisorEnforce.h"   // A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2, default 0): LaneFree
 #include "StationCraftTrigger.h"
 #include "ProfessionUseTriggers.h"
 #include "playerbot/PlayerbotAIConfig.h"
@@ -13,7 +14,7 @@ using namespace ai;
 
 bool StationCraftTrigger::IsActive()
 {
-    ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::Lifecycle);
+    ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::Errand);
     // twow-repo#594 / P3-b: built at boot and switched on, ProfessionUse.Craft and RealReagents, a roster bot on its own.
     if (!direct_targets::StationCraftLive() || !sPlayerbotAIConfig.professionUseCraft ||
         !sPlayerbotAIConfig.professionUseRealReagents || !IsRosterBotOnItsOwn(ai))
@@ -49,6 +50,9 @@ bool StationCraftTrigger::IsActive()
             SpellEntry const* spell = sServerFacade.LookupSpellInfo(uint32(picked));
             if (spell && HasCraftTools(spell, bot) && CraftableFromBags(spell, bot) > 0)
             {
+                // A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2, default 0): a held quest-book lane keeps the live target; nothing is closed.
+                if (!ai::supervisor::LaneFree(ai, ai::supervisor::Lane::Questbook, "station_craft"))
+                    return false;
                 direct_targets::Stats().noFocus.fetch_add(1, std::memory_order_relaxed);
                 direct_targets::OnTravelFailure(ai, station, "no_focus");
                 target->SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);

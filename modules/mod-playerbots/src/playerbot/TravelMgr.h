@@ -10,6 +10,8 @@
 #include "PosStuckPolicy.h"
 #include "QuestSearchPolicy.h"   // twow-repo#601 quest acceptance step 1b: GiverDropCounts
 #include "QuestSourcePolicy.h"   // A3 step 2 QB-S: the static facts of a quest objective source
+#include <atomic>    // A3 step 3 T02-a: TravelTarget::writeGen_
+#include <cstdint>
 #include <mutex>
 
 #include "strategy/AiObject.h"
@@ -463,8 +465,13 @@ namespace ai
 	{
 	public:
 		TravelTarget(PlayerbotAI* ai);
+		// A3 step 3 T02-a: a new target is never live, so the arbiter gate in SetTarget admits it (the result is ignored).
 		TravelTarget(PlayerbotAI* ai, TravelDestination* tDestination1, WorldPosition* wPosition1) : AiObject(ai) { SetTarget(tDestination1, wPosition1); }
 		~TravelTarget() = default;
+		// A3 step 3 T02-a: writeGen_ is atomic, so a target is neither copied nor moved (TravelTarget x = TravelTarget(ai) is
+		// guaranteed elision under C++17).
+		TravelTarget(TravelTarget const&) = delete;
+		TravelTarget& operator=(TravelTarget const&) = delete;
 
 		float Distance(Player* bot) const { WorldPosition pos(bot);  return wPosition->distance(pos); };
 		TravelDestination* GetDestination() const { return tDestination; };
@@ -490,6 +497,11 @@ namespace ai
 		bool IsLive() const { return live_; }
 		void NoteShadowGap() { shadowGap_ = true; }
 		bool TakeShadowGap() { bool const gap = shadowGap_; shadowGap_ = false; return gap; }
+		// A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2, default 0): the destination generation - raised once per applied
+		// destination write (SetTargetUnchecked only); an owner's claim holds only while it is unchanged. Any thread reads it.
+		std::uint32_t WriteGen() const { return writeGen_.load(std::memory_order_relaxed); }
+		// A3 step 3 T02-a: true once after a CopyTarget the arbiter denied (not after the #485 parked refusal).
+		bool TakeArbiterDenied() { bool const denied = arbiterDenied_; arbiterDenied_ = false; return denied; }
 
 		bool IsConditionsActive(bool clear = false);
 		bool IsDestinationActive();
@@ -505,7 +517,10 @@ namespace ai
 		void SetRetry(bool isMove, uint32 newCount = 0) { if (isMove) moveRetryCount = newCount; else extendRetryCount = newCount; }
 		bool IsMaxRetry(bool isMove) { return isMove ? (moveRetryCount > 10) : (extendRetryCount >= 5); }
 
-		void SetTarget(TravelDestination* tDestination1, WorldPosition* wPosition1);
+		// A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2, default 0): false = the arbiter denied the write on the live target
+		// and nothing was written (a temporary destination handed over is freed); the caller stops its follow-up writes.
+		// Always true below 2 and on a target that is not live.
+		bool SetTarget(TravelDestination* tDestination1, WorldPosition* wPosition1);
 		
 		void AddCondition(std::string condition) { travelConditions.push_back(condition); }
 		void SetConditions(std::vector<std::string> conditions) { travelConditions = conditions; }
@@ -540,6 +555,8 @@ namespace ai
         void DecRetry(bool isMove);
 
         // twow-repo#485: false when the choice is the taker of a parked turn-in; the target then expires.
+        // A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2, default 0): also false when the arbiter denied the copy - nothing
+        // written, TakeArbiterDenied() is true once, and a temporary destination of the choice is freed (its pointer cleared).
         bool CopyTarget(TravelTarget* const target);
         bool IsProgressAwareTurnIn() const;
         // #329: completed turn-ins and incomplete roster quest objectives.
@@ -609,6 +626,9 @@ namespace ai
         // that rule owns the case, the position guard restarts its window.
         void NotePartialNoopHit() { posStuck.Reset(); }
 	private:
+        // A3 step 3 T02-a: the destination write itself, without the arbiter gate (the old SetTarget body). Callers: SetTarget after
+        // its gate, CopyTarget after its own gate.
+        void SetTargetUnchecked(TravelDestination* tDestination1, WorldPosition* wPosition1);
         // #329: one visible [QuestCommit] line per commitment change of a
         // roster bot's quest target, throttled per event, reason and target.
         void TraceQuestCommit(TravelDestination const* destination, char const* event, char const* reason);
@@ -634,6 +654,8 @@ namespace ai
 		bool restPausePending = false;   // twow-repo#602 X1: a rest ended since the last turn-in observation
 		bool live_ = false;        // A3 step 3 arbiter shadow: the bot's own target (MarkLive, TravelTargetValue only)
 		bool shadowGap_ = false;   // A3 step 3 arbiter shadow: a write the shadow could not follow came before the next one
+		std::atomic<std::uint32_t> writeGen_{0};   // A3 step 3 T02-a: raised only in SetTargetUnchecked (relaxed)
+		bool arbiterDenied_ = false;               // A3 step 3 T02-a: the last CopyTarget was denied by the arbiter
 
 		bool forced = false;
 		bool visitor = true;

@@ -165,7 +165,7 @@ require_text("${travel_h}" "uint32 bandTripEnd = 0;" "0 for every target but a r
 require_text("${travel_h}" "virtual bool IsBandHub() const { return false; }" "only the band hubs answer true")
 count_text("${travel_mgr}" "bandTripEnd = " 1 "the end written in TravelMgr.cpp only by CopyTarget")
 count_text("${band}" "bandTripEnd = " 2 "the end cleared only by EndBandTrip and NoteBandTripReplaced")
-region("${travel_mgr}" "void TravelTarget::SetTarget(TravelDestination* tDestination1, WorldPosition* wPosition1) {" "\n}\n" set_target)
+region("${travel_mgr}" "void TravelTarget::SetTargetUnchecked(TravelDestination* tDestination1, WorldPosition* wPosition1) {" "\n}\n" set_target)
 require_text("${set_target}" "    if (tDestination1 != tDestination && bandTripEnd)\n        NoteBandTripReplaced();" "a replaced trip ends in SetTarget")
 require_order("${set_target}" "    if (tDestination1 != tDestination)\n        gapWindowEnd = 0;" "NoteBandTripReplaced();" "after the gap clear")
 require_order("${set_target}" "NoteBandTripReplaced();" "    tDestination = tDestination1;" "before the destination changes (the line names the hub)")
@@ -220,9 +220,9 @@ require_order("${group_exec}" "GetDestination()->IsBandHub())\n            conti
 require_order("${group_exec}" "if (groupTarget->IsForced())\n            continue;" "GetDestination()->IsBandHub())\n            continue;" "after the forced skip")
 require_text("${ai_cpp}" "!bot->IsBeingTeleported() &&\n                !BandTripRunning())" "the idle rescue waits for a running band trip")
 forbid_text("${band}" "SetForced" "a forced band trip")
-require_text("${band}" "    setNewTarget(requester, &band, travelTarget);\n    travelTarget->SetConditions({});" "the request's condition never becomes the trip's")
+require_text("${band}" "    if (!setNewTarget(requester, &band, travelTarget))\n        return false;\n    travelTarget->SetConditions({});" "the request's condition never becomes the trip's")
 count_text("${band}" "setNewTarget(" 2 "two band target sets: the step and the F4 walk")
-require_text("${band}" "    setNewTarget(requester, &walk, travelTarget);\n    travelTarget->SetConditions({});" "F4: the request condition never becomes the walk condition")
+require_text("${band}" "    if (!setNewTarget(requester, &walk, travelTarget))\n        return false;\n    travelTarget->SetConditions({});" "F4: the request condition never becomes the walk condition")
 
 # ---- 5. The entry -------------------------------------------------------------------------------------------------
 region("${choose}" "if (futureTravelPurpose == \"quest\")\n        {\n            // #421 A: which filters took every candidate." "        return false;\n    }" branch)
@@ -443,7 +443,7 @@ require_text("${policy}" "\"walks\", \"walk_arrived\", \"walk_ended\", \"walk_re
 # the plan: only behind its key (the caller passes no plan at 0), only when the step is not due, never for GrindMode 1
 require_text("${step}" "    bool const walk = walkPlan && verdict == qb::StepVerdict::NotDue && !ai->IsQuestGapGrind() &&\n        qb::WalkDue(facts, sPlayerbotAIConfig.questFirstProgressionBandWalkAfterEmptySearches);\n    if (verdict == qb::StepVerdict::NotDue && !walk)\n        return false;" "F4: the plan only when no step is due")
 region("${step}" "    if (walk)\n    {" "        return false;\n    }" walk_plan)
-require_order("${step}" "    if (walk)\n    {" "    setNewTarget(requester, &band, travelTarget);" "F4: the plan returns before the step's trip")
+require_order("${step}" "    if (walk)\n    {" "    if (!setNewTarget(requester, &band, travelTarget))" "F4: the plan returns before the step's trip")
 foreach(banned "setNewTarget" "OnBandStep" "RequestQuestRouteReset" "NoteBand(" "sLog")
   forbid_text("${walk_plan}" "${banned}" "F4: planning a walk starts nothing, counts nothing")
 endforeach()
