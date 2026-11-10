@@ -385,6 +385,7 @@ enum class ChatCommandKind : uint8
     Logout,            // logout (whisper reply to owner, SetShouldLogOut)
     Wait,              // "wait <seconds>": delay + reply to owner; command = the text after "wait "
     QueueWalk,         // "queue <command>": the group walk runs on the bot thread, then the command is delayed by the index
+    Incoming,          // twow-repo#563 part 3: raw incoming chat; ProcessIncomingChat (security check, chat filter, dispatch) runs on the bot thread
 };
 
 // twow-repo#563 part 2: the holder keeps the owner as an ObjectGuid, never as a Player*. The Player of the sender can be logged out and freed
@@ -402,6 +403,8 @@ public:
         this->type = other.type;
         this->time = other.time;
         this->kind = other.kind;
+        this->replyChannel = other.replyChannel;
+        this->inviteCheckDone = other.inviteCheckDone;
     }
 
 public:
@@ -410,6 +413,11 @@ public:
     uint32 GetType() { return type; }
     time_t GetTime() { return time; }
     ChatCommandKind GetKind() const { return kind; }
+    // reply channel of the sender (a ChatMsg, -1 = whisper); applied to currentChat when the command runs, on the bot thread
+    int32 GetReplyChannel() const { return replyChannel; }
+    void SetReplyChannel(int32 channel) { replyChannel = channel; }
+    bool GetInviteCheckDone() const { return inviteCheckDone; }
+    void SetInviteCheckDone(bool done) { inviteCheckDone = done; }
 
 private:
     std::string command;
@@ -417,6 +425,8 @@ private:
     uint32 type;
     time_t time;
     ChatCommandKind kind;
+    int32 replyChannel = -1;
+    bool inviteCheckDone = false;
 };
 
 class PlayerbotAI : public PlayerbotAIBase
@@ -462,6 +472,8 @@ public:
     void EnsureDefaultMovementStrategy(Player* requester = nullptr);
 	std::string HandleRemoteCommand(std::string command);
     void HandleCommand(uint32 type, const std::string& text, Player& fromPlayer, const uint32 lang = LANG_UNIVERSAL);
+    // twow-repo#563 part 3: the part of the chat handling that reads bot state (security check, chat filter, dispatch); runs from HandleCommands on the bot thread.
+    void ProcessIncomingChat(uint32 type, std::string text, Player& fromPlayer, int32 replyChannel, bool inviteCheckDone);
     void QueueChatResponse(uint32 msgType, ObjectGuid guid1, ObjectGuid guid2, std::string message, std::string chanName, std::string name, bool noDelay = false);
 	void HandleBotOutgoingPacket(const WorldPacket& packet);
     // twow-repo#563 (X1): any thread may queue a packet for this bot; UpdateAI handles it on the bot's thread.
@@ -1429,7 +1441,6 @@ protected:
     PlayerbotSecurity security;
     std::map<std::string, time_t> whispers;
     std::pair<ChatMsg, time_t> currentChat;
-    static std::set<std::string> unsecuredCommands;
     bool allowActive[MAX_ACTIVITY_TYPE];
     time_t allowActiveCheckTimer[MAX_ACTIVITY_TYPE];
     bool inCombat = false;

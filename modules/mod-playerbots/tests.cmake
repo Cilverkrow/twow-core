@@ -2429,6 +2429,12 @@ add_test(NAME chat_command_owner_guid_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/chat_command_owner_guid_source_contract_tests.cmake")
 
+# twow-repo#563 part 3 (HARM): HandleCommand only handles the text; security check, chat filter and dispatch run on the bot thread; negative probe inside.
+add_test(NAME chat_handler_bot_thread_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/chat_handler_bot_thread_source_contract_tests.cmake")
+
 # twow-repo#601 S2 diagnostic: [GrindPick] grind-target sources (BotUpdateTrace).
 add_executable(grind_pick_policy_tests
   "${PB_MODULE_DIR}/t/grind_pick_policy_tests.cpp")
