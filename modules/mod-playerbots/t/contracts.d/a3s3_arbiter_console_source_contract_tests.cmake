@@ -163,15 +163,15 @@ function(check_switch shadow_h shadow_cpp policy ai_cpp config_h all_sources out
     return()
   endif()
   # One writer (the console branch), one reader (the gate), one atomic; the config default stays 0.
-  # A3 step 3 T02-a: ArbiterValue( is declared, defined, used by the ArbiterOn wrapper and read at the gate, plus the T30-1b TODO
-  # comment in GroupManager.cpp that names the manager read T30-1c adds (5; CLI-GRP 10.11.); ArbiterOn( is
-  # only declared and defined (2): no second reader.
+  # A3 step 3 T02-a: ArbiterValue( is declared, defined, used by the ArbiterOn wrapper and read at the gate, plus the group manager's
+  # read (CLI-GRP T30-1c: LiveTypesNow in GroupManager.cpp, Types acts like 0 below 2; pinned by a3s6_t30_directives
+  # check_t30_1c) (5; agreed with CLI-Projekt 10.11.); ArbiterOn( is only declared and defined (2): no second reader.
   count_text("${all_sources}" "SetArbiterOverride(" w)
   count_text("${all_sources}" "ArbiterValue(" r)
   count_text("${all_sources}" "ArbiterOn(" o)
   count_text("${all_sources}" "g_arbiterOverride" g)
   if(NOT w EQUAL 3 OR NOT r EQUAL 5 OR NOT o EQUAL 2 OR NOT g EQUAL 4)
-    set(${out} "SetArbiterOverride( ${w} (3: decl, def, console), ArbiterValue( ${r} (5: decl, def, ArbiterOn, gate, T30-1b TODO in GroupManager.cpp), ArbiterOn( ${o} (2: decl, def), g_arbiterOverride ${g} (4: atomic, ArbiterValue, the refusal read, the exchange)" PARENT_SCOPE)
+    set(${out} "SetArbiterOverride( ${w} (3: decl, def, console), ArbiterValue( ${r} (5: decl, def, ArbiterOn, gate, group manager), ArbiterOn( ${o} (2: decl, def), g_arbiterOverride ${g} (4: atomic, ArbiterValue, the refusal read, the exchange)" PARENT_SCOPE)
     return()
   endif()
   string(FIND "${config_h}" "    uint32 supervisorArbiter = 0;" at)
