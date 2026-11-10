@@ -5,6 +5,8 @@
 -- orientation = facing that spawn. Only NPCs whose position is unambiguous are spawned here; the doubtful
 -- ones (Fangorn, Ralwen Ivon, Nizzle, the Thorn Gorge battlemasters, NPCs without any known location) stay
 -- out and are listed in #579. Every spawn is checked in game on the test realm before merge.
+-- Holiday NPCs stay out as well (Brother Raymond 63209 / Hefhani 63210, quests 42100/42101, a luck holiday with
+-- no game_event here; decision OB-00 10.11.2026, twow-repo#695): no permanent spawn while holidays are off (#580).
 --   2990012 62209 Pietro Paraveno      Deadwind Pass (Karazhan quests)
 --   2990013 62511 Hufan Earthbow       Moonglade
 --   2990014 62512 Lissandra Skysoar    Moonglade
@@ -17,12 +19,10 @@
 --   2990021 63099 Pargan Starstrider   Bloodhoof Village, Mulgore
 --   2990022 63160 Sentinel Velaya      Azshara
 --   2990023 63196 Thorinn Darkgrovel   Dun Morogh
---   2990024 63209 Brother Raymond      Elwynn Forest
---   2990025 63210 Hefhani              Bloodhoof Village, Mulgore
--- guids 2990012-2990025 continue the custom range (2990001-2990009: 20260926150000_world.sql, 2990010: Argur,
+-- guids 2990012-2990023 continue the custom range (2990001-2990009: 20260926150000_world.sql, 2990010: Argur,
 -- core#447; 2990011: graveyard spirit healer, 20261029200100_world.sql). Respawn 300 s as for other town quest givers.
 -- Idempotent: one row per NPC, only if that NPC has no spawn yet and the guid is free; end-state CHECK.
--- Rollback (exact): DELETE FROM `creature` WHERE `guid` BETWEEN 2990012 AND 2990025;
+-- Rollback (exact): DELETE FROM `creature` WHERE `guid` BETWEEN 2990012 AND 2990023;
 
 DROP TEMPORARY TABLE IF EXISTS `tmp_spawn_579`;
 CREATE TEMPORARY TABLE `tmp_spawn_579` (
@@ -40,9 +40,7 @@ INSERT INTO `tmp_spawn_579` (`guid`, `id`, `map`, `x`, `y`, `z`, `o`) VALUES
     (2990020, 62797, 0, -1468.0, -2617.0, 48.6, 4.1707),
     (2990021, 63099, 1, -2304.0, -455.0, -5.36, 2.9056),
     (2990022, 63160, 1, 2694.0, -3888.0, 109.25, 2.4138),
-    (2990023, 63196, 0, -6049.0, 395.0, 398.86, 1.2149),
-    (2990024, 63209, 0, -9498.0, 61.0, 56.01, 2.0352),
-    (2990025, 63210, 1, -2166.0, -397.0, -3.8, 2.6799);
+    (2990023, 63196, 0, -6049.0, 395.0, 398.86, 1.2149);
 
 INSERT INTO `creature` (`guid`, `id`, `id2`, `id3`, `id4`, `map`, `position_x`, `position_y`, `position_z`, `orientation`,
                         `spawntimesecsmin`, `spawntimesecsmax`, `wander_distance`, `health_percent`, `mana_percent`,
@@ -58,6 +56,6 @@ SELECT s.`guid`, s.`id`, 0, 0, 0, s.`map`, s.`x`, s.`y`, s.`z`, s.`o`, 300, 300,
 CREATE TEMPORARY TABLE IF NOT EXISTS `tmp_check_579b` (`ok` TINYINT(1) NOT NULL CHECK (`ok` = 1));
 INSERT INTO `tmp_check_579b` (`ok`)
 SELECT (SELECT COUNT(*) FROM `tmp_spawn_579` s
-         WHERE (SELECT COUNT(*) FROM `creature` c WHERE c.`id` = s.`id`) >= 1) = 14
+         WHERE (SELECT COUNT(*) FROM `creature` c WHERE c.`id` = s.`id`) >= 1) = 12
    AND (SELECT COUNT(*) FROM `creature` c JOIN `tmp_spawn_579` s ON s.`guid` = c.`guid`
          WHERE c.`id` <> s.`id`) = 0;
