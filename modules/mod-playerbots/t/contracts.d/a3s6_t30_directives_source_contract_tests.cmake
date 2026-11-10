@@ -23,6 +23,10 @@ cmake_policy(VERSION 3.16)
 #       ack matches only its own directive, any other is ack_stale and nothing else;
 #   (h5) the T02-GROUP read IsManaged(guid, serial): a live member under that wire serial, the atomic fast path, no log, no
 #       allocation, the lock only for the lookup (both IsManaged overloads); no caller in this pair; kOrphanGraceMs;
+#   (h6) T30-1b (agreed with CLI-Projekt, OB-00 10.11.): ack state 4 "left" (kAckLeft, the serial in b16-31 of the state
+#       word) handled before the seq match, only with seq 0 and the serial of the bot's current group; the end reasons
+#       bot_left_done/lost/off appended before Count; the ack reason names 21-27; osc (kOscSec 900) and self_left at the end
+#       of minute2 (the minute line's loop stops at lines_dropped), skip_unknown_30m last on minute2; the dist text;
 #   (i) the unit tests registered and run.
 # Pure rules: t/group_directive_policy_tests.cpp, t/group_manager_policy_tests.cpp, t/adhoc_group_policy_tests.cpp. Every
 # check_* reads the source texts from the variables below and returns "" when it holds, else the reason; the negative probes
@@ -108,6 +112,7 @@ read_file("${SRC}/PlayerbotAIConfig.cpp" config_cpp)
 read_file("${SRC}/aiplayerbot.conf.dist.in" conf_dist)
 read_file("${SRC}/GroupManagerPolicy.h" gm_policy)
 read_file("${SRC}/GroupDirectivePolicy.h" dpol)
+read_file("${SRC}/ManagerInboxPolicy.h" inbox_h)
 read_file("${SRC}/GroupManagerView.h" view_h)
 read_file("${SRC}/GroupManager.h" mgr_h)
 read_file("${SRC}/GroupManager.cpp" mgr_cpp)
@@ -634,6 +639,75 @@ function(check_view out)
   set(${out} "" PARENT_SCOPE)
 endfunction()
 
+# ---- (h6) T30-1b: the left ack, the bot_left reasons, the ack reason names, osc, skip_unknown_30m ------------------------------
+set(LEFT_BRANCH "            if (a.state == manager_inbox::kAckLeft)\n            {\n                ApplyLeftAck(a, io);\n                continue;\n            }")
+set(LEFT_MATCH "        ManagedGroup* g = a.seq == 0 ? GroupOf(a.low, &m) : nullptr;\n        if (!g || std::uint16_t(g->serial) != a.serial || m->state != MemberState::Acked || (entry && entry->exitOpen))\n        {\n            Count(Cnt::AckStale);\n            return;\n        }\n        Count(Cnt::SelfLeft);")
+function(check_t30_1b out)
+  foreach(pair "inbox_h|constexpr std::uint8_t kAckLeft = 4;"
+      "dpol|    a.state = std::uint8_t(e.mapOrDungeon & 0xFFu);\n    a.serial = std::uint16_t(e.mapOrDungeon >> 16);"
+      "dpol|${LEFT_MATCH}"
+      "dpol|\"[GroupMgr] event=self_left group=%u bot=%u reason=%s\""
+      "dpol|        EndMember(*g, *m, FromLeftReason(a.reason), io, true);"
+      "dpol|        case manager_inbox::kAckLeft: return \"left\";"
+      "dpol|    BotLeftDone,   // left reason 26 goal_done: a natural end\n    BotLeftLost,   // left reason 27 goal_lost: the manager's own (retry cooldown only)\n    BotLeftOff,    // left reason 22 arbiter_off (or any other): the manager's own (retry cooldown only)\n    Count,\n};"
+      "dpol|static_assert(kEndReasons <= 128,"
+      "dpol|        case EndReason::BotLeftDone: return \"bot_left_done\";"
+      "dpol|        case EndReason::BotLeftLost: return \"bot_left_lost\";"
+      "dpol|        case EndReason::BotLeftOff: return \"bot_left_off\";"
+      "dpol|    return reason == kAckReasonGoalDone ? EndReason::BotLeftDone :\n        reason == kAckReasonGoalLost ? EndReason::BotLeftLost : EndReason::BotLeftOff;"
+      "dpol|            if (why == EndReason::TurnedIn || why == EndReason::BotLeftDone || m.turnedIn)"
+      "dpol|constexpr std::uint8_t kAckReasonLegacyGroupRole = 21;" "dpol|        case kAckReasonLegacyGroupRole: return \"legacy_group_role\";"
+      "dpol|constexpr std::uint8_t kAckReasonArbiterOff = 22;" "dpol|        case kAckReasonArbiterOff: return \"arbiter_off\";"
+      "dpol|constexpr std::uint8_t kAckReasonLaneBusy = 23;" "dpol|        case kAckReasonLaneBusy: return \"lane_busy\";"
+      "dpol|constexpr std::uint8_t kAckReasonGoalNotInLog = 24;" "dpol|        case kAckReasonGoalNotInLog: return \"goal_not_in_log\";"
+      "dpol|constexpr std::uint8_t kAckReasonFocusConflict = 25;" "dpol|        case kAckReasonFocusConflict: return \"focus_conflict\";"
+      "dpol|constexpr std::uint8_t kAckReasonGoalDone = 26;" "dpol|        case kAckReasonGoalDone: return \"goal_done\";"
+      "dpol|constexpr std::uint8_t kAckReasonGoalLost = 27;" "dpol|        case kAckReasonGoalLost: return \"goal_lost\";"
+      "dpol|constexpr std::uint32_t kOscSec = 900;"
+      "dpol|    return acked && nowSec - ackSec < kOscSec && !IsNaturalEnd(why) && why != EndReason::TooSmall && why != EndReason::SwitchOff;"
+      "dpol|    return r == EndReason::QuestTurnedIn || r == EndReason::ObjectiveDone || r == EndReason::GroupDone || r == EndReason::TurnedIn ||\n        r == EndReason::BotLeftDone;"
+      "dpol|        if (CountsAsOsc(m.ackKnown, m.ackSec, nowSec_, why))\n            Count(Cnt::Osc);"
+      "dpol|                m->ackKnown = true;\n                m->ackSec = nowSec_;"
+      "dpol|    LinesDropped,\n"
+      "dpol|    Osc,\n    SelfLeft,\n    Count,\n};"
+      "dpol|        case Cnt::Osc: return \"osc\";"
+      "dpol|        case Cnt::SelfLeft: return \"self_left\";"
+      "dpol|constexpr std::size_t kCountsMinuteLoop = std::size_t(Cnt::LinesDropped) + 1;"
+      "dpol|    for (std::size_t i = std::size_t(Cnt::OpJoinQ); i < kCountsMinuteLoop && n > 0"
+      "dpol|constexpr std::uint32_t kSkipUnknownLongSec = 1800;"
+      "dpol|                minute_.skipUnknown30m += nowSec_ - entry.second.sinceSec >= kSkipUnknownLongSec ? 1 : 0;"
+      "conf_dist|\"[GroupMgr] event=self_left group= bot= reason=\""
+      "conf_dist|osc=" "conf_dist|self_left=" "conf_dist|skip_unknown_30m= (a level, not an increment")
+    string(FIND "${pair}" "|" bar)
+    string(SUBSTRING "${pair}" 0 ${bar} var)
+    math(EXPR bar "${bar} + 1")
+    string(SUBSTRING "${pair}" ${bar} -1 needle)
+    string(FIND "${${var}}" "${needle}" at)
+    if(at EQUAL -1)
+      set(${out} "t30-1b: ${var} missing ${needle}" PARENT_SCOPE)
+      return()
+    endif()
+  endforeach()
+  # The left ack is handled before the seq match (its seq is 0, it names no directive).
+  region("${dpol}" "    void ApplyAcks(PassInput const& in, Rules const& r, Io& io)" "        (void)r;\n    }" acks)
+  string(FIND "${acks}" "${LEFT_BRANCH}" left)
+  string(FIND "${acks}" "            BotEntry* entry = FindBot(a.low);" match)
+  if(left EQUAL -1 OR match EQUAL -1 OR NOT left LESS match)
+    set(${out} "t30-1b: ApplyAcks does not handle the left ack before the seq match" PARENT_SCOPE)
+    return()
+  endif()
+  # minute2: the leave reasons, then osc / self_left, skip_unknown_30m last.
+  region("${dpol}" "inline int FormatMinute2(" "\n}\n" m2)
+  string(FIND "${m2}" "\" leave_%s=%llu\"" leave)
+  string(FIND "${m2}" "    for (std::size_t i = kCountsMinuteLoop; i < kCounts && n > 0" cnt)
+  string(FIND "${m2}" "\" skip_unknown_30m=%llu\", (unsigned long long)m.skipUnknown30m);\n    return n;" last)
+  if(leave EQUAL -1 OR cnt EQUAL -1 OR last EQUAL -1 OR NOT leave LESS cnt OR NOT cnt LESS last)
+    set(${out} "t30-1b: minute2 does not end with osc, self_left and then skip_unknown_30m" PARENT_SCOPE)
+    return()
+  endif()
+  set(${out} "" PARENT_SCOPE)
+endfunction()
+
 # ---- (i) the unit tests ----------------------------------------------------------------------------------------------------------
 function(check_unit out)
   foreach(needle "add_executable(group_directive_policy_tests\n  \"\${PB_MODULE_DIR}/t/group_directive_policy_tests.cpp\")"
@@ -649,7 +723,8 @@ function(check_unit out)
       "    TestQuestAttempts();" "    TestWishLeftover();" "    TestMinuteLine();" "    TestWrap();" "    TestFormingNoAttempt();" "    TestQuestViewKey();"
       "    TestLeaveEdgeLag();" "    TestGapSameMs();" "    TestGapStaleAnchor();" "    TestExitNoSupervisor();" "    TestEndWhileJoinQueued();"
       "    TestCohort();" "    TestSilentMember();" "    TestRealPlayerLeaving();" "    TestSerialAcrossOffOn();" "    TestSerialLow16();"
-      "    TestAckStale();" "    TestSwitchOffExits();" "    TestManagedSerialView();")
+      "    TestAckStale();" "    TestSwitchOffExits();" "    TestManagedSerialView();" "    TestLeftReasons();" "    TestAckWord();"
+      "    TestSelfLeft();" "    TestLeftAckStale();" "    TestOsc();" "    TestLeftQuest();" "    TestSkipUnknownLong();")
     string(FIND "${unit_test}" "${needle}" at)
     if(at EQUAL -1)
       set(${out} "unit: t/group_directive_policy_tests.cpp does not run ${needle}" PARENT_SCOPE)
@@ -701,6 +776,8 @@ function(run_check check out)
     check_serial(r)
   elseif(check STREQUAL "check_view")
     check_view(r)
+  elseif(check STREQUAL "check_t30_1b")
+    check_t30_1b(r)
   elseif(check STREQUAL "check_unit")
     check_unit(r)
   else()
@@ -711,7 +788,7 @@ endfunction()
 
 # ---- the real sources ----------------------------------------------------------------------------------------------------------
 foreach(check check_switch check_noop check_post check_ops check_pure check_gates check_mirrors check_order check_minute check_cohort
-    check_resume_drain check_wish check_serial check_view check_unit)
+    check_resume_drain check_wish check_serial check_view check_t30_1b check_unit)
   run_check(${check} r)
   fail_if("${r}")
 endforeach()
@@ -831,6 +908,29 @@ set(extra "\n    if (!ai::group_mgr::IsManaged(bot->GetGUIDLow(), serial)) Leave
 check_view(r)
 expect_reason("a caller of IsManaged(guid, serial) in this pair" "${r}" "view: IsManaged\\(guid, serial\\) appears 3 times")
 set(extra "")
+# (h6) T30-1b.
+probe(inbox_h "constexpr std::uint8_t kAckLeft = 4;" "constexpr std::uint8_t kAckLeft = 5;" check_t30_1b "t30-1b: inbox_h missing" "ack state left not 4")
+probe(dpol "    a.serial = std::uint16_t(e.mapOrDungeon >> 16);" "    a.serial = 0;" check_t30_1b "t30-1b: dpol missing" "AckOf without the serial word")
+probe(dpol "    a.state = std::uint8_t(e.mapOrDungeon & 0xFFu);" "    a.state = std::uint8_t(e.mapOrDungeon);" check_t30_1b "t30-1b: dpol missing" "AckOf state without the b0-7 mask")
+probe(dpol "        ManagedGroup* g = a.seq == 0 ? GroupOf(a.low, &m) : nullptr;" "        ManagedGroup* g = GroupOf(a.low, &m);" check_t30_1b "t30-1b: dpol missing" "a left ack with a seq accepted")
+probe(dpol "        if (!g || std::uint16_t(g->serial) != a.serial || m->state" "        if (!g || m->state" check_t30_1b "t30-1b: dpol missing" "a left ack of another serial accepted")
+probe(dpol " || (entry && entry->exitOpen))\n        {\n            Count(Cnt::AckStale);" ")\n        {\n            Count(Cnt::AckStale);" check_t30_1b "t30-1b: dpol missing" "a left ack while an Exit is open accepted")
+probe(dpol "${LEFT_BRANCH}\n" "" check_t30_1b "t30-1b: ApplyAcks does not handle the left ack before" "the left branch dropped (left acks seq-matched)")
+probe(dpol "        case EndReason::BotLeftLost: return \"bot_left_lost\";" "        case EndReason::BotLeftLost: return \"bot_left\";" check_t30_1b "t30-1b: dpol missing" "an end reason renamed")
+probe(dpol "    BotLeftOff,    // left reason 22 arbiter_off (or any other): the manager's own (retry cooldown only)\n    Count,"
+  "    Count,\n    BotLeftOff,    // left reason 22 arbiter_off (or any other): the manager's own (retry cooldown only)" check_t30_1b "t30-1b: dpol missing" "a bot_left reason after Count")
+probe(dpol "            if (why == EndReason::TurnedIn || why == EndReason::BotLeftDone || m.turnedIn)" "            if (why == EndReason::TurnedIn || m.turnedIn)" check_t30_1b "t30-1b: dpol missing" "bot_left_done charges the S7 entry")
+probe(dpol "        case kAckReasonFocusConflict: return \"focus_conflict\";\n" "" check_t30_1b "t30-1b: dpol missing" "ack reason 25 unnamed")
+probe(dpol "constexpr std::uint8_t kAckReasonGoalLost = 27;" "constexpr std::uint8_t kAckReasonGoalLost = 28;" check_t30_1b "t30-1b: dpol missing" "goal_lost renumbered")
+probe(dpol "constexpr std::uint32_t kOscSec = 900;" "constexpr std::uint32_t kOscSec = 1800;" check_t30_1b "t30-1b: dpol missing" "osc window widened")
+probe(dpol " ||\n        r == EndReason::BotLeftDone;" ";" check_t30_1b "t30-1b: dpol missing" "bot_left_done not a natural end")
+probe(dpol "        if (CountsAsOsc(m.ackKnown, m.ackSec, nowSec_, why))\n            Count(Cnt::Osc);" "" check_t30_1b "t30-1b: dpol missing" "osc never counted")
+probe(dpol "i < kCountsMinuteLoop && n > 0" "i < kCounts && n > 0" check_t30_1b "t30-1b: dpol missing" "osc/self_left inserted mid minute line")
+probe(dpol "\" skip_unknown_30m=%llu\", (unsigned long long)m.skipUnknown30m);\n    return n;" "\" skip_unknown_30m=%llu\", (unsigned long long)m.skipUnknown30m);\n    n += 0;\n    return n;"
+  check_t30_1b "t30-1b: minute2 does not end" "skip_unknown_30m not last on minute2")
+probe(dpol "constexpr std::uint32_t kSkipUnknownLongSec = 1800;" "constexpr std::uint32_t kSkipUnknownLongSec = 600;" check_t30_1b "t30-1b: dpol missing" "skip_unknown_30m on 10 minutes")
+probe(conf_dist "skip_unknown_30m= (a level, not an increment" "skip_unknown_30m= (an increment" check_t30_1b "t30-1b: conf_dist missing" "the dist text calls the level an increment")
+probe(unit_test "    TestSelfLeft();\n" "" check_unit "unit: t/group_directive_policy_tests.cpp does not run" "the self-left test not run")
 # (i) the unit tests.
 probe(tests_cmake "add_test(NAME group_directive_policy\n" "add_test(NAME other\n" check_unit "unit: tests.cmake missing" "the unit test not registered")
 probe(unit_test "    TestTypesZero();\n" "" check_unit "unit: t/group_directive_policy_tests.cpp does not run" "the Types 0 test not run")
