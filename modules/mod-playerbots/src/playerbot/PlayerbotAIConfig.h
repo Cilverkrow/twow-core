@@ -592,6 +592,11 @@ public:
     // twow-repo#333 T28-M (OB-00 09.11.2026): one [Gathering] event=share line per roster bot on its own and online hour (the time
     // share of gathering purposes, profession trips and gathering / craft casts, GatheringTracePolicy.h); log only. 0 off, 1 on.
     uint32 gatheringTrace = 0;
+    // twow-repo#333 T28b (OB-00 09.11.2026): a roster bot on its own whose herbalism / mining lags behind min(rank cap, 5 x level)
+    // may pick an orange / yellow node up to gatheringPaceReachYards away (GatheringPacePolicy.h). Mode 0 off, 1 all, 2 cohort B,
+    // 3 cohort A; reach 30-60 yd, default 45.
+    uint32 gatheringPaceReach = 0;
+    uint32 gatheringPaceReachYards = 45;
     // twow-repo#485: craft with real reagents from the bags (the item cheat
     // made every recipe look craftable). false = legacy "craft random item".
     bool professionUseRealReagents = false;

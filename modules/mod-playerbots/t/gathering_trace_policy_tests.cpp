@@ -85,7 +85,8 @@ int main()
     mining.max = 75;
     std::string const line = ShareLine(42, 17, w, herb, mining, skinning);
     Require(line == "[Gathering] event=share bot=42 level=17 play_s=3604 purpose_s=80 trip_s=20 cast_s=20 opens_herb=1 "
-        "opens_ore=2 opens_skin=1 crafts=1 s182=55/75 s186=1/75 s393=0/0", "line format and field order");
+        "opens_ore=2 opens_skin=1 crafts=1 s182=55/75 s186=1/75 s393=0/0 far_picks=0 far_opens=0 far_timeouts=0",
+        "line format and field order (T28b far counters appended at the end)");
 
     // After the line: counters are increments, the next window starts at the last sample with its activity.
     w.Roll();
