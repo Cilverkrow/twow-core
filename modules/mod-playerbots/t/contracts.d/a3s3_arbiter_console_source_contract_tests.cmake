@@ -98,7 +98,7 @@ foreach(f IN LISTS all_files)
 endforeach()
 
 # ---- (a) registration --------------------------------------------------------------------------------------------------------
-set(ARB_BRANCH "    if (cmd == \"arbiter\" || cmd.find(\"arbiter \") == 0)\n    {\n        if (isRA)\n        {\n            sLog.outError(\"[ArbiterCtl] rejected: local mangosd console required\");\n            handler->SendSysMessage(\"rndbot arbiter is restricted to the local mangosd console.\");\n            return true;\n        }\n        int const value = ai::supervisor::ParseArbiterSwitch(cmd.c_str() + 7);\n        if (value == ai::supervisor::kArbiterFollowConfig)\n        {\n            sLog.outError(\"[ArbiterCtl] usage: rndbot arbiter on|off\");\n            return true;\n        }\n        int const prev = ai::supervisor::SetArbiterOverride(value == ai::supervisor::kArbiterOn);\n        sLog.outString(\"[ArbiterCtl] arbiter=%d prev=%s source=console\", value,\n            prev == ai::supervisor::kArbiterFollowConfig ? \"conf\" : (prev == ai::supervisor::kArbiterOn ? \"1\" : \"0\"));\n        return true;\n    }\n\n    std::map<std::string, ConsoleCommandHandler> handlers;\n")
+set(ARB_BRANCH "    if (cmd == \"arbiter\" || cmd.find(\"arbiter \") == 0)\n    {\n        if (isRA)\n        {\n            sLog.outError(\"[ArbiterCtl] rejected: local mangosd console required\");\n            handler->SendSysMessage(\"rndbot arbiter is restricted to the local mangosd console.\");\n            return true;\n        }\n        int const value = ai::supervisor::ParseArbiterSwitch(cmd.c_str() + 7);\n        if (value == ai::supervisor::kArbiterFollowConfig)\n        {\n            sLog.outError(\"[ArbiterCtl] usage: rndbot arbiter on|off|enforce\");\n            return true;\n        }\n        int const prev = ai::supervisor::SetArbiterOverride(value);\n        sLog.outString(\"[ArbiterCtl] arbiter=%d prev=%s source=console\", value,\n            prev == ai::supervisor::kArbiterFollowConfig ? \"conf\" : (prev == ai::supervisor::kArbiterEnforce ? \"2\" :\n            (prev == ai::supervisor::kArbiterOn ? \"1\" : \"0\")));\n        return true;\n    }\n\n    std::map<std::string, ConsoleCommandHandler> handlers;\n")
 set(IS_RA "    if (handler->GetSession()) //Client command\n        isRA = true;\n    else if (static_cast<CliHandler*>(handler) && static_cast<CliHandler*>(handler)->GetAccountId()) //RA call with account.\n        isRA = true;\n")
 
 function(check_registration mgr out)
@@ -129,8 +129,11 @@ function(check_registration mgr out)
 endfunction()
 
 # ---- (b) the atomic, its one writer and its one reader --------------------------------------------------------------------
-set(ATOMIC "namespace\n{\n// Live arbiter switch (OB-00 09.11.2026): kArbiterFollowConfig until the console sets it.\nstd::atomic<int> g_arbiterOverride{kArbiterFollowConfig};\n}\n\nbool ArbiterOn(std::uint32_t configValue)\n{\n    return ArbiterEffective(g_arbiterOverride.load(std::memory_order_relaxed), configValue);\n}\n\nint SetArbiterOverride(bool on)\n{\n    return g_arbiterOverride.exchange(on ? kArbiterOn : kArbiterOff, std::memory_order_relaxed);\n}\n")
-set(GATE "            EnsureSupervisor()->Tick(WorldTimer::getMSTime(), ai::supervisor::ArbiterOn(sPlayerbotAIConfig.supervisorArbiter));\n")
+# A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2, default 0): the value the gate reads is ArbiterValue (0 off, 1 shadow, 2
+# enforce); ArbiterOn (= ArbiterValue >= 1) stays as a wrapper without a caller; SetArbiterOverride takes 0, 1 or 2 and ignores any
+# other value.
+set(ATOMIC "namespace\n{\n// Live arbiter switch (OB-00 09.11.2026): kArbiterFollowConfig until the console sets it.\nstd::atomic<int> g_arbiterOverride{kArbiterFollowConfig};\n}\n\nstd::uint32_t ArbiterValue(std::uint32_t configValue)\n{\n    return ArbiterEffective(g_arbiterOverride.load(std::memory_order_relaxed), configValue);\n}\n\nbool ArbiterOn(std::uint32_t configValue)\n{\n    return ArbiterValue(configValue) >= 1;\n}\n\nint SetArbiterOverride(int value)\n{\n    if (value != kArbiterOff && value != kArbiterOn && value != kArbiterEnforce)\n        return g_arbiterOverride.load(std::memory_order_relaxed);\n    return g_arbiterOverride.exchange(value, std::memory_order_relaxed);\n}\n")
+set(GATE "            EnsureSupervisor()->Tick(WorldTimer::getMSTime(), ai::supervisor::ArbiterValue(sPlayerbotAIConfig.supervisorArbiter));\n")
 
 function(check_switch shadow_h shadow_cpp policy ai_cpp config_h all_sources out)
   string(FIND "${shadow_cpp}" "${ATOMIC}" at)
@@ -138,7 +141,7 @@ function(check_switch shadow_h shadow_cpp policy ai_cpp config_h all_sources out
     set(${out} "SupervisorShadow.cpp: the override is not one std::atomic<int> read by ArbiterOn and exchanged by SetArbiterOverride" PARENT_SCOPE)
     return()
   endif()
-  foreach(needle "bool ArbiterOn(std::uint32_t configValue);" "int SetArbiterOverride(bool on);")
+  foreach(needle "std::uint32_t ArbiterValue(std::uint32_t configValue);" "bool ArbiterOn(std::uint32_t configValue);" "int SetArbiterOverride(int value);")
     string(FIND "${shadow_h}" "${needle}" at)
     if(at EQUAL -1)
       set(${out} "SupervisorShadow.h: missing ${needle}" PARENT_SCOPE)
@@ -146,7 +149,8 @@ function(check_switch shadow_h shadow_cpp policy ai_cpp config_h all_sources out
     endif()
   endforeach()
   foreach(needle "constexpr int kArbiterFollowConfig = -1;" "constexpr int kArbiterOff = 0;" "constexpr int kArbiterOn = 1;"
-      "inline bool ArbiterEffective(int override, std::uint32_t configValue)\n{\n    if (override == kArbiterOn)\n        return true;\n    if (override == kArbiterOff)\n        return false;\n    return configValue == 1;\n}")
+      "constexpr int kArbiterEnforce = 2;"
+      "inline std::uint32_t ArbiterEffective(int override, std::uint32_t configValue)\n{\n    if (override == kArbiterOff)\n        return 0;\n    if (override == kArbiterOn)\n        return 1;\n    if (override == kArbiterEnforce)\n        return 2;\n    return configValue <= 2 ? configValue : 0;\n}")
     string(FIND "${policy}" "${needle}" at)
     if(at EQUAL -1)
       set(${out} "SupervisorPolicy.h: missing ${needle}" PARENT_SCOPE)
@@ -155,15 +159,18 @@ function(check_switch shadow_h shadow_cpp policy ai_cpp config_h all_sources out
   endforeach()
   string(FIND "${ai_cpp}" "${GATE}" at)
   if(at EQUAL -1)
-    set(${out} "PlayerbotAI.cpp: the supervisor gate does not pass ArbiterOn(config)" PARENT_SCOPE)
+    set(${out} "PlayerbotAI.cpp: the supervisor gate does not pass ArbiterValue(config)" PARENT_SCOPE)
     return()
   endif()
   # One writer (the console branch), one reader (the gate), one atomic; the config default stays 0.
+  # A3 step 3 T02-a: ArbiterValue( is declared, defined, used by the ArbiterOn wrapper and read at the gate (4); ArbiterOn( is
+  # only declared and defined (2): no second reader.
   count_text("${all_sources}" "SetArbiterOverride(" w)
-  count_text("${all_sources}" "ArbiterOn(" r)
+  count_text("${all_sources}" "ArbiterValue(" r)
+  count_text("${all_sources}" "ArbiterOn(" o)
   count_text("${all_sources}" "g_arbiterOverride" g)
-  if(NOT w EQUAL 3 OR NOT r EQUAL 3 OR NOT g EQUAL 3)
-    set(${out} "SetArbiterOverride( ${w} (3: decl, def, console), ArbiterOn( ${r} (3: decl, def, gate), g_arbiterOverride ${g} (3)" PARENT_SCOPE)
+  if(NOT w EQUAL 3 OR NOT r EQUAL 4 OR NOT o EQUAL 2 OR NOT g EQUAL 4)
+    set(${out} "SetArbiterOverride( ${w} (3: decl, def, console), ArbiterValue( ${r} (4: decl, def, ArbiterOn, gate), ArbiterOn( ${o} (2: decl, def), g_arbiterOverride ${g} (4: atomic, ArbiterValue, the refusal read, the exchange)" PARENT_SCOPE)
     return()
   endif()
   string(FIND "${config_h}" "    uint32 supervisorArbiter = 0;" at)
@@ -206,7 +213,7 @@ set(FORMAT_PINS
   "policy|inline std::size_t FormatWriters(|\n}\n|f8fe1a3a2e87fc9a"
   "policy|inline std::size_t FormatWriteLine(|\n}\n|fc8202db453ccdae"
   "policy|inline std::size_t FormatExpireLine(|\n}\n|db084e74f526c99e"
-  "policy|inline std::size_t FormatArbiterMin(|\n}\n|2662747efaa85911"
+  "policy|inline std::size_t FormatArbiterMin(|\n}\n|ae659df1978f42cc"
   "shadow|void Emit(Closed const& closed|\n}\n|31c2f479f3780942"
   "shadow|void EmitMinute(MinuteOut const& minute)|\n}\n|9d109ed068dd4242"
   "mgr|sLog.outBasic(\"[BotUpdate] calls=|)@SEMI@\n|614c24fe1571082d"
@@ -228,6 +235,13 @@ function(check_formats policy shadow mgr out)
       return()
     endif()
   endforeach()
+  # A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2, default 0) changed the FormatArbiterMin sha above on purpose: the new fields
+  # are appended at the end, and the frozen text up to test=%u must stay the same bytes (the evaluator reads fields by key).
+  string(FIND "${policy}" "\"[ArbiterMin] cohort=%c bundles=%u lines=%u dropped=%u unknown=%u offthread_writes=%u \"\n        \"cross_writes=%u gaps=%u closes_open=%u expire_cooldown=%u sel=%u req=%u exe=%u life=%u mgr=%u grp=%u cmd=%u brain=%u test=%u\"\n        \" grp_t02=%u errand=%u" prefix_at)
+  if(prefix_at EQUAL -1)
+    set(${out} "SupervisorPolicy.h: the [ArbiterMin] fields up to test=%u are not the frozen text with the T02-a fields appended after it" PARENT_SCOPE)
+    return()
+  endif()
   # The console line has its own tag, never one the evaluator reads.
   string(REGEX MATCH "\"\\[(Supervisor|ArbiterMin|BotUpdate|BotUpdateCohort)\\] (rejected|usage|arbiter=)" bad "${mgr}")
   if(NOT bad STREQUAL "")
@@ -239,8 +253,8 @@ endfunction()
 
 # ---- (e) unit test ------------------------------------------------------------------------------------------------------------
 function(check_unit unit_test out)
-  foreach(needle "void TestArbiterConsole()" "    TestArbiterConsole();" "ParseArbiterSwitch(\"2\") == kArbiterFollowConfig"
-      "ArbiterEffective(kArbiterOn, 0) && !ArbiterEffective(kArbiterOff, 1)")
+  foreach(needle "void TestArbiterConsole()" "    TestArbiterConsole();" "ParseArbiterSwitch(\"3\") == kArbiterFollowConfig" "ParseArbiterSwitch(\"2\") == kArbiterEnforce"
+      "ArbiterEffective(kArbiterOn, cfg) == 1" "ArbiterEffective(kArbiterEnforce, cfg) == 2" "ArbiterEffective(kArbiterOff, cfg) == 0")
     string(FIND "${unit_test}" "${needle}" at)
     if(at EQUAL -1)
       set(${out} "t/supervisor_policy_tests.cpp: missing ${needle}" PARENT_SCOPE)
@@ -278,7 +292,7 @@ string(REPLACE "std::atomic<int> g_arbiterOverride{kArbiterFollowConfig};" "int 
 check_switch("${shadow_h}" "${m}" "${policy}" "${ai_cpp}" "${config_h}" "${all_sources}" r)
 expect_caught("override not atomic" "${r}")
 # (b) the gate reads the config directly again (console without effect).
-string(REPLACE "ai::supervisor::ArbiterOn(sPlayerbotAIConfig.supervisorArbiter));" "sPlayerbotAIConfig.supervisorArbiter == 1);" m "${ai_cpp}")
+string(REPLACE "ai::supervisor::ArbiterValue(sPlayerbotAIConfig.supervisorArbiter));" "sPlayerbotAIConfig.supervisorArbiter == 1);" m "${ai_cpp}")
 check_switch("${shadow_h}" "${shadow_cpp}" "${policy}" "${m}" "${config_h}" "${all_sources}" r)
 expect_caught("gate ignores the override" "${r}")
 # (b) a second reader or writer.
@@ -287,9 +301,11 @@ expect_caught("a second reader" "${r}")
 check_switch("${shadow_h}" "${shadow_cpp}" "${policy}" "${ai_cpp}" "${config_h}" "${all_sources}\n    ai::supervisor::SetArbiterOverride(true);" r)
 expect_caught("a second writer" "${r}")
 # (b) the override ignored: config wins.
-string(REPLACE "    if (override == kArbiterOn)\n        return true;\n" "" m "${policy}")
+string(REPLACE "    if (override == kArbiterEnforce)
+        return 2;
+" "" m "${policy}")
 check_switch("${shadow_h}" "${shadow_cpp}" "${m}" "${ai_cpp}" "${config_h}" "${all_sources}" r)
-expect_caught("override on ignored" "${r}")
+expect_caught("override enforce ignored" "${r}")
 # (c) the branch reloads the whole config.
 string(REPLACE "        int const prev = ai::supervisor::SetArbiterOverride(" "        sPlayerbotAIConfig.Initialize();\n        int const prev = ai::supervisor::SetArbiterOverride(" m "${mgr}")
 check_no_initialize("${m}" "${all_sources}" r)
@@ -317,6 +333,10 @@ expect_caught("[BotUpdateCohort] format" "${r}")
 string(REPLACE "sLog.outString(\"[ArbiterCtl] arbiter=%d" "sLog.outString(\"[Supervisor] arbiter=%d" m "${mgr}")
 check_formats("${policy}" "${shadow_cpp}" "${m}" r)
 expect_caught("console line with the [Supervisor] tag" "${r}")
+# (d) A3 step 3 T02-a: a T02-a field written into the frozen part (before test=%u) is caught by the prefix pin even when the sha is re-pinned.
+string(REPLACE "brain=%u test=%u\"\n        \" grp_t02=%u" "brain=%u deny=%u test=%u\"\n        \" grp_t02=%u" m "${policy}")
+check_formats("${m}" "${shadow_cpp}" "${mgr}" r)
+expect_caught("a field inserted into the frozen [ArbiterMin] part" "${r}")
 # (e) the unit test dropped from main.
 string(REPLACE "    TestArbiterConsole();" "" m "${unit_test}")
 check_unit("${m}" r)

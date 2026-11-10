@@ -1475,8 +1475,24 @@ AiPlayerbot.Supervisor = 0
 # (same cohort). It watches the bot's own travel target, bundles the writes of one engine pass and writes a [Supervisor]
 # ev=write / ev=expire line only for an open target closed by another family, a cooldown expiry or a writer without scope
 # (at most 300 lines per minute), plus one [ArbiterMin] sum per minute and cohort. It never writes the target or the bot.
-# 0 = off (default, rollback), 1 = shadow. Any other value acts like 0 (one error line at load; no enforcement yet).
+# A3 step 3 T02-a (OB-00 10.11.2026, design A3-S3-T02-ENTWURF.md v0.3): 2 = enforcement, the shadow plus one gate on every
+# write of the bot's own live travel target. The lane that set an open target (questbook, group) owns it until the target
+# changes or closes; a writer of a lower lane is refused and writes nothing (one [Supervisor] ev=deny line, deny in
+# [ArbiterMin]); a close-then-request errand or the travel target request waits (held_errand / held_request). Closes, the
+# null target, execution, survival, manager and commands (go, debug) are always admitted. Arming 2 moves the bots in the
+# quest book scope (roster, no real player master, not in a battleground, not parked) from Passive to Quest (one ev=mode
+# line); leaving 2 moves them back. Without group mode (a later pair) only a write without writer scope (unknown, test) on a
+# questbook-owned target is refused outside the probe.
+# 0 = off (default, rollback), 1 = shadow, 2 = enforce. Any other value acts like 0 (one error line at load). The console
+# "rndbot arbiter on|off|enforce" overrides it until the next restart.
 AiPlayerbot.Supervisor.Arbiter = 0
+# A3 step 3 T02-a: the arbiter probe, a self test of the gate on fixed probe bots (cohort B, low guid / 2 a multiple of 25),
+# at most once per bot every 10 minutes and only on an open travel target. With AiPlayerbot.Supervisor.Arbiter = 2 the group
+# lane owns the target for one engine pass, then a select write, a select copy and a questbook lane check must all be refused
+# with the target unchanged (one [Supervisor] ev=probe line, probe_pass / probe_fail in [ArbiterMin]); with 1 it writes
+# nothing and only counts probe_shadow (the paired control). 0 = off (default), 1 = probe. Any other value acts like 0
+# (one error line at load).
+AiPlayerbot.Supervisor.ArbiterProbe = 0
 # A3 step 5 (ADR-0041, OB-00 07.11.2026): the combat rule - one module that owns the combat decisions (who may start a fight,
 # rest before the pull, target choice, flee point, loop guard), one switch per part. Design: A3-S5-KAMPFREGEL-ENTWURF.md.
 # Part HealerStart (A3-AKTIONS-VERDRAHTUNG F2 (a)): the healer gate of attack my target / attack RTI target / attack anything

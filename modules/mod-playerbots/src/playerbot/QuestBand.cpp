@@ -660,10 +660,12 @@ bool ChooseTravelTargetAction::TryBandStep(Player* requester, TravelTarget* trav
     float const dist = qb::Dist2D(rungFacts.x, rungFacts.y, rung.x, rung.y);
     uint32 const tripSeconds = qb::BandTripSeconds(dist);
     TravelTarget band(ai);
-    band.SetTarget(hub, hub->GetHubPoint());
+    band.SetTarget(hub, hub->GetHubPoint());   // local target, not live: no gate (A3 step 3 T02-a)
     band.SetRelevance(uint32(std::max(0, AI_VALUE2(int, "manual int", "future travel relevance"))));
     band.SetBandTripEnd(now + tripSeconds);
-    setNewTarget(requester, &band, travelTarget);
+    // A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2, default 0): denied = no step and no condition write (fail closed).
+    if (!setNewTarget(requester, &band, travelTarget))
+        return false;
     travelTarget->SetConditions({});
     if (travelTarget->GetDestination() != hub || !travelTarget->GetBandTripEnd())
         return false;   // the choice was refused: no step (fail closed, today's path runs on)
@@ -695,11 +697,13 @@ bool ChooseTravelTargetAction::StartBandWalk(Player* requester, TravelTarget* tr
     qb::Rung const& rung = qb::GetLadder().rungs[std::size_t(plan.rung)];
     float const dist = qb::Dist2D(bot->GetPositionX(), bot->GetPositionY(), rung.x, rung.y);
     TravelTarget walk(ai);
-    walk.SetTarget(hub, hub->GetHubPoint());
+    walk.SetTarget(hub, hub->GetHubPoint());   // local target, not live: no gate (A3 step 3 T02-a)
     walk.SetRelevance(uint32(std::max(0, AI_VALUE2(int, "manual int", "future travel relevance"))));
     walk.SetBandTripEnd(walkEnd);
     walk.SetBandWalk(now, plan.fromZone);
-    setNewTarget(requester, &walk, travelTarget);
+    // A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2, default 0): denied = no walk and no condition write (fail closed).
+    if (!setNewTarget(requester, &walk, travelTarget))
+        return false;
     travelTarget->SetConditions({});
     if (travelTarget->GetDestination() != hub || !travelTarget->GetBandTripEnd() || !travelTarget->GetBandWalkAt())
         return false;   // the choice was refused: the bot waits out the backoff as before (fail closed)

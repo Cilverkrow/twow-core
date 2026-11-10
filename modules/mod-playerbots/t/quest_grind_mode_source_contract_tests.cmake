@@ -201,7 +201,7 @@ require_text("${policy}" "return condition.find(\"should get money\") != std::st
 require_text("${policy}" "return moneyCondition ? Reason::Money : Reason::Fallback;" "money or fallback")
 
 # ---- 5. Path 7: ChooseTravelTargetAction ------------------------------------------------------------
-region("${choose}" "else if (futureTravelPurpose == std::to_string(uint32(TravelDestinationPurpose::Grind)) && UsesQuestFirstProgression(bot))\n    {" "    setNewTarget(requester, &newTarget, travelTarget);" grind_branch)
+region("${choose}" "else if (futureTravelPurpose == std::to_string(uint32(TravelDestinationPurpose::Grind)) && UsesQuestFirstProgression(bot))\n    {" "    if (!setNewTarget(requester, &newTarget, travelTarget))" grind_branch)
 require_order("${grind_branch}" "if (ai->IsQuestNoGrind())" "[QuestSearch] state=grind_fallback bot=%u level=%u failures=%d" "a grind fetch is refused before the grind_fallback line")
 require_text("${grind_branch}" "AI_VALUE2(std::string, \"manual string\", \"future travel condition\")))),\n                ai::quest_grind_mode::TargetText(\"grind_destination\", grindEntry > 0 ? uint32(grindEntry) : 0u));\n            return false;" "never set as target, reason by the request condition")
 # isAllowed and the quest objective mob fetches stay as they are (old :1574, :1794, :1900).
