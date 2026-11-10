@@ -28,6 +28,7 @@
 #include "playerbot/StallGuardPolicy.h"
 #include "playerbot/CombatRulePolicy.h"   // A3 step 5 (CombatRule.ProgressGuard): the combat progress clock
 #include "playerbot/SupervisorPolicy.h"   // A3 step 5: the CombatLoop event a ProgressGuard break leaves (plain data)
+#include "playerbot/ManagerInboxPolicy.h"   // A3 step 6 T30-0: the last group edge this bot posted (plain data)
 #include <atomic>
 #include <functional>
 #include <mutex>
@@ -446,7 +447,8 @@ private:
     // A3 step 5 P5: the guard's target lookup on the bot's own map (a player only from this map's player list).
     Unit* ProgressUnitOnMap(ObjectGuid guid);
     // A3-GERUEST-L60 7.2.11 (AiPlayerbot.BotGroups.Manager.StatusSeconds, default 0): posts this bot's status snapshot to the
-    // manager inbox when due (own thread, own values only).
+    // manager inbox when due (own thread, own values only); T30-0 adds the group edge (on a change and with every status) and
+    // the group wish (with the status).
     void PostManagerStatus();
     // A3 step 3 (ADR-0041, AiPlayerbot.Supervisor, default 0): the supervisor of this bot, made on the first engine pass the
     // switch applies to it.
@@ -1456,6 +1458,8 @@ protected:
     ai::teleport_cast::HoldWatch teleportHold;   // twow-repo#333 finding 4: pending travel / unstuck / zone-escape hold for a teleport
     uint32 managerStatusLastMs = 0;   // 7.2.11: WorldTimer ms of the last status post (0 = never)
     uint32 managerStatusSeq = 0;      // 7.2.11: sequence of this bot's status posts
+    ai::manager_inbox::EdgeFacts managerEdgeLast;   // T30-0: the group edge last compared (a change posts it)
+    bool managerEdgeKnown = false;                  // T30-0: false until the first comparison (the first one always posts)
     // A3 step 3 (ADR-0041, AiPlayerbot.Supervisor, default 0): nullptr while the switch does not apply to this bot.
     std::unique_ptr<ai::supervisor::Supervisor> supervisor_;
     // A3 step 2 (ADR-0041, AiPlayerbot.QuestBook, default 0): nullptr while neither the switch nor the shadow applies to this bot.

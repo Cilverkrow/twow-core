@@ -10,6 +10,7 @@
 #include <cstring>
 #include <iostream>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace
@@ -39,12 +40,14 @@ void TestLayout()
     Require(sizeof(Event) == 32, "Event is 32 bytes");
     Require(Capacity == 4096, "module ring capacity 4096");
     Require(kDrainMaxPerPass == 1024, "drain max per pass 1024");
-    Require(kKinds == std::size_t(Kind::DirectiveAck) + 1, "kKinds covers every kind");
+    Require(kKinds == std::size_t(Kind::GroupEdge) + 1, "kKinds covers every kind");
     Require(std::size_t(Kind::QueueLeave) == 7 && std::size_t(Kind::DirectiveAck) == 8, "DirectiveAck appended at the end");
+    Require(std::size_t(Kind::GroupEdge) == 9 && std::size_t(Kind::GroupWish) == 2, "T30-0: GroupEdge appended, GroupWish kept");
     Require(kKindBuckets == kKinds + 1, "one other bucket");
     Require(KindIndex(Kind::Status) == 3, "Status index");
     Require(KindIndex(Kind::DirectiveAck) == 8, "DirectiveAck has its own bucket");
-    Require(KindIndex(Kind(200)) == kKinds && KindIndex(Kind(9)) == kKinds, "an unknown kind goes to the other bucket");
+    Require(KindIndex(Kind::GroupEdge) == 9, "GroupEdge has its own bucket");
+    Require(KindIndex(Kind(200)) == kKinds && KindIndex(Kind(10)) == kKinds, "an unknown kind goes to the other bucket");
     Require(KindIndex(Kind(200)) < kKindBuckets, "the other bucket is in range");
 }
 
@@ -182,9 +185,218 @@ void TestSnapshotAndLine()
     m.status = 4;
     m.ack = 2;
     m.snapshots = 3;
-    char buf[256];
+    m.edge = 6;
+    m.wish = 2;
+    m.keyOverflow = 1;
+    m.edges = 3;
+    m.wishes = 1;
+    m.shadow.stale = 1;
+    m.shadow.busy = 0;
+    m.shadow.adhoc = 2;
+    m.shadow.quest = 1;
+    m.shadow.zoneHold = 0;
+    m.shadow.noSupervisor = 0;
+    char buf[640];
     FormatMinuteLine(buf, sizeof(buf), m);
-    Require(std::string(buf) == "[ManagerInbox] posted=5 dropped=1 drained=4 status=4 ack=2 snapshots=3", "minute line format");
+    Require(std::string(buf) == "[ManagerInbox] posted=5 dropped=1 drained=4 status=4 ack=2 snapshots=3 edge=6 wish=2 key_overflow=1"
+        " edges=3 wishes=1 stale_snap=1 cand_busy=0 cand_adhoc=2 cand_quest=1 cand_zone_hold=0 no_supervisor=0", "minute line format");
+
+    // The longest line fits the 640-byte buffer of LogMinute.
+    MinuteLine big;
+    std::uint64_t const max = ~std::uint64_t(0);
+    big.posted = big.dropped = big.drained = big.status = big.ack = big.snapshots = max;
+    big.edge = big.wish = big.keyOverflow = big.edges = big.wishes = max;
+    big.shadow.stale = big.shadow.busy = big.shadow.adhoc = big.shadow.quest = big.shadow.zoneHold = big.shadow.noSupervisor = max;
+    Require(FormatMinuteLine(buf, sizeof(buf), big) < int(sizeof(buf)), "the longest minute line is not cut");
+}
+
+// ---- T30-0: the facts --------------------------------------------------------------------------------------------------------
+void TestFlagsAndKey()
+{
+    StatusFlags f;
+    Require(PackFlags(f) == 0, "no flag = 0");
+    f.alliance = f.alive = f.candidate = f.inBgQueue = f.dungeonMap = f.busy = f.startZoneHold = true;
+    Require(PackFlags(f) == 0x7F, "all seven flags, b7 stays 0");
+    StatusFlags one;
+    one.busy = true;
+    Require(PackFlags(one) == kFlagBusy && kFlagBusy == 0x20, "busy = b5");
+    one = StatusFlags();
+    one.startZoneHold = true;
+    Require(PackFlags(one) == 0x40, "startZoneHold = b6");
+    StatusFlags const back = UnpackFlags(0x25);
+    Require(back.alliance && !back.alive && back.candidate && !back.inBgQueue && !back.dungeonMap && back.busy && !back.startZoneHold,
+        "unpack is the inverse");
+    Require(PackFlags(UnpackFlags(0x5A)) == 0x5A, "round trip");
+
+    KeyFacts k;
+    std::uint32_t bits = 77;
+    Require(PackKey(k, bits) && bits == 0, "no key = 0");
+    k.questId = 80395;
+    k.objective = 2;
+    k.questStatus = kQuestIncomplete;
+    k.objDone = true;
+    k.progress = 13;   // mod 8 = 5
+    Require(PackKey(k, bits), "a twow quest id fits");
+    Require((bits & kKeyQuestMax) == 80395 && ((bits >> 23) & 7u) == 3 && ((bits >> 26) & 3u) == 1 && ((bits >> 28) & 1u) == 1 &&
+        (bits >> 29) == 5, "field layout b0-22 / b23-25 / b26-27 / b28 / b29-31");
+    KeyFacts const u = UnpackKey(bits);
+    Require(u.questId == 80395 && u.objective == 2 && u.questStatus == kQuestIncomplete && u.objDone && u.progress == 5, "unpack");
+    k.objective = -1;
+    Require(PackKey(k, bits) && UnpackKey(bits).objective == -1, "no objective = field 0 = -1");
+    k.objective = 9;
+    Require(PackKey(k, bits) && UnpackKey(bits).objective == -1, "an objective out of range is posted as none");
+    k.objective = 0;
+    k.questStatus = kQuestRewarded;
+    Require(PackKey(k, bits) && UnpackKey(bits).objective == 0 && UnpackKey(bits).questStatus == kQuestRewarded, "objective 0, rewarded");
+    k.questId = kKeyQuestMax;
+    Require(PackKey(k, bits) && UnpackKey(bits).questId == kKeyQuestMax, "the largest quest id that fits");
+    k.questId = kKeyQuestMax + 1;
+    bits = 77;
+    Require(!PackKey(k, bits) && bits == 0, "overflow: false and an empty key (the caller counts key_overflow)");
+}
+
+void TestEdgeAndWish()
+{
+    EdgeFacts f;
+    f.groupId = 1234;
+    f.leaderLow = 99;
+    f.members = 3;
+    f.leader = true;
+    f.invite = true;
+    Event const e = MakeEdge(42, f, 10.0f, -20.0f);
+    Require(e.kind == Kind::GroupEdge && e.botLow == 42 && e.mapOrDungeon == 1234 && e.seq == 99 && e.role == 3, "edge fields");
+    Require(e.level == (kEdgeLeader | kEdgeInvite) && e.x == 10.0f && e.y == -20.0f && e.reserved == 0, "edge flags and position");
+    Require(EdgeOf(e) == f, "edge round trip");
+    f.posStuck = true;
+    f.raid = true;
+    f.bgGroup = true;
+    Require(MakeEdge(1, f, 0, 0).level == (kEdgeLeader | kEdgeRaid | kEdgeBgGroup | kEdgeInvite | kEdgePosStuck), "every edge flag");
+    Require((MakeEdge(1, f, 0, 0).level & 0x02) == 0, "b1 stays free");
+    f.members = 40;
+    Require(EdgeOf(MakeEdge(1, f, 0, 0)).members == 40, "a raid's size fits");
+    f.members = 300;
+    Require(MakeEdge(1, f, 0, 0).role == 255, "the size is clamped to 255");
+    EdgeFacts const g = EdgeOf(MakeEdge(1, f, 0, 0));
+    Require(g != f, "a clamped size compares unequal to the raw facts");
+    Require(EdgeFacts() == EdgeFacts() && !(EdgeFacts() != EdgeFacts()), "ungrouped edges are equal");
+    EdgeFacts h;
+    h.invite = true;
+    Require(h != EdgeFacts(), "a new invite is a change");
+
+    WishFacts w;
+    w.questId = 80396;
+    w.openObjectives = 3;
+    w.dropOnly = true;
+    w.level = 21;
+    w.mapId = 1;
+    w.x = 5.0f;
+    w.y = 6.0f;
+    w.guildId = 777;
+    Event const we = MakeWish(42, 8, w);
+    Require(we.kind == Kind::GroupWish && we.mapOrDungeon == 80396 && we.seq == 8 && we.reason == (3 | kWishDropOnly), "wish fields");
+    Require(we.level == 21 && we.hpPct10 == 1 && we.reserved == 777 && we.x == 5.0f && we.y == 6.0f, "map in hpPct10, guild in reserved");
+    WishFacts const wb = WishOf(we);
+    Require(wb.questId == 80396 && wb.openObjectives == 3 && wb.dropOnly && wb.level == 21 && wb.mapId == 1 && wb.guildId == 777,
+        "wish round trip");
+    w.openObjectives = 12;
+    w.dropOnly = false;
+    w.mapId = 70000;
+    Event const wc = MakeWish(42, 8, w);
+    Require(wc.reason == kWishOpenMask && wc.hpPct10 == 0xFFFF, "open objectives clamp to 7, a map id above 16 bits to 0xFFFF");
+}
+
+StatusSnapshot Snap(std::uint8_t flags, std::uint32_t receivedMs)
+{
+    Event e = Make(1, 1);
+    e.reason = flags;
+    e.reserved = 0x1234;
+    StatusSnapshot const s = SnapshotOf(e, receivedMs);
+    Require(s.flags == flags && s.key == 0x1234, "the snapshot keeps the flags and the key");
+    return s;
+}
+
+void TestShadow()
+{
+    Require(StaleMs(0) == kStaleMinMs && StaleMs(5) == 30000 && StaleMs(10) == 30000 && StaleMs(11) == 33000, "kStaleMs >= 30 s");
+    Require(StaleMs(3600) == 10800000u, "three periods at the max");
+    Require(Fresh(1000, 31000, 30000) && !Fresh(1000, 31001, 30000), "fresh up to staleMs");
+    Require(Fresh(0xFFFFF000u, 0x00001000u, 30000), "fresh across the clock wrap");
+
+    std::uint8_t const ok = kFlagAlive | kFlagCandidate;
+    std::uint32_t const now = 100000;
+    std::uint32_t const stale = 30000;
+    EdgeSnapshot ungrouped;
+    ungrouped.receivedMs = now;
+    WishSnapshot wish;
+    wish.wish.questId = 5;
+    wish.receivedMs = now;
+
+    ShadowVerdict v = ShadowCandidate(Snap(ok, now), &ungrouped, nullptr, true, now, stale);
+    Require(v.adhoc && !v.quest && !v.zoneHold && !v.busy && !v.stale && !v.noSupervisor, "an ADHOC candidate");
+    v = ShadowCandidate(Snap(ok, now), &ungrouped, &wish, true, now, stale);
+    Require(v.adhoc && v.quest && !v.zoneHold, "with a fresh wish: a QUEST candidate too");
+    v = ShadowCandidate(Snap(ok | kFlagStartZoneHold, now), &ungrouped, &wish, true, now, stale);
+    Require(v.adhoc && !v.quest && v.zoneHold, "start-zone hold: no QUEST candidate (R1)");
+    v = ShadowCandidate(Snap(ok, now - stale - 1), &ungrouped, &wish, true, now, stale);
+    Require(v.stale && !v.adhoc, "a stale status is no candidate");
+    v = ShadowCandidate(Snap(ok | kFlagBusy, now), &ungrouped, &wish, true, now, stale);
+    Require(v.busy && !v.adhoc, "busy is no candidate");
+    Require(!ShadowCandidate(Snap(kFlagCandidate, now), &ungrouped, nullptr, true, now, stale).adhoc, "dead is no candidate");
+    Require(!ShadowCandidate(Snap(kFlagAlive, now), &ungrouped, nullptr, true, now, stale).adhoc, "not a candidate bot");
+    Require(!ShadowCandidate(Snap(ok | kFlagInBgQueue, now), &ungrouped, nullptr, true, now, stale).adhoc, "BG queue is no candidate");
+    Require(!ShadowCandidate(Snap(ok | kFlagDungeonMap, now), &ungrouped, nullptr, true, now, stale).adhoc, "instance is no candidate");
+    Require(!ShadowCandidate(Snap(ok, now), nullptr, nullptr, true, now, stale).adhoc, "no edge yet: no candidate");
+    EdgeSnapshot grouped = ungrouped;
+    grouped.edge.groupId = 7;
+    Require(!ShadowCandidate(Snap(ok, now), &grouped, nullptr, true, now, stale).adhoc, "grouped: no candidate in T30-0");
+    EdgeSnapshot oldEdge = ungrouped;
+    oldEdge.receivedMs = now - stale - 1;
+    Require(!ShadowCandidate(Snap(ok, now), &oldEdge, nullptr, true, now, stale).adhoc, "a stale edge: no candidate");
+    v = ShadowCandidate(Snap(ok | kFlagBusy, now), &grouped, &wish, true, now, stale);
+    Require(!v.busy && !v.adhoc, "busy and grouped: not counted as cand_busy");
+    v = ShadowCandidate(Snap(kFlagCandidate | kFlagBusy, now), &ungrouped, &wish, true, now, stale);
+    Require(!v.busy && !v.adhoc, "busy and dead: not counted as cand_busy");
+    v = ShadowCandidate(Snap(ok | kFlagBusy | kFlagDungeonMap, now), &ungrouped, &wish, true, now, stale);
+    Require(!v.busy && !v.adhoc, "busy in an instance: not counted as cand_busy");
+    v = ShadowCandidate(Snap(ok | kFlagBusy, now), &ungrouped, &wish, false, now, stale);
+    Require(v.busy && !v.noSupervisor, "busy is counted before the supervisor test");
+    v = ShadowCandidate(Snap(ok, now), &ungrouped, &wish, false, now, stale);
+    Require(v.noSupervisor && !v.adhoc && !v.quest, "no supervisor: counted, no candidate");
+    WishSnapshot oldWish = wish;
+    oldWish.receivedMs = now - stale - 1;
+    Require(!ShadowCandidate(Snap(ok, now), &ungrouped, &oldWish, true, now, stale).quest, "a stale wish: no QUEST candidate");
+
+    std::unordered_map<std::uint32_t, StatusSnapshot> status;
+    std::unordered_map<std::uint32_t, EdgeSnapshot> edges;
+    std::unordered_map<std::uint32_t, WishSnapshot> wishes;
+    status[1] = Snap(ok, now);
+    status[2] = Snap(ok, now);
+    status[3] = Snap(ok | kFlagBusy, now);
+    status[4] = Snap(ok, 1);
+    status[5] = Snap(ok, now);
+    status[6] = Snap(ok | kFlagBusy, now);
+    edges[1] = ungrouped;
+    edges[2] = ungrouped;
+    edges[3] = ungrouped;
+    edges[5] = ungrouped;
+    edges[6] = grouped;
+    wishes[2] = wish;
+    ShadowCounts const c = CountShadow(status, edges, wishes, [](std::uint32_t low) { return low != 5; }, now, stale);
+    Require(c.adhoc == 2 && c.quest == 1 && c.busy == 1 && c.stale == 1 && c.noSupervisor == 1 && c.zoneHold == 0, "tally over the tables");
+}
+
+void TestT30MinuteDue()
+{
+    MinuteLine m;
+    m.edge = 1;
+    Require(MinuteLineDue(m), "an edge alone makes the line due");
+    m = MinuteLine();
+    m.wishes = 1;
+    Require(MinuteLineDue(m), "a kept wish table makes the line due");
+    m = MinuteLine();
+    m.keyOverflow = 1;
+    Require(MinuteLineDue(m), "a key overflow makes the line due");
+    Require(!MinuteLineDue(MinuteLine()), "still no line for a silent minute");
 }
 }
 
@@ -200,6 +412,10 @@ int main()
     TestClampAndDelta();
     TestMinuteDue();
     TestSnapshotAndLine();
+    TestFlagsAndKey();
+    TestEdgeAndWish();
+    TestShadow();
+    TestT30MinuteDue();
     std::cout << "manager_inbox_policy_tests: OK\n";
     return 0;
 }

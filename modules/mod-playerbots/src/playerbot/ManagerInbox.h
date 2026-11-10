@@ -20,7 +20,10 @@ bool PostDirectiveAck(std::uint32_t guidLow, std::uint32_t seq, std::uint8_t sta
 // World thread only, once per manager pass (GroupManager.cpp): appends up to max events to out, oldest first.
 std::size_t Drain(std::vector<Event>& out, std::size_t max);
 
-// Monotonic totals since start; the minute line prints their increments.
+// Any thread (T30-0, the status post): a quest id that does not fit the objective key (PackKey false); the key went out empty.
+void CountKeyOverflow();
+
+// Monotonic totals since start (keyOverflow included); the minute line prints their increments.
 Counters Read();
 
 // The minute line, own tag (the manager decides when; this only writes it).

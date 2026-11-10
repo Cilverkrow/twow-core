@@ -251,6 +251,41 @@ WorldState& WorldSide()
     return state;
 }
 
+// A3 step 6 T30-0 (design T30 v1.1 3.5): the manager's ops. World thread only - QueueManager* run in the manager pass, the
+// outcomes are noted in Drain - so no lock. Nothing here touches the [GroupOps]/[GroupWrite] lines.
+struct ManagerState
+{
+    ManagerOpCounts counts;
+    std::vector<ManagerOutcome> outcomes;   // since the last TakeManagerOutcomes, at most kManagerOutcomesMax
+};
+
+ManagerState& ManagerSide()
+{
+    static ManagerState state;
+    return state;
+}
+
+// Drain, around Run (m3: the Run* bodies stay as they are): one outcome of an op with OpSource::Manager.
+void NoteManagerOutcome(Op const& op, Verdict v, ManagerOpResult r)
+{
+    ManagerState& s = ManagerSide();
+    ++s.counts.results[std::size_t(op.kind)][std::size_t(r)];
+    if (s.outcomes.size() >= kManagerOutcomesMax)
+    {
+        ++s.counts.outcomesDropped;
+        return;
+    }
+    ManagerOutcome o;
+    o.bot = op.bot;
+    o.other = op.other;
+    o.groupId = op.groupId;
+    o.seq = op.seq;
+    o.kind = op.kind;
+    o.verdict = v;
+    o.result = r;
+    s.outcomes.push_back(o);
+}
+
 Player* FindPlayer(std::uint32_t guidLow)
 {
     // Also a bot in a loading screen (not in the world, still logged in): its op waits (Retry), it is not "logged out".
@@ -791,6 +826,8 @@ void Drain()
                 {
                     ++m.superseded;
                     DropAcceptInvite(op);
+                    if (op.source == std::uint8_t(OpSource::Manager))
+                        NoteManagerOutcome(op, Verdict::Retry, ManagerOpResult::Superseded);
                     ClearPending(op);
                     queue.Finish(op);
                     continue;
@@ -801,6 +838,7 @@ void Drain()
                 // The transit limit counts from the first look that found a bot in transit, not from the enqueue.
                 std::uint32_t const transitMs = op.inTransit ? nowMs - op.transitSinceMs : 0u;
                 auto const opStart = Clock::now();
+                std::uint32_t const failedBefore = m.failed[std::size_t(op.kind)];   // T30-0: a manager op's outcome (m3)
                 Verdict const v = Run(op, transitMs, m);
                 ++m.verdicts[std::size_t(v)];
                 if (v == Verdict::Retry)
@@ -813,6 +851,8 @@ void Drain()
                     later.push_back(op);
                     continue;
                 }
+                if (op.source == std::uint8_t(OpSource::Manager))
+                    NoteManagerOutcome(op, v, ManagerOpResultOf(v, failedBefore, m.failed[std::size_t(op.kind)]));
                 if (v == Verdict::Execute)
                 {
                     ++ran;
@@ -940,5 +980,80 @@ bool QueueLeader(PlayerbotAI* ai, Player* newLeader, bool reset)
     op.other = newLeader->GetGUIDLow();
     op.groupId = group->GetId();
     return Enqueue(op, ai, nullptr) == Pushed::Queued;
+}
+
+// ---- A3 step 6 T30-0: the group manager's ops (world thread; no caller in T30-0) -------------------------------------------
+bool QueueManagerJoin(std::uint32_t inviteeLow, std::uint32_t inviterLow, std::uint32_t groupId, group_mgr::GroupType type,
+    std::uint32_t questId, std::uint8_t objective)
+{
+    ManagerOpCounts& c = ManagerSide().counts;
+    std::size_t const J = std::size_t(OpKind::Join);
+    Player* invitee = FindPlayer(inviteeLow);
+    Player* inviter = FindPlayer(inviterLow);
+    PlayerbotAI* inviteeAi = invitee ? GetBotAI(invitee) : nullptr;
+    PlayerbotAI* inviterAi = inviter ? GetBotAI(inviter) : nullptr;
+    // DUNGEON groups come with T34; a bot cannot invite itself.
+    if (!inviteeAi || !inviterAi || inviteeLow == inviterLow || type == group_mgr::GroupType::Dungeon)
+    {
+        ++c.refused[J];
+        return false;
+    }
+    Op op;
+    op.kind = OpKind::Join;
+    op.reason = ManagerJoinReason(type == group_mgr::GroupType::Quest);
+    op.source = std::uint8_t(OpSource::Manager);
+    op.objective = objective;
+    op.bot = inviteeLow;
+    op.other = inviterLow;
+    op.groupId = groupId;
+    op.questId = questId;
+    if (Enqueue(op, inviteeAi, inviterAi) != Pushed::Queued)
+    {
+        ++c.refused[J];
+        return false;
+    }
+    ++c.queued[J];
+    return true;
+}
+
+bool QueueManagerLeave(std::uint32_t botLow, std::uint32_t groupId, std::uint32_t leaderLow)
+{
+    ManagerOpCounts& c = ManagerSide().counts;
+    std::size_t const L = std::size_t(OpKind::Leave);
+    Player* bot = FindPlayer(botLow);
+    PlayerbotAI* ai = bot ? GetBotAI(bot) : nullptr;
+    if (!ai || !groupId)
+    {
+        ++c.refused[L];
+        return false;
+    }
+    Op op;
+    op.kind = OpKind::Leave;
+    op.reason = kLeaveQueued;   // the LeaveGroupAction tail (LeaveTailOf), never the ad-hoc one
+    op.source = std::uint8_t(OpSource::Manager);
+    op.bot = botLow;
+    op.other = leaderLow;
+    op.groupId = groupId;
+    if (Enqueue(op, ai, nullptr) != Pushed::Queued)
+    {
+        ++c.refused[L];
+        return false;
+    }
+    ++c.queued[L];
+    return true;
+}
+
+ManagerOpCounts ReadManagerOpCounts()
+{
+    return ManagerSide().counts;
+}
+
+std::size_t TakeManagerOutcomes(std::vector<ManagerOutcome>& out)
+{
+    std::vector<ManagerOutcome>& outcomes = ManagerSide().outcomes;
+    std::size_t const n = outcomes.size();
+    out.insert(out.end(), outcomes.begin(), outcomes.end());
+    outcomes.clear();
+    return n;
 }
 }
