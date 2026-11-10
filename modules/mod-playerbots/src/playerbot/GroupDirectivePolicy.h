@@ -40,6 +40,7 @@ constexpr std::uint32_t kRealPlayerGraceMs = 10000;   // edges lag one bot pass:
 constexpr std::uint32_t kFormingMaxSec = 120;          // a group not active by then ends (join_stale)
 constexpr std::uint32_t kSkipLineMs = 60000;           // one foreign skip line per bot per minute (the rest is counted only)
 constexpr std::uint32_t kGapShiftMaxMs = 120000;       // the stale-anchor credit stops at the resume limit (M15/M16)
+constexpr std::uint32_t kSkipUnknownLongSec = 1800;    // T30-1b: minute2 skip_unknown_30m counts bots skip_unknown this long
 
 // a is later than b on the 32-bit ms clock (unsigned difference, wraps).
 inline bool After(std::uint32_t a, std::uint32_t b)
@@ -84,9 +85,14 @@ enum class EndReason : std::uint8_t
     ForeignGroup,
     Orphan,
     ExtLeft,
+    // T30-1b: the bot left the GROUP mode itself (ack state 4 "left", T02-GROUP handler). Appended: the values above stay.
+    BotLeftDone,   // left reason 26 goal_done: a natural end
+    BotLeftLost,   // left reason 27 goal_lost: the manager's own (retry cooldown only)
+    BotLeftOff,    // left reason 22 arbiter_off (or any other): the manager's own (retry cooldown only)
     Count,
 };
 constexpr std::size_t kEndReasons = std::size_t(EndReason::Count);
+static_assert(kEndReasons <= 128, "the Exit directive carries the end reason in 7 bits (b9-15)");
 
 inline char const* EndReasonName(EndReason r)
 {
@@ -122,6 +128,9 @@ inline char const* EndReasonName(EndReason r)
         case EndReason::ForeignGroup: return "foreign_group";
         case EndReason::Orphan: return "orphan";
         case EndReason::ExtLeft: return "ext_left";
+        case EndReason::BotLeftDone: return "bot_left_done";
+        case EndReason::BotLeftLost: return "bot_left_lost";
+        case EndReason::BotLeftOff: return "bot_left_off";
         case EndReason::Count: break;
     }
     return "unknown";
@@ -175,9 +184,29 @@ inline bool CountsAsQuestAttempt(EndReason r)
     return IsS7Reason(r) && r != EndReason::TurnedIn;
 }
 
+// T30-1b: bot_left_done is a natural end (the bot finished its goal, like a member that turned the quest in); bot_left_lost and
+// bot_left_off end the membership for the manager's side of things (the goal fell away or the handler was disarmed): no S7
+// attempt failure, the retry cooldown only - the same as the other manager reasons, so they count here.
 inline bool IsManagerReason(EndReason r)
 {
-    return r >= EndReason::JoinFailed && r < EndReason::Count;
+    return r >= EndReason::JoinFailed && r < EndReason::Count && r != EndReason::BotLeftDone;
+}
+
+// A natural end (G5, osc): the goal reached. Every other end within kOscSec of the Enter's ack 2 is an oscillation.
+inline bool IsNaturalEnd(EndReason r)
+{
+    return r == EndReason::QuestTurnedIn || r == EndReason::ObjectiveDone || r == EndReason::GroupDone || r == EndReason::TurnedIn ||
+        r == EndReason::BotLeftDone;
+}
+
+// G5 (T30-1b): a membership that ends without a natural reason less than kOscSec after its Enter was applied (ack 2).
+// One count per cause: too_small (the follow-on end of a partner whose other member left; that one counted already or ended
+// naturally) and switch_off (an operator action, not bot behaviour) are no osc (CLI-GRP 10.11.).
+constexpr std::uint32_t kOscSec = 900;
+
+inline bool CountsAsOsc(bool acked, std::uint32_t ackSec, std::uint32_t nowSec, EndReason why)
+{
+    return acked && nowSec - ackSec < kOscSec && !IsNaturalEnd(why) && why != EndReason::TooSmall && why != EndReason::SwitchOff;
 }
 
 // ---- the directive (design 3.3, agreed with CLI-Projekt 9b R3 / T33-R8) ----------------------------------------------------
@@ -185,6 +214,8 @@ inline bool IsManagerReason(EndReason r)
 // forming map and the anchor (the leader's snapshot; no gather point, T33), z = 0, source = Requester::GroupMgr.
 // b: b0-3 verb, b4-5 group type, b6-8 objective + 1 (0 = none), b9-15 end reason (Exit only; T33 reads b13-15 of Enter/Update,
 // always 0 here), b16-31 the group serial (low 16 bits).
+// Enter/Update b9-15 (G4, agreed with CLI-Projekt 10.11.): b9-12 reserved for T34 (the leg), b13-14 the T33 gather kind, b15 the
+// T33 gather flag - all 0 today. Exit keeps b9-15 as the end reason.
 enum class Verb : std::uint8_t
 {
     None = 0,
@@ -258,6 +289,15 @@ constexpr std::uint8_t kAckReasonReserved17 = 17;
 constexpr std::uint8_t kAckReasonReserved18 = 18;
 constexpr std::uint8_t kAckReasonGatherOtherMap = 19;  // T33 (no logic here)
 constexpr std::uint8_t kAckReasonNoOpenGroup = 20;     // T33: an Update without an open group (no logic here)
+// T30-1b (G6): 21-27 are owned by CLI-Projekt T02-GROUP, reserved 10.11.2026. 26, 27 and 22 also come as the reason of a left
+// ack (state 4).
+constexpr std::uint8_t kAckReasonLegacyGroupRole = 21;
+constexpr std::uint8_t kAckReasonArbiterOff = 22;
+constexpr std::uint8_t kAckReasonLaneBusy = 23;
+constexpr std::uint8_t kAckReasonGoalNotInLog = 24;
+constexpr std::uint8_t kAckReasonFocusConflict = 25;
+constexpr std::uint8_t kAckReasonGoalDone = 26;
+constexpr std::uint8_t kAckReasonGoalLost = 27;
 
 inline char const* AckReasonName(std::uint8_t reason)
 {
@@ -272,6 +312,13 @@ inline char const* AckReasonName(std::uint8_t reason)
         case kAckReasonReserved18: return "reserved_18";
         case kAckReasonGatherOtherMap: return "gather_other_map";
         case kAckReasonNoOpenGroup: return "no_open_group";
+        case kAckReasonLegacyGroupRole: return "legacy_group_role";
+        case kAckReasonArbiterOff: return "arbiter_off";
+        case kAckReasonLaneBusy: return "lane_busy";
+        case kAckReasonGoalNotInLog: return "goal_not_in_log";
+        case kAckReasonFocusConflict: return "focus_conflict";
+        case kAckReasonGoalDone: return "goal_done";
+        case kAckReasonGoalLost: return "goal_lost";
         default: break;
     }
     return "unknown";
@@ -284,9 +331,18 @@ inline char const* AckStateName(std::uint8_t state)
         case manager_inbox::kAckReceived: return "received";
         case manager_inbox::kAckApplied: return "applied";
         case manager_inbox::kAckRefused: return "refused";
+        case manager_inbox::kAckLeft: return "left";
         default: break;
     }
     return "unknown";
+}
+
+// T30-1b: the left ack's reason as the member's end reason: 26 goal_done, 27 goal_lost, anything else (22 arbiter_off
+// expected) bot_left_off.
+inline EndReason FromLeftReason(std::uint8_t reason)
+{
+    return reason == kAckReasonGoalDone ? EndReason::BotLeftDone :
+        reason == kAckReasonGoalLost ? EndReason::BotLeftLost : EndReason::BotLeftOff;
 }
 
 // 2.3 Exit (M4): done on Ack 2, or Ack 3 with SameMode / PassiveHold (the bot is not in GROUP).
@@ -348,14 +404,17 @@ struct Ack
     std::uint32_t seq = 0;
     std::uint8_t state = 0;
     std::uint8_t reason = 0;
+    std::uint16_t serial = 0;   // T30-1b: b16-31 of the state word, the group serial (low 16) the bot holds; 0 for states 1-3
 };
 
+// The state word (ManagerInboxPolicy.h): b0-7 the state, b16-31 the serial. States 1-3 carry 0 above b7, so they read as before.
 inline Ack AckOf(manager_inbox::Event const& e)
 {
     Ack a;
     a.low = e.botLow;
     a.seq = e.seq;
-    a.state = std::uint8_t(e.mapOrDungeon);
+    a.state = std::uint8_t(e.mapOrDungeon & 0xFFu);
+    a.serial = std::uint16_t(e.mapOrDungeon >> 16);
     a.reason = e.reason;
     return a;
 }
@@ -425,6 +484,8 @@ struct Member
     std::uint32_t outOfRangeSince = 0;
     std::uint32_t levelWindowSince = 0;
     std::uint32_t leaderOtherMapSince = 0;
+    bool ackKnown = false;           // T30-1b osc: its Enter was applied (ack 2) at ackSec
+    std::uint32_t ackSec = 0;
 };
 
 enum class GroupState : std::uint8_t
@@ -687,9 +748,14 @@ enum class Cnt : std::uint8_t
     LeaveSilent,
     LeaveBgWait,
     LinesDropped,
+    // T30-1b: appended. The minute line's loop stops at LinesDropped (kCountsMinuteLoop), so its fields stay as they were; these
+    // two go to the end of the minute2 line (G5: osc at the end of minute2), after its leave reasons.
+    Osc,
+    SelfLeft,
     Count,
 };
 constexpr std::size_t kCounts = std::size_t(Cnt::Count);
+constexpr std::size_t kCountsMinuteLoop = std::size_t(Cnt::LinesDropped) + 1;   // the counters of the minute line's loop
 
 inline char const* CntName(Cnt c)
 {
@@ -732,6 +798,8 @@ inline char const* CntName(Cnt c)
         case Cnt::LeaveSilent: return "leave_silent";      // a silent member at the end: no op (M2)
         case Cnt::LeaveBgWait: return "leave_bg_wait";     // a member in a BG queue at the end: no op (M2)
         case Cnt::LinesDropped: return "lines_dropped";
+        case Cnt::Osc: return "osc";                       // G5: a membership ended < kOscSec after its ack 2, no natural end
+        case Cnt::SelfLeft: return "self_left";            // a left ack (state 4) that ended its member
         case Cnt::Count: break;
     }
     return "unknown";
@@ -762,6 +830,9 @@ struct MinuteCounts
     std::uint64_t keyOverflow = 0;
     std::uint32_t gapMsMax = 0;
     std::uint32_t passUsMax = 0;
+    // T30-1b (OB-10 smoke note): a level, not an increment - the bots skip_unknown without a break for >= kSkipUnknownLongSec at
+    // the minute line (minute2 skip_unknown_30m).
+    std::uint64_t skipUnknown30m = 0;
 };
 
 // "[GroupMgr] minute types= passes= cand_adhoc= ... owned=": fixed fields, increments except the stands (types, groups,
@@ -773,7 +844,7 @@ inline int FormatMinute(char* buf, std::size_t size, MinuteCounts const& m, Stan
         (unsigned long long)m.c[std::size_t(Cnt::Passes)], (unsigned long long)m.candAdhoc, (unsigned long long)m.candQuest,
         (unsigned long long)m.candBusy, (unsigned long long)m.candZoneHold, (unsigned long long)m.wishes,
         (unsigned long long)m.noSupervisor, (unsigned long long)m.staleSnap, (unsigned long long)m.keyOverflow);
-    for (std::size_t i = std::size_t(Cnt::OpJoinQ); i < kCounts && n > 0 && std::size_t(n) < size; ++i)
+    for (std::size_t i = std::size_t(Cnt::OpJoinQ); i < kCountsMinuteLoop && n > 0 && std::size_t(n) < size; ++i)
         n += std::snprintf(buf + n, size - std::size_t(n), " %s=%llu", CntName(Cnt(i)), (unsigned long long)m.c[i]);
     if (n > 0 && std::size_t(n) < size)
         n += std::snprintf(buf + n, size - std::size_t(n), " gap_ms_max=%u pass_us_max=%u groups=%llu members=%llu silent=%llu owned=%llu",
@@ -782,12 +853,17 @@ inline int FormatMinute(char* buf, std::size_t size, MinuteCounts const& m, Stan
     return n;
 }
 
-// "[GroupMgr] minute2 leave_<reason>=..": every reason, 0 included (increments).
+// "[GroupMgr] minute2 leave_<reason>=.. osc= self_left= skip_unknown_30m=": every reason, 0 included (increments), then the
+// T30-1b counters osc and self_left (increments) and skip_unknown_30m (a level), appended at the end.
 inline int FormatMinute2(char* buf, std::size_t size, MinuteCounts const& m)
 {
     int n = std::snprintf(buf, size, "[GroupMgr] minute2");
     for (std::size_t i = 1; i < kEndReasons && n > 0 && std::size_t(n) < size; ++i)
         n += std::snprintf(buf + n, size - std::size_t(n), " leave_%s=%llu", EndReasonName(EndReason(i)), (unsigned long long)m.leave[i]);
+    for (std::size_t i = kCountsMinuteLoop; i < kCounts && n > 0 && std::size_t(n) < size; ++i)
+        n += std::snprintf(buf + n, size - std::size_t(n), " %s=%llu", CntName(Cnt(i)), (unsigned long long)m.c[i]);
+    if (n > 0 && std::size_t(n) < size)
+        n += std::snprintf(buf + n, size - std::size_t(n), " skip_unknown_30m=%llu", (unsigned long long)m.skipUnknown30m);
     return n;
 }
 
@@ -860,6 +936,8 @@ public:
                 }
         for (auto it = bots_.begin(); it != bots_.end();)
             it = present(it->first) ? std::next(it) : bots_.erase(it);
+        for (auto it = skipUnknown_.begin(); it != skipUnknown_.end();)
+            it = present(it->first) ? std::next(it) : skipUnknown_.erase(it);
     }
 
     void NotePassUs(std::uint32_t us) { minute_.passUsMax = std::max(minute_.passUsMax, us); }
@@ -1081,6 +1159,11 @@ private:
             return;
         for (Ack const& a : *in.acks)
         {
+            if (a.state == manager_inbox::kAckLeft)
+            {
+                ApplyLeftAck(a, io);
+                continue;
+            }
             // An ack names its directive by the seq alone (PostDirectiveAck has no serial field). A seq is unique and goes to
             // one bot with one serial: the open Exit's (exitBits.serial) or the Enter of the bot's current group (the group
             // GroupOf finds is the one SendEnter took the serial from). So seq + bot = seq + serial.
@@ -1117,12 +1200,36 @@ private:
             {
                 Count(Cnt::AckApp);
                 m->state = MemberState::Acked;
+                m->ackKnown = true;
+                m->ackSec = nowSec_;
                 continue;
             }
             Count(Cnt::AckRef);
             EndMember(*g, *m, EndReason::AckRefused, io, true);
         }
         (void)r;
+    }
+
+    // T30-1b (G2, agreed with CLI-Projekt 10.11.): the bot left the GROUP mode itself (ack state 4, seq 0, the serial it held in
+    // b16-31). It counts only for the bot's current group under that serial, while its Enter is applied (Acked) and no Exit
+    // of the bot is open; then the member ends with bot_left_* and the usual path sends the tracked Exit and the leave op.
+    // Anything else (a seq, another serial, no group, not Acked, an Exit open) is ack_stale and nothing else.
+    void ApplyLeftAck(Ack const& a, Io& io)
+    {
+        BotEntry const* entry = FindBot(a.low);
+        Member* m = nullptr;
+        ManagedGroup* g = a.seq == 0 ? GroupOf(a.low, &m) : nullptr;
+        if (!g || std::uint16_t(g->serial) != a.serial || m->state != MemberState::Acked || (entry && entry->exitOpen))
+        {
+            Count(Cnt::AckStale);
+            return;
+        }
+        Count(Cnt::SelfLeft);
+        char line[192];
+        std::snprintf(line, sizeof(line), "[GroupMgr] event=self_left group=%u bot=%u reason=%s", g->serial, a.low,
+            AckReasonName(a.reason));
+        Emit(io, line);
+        EndMember(*g, *m, FromLeftReason(a.reason), io, true);
     }
 
     // ---- (4) gap rule and resume (M15, M16) ----
@@ -1410,6 +1517,9 @@ private:
         m.reason = why;
         ++minute_.leave[std::size_t(why)];
         ++totalLeave_[std::size_t(why)];
+        // G5 (T30-1b): an end without a natural reason less than kOscSec after the Enter was applied is an oscillation.
+        if (CountsAsOsc(m.ackKnown, m.ackSec, nowSec_, why))
+            Count(Cnt::Osc);
         // A member that cannot be in the core group (its join never ran, none is pending) needs no leave op.
         bool const neverJoined = m.state == MemberState::Joining && !m.inviter && !m.opExecMs && !m.opQueued;
         // The one join in flight of the group was this member's (executed, not confirmed): the next join may go. A queued one
@@ -1423,10 +1533,12 @@ private:
         bool const quiet = mayBeGrouped && (m.silent || m.bgWait) &&
             (m.state == MemberState::Joined || m.state == MemberState::Directed || m.state == MemberState::Acked);
         // F13 (a): the QUEST attempt count of S7 for S7 reasons (turned_in, or a member that turned the quest in, forgets the
-        // entry like S7 DissolveGroup); the manager's own reasons only set the retry cooldown.
+        // entry like S7 DissolveGroup); the manager's own reasons only set the retry cooldown. T30-1b: bot_left_done (the bot
+        // reached its goal) forgets the entry like a member that turned the quest in; bot_left_lost / bot_left_off are no S7
+        // dissolve reason (CountsAsQuestAttempt is false), so they only set the retry cooldown like the manager's own reasons.
         if (g.type == GroupType::Quest && g.questId)
         {
-            if (why == EndReason::TurnedIn || m.turnedIn)
+            if (why == EndReason::TurnedIn || why == EndReason::BotLeftDone || m.turnedIn)
                 questQueue_.Forget(m.low, g.questId);
             else if (CountsAsQuestAttempt(why))
             {
@@ -1814,7 +1926,10 @@ private:
     void Strays(PassInput const& in, Rules const& r, Io& io)
     {
         if (!in.edges || (!r.types && groups_.empty() && bots_.empty()))
+        {
+            skipUnknown_.clear();   // nobody is judged, so nobody stays skip_unknown
             return;
+        }
         cores_.clear();
         for (auto const& entry : groups_)
             if (entry.second.coreGroupId)
@@ -1867,6 +1982,12 @@ private:
             {
                 Count(Cnt::SkipUnknown);   // a real player, a bot of the other cohort or with a real master: not ours
                 ForeignLine(io, e, low, n, "skip_unknown", true);
+                // OB-10 smoke note (T30-1b): the first second of an unbroken skip_unknown run (minute2 skip_unknown_30m).
+                // try_emplace: no node is built when the bot is already in its run (allocation-light per pass).
+                auto const run = skipUnknown_.try_emplace(low);
+                if (run.second)
+                    run.first->second.sinceSec = nowSec_;
+                run.first->second.pass = passNo_;
                 continue;
             }
             if (QueueStrayLeave(low, e.groupId, e.leaderLow, EndReason::ForeignGroup))
@@ -1875,6 +1996,9 @@ private:
                 ForeignLine(io, e, low, n, "dissolve", false);
             }
         }
+        // A bot not skip_unknown in this pass is out of its run (another group, ungrouped, managed, stale, gone).
+        for (auto it = skipUnknown_.begin(); it != skipUnknown_.end();)
+            it = it->second.pass == passNo_ ? std::next(it) : skipUnknown_.erase(it);
     }
 
     bool InBgQueue(PassInput const& in, std::uint32_t low) const
@@ -2451,6 +2575,8 @@ private:
                     ++stands_.members;
                     stands_.silent += m.silent ? 1 : 0;
                 }
+            for (auto const& entry : skipUnknown_)
+                minute_.skipUnknown30m += nowSec_ - entry.second.sinceSec >= kSkipUnknownLongSec ? 1 : 0;
             char buf[2048];
             FormatMinute(buf, sizeof(buf), minute_, stands_);
             io.Line(buf);
@@ -2473,6 +2599,14 @@ private:
     std::vector<StrayLeave> strays_;
     std::unordered_map<std::uint32_t, std::uint32_t> strayMs_;
     std::unordered_map<std::uint32_t, std::uint32_t> skipLineMs_;
+    // T30-1b: the bots skip_unknown in the last Strays pass and since when (an entry only while it lasts; a skip_unknown bot is
+    // not in bots_, so there is no BotEntry to reuse).
+    struct SkipSince
+    {
+        std::uint32_t sinceSec = 0;
+        std::uint64_t pass = 0;
+    };
+    std::unordered_map<std::uint32_t, SkipSince> skipUnknown_;
     std::vector<ManagedGroup> pendingDissolved_;
     adhoc_group::PairCooldownStore pairCooldown_;
     quest_groups::QueueStore questQueue_;

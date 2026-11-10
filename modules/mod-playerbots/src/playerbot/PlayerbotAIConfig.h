@@ -589,6 +589,14 @@ public:
     uint32 professionUseCraftIntervalSeconds = 300;
     bool professionUseTrace = false;
     uint32 professionUseTraceCooldownSeconds = 300;
+    // twow-repo#333 T28-M (OB-00 09.11.2026): one [Gathering] event=share line per roster bot on its own and online hour (the time
+    // share of gathering purposes, profession trips and gathering / craft casts, GatheringTracePolicy.h); log only. 0 off, 1 on.
+    uint32 gatheringTrace = 0;
+    // twow-repo#333 T28b (OB-00 09.11.2026): a roster bot on its own whose herbalism / mining lags behind min(rank cap, 5 x level)
+    // may pick an orange / yellow node up to gatheringPaceReachYards away (GatheringPacePolicy.h). Mode 0 off, 1 all, 2 cohort B,
+    // 3 cohort A; reach 30-60 yd, default 45.
+    uint32 gatheringPaceReach = 0;
+    uint32 gatheringPaceReachYards = 45;
     // twow-repo#485: craft with real reagents from the bags (the item cheat
     // made every recipe look craftable). false = legacy "craft random item".
     bool professionUseRealReagents = false;
@@ -876,7 +884,7 @@ public:
     // #421: rescue teleport after this many minutes without quest progress.
     uint32 questRescueIdleMinutes = 30;
     bool questRescueKeepRequestWhenFull = false;  // twow-repo#587: a pending rescue request stays with the bot while the global limit is used up
-    uint32 questRescueHomeHubs = 0;  // twow-repo#575 RG-a: the quest rescue's anchor table (own start-zone hub < L5, next zone L5-10; cohort modes)
+    uint32 questRescueHomeHubs = 1;  // twow-repo#575 RG-a: the quest rescue's anchor table (own start-zone hub < L5, next zone L5-10; cohort modes); 1 = default (SZM adoption 10.11.2026), 0 = rollback
     uint32 grindAvoidMaxDeaths = 0;       // 0 = off
     uint32 grindAvoidWindowSeconds = 3600;
     uint32 grindAvoidSeconds = 3600;
@@ -1096,15 +1104,15 @@ public:
     uint32 questFirstProgressionStaleKeepZone = 0;
     uint32 questFirstProgressionStaleKeepZoneSeconds = 900;      // 60..3600
     // twow-repo#601 owner rule R1: below this level a roster bot on its own takes no travel target outside its start zone, no band step
-    // and no rescue out of it. 0 = off (default); the owner value is 5. .Cohort picks the bots for an in-realm A/B: 0 none, 1 all (default),
-    // 2 cohort B, 3 cohort A.
-    uint32 questFirstProgressionStartZoneMinLevel = 0;
+    // and no rescue out of it. 5 = default (the owner value, SZM adoption 10.11.2026), 0 = rollback. .Cohort picks the bots for an in-realm
+    // A/B: 0 none, 1 all (default), 2 cohort B, 3 cohort A.
+    uint32 questFirstProgressionStartZoneMinLevel = 5;
     uint32 questFirstProgressionStartZoneMinLevelCohort = 1;
     // twow-repo#601 owner rule R1, package "start-zone rule complete" (OB-00 08.11.2026, ZoneKeepPolicy.h): 1 = a held bot (below
     // StartZoneMinLevel, .Cohort) does not follow a bot leader outside its start zone (G1), logs a refused group copy (G2), leaves its
     // group after FollowLeaveSeconds of refused follow (G3), and at the release (level StartZoneMinLevel .. +2, still in its start zone)
-    // its first empty offer counts as the band step (V2-a). 0 = off (default and rollback).
-    uint32 questFirstProgressionStartZoneComplete = 0;
+    // its first empty offer counts as the band step (V2-a). 1 = default (SZM adoption 10.11.2026), 0 = rollback.
+    uint32 questFirstProgressionStartZoneComplete = 1;
     // twow-repo#601 S5a F4 (OB-00 24.10.2026, owner D1 "rumstehen ist keine Option"): from this many quest searches in a row
     // without a route on (the F1 streak), a search that does not step walks toward the rung the step would take until the
     // route backoff ends. 0 = off (default), 1..10; other values act like 0.
@@ -1195,7 +1203,7 @@ public:
     // the reclaim at the corpse runs, the spirit healer only with a reason (no corpse, sickness, durability, loop, timeout).
     uint32 reviveCorpseRunFirst = 0;
     uint32 reviveCorpseRunFirstMaxSeconds = 600;
-    bool reviveDelayResurrectRequest = false;  // twow-repo#575 H3 (bug fix; code default 0 until its acceptance unit, then the flip pair): a resurrect request is kept for the next packet pass while the trigger holds one (no drop), 0 = as before
+    uint32 reviveDelayResurrectRequest = 0;  // twow-repo#575 H3 (bug fix; code default 0 until its acceptance unit, then the flip pair): a resurrect request is kept for the next packet pass while the trigger holds one (no drop); mode 0 off / 1 all / 2 guid bit 1 set / 3 guid bit 1 clear (ResurrectDelayPolicy.h, not the CohortPolicy parity)
     // twow-repo#575 A3 step 4 S4-2 (AiPlayerbot.Rescue.RepopDeadOnly, RepopDeadOnlyPolicy.h): cohort mode 0 off / 1 all / 2 B / 3 A;
     // repop only for a dead bot; an alive bot without a usable hearthstone gets QuestRescue, else a reset.
     uint32 rescueRepopDeadOnly = 0;

@@ -60,6 +60,9 @@ bool LootAction::Execute(Event& event)
         bot->GetName(), lootObject.guid.GetRawValue(), prevLoot.guid.GetRawValue(), released ? 1 : 0);
 
     context->GetValue<LootObject>("loot target")->Set(lootObject);
+    // twow-repo#333 T28b (AiPlayerbot.Gathering.PaceReach): a far pick's 20 s clock starts at this pick.
+    if (sPlayerbotAIConfig.gatheringPaceReach)
+        GatheringPacePick(ai, lootObject);
     return true;
 }
 
@@ -82,6 +85,14 @@ enum ProfessionSpells
 
 bool OpenLootAction::Execute(Event& event)
 {
+    // twow-repo#333 T28b (AiPlayerbot.Gathering.PaceReach): a far pick not opened 20 s after its pick, or with a strong hostile
+    // near its node, ends before another try while the bot is beyond the loot distance (loot target reset, the node on the miss
+    // list), with the react delay as every run.
+    if (sPlayerbotAIConfig.gatheringPaceReach && GatheringPaceTimeout(ai, AI_VALUE(LootObject, "loot target")))
+    {
+        SetDuration(sPlayerbotAIConfig.reactDelay);
+        return false;
+    }
     // twow-repo#333 P1-w: the engine sets the AI delay to this action's duration after it ran, which replaced the cast wait of
     // a started gather / opening cast; the next movement action then interrupted the cast. Hold the AI for the cast time; start
     // each run from the react delay, so neither the loot delay nor a cast time carries over to the next run.
@@ -89,8 +100,14 @@ bool OpenLootAction::Execute(Event& event)
     castDuration = 0;
     LootObject lootObject = AI_VALUE(LootObject, "loot target");
     bool result = DoLoot(lootObject);
+    // twow-repo#333 T28-M (AiPlayerbot.Gathering.Trace): a cast DoLoot started; a herb / ore / skinning cast (also on a creature) counts.
+    if (sPlayerbotAIConfig.gatheringTrace && result && castDuration)
+        GatheringTraceOpen(ai, castDuration);
     if (result)
     {
+        // twow-repo#333 T28b (AiPlayerbot.Gathering.PaceReach): the started herb / ore cast on a pending far pick ends its clock.
+        if (sPlayerbotAIConfig.gatheringPaceReach && castDuration)
+            GatheringPaceOpened(ai, lootObject);
         AI_VALUE(LootObjectStack*, "available loot")->Remove(lootObject.guid);
         context->GetValue<LootObject>("loot target")->Set(LootObject());
         SetDuration(ai::cast_moving::LootActionDuration(GetDuration(), castDuration));

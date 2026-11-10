@@ -1249,8 +1249,13 @@ AiPlayerbot.QuestRescue.KeepRequestWhenFull = 0
 # up to L9 Brinthilien / Alah'Thalas) instead of no target (R1) or another race's start point; night elves and undead L5-10 go to
 # the next zone on their home continent (Auberdine, The Sepulcher), unless StartZoneMinLevel still gates the level. No row or no
 # spawn left: the legacy targets as before. Logs [RescueHub] and [RescueHubMin].
-# Cohort mode: 0 = off (default), 1 = all bots, 2 = cohort B (odd guid), 3 = cohort A (even guid).
-AiPlayerbot.QuestRescue.HomeHubs = 0
+# Default 1 since the SZM adoption (10.11.2026, owner decision via OB-00): it is the base the SZM A/B measured on (RESULT SZM main R3,
+# both arms HomeHubs = 1). HomeHubs has no A/B of its own yet; that A/B runs on this base later.
+# Acts only on roster bots without a real player master (as StartZoneMinLevel); the high-elf row only with CustomRaceStartZones = 1
+# (without it high elves start at the proxy Northshire). A rescue rebinds the bot's hearthstone at its target; a rollback to 0 does
+# not move hearthstones set before.
+# Cohort mode: 0 = off (rollback), 1 = all bots (default), 2 = cohort B (odd guid), 3 = cohort A (even guid); other values act like 0.
+AiPlayerbot.QuestRescue.HomeHubs = 1
 # A creature entry that killed the bot GrindAvoid.MaxDeaths times within
 # WindowSeconds is skipped as a grind target for AvoidSeconds. 0 = off.
 AiPlayerbot.GrindAvoid.MaxDeaths = 0
@@ -1409,6 +1414,14 @@ AiPlayerbot.BotGroups.Manager.StatusSeconds = 0
 # line). Lines: "[GroupMgr] event=..." per op / directive / ack / end and "[GroupMgr] minute ..." / "[GroupMgr] minute2 ...".
 # All [GroupMgr] and [ManagerInbox] lines are key=value pairs; later pairs only append fields at the end. Evaluators parse the
 # key=value pairs and ignore keys they do not know (OB-10 rule).
+# T30-1b: a bot that leaves the GROUP mode itself (T02-GROUP; ack state 4 "left", seq 0, the group serial it held) ends its
+# membership only while its Enter is applied, the serial is that of its current group and no Exit of it is open; then
+# "[GroupMgr] event=self_left group= bot= reason=" and the member ends with bot_left_done (goal_done, a natural end),
+# bot_left_lost (goal_lost) or bot_left_off (arbiter_off; both no QUEST attempt, the retry cooldown only) with its Exit and
+# leave as usual; any other left ack counts as ack_stale. The minute2 line ends with osc= (memberships that ended less than
+# 15 minutes after their Enter was applied without a natural end - turned in, objective or group done, bot_left_done - and
+# not as too_small or switch_off; an increment), self_left= (an increment) and skip_unknown_30m= (a level, not an increment: the bots the manager skipped as
+# skip_unknown without a break for 30 minutes or more at the line).
 AiPlayerbot.BotGroups.Manager.Types = 0
 # A3 step 6 T33-0 (design T33 v1.1, owner decisions F1-F17 = (a)): MEASUREMENT ONLY, default 0, no behaviour change. The
 # meeting shadow of the manager's QUEST groups ("Gather" = meeting up; not the gather strategy or GatherTravelDestination).
@@ -1879,12 +1892,16 @@ AiPlayerbot.QuestFirstProgression.StaleKeepZone.Seconds = 900
 # twow-repo#601 owner rule R1: below this level a roster bot on its own takes no travel target outside its start zone (any purpose;
 # the search line counts start_zone=), no band step, and no quest rescue out of it - inside the zone there is no rescue, outside it
 # the rescue takes it to its race's start point ([ZoneKeep] state=rescue_gate). Start zone = the playercreateinfo zone of its race,
-# with CustomRaceStartZones the goblin / high-elf start zones. An unknown start zone is not gated. Forced trips too (guild meeting /
+# with CustomRaceStartZones the goblin / high-elf start zones; without it a goblin / high elf (proxy start Durotar / Northshire) has
+# an unknown start zone. An unknown start zone is not gated. Forced trips too (guild meeting /
 # order, petition, group quest help): a held one writes one [ZoneKeep] state=forced_hold line and is not requested again for 600 s.
-#   0 = off (default), 2..60; other values act like 0. Owner value 5.
+#   0 = off (rollback), 2..60, default 5 (the owner value); other values act like 0.
+#   SZM A/B (one unit, in-realm cohorts by guid parity, PREREG-R1-SZM 90e32b4d, bot brain off, HomeHubs = 1 in both arms): ADOPT 10.11.2026
+#   (RESULT SZM main R3 0d2d5c58): treated bots leaving the start zone below L5 0 / 100 (control 20 / 100), deaths 1.068 (0.835-1.366),
+#   time to L5 0.980 (hi95 1.14), idle+stuck share 0.961; OB-10 OK, owner standing approval 09.11.2026. Since then 5 with .Complete = 1.
 #   .Cohort picks the bots for an in-realm A/B: 0 = none, 1 = every roster bot (default), 2 = only cohort B (odd low guid), 3 = only cohort A
 #   (even low guid); other values act like 1. Without StartZoneMinLevel it does nothing.
-AiPlayerbot.QuestFirstProgression.StartZoneMinLevel = 0
+AiPlayerbot.QuestFirstProgression.StartZoneMinLevel = 5
 AiPlayerbot.QuestFirstProgression.StartZoneMinLevel.Cohort = 1
 # twow-repo#601 owner rule R1, package "start-zone rule complete" (OB-00 08.11.2026): it acts only on bots StartZoneMinLevel holds (the
 # .Cohort selection, roster bots without a real player master). 1 = on:
@@ -1896,8 +1913,9 @@ AiPlayerbot.QuestFirstProgression.StartZoneMinLevel.Cohort = 1
 #       not ad-hoc or quest help groups, which have their own leave rules).
 #   V2-a: at the release (level StartZoneMinLevel .. StartZoneMinLevel + 2, still in its start zone) the bot's first empty quest offer
 #       counts as the band step at once instead of the second ([ZoneKeep] state=release_push; needs BandLadder).
-#   0 = off (default and rollback); other values act like 0. Without StartZoneMinLevel it does nothing.
-AiPlayerbot.QuestFirstProgression.StartZoneMinLevel.Complete = 0
+#   0 = off (rollback), 1 = on (default since the SZM adoption, 10.11.2026); other values act like 0. Without StartZoneMinLevel it
+#   does nothing.
+AiPlayerbot.QuestFirstProgression.StartZoneMinLevel.Complete = 1
 # twow-repo#601 quest acceptance lever (iv) (OB-00 28.10.2026, BUG FIX behind a switch, cli-quest-organic/quest-acceptance/STEP2.md):
 # the radius quest giver fetch of a quest route request (GiverRadius, the #421 B stages) asked TravelMgr for entry 0, but every
 # quest giver is filed under its quest id - so it never returned a giver. Givers reached the route choice only through the
@@ -2264,7 +2282,11 @@ AiPlayerbot.Revive.CorpseRunFirst.MaxSeconds = 600
 # is still open). Accepted resurrects shorten deaths and move the base for deaths and re-deaths in A/B units.
 # Read when the bot's AI is created (the packet handler table, at login): a config reload affects only bots logged in
 # afterwards.
-# 0 = as before (default until the acceptance unit; then 1 by default, 0 = rollback).
+# Mode (ResurrectDelayPolicy.h; OB-00 09.11.2026: the acceptance rides along in CLI-GRP's in-realm cohort test T30-1):
+#   0 = as before (default until the acceptance unit; then 1 by default, 0 = rollback), 1 = every bot,
+#   2 = only bots whose low guid has bit 1 set ((guid >> 1) & 1 = 1), 3 = only bots with bit 1 clear; any other value acts
+#   like 0. 2 / 3 are NOT the cohort B / A modes of other keys (those split by parity, bit 0): bit 1 is independent of
+#   the parity, so a parity A/B and this key give a balanced 2x2 in one realm.
 AiPlayerbot.Revive.DelayResurrectRequest = 0
 # twow-repo#575 A3 step 4 S4-2 (OB-00 07.11.2026): repop only when dead. "unstuck" sent an ALIVE bot to repop for "move long
 # stuck" / "combat long stuck" whenever its hearthstone was not useful (e.g. the homebind zone above its level): a teleport
@@ -2544,6 +2566,52 @@ AiPlayerbot.ProfessionUse.Craft = 0
 AiPlayerbot.ProfessionUse.CraftIntervalSeconds = 300
 AiPlayerbot.ProfessionUse.Trace = 0
 AiPlayerbot.ProfessionUse.TraceCooldownSeconds = 300
+# twow-repo#333 T28-M (CLI-BERUFE 09.11.2026): measurement only (plan A3-PLAN-ZIEL T28, OB-00 09.11.2026), no behaviour change -
+# no AI value, travel target, target or strategy is written. With 1, every roster bot on its own (the scope of the [ProfessionUse]
+# lines and of the [Purpose] start) writes ONE line per online hour (its first window starts at its first sample after login, the
+# line comes at the first sample after the hour; a window cut by a logout is lost):
+#   [Gathering] event=share bot= level= play_s= purpose_s= trip_s= cast_s= opens_herb= opens_ore= opens_skin= crafts=
+#     s182=<value>/<max> s186=<value>/<max> s393=<value>/<max>
+#     far_picks= far_opens= far_timeouts=   (T28b, AiPlayerbot.Gathering.PaceReach below; 0 while that key is 0)
+# play_s: seconds of the window; purpose_s: seconds a declared gathering purpose ([Purpose]) ran; trip_s: seconds a profession
+# trainer / tool trip ("trainer profession", "... near", "tool vendor", "... near") was the bot's travel target in READY,
+# TRAVEL or WORK. A trip outranks a purpose, so purpose_s + trip_s <= play_s. Both are sampled every 5 s (each sample counts
+# the seconds since the last one for the activity seen then; off by at most one sample per start / end). cast_s: the cast times
+# of the gathering opens (herb, ore, skinning, also the creature herb / ore casts) and of the profession crafts (the
+# RealReagents craft cast) started in the window; opens_*/crafts: their counts. s182 / s186 / s393: herbalism, mining,
+# skinning skill (without bonus) / its max at the line. Every number is the increment of the window except the skills.
+# Read the counts as started casts: opens_* and crafts include interrupted casts, cast_s is the planned cast time at the start.
+# purpose_s includes a fishing purpose (Crafting.Fishing). Not counted: a quest herb / ore object opened with its quest opening
+# spell (questing, not the profession), the campfire, the enchant and the legacy "craft random item" casts. With 1, the node
+# adds one checked node per bot pass to the [KnownSpellNodes] checked= / recomputes= counters (Rotation.KnownSpellNodes): do
+# not compare those counters between runs with Gathering.Trace 0 and 1.
+# The sampler is a trigger of the "default" strategy (combat, non-combat and dead engine), added only with the key on when
+# the strategies are built; skipped on minimal (throttled) passes. 0 = off (default), 1 = on. Any other value acts like 0
+# ("[Gathering] config key=Trace value= result=off" error line).
+AiPlayerbot.Gathering.Trace = 0
+# twow-repo#333 T28b (CLI-BERUFE 09.11.2026; plan A3-PLAN-ZIEL T28b, OB-00 09.11.2026 T28 Q1 (a): built with default 0, A/B in W8
+# as an in-realm crossover with modes 2 / 3): the mining / herbalism reach. With the mode on for the bot, a roster bot on its own
+# (the scope of [ProfessionUse] / Gathering.Trace, and not in a group) whose herbalism or mining skill is below
+# min(rank cap, 5 x level) - the target of the gather purpose - may pick an orange or yellow herb / ore node (skill below the
+# node's required value + 50) up to Gathering.PaceReachYards away instead of the LootDistance (25 yd). The rule sits in the one
+# shared loot list (LootObjectStack::OrderByDistance), so the loot trigger, the loot pick and the travel / rpg loot pauses agree.
+# Limits of a far pick (a node beyond the LootDistance that only this key made eligible): 0 strong hostiles (level >= bot
+# level - 7) within 30 yd of the node (checked once per node and 10 s); at most 12 far picks in any 3600 s of the bot
+# (sliding); not opened 20 s after the pick (the clock starts when the bot picks it as its loot target), or a strong hostile
+# seen near the node on the way -> while the bot is still beyond the LootDistance the loot target is reset and the node goes
+# on a miss list (8 entries, 600 s each); once within the LootDistance the near rules apply as before. Far picks need the
+# "loot available" trigger, so they happen only while the bot is not mounted, not in combat and its "all targets" list is
+# empty. Nodes within the LootDistance are picked exactly as before.
+# Does not change: travel targets, gather purposes, quest order, skill-up chances, drops, prices, the queue-time node scan
+# (AddLootAction). Skinning is excluded, so are cooking, survival and fishing (owner W2) and every other lock.
+# Proof: with Gathering.Trace = 1 the hourly [Gathering] event=share line counts far_picks= far_opens= far_timeouts=
+# (far_timeouts: far picks ended without an open, by the 20 s or a strong hostile).
+# Mode: 0 = off (default), 1 = all bots, 2 = only cohort B (odd guid), 3 = only cohort A (even guid). Any other value acts like 0
+# ("[Gathering] config key=PaceReach value= result=off" error line). With 0, or for a bot outside its cohort, nothing changes.
+AiPlayerbot.Gathering.PaceReach = 0
+# The far reach in yards, 30 to 60; any other value is 45 ("[Gathering] config key=PaceReachYards value= result=45" error line).
+# A reach not beyond the LootDistance makes no far pick ("... result=no far pick" error line with the mode on).
+AiPlayerbot.Gathering.PaceReachYards = 45
 # twow-repo#333 Berufe P1-b (CLI-BERUFE PLAN-B1, OB-00 go 25.10.2026; profile 1 after the A/B + owner go): a persistent
 # roster bot on its own (level 5+) with mining but no Mining Pick (2901), or skinning but no Skinning Knife (7005), may
 # travel to a vendor that sells it; "rpg buy" buys it there from the tradeskill budget (ItemUsage SKILL, as before).

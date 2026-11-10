@@ -1306,6 +1306,308 @@ void TestManagedSerialView()
     Require(!e.View().IsMember(1, serial) && !e.View().IsMember(2, serial) && e.View().Find(1, v) && e.View().Find(2, v),
         "ending members (Exit sent): not live, still held");
 }
+
+// ---- T30-1b ----------------------------------------------------------------------------------------------------------------
+// A left ack (state 4, seq 0) with the serial the bot holds (b16-31 of the state word).
+Ack LeftAck(std::uint32_t low, std::uint16_t serial, std::uint8_t reason, std::uint32_t seq = 0)
+{
+    Ack a = AckFor(low, seq, mi::kAckLeft, reason);
+    a.serial = serial;
+    return a;
+}
+
+// The pair of FormAdhocPair, both Enters applied in the next pass: the group is formed. Returns the time of that pass.
+std::uint32_t FormAckedPair(Engine& e, World& w, Rules const& r, FakeIo& io, std::uint32_t t0)
+{
+    std::uint32_t t = FormAdhocPair(e, w, r, io, t0) + 1000;
+    Refresh(w, t);
+    w.acks.push_back(AckFor(1, SeqOf(io, 1, Verb::Enter), mi::kAckApplied));
+    w.acks.push_back(AckFor(2, SeqOf(io, 2, Verb::Enter), mi::kAckApplied));
+    Run(e, w, r, io, t);
+    Require(e.Total(Cnt::Formed) == 1 && e.Total(Cnt::AckApp) == 2, "the pair is formed (both Enters applied)");
+    return t;
+}
+
+// The names and the classification of the T30-1b reasons (G2, G5, G6).
+void TestLeftReasons()
+{
+    Require(std::string(EndReasonName(EndReason::BotLeftDone)) == "bot_left_done" &&
+        std::string(EndReasonName(EndReason::BotLeftLost)) == "bot_left_lost" &&
+        std::string(EndReasonName(EndReason::BotLeftOff)) == "bot_left_off", "the three bot_left reason names");
+    Require(std::size_t(EndReason::BotLeftOff) + 1 == kEndReasons && kEndReasons <= 128, "appended right before Count, fits b9-15");
+    DirectiveBits d;
+    d.verb = Verb::Exit;
+    d.reason = EndReason::BotLeftOff;
+    Require(UnpackDirective(PackDirective(d)).reason == EndReason::BotLeftOff, "an Exit carries bot_left_off");
+    Require(std::string(AckReasonName(21)) == "legacy_group_role" && std::string(AckReasonName(22)) == "arbiter_off" &&
+        std::string(AckReasonName(23)) == "lane_busy" && std::string(AckReasonName(24)) == "goal_not_in_log" &&
+        std::string(AckReasonName(25)) == "focus_conflict" && std::string(AckReasonName(26)) == "goal_done" &&
+        std::string(AckReasonName(27)) == "goal_lost" && std::string(AckReasonName(28)) == "unknown", "ack reasons 21-27 (T02-GROUP)");
+    Require(std::string(AckStateName(mi::kAckLeft)) == "left" && mi::kAckLeft == 4 && std::string(AckStateName(5)) == "unknown",
+        "ack state 4 = left");
+    Require(FromLeftReason(kAckReasonGoalDone) == EndReason::BotLeftDone && FromLeftReason(kAckReasonGoalLost) == EndReason::BotLeftLost &&
+        FromLeftReason(kAckReasonArbiterOff) == EndReason::BotLeftOff && FromLeftReason(0) == EndReason::BotLeftOff,
+        "left reason 26 done, 27 lost, else off");
+    Require(!CountsAsQuestAttempt(EndReason::BotLeftDone) && !CountsAsQuestAttempt(EndReason::BotLeftLost) &&
+        !CountsAsQuestAttempt(EndReason::BotLeftOff), "no bot_left reason is an S7 attempt");
+    Require(IsNaturalEnd(EndReason::BotLeftDone) && !IsNaturalEnd(EndReason::BotLeftLost) && !IsNaturalEnd(EndReason::BotLeftOff) &&
+        IsNaturalEnd(EndReason::TurnedIn) && IsNaturalEnd(EndReason::QuestTurnedIn) && IsNaturalEnd(EndReason::ObjectiveDone) &&
+        IsNaturalEnd(EndReason::GroupDone) && !IsNaturalEnd(EndReason::NoProgress), "the natural ends (G5)");
+    Require(IsManagerReason(EndReason::BotLeftLost) && IsManagerReason(EndReason::BotLeftOff) && !IsManagerReason(EndReason::BotLeftDone),
+        "bot_left_lost / bot_left_off are the manager's own, bot_left_done is not");
+}
+
+// The state word: b0-7 the state, b16-31 the serial; an old-style ack (state 2, upper bits 0) reads and matches as before.
+void TestAckWord()
+{
+    mi::Event ev{};
+    ev.botLow = 5;
+    ev.kind = mi::Kind::DirectiveAck;
+    ev.seq = 42;
+    ev.mapOrDungeon = mi::kAckApplied;
+    Ack a = AckOf(ev);
+    Require(a.low == 5 && a.seq == 42 && a.state == mi::kAckApplied && a.serial == 0 && a.reason == 0, "state 2, serial bits 0");
+    ev.seq = 0;
+    ev.mapOrDungeon = (std::uint32_t(0xBEEF) << 16) | mi::kAckLeft;
+    ev.reason = kAckReasonGoalLost;
+    a = AckOf(ev);
+    Require(a.state == mi::kAckLeft && a.serial == 0xBEEF && a.seq == 0 && a.reason == 27, "state 4 with the serial in b16-31");
+
+    Engine e;
+    World w;
+    FakeIo io;
+    Rules const r = AdhocRules();
+    std::uint32_t const t = FormAdhocPair(e, w, r, io, 1000) + 1000;
+    Refresh(w, t);
+    for (std::uint32_t low = 1; low <= 2; ++low)
+    {
+        mi::Event old{};
+        old.botLow = low;
+        old.kind = mi::Kind::DirectiveAck;
+        old.seq = SeqOf(io, low, Verb::Enter);
+        old.mapOrDungeon = mi::kAckApplied;
+        w.acks.push_back(AckOf(old));
+    }
+    Run(e, w, r, io, t);
+    Require(e.Total(Cnt::AckApp) == 2 && e.Total(Cnt::AckStale) == 0 && e.Total(Cnt::Formed) == 1 && e.Total(Cnt::SelfLeft) == 0,
+        "old-style acks (state 2, upper bits 0) match their Enters as before");
+}
+
+// G2: a left ack with the serial of the bot's current group, its Enter applied, no Exit open: self_left, the member ends with
+// bot_left_done, the tracked Exit goes out and the leave is queued.
+void TestSelfLeft()
+{
+    Engine e;
+    World w;
+    FakeIo io;
+    Rules const r = AdhocRules();
+    std::uint32_t t = FormAckedPair(e, w, r, io, 1000);
+    std::uint16_t const serial = UnpackDirective(io.posts.back().second.b).serial;
+    std::uint32_t const bot = io.joins[0].invitee;   // not the leader: its leave goes first (2.3 Ende)
+    t += 1000;
+    Refresh(w, t);
+    w.acks.push_back(LeftAck(bot, serial, kAckReasonGoalDone));
+    Run(e, w, r, io, t);
+    Require(e.Total(Cnt::SelfLeft) == 1 && e.Total(Cnt::AckStale) == 0, "a matching left ack: self_left, not stale");
+    Require(e.TotalLeave(EndReason::BotLeftDone) == 1, "the member ends with bot_left_done");
+    Require(io.CountLines("[GroupMgr] event=self_left group=") == 1 && io.CountLines(" reason=goal_done") == 1 &&
+        io.CountLines(" reason=bot_left_done ") == 1, "one self_left line (ack reason name) and the leave line");
+    bool exitPosted = false;
+    for (auto const& p : io.posts)
+    {
+        DirectiveBits const d = UnpackDirective(p.second.b);
+        if (p.first == bot && d.verb == Verb::Exit)
+            exitPosted = d.reason == EndReason::BotLeftDone && d.serial == serial;
+    }
+    Require(exitPosted, "the tracked Exit: reason bot_left_done, the group's serial");
+    Require(e.Bots().count(bot) && e.Bots().at(bot).exitOpen, "the Exit waits for its ack");
+    Require(!io.leaves.empty() && io.leaves[0].bot == bot && io.leaves[0].groupId == 77, "the leave op for the bot");
+    // bot_left_done is a natural end and the partner's too_small a follow-on end: no osc at all.
+    Require(e.TotalLeave(EndReason::TooSmall) == 1 && e.Total(Cnt::Osc) == 0, "osc: none for bot_left_done and its too_small");
+}
+
+// G2: every other left ack is ack_stale and nothing else.
+void TestLeftAckStale()
+{
+    Engine e;
+    World w;
+    FakeIo io;
+    Rules const r = AdhocRules();
+    std::uint32_t t = FormAckedPair(e, w, r, io, 1000);
+    std::uint16_t const serial = UnpackDirective(io.posts.back().second.b).serial;
+    std::size_t const posts = io.posts.size();
+    t += 1000;
+    Refresh(w, t);
+    w.acks.push_back(LeftAck(1, std::uint16_t(serial + 1), kAckReasonGoalDone));   // another serial
+    w.acks.push_back(LeftAck(1, serial, kAckReasonGoalDone, SeqOf(io, 1, Verb::Enter)));   // seq != 0
+    w.acks.push_back(LeftAck(3, serial, kAckReasonGoalDone));   // a bot nobody holds
+    Run(e, w, r, io, t);
+    Require(e.Total(Cnt::AckStale) == 3 && e.Total(Cnt::SelfLeft) == 0, "wrong serial, seq != 0, no group: ack_stale each");
+    Require(e.Groups().size() == 1 && io.posts.size() == posts && io.leaves.empty() && io.CountLines("event=self_left") == 0 &&
+        io.CountLines("event=leave ") == 0, "a stale left ack: no end, no Exit, no leave, no line");
+    // The member is no longer Acked and its Exit is open (after a matching left ack): a second one is stale.
+    t += 1000;
+    Refresh(w, t);
+    w.acks.push_back(LeftAck(1, serial, kAckReasonGoalLost));
+    Run(e, w, r, io, t);
+    Require(e.Total(Cnt::SelfLeft) == 1 && e.TotalLeave(EndReason::BotLeftLost) == 1, "the matching one ends bot 1 (bot_left_lost)");
+    Require(e.Bots().count(1) && e.Bots().at(1).exitOpen, "bot 1's Exit is open");
+    t += 1000;
+    Refresh(w, t);
+    w.acks.push_back(LeftAck(1, serial, kAckReasonGoalLost));
+    Run(e, w, r, io, t);
+    Require(e.Total(Cnt::SelfLeft) == 1 && e.Total(Cnt::AckStale) == 4 && e.TotalLeave(EndReason::BotLeftLost) == 1,
+        "a left ack while its Exit is open: ack_stale only");
+    // A member whose Enter is not applied yet (Directed): stale.
+    Engine e2;
+    World w2;
+    FakeIo io2;
+    std::uint32_t t2 = FormAdhocPair(e2, w2, r, io2, 1000);
+    std::uint16_t const serial2 = UnpackDirective(io2.posts.back().second.b).serial;
+    t2 += 1000;
+    Refresh(w2, t2);
+    w2.acks.push_back(LeftAck(1, serial2, kAckReasonArbiterOff));
+    Run(e2, w2, r, io2, t2);
+    Require(e2.Total(Cnt::AckStale) == 1 && e2.Total(Cnt::SelfLeft) == 0 && e2.TotalLeave(EndReason::BotLeftOff) == 0,
+        "a left ack before ack 2: ack_stale only");
+}
+
+// G5: osc counts an end without a natural reason less than kOscSec after the Enter's ack 2.
+void TestOsc()
+{
+    Require(kOscSec == 900, "kOscSec = 15 minutes");
+    Require(CountsAsOsc(true, 1000, 1000 + 899, EndReason::NoProgress) && !CountsAsOsc(true, 1000, 1000 + 900, EndReason::NoProgress),
+        "no_progress within 15 minutes of the ack: osc; at 15 minutes: none");
+    Require(!CountsAsOsc(true, 1000, 1001, EndReason::TurnedIn) && !CountsAsOsc(true, 1000, 1001, EndReason::BotLeftDone) &&
+        !CountsAsOsc(true, 1000, 1001, EndReason::ObjectiveDone), "a natural end is no osc");
+    Require(!CountsAsOsc(false, 0, 1, EndReason::NoProgress), "no ack 2: no osc");
+    Require(CountsAsOsc(true, 1000, 1001, EndReason::BotLeftLost) && CountsAsOsc(true, 1000, 1001, EndReason::BotLeftOff),
+        "bot_left_lost / bot_left_off are osc");
+    Require(!CountsAsOsc(true, 1000, 1001, EndReason::TooSmall) && !CountsAsOsc(true, 1000, 1001, EndReason::SwitchOff),
+        "too_small (follow-on) and switch_off (operator) are no osc");
+    // In the engine: a goal_lost self-exit 1 s after the acks is one osc; the partner's too_small is none.
+    Engine e;
+    World w;
+    FakeIo io;
+    Rules r = AdhocRules();
+    std::uint32_t t = FormAckedPair(e, w, r, io, 1000);
+    std::uint16_t const serial = UnpackDirective(io.posts.back().second.b).serial;
+    std::uint32_t const bot = io.joins[0].invitee;
+    t += 1000;
+    Refresh(w, t);
+    w.acks.push_back(LeftAck(bot, serial, kAckReasonGoalLost));
+    Run(e, w, r, io, t);
+    Require(e.TotalLeave(EndReason::BotLeftLost) == 1 && e.TotalLeave(EndReason::TooSmall) == 1 && e.Total(Cnt::Osc) == 1,
+        "goal_lost within 15 minutes: one osc, none for the partner's too_small");
+    // switch_off right after the acks: no osc.
+    Engine e3;
+    World w3;
+    FakeIo io3;
+    Rules r3 = AdhocRules();
+    std::uint32_t t3 = FormAckedPair(e3, w3, r3, io3, 1000);
+    r3.types = 0;
+    t3 += 1000;
+    Refresh(w3, t3);
+    Run(e3, w3, r3, io3, t3);
+    Require(e3.TotalLeave(EndReason::SwitchOff) == 2 && e3.Total(Cnt::Osc) == 0, "switch_off: no osc");
+    // Ended before ack 2 (ack_timeout): no osc.
+    Engine e2;
+    World w2;
+    FakeIo io2;
+    Rules const r2 = AdhocRules();
+    std::uint32_t t2 = FormAdhocPair(e2, w2, r2, io2, 1000);
+    t2 = Tick(e2, w2, r2, io2, t2, t2 + kAckTimeoutMs + 1000);
+    Require(e2.TotalLeave(EndReason::AckTimeout) == 2 && e2.Total(Cnt::Osc) == 0, "no ack 2, no osc");
+}
+
+// F13 (a) for the left reasons: bot_left_done forgets the S7 entry (no attempt, no cooldown); bot_left_lost sets the retry
+// cooldown only.
+void TestLeftQuest()
+{
+    Rules r;
+    r.mode = 1;
+    r.types = kTypeQuest;
+    r.statusSeconds = 10;
+    r.intervalMs = 1000;
+    for (std::uint8_t const reason : { kAckReasonGoalDone, kAckReasonGoalLost })
+    {
+        Engine e;
+        World w;
+        FakeIo io;
+        SetStatus(w, 1, 1000, 0.0f, 0.0f, 300, -1);
+        SetStatus(w, 2, 1000, 100.0f, 0.0f, 300, -1);
+        SetEdge(w, 1, 1000);
+        SetEdge(w, 2, 1000);
+        SetWish(w, 1, 1000, 300, 0.0f, 0.0f);
+        SetWish(w, 2, 1000, 300, 100.0f, 0.0f);
+        Run(e, w, r, io, 1000);
+        Require(io.joins.size() == 1, "QUEST: a join for the wish");
+        std::uint32_t const inviter = io.joins[0].inviter;
+        std::uint32_t const invitee = io.joins[0].invitee;
+        Refresh(w, 2000);
+        w.outcomes.push_back(Outcome(invitee, inviter, go::OpKind::Join, go::ManagerOpResult::Executed));
+        SetEdge(w, invitee, 2000, 88, inviter, 2);
+        SetEdge(w, inviter, 2000, 88, inviter, 2);
+        Run(e, w, r, io, 2000);
+        std::uint16_t const serial = UnpackDirective(io.posts.back().second.b).serial;
+        Refresh(w, 3000);
+        w.acks.push_back(AckFor(1, SeqOf(io, 1, Verb::Enter), mi::kAckApplied));
+        w.acks.push_back(AckFor(2, SeqOf(io, 2, Verb::Enter), mi::kAckApplied));
+        Run(e, w, r, io, 3000);
+        Require(e.Total(Cnt::Formed) == 1, "QUEST group formed");
+        Refresh(w, 4000);
+        w.acks.push_back(LeftAck(invitee, serial, reason));
+        Run(e, w, r, io, 4000);
+        Require(e.Total(Cnt::SelfLeft) == 1, "QUEST: the left ack ends the member");
+        Require(e.QuestAttempts(invitee, 300) == 0, "a left reason is no QUEST attempt");
+        if (reason == kAckReasonGoalDone)
+            Require(e.TotalLeave(EndReason::BotLeftDone) == 1 && !e.QuestCooldown(invitee, 300, SecOf(w, 4000)),
+                "bot_left_done: the entry is forgotten like turned_in (no cooldown)");
+        else
+            Require(e.TotalLeave(EndReason::BotLeftLost) == 1 && e.QuestCooldown(invitee, 300, SecOf(w, 4000)),
+                "bot_left_lost: the retry cooldown only");
+    }
+}
+
+// OB-10 smoke note: skip_unknown_30m at the end of minute2 is a level - the bots skip_unknown without a break for >= 30 min.
+bool EndsWith(std::string const& s, char const* suffix)
+{
+    std::size_t const n = std::strlen(suffix);
+    return s.size() >= n && s.compare(s.size() - n, n, suffix) == 0;
+}
+
+std::string LastLine(FakeIo const& io, char const* needle)
+{
+    std::string last;
+    for (std::string const& l : io.lines)
+        if (l.find(needle) != std::string::npos)
+            last = l;
+    return last;
+}
+
+void TestSkipUnknownLong()
+{
+    Engine e;
+    World w;
+    FakeIo io;
+    Rules const r = AdhocRules();
+    SetStatus(w, 3, 1000, 500.0f, 0.0f, 0);
+    SetEdge(w, 3, 1000, 60, 3, 2);   // a member that posts no edge: skip_unknown every pass
+    Run(e, w, r, io, 1000);
+    std::uint32_t t = Tick(e, w, r, io, 1000, 1000 + 1700000);
+    Require(io.CountLines(" skip_unknown_30m=1") == 0 && io.CountLines(" skip_unknown_30m=0") > 0, "under 30 minutes: 0");
+    Require(EndsWith(LastLine(io, "[GroupMgr] minute2 "), " osc=0 self_left=0 skip_unknown_30m=0"),
+        "minute2 ends with osc, self_left, skip_unknown_30m");
+    Require(LastLine(io, "[GroupMgr] minute types=").find(" osc=") == std::string::npos, "the minute line keeps its fields");
+    t = Tick(e, w, r, io, t, 1000 + 1900000);
+    Require(EndsWith(LastLine(io, "[GroupMgr] minute2 "), " skip_unknown_30m=1"), "skip_unknown for over 30 minutes: 1");
+    SetEdge(w, 3, t);   // out of the group: the run ends
+    t = Tick(e, w, r, io, t, t + 61000);
+    Require(EndsWith(LastLine(io, "[GroupMgr] minute2 "), " skip_unknown_30m=0"), "no longer skip_unknown: 0 again (a level)");
+    SetEdge(w, 3, t, 60, 3, 2);   // back in: a new run starts from 0
+    t = Tick(e, w, r, io, t, t + 61000);
+    Require(EndsWith(LastLine(io, "[GroupMgr] minute2 "), " skip_unknown_30m=0"), "a new run counts from its own start");
+}
 }
 
 int main()
@@ -1342,6 +1644,13 @@ int main()
     TestAckStale();
     TestSwitchOffExits();
     TestManagedSerialView();
+    TestLeftReasons();
+    TestAckWord();
+    TestSelfLeft();
+    TestLeftAckStale();
+    TestOsc();
+    TestLeftQuest();
+    TestSkipUnknownLong();
     std::cout << "group_directive_policy_tests: OK\n";
     return 0;
 }

@@ -39,6 +39,7 @@
 #include "World/WorldState.h"
 #include "playerbot/PlayerbotHelpMgr.h"
 #include "playerbot/ActionBudgetPolicy.h"
+#include "playerbot/GatheringPacePolicy.h"   // twow-repo#333 T28b: Gathering.PaceReachYards clamp
 #include "playerbot/strategy/actions/CheatAction.h"
 
 #include "playerbot/TravelMgr.h"
@@ -53,6 +54,7 @@
 #include "playerbot/R01CohortPolicy.h"
 #include "playerbot/LosCachePolicy.h"   // twow-repo#602 (Rotation.LosCacheMs): the read's bounds
 #include "playerbot/RescueHubPolicy.h"   // twow-repo#575 RG-a (QuestRescue.HomeHubs): the mode clamp
+#include "playerbot/ResurrectDelayPolicy.h"   // twow-repo#575 H3 (Revive.DelayResurrectRequest): the mode clamp
 
 #include <iostream>
 #include <numeric>
@@ -866,7 +868,7 @@ bool PlayerbotAIConfig::Initialize()
     grindCapLowLevelMargin = config.GetIntDefault("AiPlayerbot.GrindCap.LowLevelMargin", 2);
     questRescueIdleMinutes = config.GetIntDefault("AiPlayerbot.QuestRescue.IdleMinutes", 30);
     questRescueKeepRequestWhenFull = config.GetBoolDefault("AiPlayerbot.QuestRescue.KeepRequestWhenFull", false);
-    questRescueHomeHubs = ai::rescue_hub::ClampMode(config.GetIntDefault("AiPlayerbot.QuestRescue.HomeHubs", 0));
+    questRescueHomeHubs = ai::rescue_hub::ClampMode(config.GetIntDefault("AiPlayerbot.QuestRescue.HomeHubs", 1));   // default 1 since the SZM adoption (10.11.2026), 0 = rollback
     grindAvoidMaxDeaths = config.GetIntDefault("AiPlayerbot.GrindAvoid.MaxDeaths", 0);
     grindAvoidWindowSeconds = std::max<uint32>(60, config.GetIntDefault("AiPlayerbot.GrindAvoid.WindowSeconds", 3600));
     grindAvoidSeconds = std::max<uint32>(60, config.GetIntDefault("AiPlayerbot.GrindAvoid.AvoidSeconds", 3600));
@@ -1120,7 +1122,8 @@ bool PlayerbotAIConfig::Initialize()
         questFirstProgressionStaleObjectiveFilterLockFree = 0;
     }
     // twow-repo#601 owner rule R1: StaleKeepZone, an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B, 3 cohort A); the
-    // keep time 60 s .. 1 h. StartZoneMinLevel: 0 off, 2..60 (1 would gate nothing).
+    // keep time 60 s .. 1 h. StartZoneMinLevel: 0 off (rollback), 2..60 (1 would gate nothing), default 5 since the SZM adoption
+    // (10.11.2026).
     questFirstProgressionStaleKeepZone = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.StaleKeepZone", 0);
     if (questFirstProgressionStaleKeepZone > 3)
     {
@@ -1128,7 +1131,7 @@ bool PlayerbotAIConfig::Initialize()
         questFirstProgressionStaleKeepZone = 0;
     }
     questFirstProgressionStaleKeepZoneSeconds = std::min<uint32>(3600, uint32(std::max<int32>(60, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.StaleKeepZone.Seconds", 900))));
-    questFirstProgressionStartZoneMinLevel = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.StartZoneMinLevel", 0)));
+    questFirstProgressionStartZoneMinLevel = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.StartZoneMinLevel", 5)));
     if (questFirstProgressionStartZoneMinLevel == 1 || questFirstProgressionStartZoneMinLevel > 60)
     {
         sLog.outError("[ZoneKeep] config key=StartZoneMinLevel value=%u result=off (0 off, 2..60)", questFirstProgressionStartZoneMinLevel);
@@ -1142,9 +1145,10 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[ZoneKeep] config key=StartZoneMinLevel.Cohort value=%u result=1 (1 all, 2 cohort B, 3 cohort A)", questFirstProgressionStartZoneMinLevelCohort);
         questFirstProgressionStartZoneMinLevelCohort = 1;
     }
-    // twow-repo#601 owner rule R1, package "start-zone rule complete" (OB-00 08.11.2026, ZoneKeepPolicy.h): 0 off (default and
-    // rollback), 1 on; any other value acts like 0. It acts only where StartZoneMinLevel holds the bot (.Cohort selection).
-    questFirstProgressionStartZoneComplete = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.StartZoneMinLevel.Complete", 0);
+    // twow-repo#601 owner rule R1, package "start-zone rule complete" (OB-00 08.11.2026, ZoneKeepPolicy.h): 0 off (rollback),
+    // 1 on (default since the SZM adoption, 10.11.2026); any other value acts like 0. It acts only where StartZoneMinLevel holds the bot
+    // (.Cohort selection).
+    questFirstProgressionStartZoneComplete = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.StartZoneMinLevel.Complete", 1);
     if (questFirstProgressionStartZoneComplete != 0 && !ai::zone_keep::CompleteOn(int32(questFirstProgressionStartZoneComplete)))
     {
         sLog.outError("[ZoneKeep] config key=StartZoneMinLevel.Complete value=%u result=off (0 off, 1 on)", questFirstProgressionStartZoneComplete);
@@ -1255,7 +1259,7 @@ bool PlayerbotAIConfig::Initialize()
     // twow-repo#575 A3 step 4 S4-1 (Revive.CorpseRunFirst): an unknown mode is off; MaxSeconds clamped to 120..1800 (CorpseRunFirstPolicy.h).
     reviveCorpseRunFirst = ai::corpse_first::ClampMode(config.GetIntDefault("AiPlayerbot.Revive.CorpseRunFirst", 0));
     reviveCorpseRunFirstMaxSeconds = ai::corpse_first::ClampMaxSeconds(config.GetIntDefault("AiPlayerbot.Revive.CorpseRunFirst.MaxSeconds", int(ai::corpse_first::DefaultMaxSeconds)));
-    reviveDelayResurrectRequest = config.GetBoolDefault("AiPlayerbot.Revive.DelayResurrectRequest", false);   // twow-repo#575 H3
+    reviveDelayResurrectRequest = ai::resurrect_delay::ClampMode(config.GetIntDefault("AiPlayerbot.Revive.DelayResurrectRequest", 0));   // twow-repo#575 H3
     // twow-repo#575 A3 step 4 S4-2 (Rescue.RepopDeadOnly): an unknown mode is off (RepopDeadOnlyPolicy.h).
     rescueRepopDeadOnly = ai::repop_dead_only::ClampMode(config.GetIntDefault("AiPlayerbot.Rescue.RepopDeadOnly", 0));
     questFirstProgressionTurnInDeathRouteCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.TurnInDeathRouteCooldownSeconds", 3600));
@@ -1832,6 +1836,30 @@ bool PlayerbotAIConfig::Initialize()
     professionUseCraftIntervalSeconds = std::max<uint32>(10, config.GetIntDefault("AiPlayerbot.ProfessionUse.CraftIntervalSeconds", 300));
     professionUseTrace = config.GetBoolDefault("AiPlayerbot.ProfessionUse.Trace", false);
     professionUseTraceCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.ProfessionUse.TraceCooldownSeconds", 300));
+    // twow-repo#333 T28-M (OB-00 09.11.2026): the [Gathering] event=share line; an unknown value is off.
+    gatheringTrace = config.GetIntDefault("AiPlayerbot.Gathering.Trace", 0);
+    if (gatheringTrace > 1)
+    {
+        sLog.outError("[Gathering] config key=Trace value=%u result=off (0 off, 1 on)", gatheringTrace);
+        gatheringTrace = 0;
+    }
+    // twow-repo#333 T28b (OB-00 09.11.2026, T28 Q1 (a)): the mining / herbalism reach (GatheringPacePolicy.h); an unknown mode is
+    // off, a reach outside 30-60 yd is the default 45.
+    gatheringPaceReach = config.GetIntDefault("AiPlayerbot.Gathering.PaceReach", 0);
+    if (gatheringPaceReach > 3)
+    {
+        sLog.outError("[Gathering] config key=PaceReach value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", gatheringPaceReach);
+        gatheringPaceReach = 0;
+    }
+    gatheringPaceReachYards = config.GetIntDefault("AiPlayerbot.Gathering.PaceReachYards", int32(ai::gathering_pace::DefaultYards));
+    if (!ai::gathering_pace::YardsValid(gatheringPaceReachYards))
+    {
+        sLog.outError("[Gathering] config key=PaceReachYards value=%d result=%u (30 to 60 yd)", int32(gatheringPaceReachYards), ai::gathering_pace::DefaultYards);
+        gatheringPaceReachYards = ai::gathering_pace::Yards(gatheringPaceReachYards);
+    }
+    // A reach not beyond the LootDistance makes no far pick: say so (the values stay as set).
+    if (gatheringPaceReach && float(gatheringPaceReachYards) <= lootDistance)
+        sLog.outError("[Gathering] config key=PaceReachYards value=%u result=no far pick (LootDistance %.1f yd)", gatheringPaceReachYards, lootDistance);
     professionUseRealReagents = config.GetBoolDefault("AiPlayerbot.ProfessionUse.RealReagents", false);
     // Clamped as int32 first: a negative value must not wrap to ~136 years.
     professionUseCraftFailBackoffSeconds = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.ProfessionUse.CraftFailBackoffSeconds", 1800)));
@@ -2139,6 +2167,9 @@ bool PlayerbotAIConfig::Initialize()
             {"EquipDiagnostics.Trace", Value(equipDiagnosticsTrace)},
             {"Gather.FishingSkillCheck", Value(gatherFishingSkillCheck)},
             {"Gather.QuestHerbFilter", Value(gatherQuestHerbFilter)},
+            {"Gathering.PaceReach", Value(gatheringPaceReach)},
+            {"Gathering.PaceReachYards", Value(gatheringPaceReachYards)},
+            {"Gathering.Trace", Value(gatheringTrace)},
             {"Grind.GreyByLevel", Value(grindGreyByLevel)},
             {"Grind.NeighbourAware", Value(grindNeighbourAware)},
             {"Grind.QuestFirstOrder", Value(grindQuestFirstOrder)},
