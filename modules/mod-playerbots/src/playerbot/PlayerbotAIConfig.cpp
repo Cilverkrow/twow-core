@@ -1139,6 +1139,21 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[ZoneKeep] config key=StartZoneMinLevel.Complete value=%u result=off (0 off, 1 on)", questFirstProgressionStartZoneComplete);
         questFirstProgressionStartZoneComplete = 0;
     }
+    // twow-repo#575 SZF-Q (BOT-14 #703, ZoneKeepPolicy.h): the objective window of a held bot. Mode: 0 off (default, rollback),
+    // 1 all, 2 cohort B, 3 cohort A; any other value acts like 0 (logged). .AboveLevels clamped to 1..3 (logged), default 2.
+    questFirstProgressionStartZoneObjectiveWindow = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.StartZoneMinLevel.ObjectiveWindow", 0);
+    int32 const objectiveWindowRaw = int32(questFirstProgressionStartZoneObjectiveWindow);
+    questFirstProgressionStartZoneObjectiveWindow = ai::zone_keep::ClampObjectiveWindowMode(objectiveWindowRaw);
+    if (int32(questFirstProgressionStartZoneObjectiveWindow) != objectiveWindowRaw)
+        sLog.outError("[ZoneKeep] config key=StartZoneMinLevel.ObjectiveWindow value=%d result=off (0 off, 1 all, 2 cohort B, 3 cohort A)",
+            objectiveWindowRaw);
+    questFirstProgressionStartZoneObjectiveWindowAbove = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.StartZoneMinLevel.ObjectiveWindow.AboveLevels",
+        int32(ai::zone_keep::ObjectiveWindowAboveDefault));
+    int32 const objectiveWindowAboveRaw = int32(questFirstProgressionStartZoneObjectiveWindowAbove);
+    questFirstProgressionStartZoneObjectiveWindowAbove = ai::zone_keep::ClampAboveLevels(objectiveWindowAboveRaw);
+    if (int32(questFirstProgressionStartZoneObjectiveWindowAbove) != objectiveWindowAboveRaw)
+        sLog.outError("[ZoneKeep] config key=StartZoneMinLevel.ObjectiveWindow.AboveLevels value=%d result=%u (1..3)", objectiveWindowAboveRaw,
+            questFirstProgressionStartZoneObjectiveWindowAbove);
     // twow-repo#601 S5a F4 (OB-00 24.10.2026): the backoff walk toward the next rung, 0 = off, 1..10.
     questFirstProgressionBandWalkAfterEmptySearches = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.BandWalkAfterEmptySearches", 0);
     if (questFirstProgressionBandWalkAfterEmptySearches > 10)
@@ -2236,6 +2251,8 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestFirstProgression.StartZoneMinLevel", Value(questFirstProgressionStartZoneMinLevel)},
             {"QuestFirstProgression.StartZoneMinLevel.Cohort", Value(questFirstProgressionStartZoneMinLevelCohort)},
             {"QuestFirstProgression.StartZoneMinLevel.Complete", Value(questFirstProgressionStartZoneComplete)},
+            {"QuestFirstProgression.StartZoneMinLevel.ObjectiveWindow", Value(questFirstProgressionStartZoneObjectiveWindow)},
+            {"QuestFirstProgression.StartZoneMinLevel.ObjectiveWindow.AboveLevels", Value(questFirstProgressionStartZoneObjectiveWindowAbove)},
             {"QuestFirstProgression.TransientCountsAfter", Value(questFirstProgressionTransientCountsAfter)},
             {"QuestFirstProgression.TurnInParkFailures", Value(questFirstProgressionTurnInParkFailures)},
             {"QuestGroups.Enable", Value(questGroupsEnable)},
