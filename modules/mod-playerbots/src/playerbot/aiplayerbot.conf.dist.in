@@ -1251,6 +1251,9 @@ AiPlayerbot.QuestRescue.KeepRequestWhenFull = 0
 # spawn left: the legacy targets as before. Logs [RescueHub] and [RescueHubMin].
 # Default 1 since the SZM adoption (10.11.2026, owner decision via OB-00): it is the base the SZM A/B measured on (RESULT SZM main R3,
 # both arms HomeHubs = 1). HomeHubs has no A/B of its own yet; that A/B runs on this base later.
+# Acts only on roster bots without a real player master (as StartZoneMinLevel); the high-elf row only with CustomRaceStartZones = 1
+# (without it high elves start at the proxy Northshire). A rescue rebinds the bot's hearthstone at its target; a rollback to 0 does
+# not move hearthstones set before.
 # Cohort mode: 0 = off (rollback), 1 = all bots (default), 2 = cohort B (odd guid), 3 = cohort A (even guid); other values act like 0.
 AiPlayerbot.QuestRescue.HomeHubs = 1
 # A creature entry that killed the bot GrindAvoid.MaxDeaths times within
@@ -1852,7 +1855,8 @@ AiPlayerbot.QuestFirstProgression.StaleKeepZone.Seconds = 900
 # twow-repo#601 owner rule R1: below this level a roster bot on its own takes no travel target outside its start zone (any purpose;
 # the search line counts start_zone=), no band step, and no quest rescue out of it - inside the zone there is no rescue, outside it
 # the rescue takes it to its race's start point ([ZoneKeep] state=rescue_gate). Start zone = the playercreateinfo zone of its race,
-# with CustomRaceStartZones the goblin / high-elf start zones. An unknown start zone is not gated. Forced trips too (guild meeting /
+# with CustomRaceStartZones the goblin / high-elf start zones; without it a goblin / high elf (proxy start Durotar / Northshire) has
+# an unknown start zone. An unknown start zone is not gated. Forced trips too (guild meeting /
 # order, petition, group quest help): a held one writes one [ZoneKeep] state=forced_hold line and is not requested again for 600 s.
 #   0 = off (rollback), 2..60, default 5 (the owner value); other values act like 0.
 #   SZM A/B (one unit, in-realm cohorts by guid parity, PREREG-R1-SZM 90e32b4d, bot brain off, HomeHubs = 1 in both arms): ADOPT 10.11.2026

@@ -99,7 +99,13 @@ require_order("${targets_fn}" "ai::cohort::Applies(sPlayerbotAIConfig.questRescu
   "UsesGoblinStartRescue(bot->getRace(), level)" "table block before the goblin island rules")
 between("${targets_fn}" "ai::cohort::Applies(sPlayerbotAIConfig.questRescueHomeHubs" "// twow-repo#601 owner rule R1" block)
 require_text("${block}" "ai::zone_keep::StartZoneGated(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevel, level) &&\n            ai::cohort::Applies(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevelCohort, bot->GetGUIDLow());" "the bot's R1 gate, as R1 computes it")
-require_text("${block}" "rh::Row const* const row = rh::RowFor(bot->getRace(), level);" "row lookup")
+require_text("${block}" "rh::Row const* const row = rh::RowFor(bot->getRace(), level, sPlayerbotAIConfig.customRaceStartZones);" "row lookup with the custom starts switch")
+# SZM adoption review (10.11.2026): the start-zone rules of the rescue act only on roster bots without a real player master (as
+# StartZoneHolds), and the high-elf row needs CustomRaceStartZones.
+require_order("${targets_fn}" "bool const startZoneRules = IsPersistentRosterMember(bot->GetGUIDLow()) && !(rescueAi && rescueAi->HasRealPlayerMaster());"
+  "if (startZoneRules && ai::cohort::Applies(sPlayerbotAIConfig.questRescueHomeHubs, bot->GetGUIDLow()))" "HomeHubs only for roster bots on their own")
+require_text("${policy}" "inline Row const* RowFor(std::uint32_t race, std::uint32_t level, bool customStarts)\n{\n    if (race == HighElfRace && !customStarts)\n        return nullptr;" "high-elf row only with custom starts")
+forbid_text("${targets_fn}" "rh::RowFor(bot->getRace(), level);" "a row lookup without the custom starts switch")
 require_text("${block}" "if (row && !rh::Usable(row, startZoneGated))" "R1 holds back next_zone")
 require_text("${block}" "if (botPos.distance(WorldPosition(spawn)) > row->minDistance)" "per-row distance")
 require_text("${block}" "\"[RescueHub] bot=%u race=%u level=%u map=%u zone=%u step=%s anchors=%s targets=%u result=%s\"" "race + anchor line")
