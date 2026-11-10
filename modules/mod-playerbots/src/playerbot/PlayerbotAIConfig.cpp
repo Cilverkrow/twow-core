@@ -868,6 +868,13 @@ bool PlayerbotAIConfig::Initialize()
     questRescueIdleMinutes = config.GetIntDefault("AiPlayerbot.QuestRescue.IdleMinutes", 30);
     questRescueKeepRequestWhenFull = config.GetBoolDefault("AiPlayerbot.QuestRescue.KeepRequestWhenFull", false);
     questRescueHomeHubs = ai::rescue_hub::ClampMode(config.GetIntDefault("AiPlayerbot.QuestRescue.HomeHubs", 1));   // default 1 since the SZM adoption (10.11.2026), 0 = rollback
+    // twow-repo#703 item 2 (design szf/DESIGN-703-2-VALLEY-L5-20261111.md): the L5-10 own-hub rows, only where HomeHubs applies.
+    questRescueHomeHubsL5OwnHub = config.GetIntDefault("AiPlayerbot.QuestRescue.HomeHubs.L5OwnHub", 0);
+    if (questRescueHomeHubsL5OwnHub > 3)
+    {
+        sLog.outError("[RescueHub] config key=HomeHubs.L5OwnHub value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", questRescueHomeHubsL5OwnHub);
+        questRescueHomeHubsL5OwnHub = 0;
+    }
     grindAvoidMaxDeaths = config.GetIntDefault("AiPlayerbot.GrindAvoid.MaxDeaths", 0);
     grindAvoidWindowSeconds = std::max<uint32>(60, config.GetIntDefault("AiPlayerbot.GrindAvoid.WindowSeconds", 3600));
     grindAvoidSeconds = std::max<uint32>(60, config.GetIntDefault("AiPlayerbot.GrindAvoid.AvoidSeconds", 3600));
@@ -2290,6 +2297,7 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestLoop.TurnInWorkDeathNotRoute", Value(questLoopTurnInWorkDeathNotRoute)},
             {"QuestRelation.GameObjectChanceDrops", Value(questRelationGameObjectChanceDrops)},
             {"QuestRescue.HomeHubs", Value(questRescueHomeHubs)},
+            {"QuestRescue.HomeHubs.L5OwnHub", Value(questRescueHomeHubsL5OwnHub)},
             {"QuestRescue.KeepRequestWhenFull", Value(questRescueKeepRequestWhenFull)},
             {"Rescue.RepopDeadOnly", Value(rescueRepopDeadOnly)},
             {"Revive.CorpseRunFirst", Value(reviveCorpseRunFirst)},

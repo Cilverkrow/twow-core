@@ -7673,18 +7673,23 @@ std::vector<WorldLocation> RandomPlayerbotMgr::QuestRescueTargets(Player* bot)
     // twow-repo#575 RG-a (AiPlayerbot.QuestRescue.HomeHubs, OB-00 08.11.2026): the anchor table first (RescueHubPolicy.h). own_hub = the
     // race's start-zone hub below L5 (also for R1-gated bots inside their start zone, which got no target), next_zone = night elf /
     // undead L5-10 to the next zone on the home continent unless R1 gates the level. No row or no spawn left: the legacy targets.
+    // twow-repo#703 item 2 (HomeHubs.L5OwnHub, default 0): the L5-10 own-hub rows; a bot that already stands at that hub gets no
+    // target (at_hub) instead of the legacy targets (another race's start valley).
     if (startZoneRules && ai::cohort::Applies(sPlayerbotAIConfig.questRescueHomeHubs, bot->GetGUIDLow()))
     {
         namespace rh = ai::rescue_hub;
         rh::Counters& counters = rh::SharedCounters();
         bool const startZoneGated = ai::zone_keep::StartZoneGated(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevel, level) &&
             ai::cohort::Applies(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevelCohort, bot->GetGUIDLow());
-        rh::Row const* const row = rh::RowFor(bot->getRace(), level, sPlayerbotAIConfig.customRaceStartZones);
+        bool const l5OwnHub = ai::cohort::Applies(sPlayerbotAIConfig.questRescueHomeHubsL5OwnHub, bot->GetGUIDLow());
+        rh::Row const* const row = rh::RowFor(bot->getRace(), level, sPlayerbotAIConfig.customRaceStartZones, l5OwnHub);
+        bool atHub = false;
         if (row && !rh::Usable(row, startZoneGated))
             counters.gated.fetch_add(1, std::memory_order_relaxed);
         else if (row)
         {
             std::string anchors;
+            size_t anchorSpawns = 0;
             for (uint32 entry : row->entries)
             {
                 if (!entry)
@@ -7699,24 +7704,31 @@ std::vector<WorldLocation> RandomPlayerbotMgr::QuestRescueTargets(Player* bot)
                     cached = questRescueAnchors.emplace(entry, spawns).first;
                 }
                 for (WorldLocation const& spawn : cached->second)
+                {
+                    ++anchorSpawns;
                     if (botPos.distance(WorldPosition(spawn)) > row->minDistance)
                         targets.push_back(spawn);
+                }
             }
-            bool const hub = !targets.empty();
-            if (hub)
+            rh::Outcome const outcome = rh::Decide(row, anchorSpawns, targets.size());
+            if (outcome == rh::Outcome::Hub)
                 counters.Hub(row->step);
+            else if (outcome == rh::Outcome::AtHub)
+                counters.atHub.fetch_add(1, std::memory_order_relaxed);
             else
                 counters.fallback.fetch_add(1, std::memory_order_relaxed);
+            atHub = outcome == rh::Outcome::AtHub;
             sLog.outBasic("[RescueHub] bot=%u race=%u level=%u map=%u zone=%u step=%s anchors=%s targets=%u result=%s", bot->GetGUIDLow(),
                 uint32(bot->getRace()), level, bot->GetMapId(), bot->GetZoneId(), rh::StepName(row->step), anchors.c_str(),
-                uint32(targets.size()), hub ? "hub" : "fallback");
+                uint32(targets.size()), rh::OutcomeName(outcome));
         }
         uint64 const nowSeconds = uint64(time(nullptr));
         if (counters.LogDue(nowSeconds))
-            sLog.outBasic("[RescueHubMin] own_hub=%u next_zone=%u fallback=%u gated=%u", counters.TakeHub(rh::Step::OwnHub),
+            sLog.outBasic("[RescueHubMin] own_hub=%u next_zone=%u fallback=%u gated=%u at_hub=%u", counters.TakeHub(rh::Step::OwnHub),
                 counters.TakeHub(rh::Step::NextZone), counters.fallback.exchange(0, std::memory_order_relaxed),
-                counters.gated.exchange(0, std::memory_order_relaxed));
-        if (!targets.empty())
+                counters.gated.exchange(0, std::memory_order_relaxed), counters.atHub.exchange(0, std::memory_order_relaxed));
+        // at_hub (#703 item 2): no target, the rescue ends as no_target (only an L5-10 own-hub row, only with L5OwnHub).
+        if (!targets.empty() || atHub)
             return targets;
     }
 
