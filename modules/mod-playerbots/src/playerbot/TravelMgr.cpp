@@ -16,6 +16,7 @@
 #include "playerbot/AdhocGroupWorld.h"   // twow-repo#601 F5b: a bot-only group shares the kill credit (CLI-GRP 25.10.)
 #include "playerbot/CohortPolicy.h"
 #include "playerbot/SupervisorShadow.h"   // A3 step 3 arbiter shadow (AiPlayerbot.Supervisor.Arbiter): the observer in the status write
+#include "playerbot/SupervisorEnforce.h"  // A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2, default 0): the gate of the destination writes
 #include "playerbot/ZoneKeepPolicy.h"      // twow-repo#601 owner rule R1 (StartZoneMinLevel, forced trip hold)
 #include "Group/Group.h"                     // twow-repo#601 R1 package G3: no leave from a group with a real player
 #include "playerbot/RpgAreaLevelPolicy.h"
@@ -54,6 +55,13 @@ using namespace MaNGOS;
 
 namespace
 {
+// A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2, default 0): the null target (no destination or the null destination) is
+// neutral for the arbiter. The same rule as the shadow's IsNullDest (SupervisorShadow.cpp).
+bool IsNullDest(TravelDestination const* dest)
+{
+    return !dest || dynamic_cast<NullTravelDestination const*>(dest) != nullptr;
+}
+
 // twow-repo#601 (QuestLoop.InactiveAfterProgress): the bot's count on a quest objective destination - quest items for a loot
 // objective, kill / use credit otherwise; -1 when the destination is no objective or the quest is not in the log.
 int32 ObjectiveCountOf(Player* bot, TravelDestination const* destination)
@@ -1223,7 +1231,22 @@ TravelTarget::TravelTarget(PlayerbotAI* ai) : AiObject(ai)
     SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);
 }
 
-void TravelTarget::SetTarget(TravelDestination* tDestination1, WorldPosition* wPosition1) {
+bool TravelTarget::SetTarget(TravelDestination* tDestination1, WorldPosition* wPosition1) {
+    if (live_ && !ai::supervisor::AdmitTargetWrite(ai, this, IsNullDest(tDestination1), "set_target"))
+    {
+        // A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2, default 0): denied, nothing written. The caller handed over a
+        // temporary destination the target did not take: free it (never the one the target holds).
+        if (dynamic_cast<TemporaryTravelDestination*>(tDestination1) && tDestination1 != tDestination)
+            delete tDestination1;
+        return false;
+    }
+    SetTargetUnchecked(tDestination1, wPosition1);
+    if (live_)
+        ai::supervisor::CommitTargetWrite(ai, this);
+    return true;
+}
+
+void TravelTarget::SetTargetUnchecked(TravelDestination* tDestination1, WorldPosition* wPosition1) {
     // twow-repo#594 / P3-b: a direct-target trip ends where its target leaves the destination - a reset (null target),
     // a group copy, any new choice ([DirectTarget] state=trip_end).
     if (ai::direct_targets::AnyBuilt())
@@ -1255,6 +1278,9 @@ void TravelTarget::SetTarget(TravelDestination* tDestination1, WorldPosition* wP
 
     wPosition = wPosition1;
     tDestination = tDestination1;
+    // A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2, default 0): the only raise of the destination generation; it ends any
+    // arbiter owner's claim on the previous write.
+    writeGen_.fetch_add(1, std::memory_order_relaxed);
 
     // #329: only a different quest target restarts the observed progress;
     // re-selecting the same one (or passing through no target) keeps it, so
@@ -1339,6 +1365,22 @@ void TravelTarget::SetProfessionTripRpgTarget(uint8 kind, bool stockArrival)
 }
 
 bool TravelTarget::CopyTarget(TravelTarget* const target) {
+    arbiterDenied_ = false;
+    if (live_ && !ai::supervisor::AdmitTargetWrite(ai, this, IsNullDest(target->tDestination), "copy_target"))
+    {
+        // A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2, default 0): denied before the #485 check, nothing written. The
+        // choice's temporary destination would leak: free it and clear the choice's pointer (never the one this target holds,
+        // nor a group copy's, which a member's live target still holds).
+        arbiterDenied_ = true;
+        if (dynamic_cast<TemporaryTravelDestination*>(target->tDestination) && target->tDestination != tDestination &&
+            !target->IsGroupCopy())
+        {
+            delete target->tDestination;
+            target->tDestination = nullptr;
+        }
+        return false;
+    }
+
     // Every applied choice (stock or BotBrain intent) passes here.
     // twow-repo#485: so the taker of a parked turn-in is refused here - a BotBrain
     // turn_in_quest intent, or a list fetched before the park. A group copy follows a
@@ -1364,7 +1406,9 @@ bool TravelTarget::CopyTarget(TravelTarget* const target) {
     else if (oldQuest)
         TraceQuestCommit(oldQuest, "drop", "replaced_by_non_quest_target");
 
-    SetTarget(target->tDestination, target->wPosition);
+    SetTargetUnchecked(target->tDestination, target->wPosition);   // A3 step 3 T02-a: the gate ran at the head
+    if (live_)
+        ai::supervisor::CommitTargetWrite(ai, this);
     // twow-repo#601 S2 / S4 R2: the choice's window end (0 for every target but a GrindMode 1 gap grind trip); setNewTarget
     // sets READY next, which applies it.
     gapWindowEnd = target->gapWindowEnd;

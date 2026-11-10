@@ -58,7 +58,7 @@ require_text("${values_cpp}" "if (!position || (homeZone && !ai::profession_trav
 # Movement evidence (OB-00): the request line counts the home-zone drops, the target line names the destination.
 require_text("${choose_cpp}" "drops.homeZone, bot->GetZoneId());" "dropped_home_zone and zone on the request line")
 require_text("${choose_cpp}" "sLog.outBasic(\"[ProfTravel] state=target kind=%s bot=%u level=%u cohort=%c entry=%d zone=%u target_zone=%u map=%u target_map=%u distance=%.0f path=%s\"," "the target line")
-require_order("${choose_cpp}" "sLog.outBasic(\"[ProfTravel] state=target" "    setNewTarget(requester, &newTarget, travelTarget);" "the target line before the target is set")
+require_order("${choose_cpp}" "sLog.outBasic(\"[ProfTravel] state=target" "    if (!setNewTarget(requester, &newTarget, travelTarget))" "the target line before the target is set")
 require_text("${conf_dist}" "home_zone" "documented")
 require_text("${conf_dist}" "[ProfTravel] state=target" "documented")
 

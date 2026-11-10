@@ -1,6 +1,7 @@
 
 #include "playerbot/playerbot.h"
 #include "playerbot/SupervisorShadow.h"   // A3 step 3 arbiter shadow: writer scopes
+#include "playerbot/SupervisorEnforce.h"   // A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2, default 0): LaneFree
 #include "GuildCreateActions.h"
 #include "GuildAcceptAction.h"
 #include "playerbot/strategy/values/TravelValues.h"   // twow-repo#333 P1-ad: ProfessionTripOpenKind
@@ -1166,7 +1167,7 @@ bool PetitionOfferNearbyAction::Execute(Event& event)
 
 bool PetitionTurnInAction::Execute(Event& event)
 {
-    ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::Lifecycle);
+    ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::Errand);
     Player* requester = event.getOwner() ? event.getOwner() : GetMaster();
     std::list<ObjectGuid> vendors = ai->GetAiObjectContext()->GetValue<std::list<ObjectGuid> >("nearest npcs")->Get();
     bool vendored = false, result = false;
@@ -1283,6 +1284,10 @@ bool PetitionTurnInAction::Execute(Event& event)
         if (eDest && eDest->HasNpcFlag(UNIT_NPC_FLAG_PETITIONER))
             return false;
     }
+
+    // A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2, default 0): a held quest-book lane keeps the live target; no close, no request.
+    if (!ai::supervisor::LaneFree(ai, ai::supervisor::Lane::Questbook, "petition"))
+        return false;
 
     // twow-repo#485 (new path): one trip request per RosterGuildRetrySeconds (see RosterTurnInUseful).
     if (RosterGuildPlan::UsesRosterPath(ai))
@@ -1461,6 +1466,10 @@ bool RosterGuildFoundTripAction::isUseful()
     if (destination && destination->HasNpcFlag(UNIT_NPC_FLAG_PETITIONER))
         return false;
 
+    // A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2, default 0): a held quest-book lane keeps the live target.
+    if (!ai::supervisor::LaneFree(ai, ai::supervisor::Lane::Questbook, "guild_trip"))
+        return false;
+
     // At most one trip request per RosterGuildRetrySeconds (a failed or overridden search must not
     // expire the current target every minute).
     return roster_guild::IsDue(time(nullptr), AI_VALUE2(time_t, "manual time", "roster guild buy travel"), RosterGuildRetrySeconds);
@@ -1468,13 +1477,17 @@ bool RosterGuildFoundTripAction::isUseful()
 
 bool RosterGuildFoundTripAction::Execute(Event& event)
 {
-    ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::Lifecycle);
+    ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::Errand);
     if (PetitionerNearby())
     {
         bool const sent = ai->DoSpecificAction("buy petition", event, true);
         sLog.outBasic("[RosterGuild] event=bought bot=%u level=%u result=%s", bot->GetGUIDLow(), bot->GetLevel(), sent ? "sent" : "failed");
         return sent;
     }
+
+    // A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2, default 0): checked before the claim, nothing is closed or requested while held.
+    if (!ai::supervisor::LaneFree(ai, ai::supervisor::Lane::Questbook, "guild_trip"))
+        return false;
 
     // One bot per plan guild travels; the others keep questing.
     if (!RosterGuildPlan::ClaimFoundTrip(bot))

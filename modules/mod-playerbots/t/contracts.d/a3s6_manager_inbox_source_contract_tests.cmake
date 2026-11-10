@@ -179,7 +179,7 @@ set(HOOK "        if (sPlayerbotAIConfig.botGroupsManagerStatusSeconds &&\n     
 set(REACTION "    if(!UpdateAIReaction(elapsed, doMinimalReaction, bot->IsTaxiFlying()) && CanUpdateAIInternal())")
 set(PROGRESS "        // A3 step 5 (ADR-0041, AiPlayerbot.CombatRule.ProgressGuard, default 0): one reading")
 set(QB_K "        // A3 step 2 (ADR-0041, AiPlayerbot.QuestBook, default 0)")
-set(SUP_GATE "            EnsureSupervisor()->Tick(WorldTimer::getMSTime(), ai::supervisor::ArbiterOn(sPlayerbotAIConfig.supervisorArbiter));")
+set(SUP_GATE "            EnsureSupervisor()->Tick(WorldTimer::getMSTime(), ai::supervisor::ArbiterValue(sPlayerbotAIConfig.supervisorArbiter));")
 
 function(check_hook ai_cpp ai_h all_sources out)
   count_text("${ai_cpp}" "${HOOK}" n)

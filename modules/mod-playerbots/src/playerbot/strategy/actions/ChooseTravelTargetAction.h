@@ -22,7 +22,9 @@ namespace ai
         virtual bool isUseful() override;
         static void ReportTravelTarget(Player* bot, Player* requester, TravelTarget* newTarget, TravelTarget* oldTarget);
     protected:
-        void setNewTarget(Player* requester, TravelTarget* newTarget, TravelTarget* oldTarget);        
+        // A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2, default 0): false only when the arbiter denied the copy; the caller
+        // then returns before its follow-up writes. The #485 parked refusal returns true, as the callers continued before.
+        bool setNewTarget(Player* requester, TravelTarget* newTarget, TravelTarget* oldTarget);
 
         bool SetBestTarget(Player* requester, TravelTarget* target, PartitionedTravelList& travelPartitions, bool onlyActive = true,
             TravelTarget const* excludedTurnInTarget = nullptr);
