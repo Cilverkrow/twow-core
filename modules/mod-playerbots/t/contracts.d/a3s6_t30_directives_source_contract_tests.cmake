@@ -186,7 +186,8 @@ endfunction()
 # ---- (b) Types 0 is a no-op -------------------------------------------------------------------------------------------------
 function(check_noop out)
   region("${mgr_cpp}" "void WorldThreadManager::RunDirectives(" "\n}\n" run)
-  string(FIND "${run}" "    std::uint32_t const types = EffectiveTypes(sPlayerbotAIConfig.botGroupsManagerTypes, sPlayerbotAIConfig.botGroupsManagerStatusSeconds);\n    if (!types && !engine_.HasGroups())\n    {\n        acks_.clear();\n        return;\n    }\n" early)
+  # T30-1c: types = LiveTypesNow() (Types after the StatusSeconds rule, 0 below arbiter 2; pinned in check_t30_1c).
+  string(FIND "${run}" "    std::uint32_t const types = LiveTypesNow();\n    if (!types && !engine_.HasGroups())\n    {\n        acks_.clear();\n        return;\n    }\n" early)
   string(FIND "${run}" "group_ops::TakeManagerOutcomes(" take)
   if(early EQUAL -1 OR take EQUAL -1 OR NOT early LESS take)
     set(${out} "no-op: RunDirectives does not return before any work while Types is 0 and nothing is held" PARENT_SCOPE)
@@ -211,7 +212,7 @@ function(check_noop out)
     endif()
   endforeach()
   foreach(needle
-      "bool OwnsBot(std::uint32_t guidLow)\n{\n    return Owns(sPlayerbotAIConfig.botGroupsManager,\n        EffectiveTypes(sPlayerbotAIConfig.botGroupsManagerTypes, sPlayerbotAIConfig.botGroupsManagerStatusSeconds), guidLow);\n}"
+      "bool OwnsBot(std::uint32_t guidLow)\n{\n    // T30-1c: below arbiter 2 the manager owns no bot (Types acts like 0), so the legacy paths stay open for the cohort.\n    return Owns(sPlayerbotAIConfig.botGroupsManager, LiveTypesNow(), guidLow);\n}"
       "bool IsManaged(std::uint32_t guidLow)\n{\n    ViewEntry v;\n    return WorldManager().Directives().View().Find(guidLow, v);\n}"
       "bool Blocks(std::uint32_t guidLow)\n{\n    return OwnsBot(guidLow) || IsManaged(guidLow);\n}"
       "    return WorldManager().Directives().View().Find(guidLow, v) ? v.questRole : std::uint8_t(0);"
@@ -641,7 +642,7 @@ endfunction()
 
 # ---- (h6) T30-1b: the left ack, the bot_left reasons, the ack reason names, osc, skip_unknown_30m ------------------------------
 set(LEFT_BRANCH "            if (a.state == manager_inbox::kAckLeft)\n            {\n                ApplyLeftAck(a, io);\n                continue;\n            }")
-set(LEFT_MATCH "        ManagedGroup* g = a.seq == 0 ? GroupOf(a.low, &m) : nullptr;\n        if (!g || std::uint16_t(g->serial) != a.serial || m->state != MemberState::Acked || (entry && entry->exitOpen))\n        {\n            Count(Cnt::AckStale);\n            return;\n        }\n        Count(Cnt::SelfLeft);")
+set(LEFT_MATCH "        ManagedGroup* g = a.seq == 0 ? GroupOf(a.low, &m) : nullptr;\n        if (!g || std::uint16_t(g->serial) != a.serial || m->state != MemberState::Acked || (entry && entry->exitOpen))\n        {\n            Count(Cnt::LeftStale);\n            return;\n        }\n        Count(Cnt::SelfLeft);")
 function(check_t30_1b out)
   foreach(pair "inbox_h|constexpr std::uint8_t kAckLeft = 4;"
       "dpol|    a.state = std::uint8_t(e.mapOrDungeon & 0xFFu);\n    a.serial = std::uint16_t(e.mapOrDungeon >> 16);"
@@ -669,7 +670,7 @@ function(check_t30_1b out)
       "dpol|        if (CountsAsOsc(m.ackKnown, m.ackSec, nowSec_, why))\n            Count(Cnt::Osc);"
       "dpol|                m->ackKnown = true;\n                m->ackSec = nowSec_;"
       "dpol|    LinesDropped,\n"
-      "dpol|    Osc,\n    SelfLeft,\n    Count,\n};"
+      "dpol|    Osc,\n    SelfLeft,\n"
       "dpol|        case Cnt::Osc: return \"osc\";"
       "dpol|        case Cnt::SelfLeft: return \"self_left\";"
       "dpol|constexpr std::size_t kCountsMinuteLoop = std::size_t(Cnt::LinesDropped) + 1;"
@@ -696,13 +697,52 @@ function(check_t30_1b out)
     set(${out} "t30-1b: ApplyAcks does not handle the left ack before the seq match" PARENT_SCOPE)
     return()
   endif()
-  # minute2: the leave reasons, then osc / self_left, skip_unknown_30m last.
+  # minute2: the leave reasons, then osc / self_left, skip_unknown_30m, then the T30-1c counters (left_stale) last.
   region("${dpol}" "inline int FormatMinute2(" "\n}\n" m2)
   string(FIND "${m2}" "\" leave_%s=%llu\"" leave)
-  string(FIND "${m2}" "    for (std::size_t i = kCountsMinuteLoop; i < kCounts && n > 0" cnt)
-  string(FIND "${m2}" "\" skip_unknown_30m=%llu\", (unsigned long long)m.skipUnknown30m);\n    return n;" last)
-  if(leave EQUAL -1 OR cnt EQUAL -1 OR last EQUAL -1 OR NOT leave LESS cnt OR NOT cnt LESS last)
-    set(${out} "t30-1b: minute2 does not end with osc, self_left and then skip_unknown_30m" PARENT_SCOPE)
+  string(FIND "${m2}" "    for (std::size_t i = kCountsMinuteLoop; i < kCountsMinute2Loop && n > 0" cnt)
+  string(FIND "${m2}" "\" skip_unknown_30m=%llu\", (unsigned long long)m.skipUnknown30m);\n" skip)
+  string(FIND "${m2}" "    for (std::size_t i = kCountsMinute2Loop; i < kCounts && n > 0 && std::size_t(n) < size; ++i)\n        n += std::snprintf(buf + n, size - std::size_t(n), \" %s=%llu\", CntName(Cnt(i)), (unsigned long long)m.c[i]);\n    return n;" last)
+  if(leave EQUAL -1 OR cnt EQUAL -1 OR skip EQUAL -1 OR last EQUAL -1 OR NOT leave LESS cnt OR NOT cnt LESS skip OR NOT skip LESS last)
+    set(${out} "t30-1b: minute2 does not end with osc, self_left, skip_unknown_30m and then the T30-1c counters" PARENT_SCOPE)
+    return()
+  endif()
+  set(${out} "" PARENT_SCOPE)
+endfunction()
+
+# ---- (h7) T30-1c: the arbiter gate (Types acts like 0 below arbiter 2) and left_stale ----------------------------------------
+set(LIVE_NOW "std::uint32_t LiveTypesNow()\n{\n    return LiveTypes(sPlayerbotAIConfig.botGroupsManagerTypes, sPlayerbotAIConfig.botGroupsManagerStatusSeconds,\n        ai::supervisor::ArbiterValue(sPlayerbotAIConfig.supervisorArbiter));\n}")
+function(check_t30_1c out)
+  foreach(pair "gm_policy|constexpr std::uint32_t kManagerArbiter = 2;"
+      "gm_policy|    return arbiter == kManagerArbiter ? EffectiveTypes(types, statusSeconds) : 0u;"
+      "mgr_cpp|#include \"playerbot/SupervisorShadow.h\""
+      "mgr_cpp|${LIVE_NOW}"
+      "dpol|    SelfLeft,\n    // T30-1c (OB-10 note on #992): appended after skip_unknown_30m, at the very end of minute2 (kCountsMinute2Loop).\n    LeftStale,\n    Count,\n};"
+      "dpol|        case Cnt::LeftStale: return \"left_stale\";"
+      "dpol|constexpr std::size_t kCountsMinute2Loop = std::size_t(Cnt::SelfLeft) + 1;"
+      "gm_test|    TestLiveTypes();"
+      "conf_dist|left_stale="
+      "conf_dist|AiPlayerbot.Supervisor.Arbiter = 2")
+    string(FIND "${pair}" "|" bar)
+    string(SUBSTRING "${pair}" 0 ${bar} var)
+    math(EXPR bar "${bar} + 1")
+    string(SUBSTRING "${pair}" ${bar} -1 needle)
+    string(FIND "${${var}}" "${needle}" at)
+    if(at EQUAL -1)
+      set(${out} "t30-1c: ${var} missing ${needle}" PARENT_SCOPE)
+      return()
+    endif()
+  endforeach()
+  # The live switch is the one Types source of the manager pass and the bot-thread view: no EffectiveTypes( left in
+  # GroupManager.cpp outside LiveTypes (GroupManagerPolicy.h).
+  string(FIND "${mgr_cpp}" "EffectiveTypes(" at)
+  if(NOT at EQUAL -1)
+    set(${out} "t30-1c: GroupManager.cpp reads Types without the arbiter gate (EffectiveTypes)" PARENT_SCOPE)
+    return()
+  endif()
+  count_text("${mgr_cpp}" "LiveTypesNow()" n)
+  if(NOT n EQUAL 3)
+    set(${out} "t30-1c: LiveTypesNow() appears ${n} times in GroupManager.cpp (3 expected: definition, RunDirectives, OwnsBot)" PARENT_SCOPE)
     return()
   endif()
   set(${out} "" PARENT_SCOPE)
@@ -778,6 +818,8 @@ function(run_check check out)
     check_view(r)
   elseif(check STREQUAL "check_t30_1b")
     check_t30_1b(r)
+  elseif(check STREQUAL "check_t30_1c")
+    check_t30_1c(r)
   elseif(check STREQUAL "check_unit")
     check_unit(r)
   else()
@@ -788,7 +830,7 @@ endfunction()
 
 # ---- the real sources ----------------------------------------------------------------------------------------------------------
 foreach(check check_switch check_noop check_post check_ops check_pure check_gates check_mirrors check_order check_minute check_cohort
-    check_resume_drain check_wish check_serial check_view check_t30_1b check_unit)
+    check_resume_drain check_wish check_serial check_view check_t30_1b check_t30_1c check_unit)
   run_check(${check} r)
   fail_if("${r}")
 endforeach()
@@ -914,7 +956,7 @@ probe(dpol "    a.serial = std::uint16_t(e.mapOrDungeon >> 16);" "    a.serial =
 probe(dpol "    a.state = std::uint8_t(e.mapOrDungeon & 0xFFu);" "    a.state = std::uint8_t(e.mapOrDungeon);" check_t30_1b "t30-1b: dpol missing" "AckOf state without the b0-7 mask")
 probe(dpol "        ManagedGroup* g = a.seq == 0 ? GroupOf(a.low, &m) : nullptr;" "        ManagedGroup* g = GroupOf(a.low, &m);" check_t30_1b "t30-1b: dpol missing" "a left ack with a seq accepted")
 probe(dpol "        if (!g || std::uint16_t(g->serial) != a.serial || m->state" "        if (!g || m->state" check_t30_1b "t30-1b: dpol missing" "a left ack of another serial accepted")
-probe(dpol " || (entry && entry->exitOpen))\n        {\n            Count(Cnt::AckStale);" ")\n        {\n            Count(Cnt::AckStale);" check_t30_1b "t30-1b: dpol missing" "a left ack while an Exit is open accepted")
+probe(dpol " || (entry && entry->exitOpen))\n        {\n            Count(Cnt::LeftStale);" ")\n        {\n            Count(Cnt::LeftStale);" check_t30_1b "t30-1b: dpol missing" "a left ack while an Exit is open accepted")
 probe(dpol "${LEFT_BRANCH}\n" "" check_t30_1b "t30-1b: ApplyAcks does not handle the left ack before" "the left branch dropped (left acks seq-matched)")
 probe(dpol "        case EndReason::BotLeftLost: return \"bot_left_lost\";" "        case EndReason::BotLeftLost: return \"bot_left\";" check_t30_1b "t30-1b: dpol missing" "an end reason renamed")
 probe(dpol "    BotLeftOff,    // left reason 22 arbiter_off (or any other): the manager's own (retry cooldown only)\n    Count,"
@@ -926,11 +968,24 @@ probe(dpol "constexpr std::uint32_t kOscSec = 900;" "constexpr std::uint32_t kOs
 probe(dpol " ||\n        r == EndReason::BotLeftDone;" ";" check_t30_1b "t30-1b: dpol missing" "bot_left_done not a natural end")
 probe(dpol "        if (CountsAsOsc(m.ackKnown, m.ackSec, nowSec_, why))\n            Count(Cnt::Osc);" "" check_t30_1b "t30-1b: dpol missing" "osc never counted")
 probe(dpol "i < kCountsMinuteLoop && n > 0" "i < kCounts && n > 0" check_t30_1b "t30-1b: dpol missing" "osc/self_left inserted mid minute line")
-probe(dpol "\" skip_unknown_30m=%llu\", (unsigned long long)m.skipUnknown30m);\n    return n;" "\" skip_unknown_30m=%llu\", (unsigned long long)m.skipUnknown30m);\n    n += 0;\n    return n;"
-  check_t30_1b "t30-1b: minute2 does not end" "skip_unknown_30m not last on minute2")
+probe(dpol "    for (std::size_t i = kCountsMinuteLoop; i < kCountsMinute2Loop && n > 0" "    for (std::size_t i = kCountsMinuteLoop; i < kCounts && n > 0"
+  check_t30_1b "t30-1b: minute2 does not end" "left_stale printed before skip_unknown_30m")
 probe(dpol "constexpr std::uint32_t kSkipUnknownLongSec = 1800;" "constexpr std::uint32_t kSkipUnknownLongSec = 600;" check_t30_1b "t30-1b: dpol missing" "skip_unknown_30m on 10 minutes")
 probe(conf_dist "skip_unknown_30m= (a level, not an increment" "skip_unknown_30m= (an increment" check_t30_1b "t30-1b: conf_dist missing" "the dist text calls the level an increment")
 probe(unit_test "    TestSelfLeft();\n" "" check_unit "unit: t/group_directive_policy_tests.cpp does not run" "the self-left test not run")
+# (h7) T30-1c: the gate off, shadow counted as enforce, the pass or the view back on EffectiveTypes, left_stale back to ack_stale.
+probe(gm_policy "    return arbiter == kManagerArbiter ? EffectiveTypes(types, statusSeconds) : 0u;" "    return EffectiveTypes(types, statusSeconds);"
+  check_t30_1c "t30-1c: gm_policy missing" "LiveTypes ignores the arbiter")
+probe(gm_policy "constexpr std::uint32_t kManagerArbiter = 2;" "constexpr std::uint32_t kManagerArbiter = 1;" check_t30_1c "t30-1c: gm_policy missing" "the shadow (1) counted as enforce")
+probe(mgr_cpp "        ai::supervisor::ArbiterValue(sPlayerbotAIConfig.supervisorArbiter));" "        sPlayerbotAIConfig.supervisorArbiter);"
+  check_t30_1c "t30-1c: mgr_cpp missing" "the key read without the console override")
+probe(mgr_cpp "    std::uint32_t const types = LiveTypesNow();" "    std::uint32_t const types = EffectiveTypes(sPlayerbotAIConfig.botGroupsManagerTypes, sPlayerbotAIConfig.botGroupsManagerStatusSeconds);"
+  check_t30_1c "t30-1c: GroupManager.cpp reads Types without the arbiter gate" "the manager pass without the gate")
+probe(mgr_cpp "    return Owns(sPlayerbotAIConfig.botGroupsManager, LiveTypesNow(), guidLow);" "    return Owns(sPlayerbotAIConfig.botGroupsManager, sPlayerbotAIConfig.botGroupsManagerTypes, guidLow);"
+  check_t30_1c "t30-1c: LiveTypesNow\\(\\) appears 2 times" "the bot-thread view without the gate")
+probe(dpol "        {\n            Count(Cnt::LeftStale);\n            return;\n        }\n        Count(Cnt::SelfLeft);" "        {\n            Count(Cnt::AckStale);\n            return;\n        }\n        Count(Cnt::SelfLeft);"
+  check_t30_1b "t30-1b: dpol missing" "a stale left ack counted as ack_stale again")
+probe(gm_test "    TestLiveTypes();\n" "" check_t30_1c "t30-1c: gm_test missing" "the live-types test not run")
 # (i) the unit tests.
 probe(tests_cmake "add_test(NAME group_directive_policy\n" "add_test(NAME other\n" check_unit "unit: tests.cmake missing" "the unit test not registered")
 probe(unit_test "    TestTypesZero();\n" "" check_unit "unit: t/group_directive_policy_tests.cpp does not run" "the Types 0 test not run")

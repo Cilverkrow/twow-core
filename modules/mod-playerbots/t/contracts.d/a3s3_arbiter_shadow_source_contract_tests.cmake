@@ -517,9 +517,11 @@ function(check_switch config_h config_cpp conf_dist ai_cpp policy all_sources ou
     return()
   endif()
   # A3 step 3 T02-a: the probe key (supervisorArbiterProbe) is a different member; it is pinned by the enforce contract.
+  # CLI-GRP T30-1c (agreed with CLI-Projekt 10.11.): the group manager reads the switch through ArbiterValue in LiveTypesNow
+  # (GroupManager.cpp; pinned by a3s6_t30_directives check_t30_1c), so 2.
   count_regex("${all_sources}" "sPlayerbotAIConfig\\.supervisorArbiter[^A-Za-z0-9_]" n)
-  if(NOT n EQUAL 1)
-    set(${out} "the arbiter switch is read in ${n} places (1 expected: the gate)" PARENT_SCOPE)
+  if(NOT n EQUAL 2)
+    set(${out} "the arbiter switch is read in ${n} places (2 expected: the gate, the group manager)" PARENT_SCOPE)
     return()
   endif()
   set(${out} "" PARENT_SCOPE)
