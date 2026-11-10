@@ -867,7 +867,7 @@ bool PlayerbotAIConfig::Initialize()
     grindCapLowLevelMargin = config.GetIntDefault("AiPlayerbot.GrindCap.LowLevelMargin", 2);
     questRescueIdleMinutes = config.GetIntDefault("AiPlayerbot.QuestRescue.IdleMinutes", 30);
     questRescueKeepRequestWhenFull = config.GetBoolDefault("AiPlayerbot.QuestRescue.KeepRequestWhenFull", false);
-    questRescueHomeHubs = ai::rescue_hub::ClampMode(config.GetIntDefault("AiPlayerbot.QuestRescue.HomeHubs", 0));
+    questRescueHomeHubs = ai::rescue_hub::ClampMode(config.GetIntDefault("AiPlayerbot.QuestRescue.HomeHubs", 1));   // default 1 since the SZM adoption (10.11.2026), 0 = rollback
     grindAvoidMaxDeaths = config.GetIntDefault("AiPlayerbot.GrindAvoid.MaxDeaths", 0);
     grindAvoidWindowSeconds = std::max<uint32>(60, config.GetIntDefault("AiPlayerbot.GrindAvoid.WindowSeconds", 3600));
     grindAvoidSeconds = std::max<uint32>(60, config.GetIntDefault("AiPlayerbot.GrindAvoid.AvoidSeconds", 3600));
@@ -1092,7 +1092,8 @@ bool PlayerbotAIConfig::Initialize()
         questFirstProgressionStaleObjectiveFilterLockFree = 0;
     }
     // twow-repo#601 owner rule R1: StaleKeepZone, an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B, 3 cohort A); the
-    // keep time 60 s .. 1 h. StartZoneMinLevel: 0 off, 2..60 (1 would gate nothing).
+    // keep time 60 s .. 1 h. StartZoneMinLevel: 0 off (rollback), 2..60 (1 would gate nothing), default 5 since the SZM adoption
+    // (10.11.2026).
     questFirstProgressionStaleKeepZone = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.StaleKeepZone", 0);
     if (questFirstProgressionStaleKeepZone > 3)
     {
@@ -1100,7 +1101,7 @@ bool PlayerbotAIConfig::Initialize()
         questFirstProgressionStaleKeepZone = 0;
     }
     questFirstProgressionStaleKeepZoneSeconds = std::min<uint32>(3600, uint32(std::max<int32>(60, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.StaleKeepZone.Seconds", 900))));
-    questFirstProgressionStartZoneMinLevel = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.StartZoneMinLevel", 0)));
+    questFirstProgressionStartZoneMinLevel = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.QuestFirstProgression.StartZoneMinLevel", 5)));
     if (questFirstProgressionStartZoneMinLevel == 1 || questFirstProgressionStartZoneMinLevel > 60)
     {
         sLog.outError("[ZoneKeep] config key=StartZoneMinLevel value=%u result=off (0 off, 2..60)", questFirstProgressionStartZoneMinLevel);
@@ -1114,9 +1115,10 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[ZoneKeep] config key=StartZoneMinLevel.Cohort value=%u result=1 (1 all, 2 cohort B, 3 cohort A)", questFirstProgressionStartZoneMinLevelCohort);
         questFirstProgressionStartZoneMinLevelCohort = 1;
     }
-    // twow-repo#601 owner rule R1, package "start-zone rule complete" (OB-00 08.11.2026, ZoneKeepPolicy.h): 0 off (default and
-    // rollback), 1 on; any other value acts like 0. It acts only where StartZoneMinLevel holds the bot (.Cohort selection).
-    questFirstProgressionStartZoneComplete = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.StartZoneMinLevel.Complete", 0);
+    // twow-repo#601 owner rule R1, package "start-zone rule complete" (OB-00 08.11.2026, ZoneKeepPolicy.h): 0 off (rollback),
+    // 1 on (default since the SZM adoption, 10.11.2026); any other value acts like 0. It acts only where StartZoneMinLevel holds the bot
+    // (.Cohort selection).
+    questFirstProgressionStartZoneComplete = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.StartZoneMinLevel.Complete", 1);
     if (questFirstProgressionStartZoneComplete != 0 && !ai::zone_keep::CompleteOn(int32(questFirstProgressionStartZoneComplete)))
     {
         sLog.outError("[ZoneKeep] config key=StartZoneMinLevel.Complete value=%u result=off (0 off, 1 on)", questFirstProgressionStartZoneComplete);
