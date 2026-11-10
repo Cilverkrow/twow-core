@@ -712,6 +712,34 @@ void TestQuestAttempts()
     }
 }
 
+// OB-10 note on #984: a Status lost to a full ring leaves the old wish behind. A wish older than WishFreshMs (1.5 periods)
+// is no wish, even while it is younger than kStaleMs; a wish of the latest period forms as before.
+void TestWishLeftover()
+{
+    Require(WishFreshMs(10) == 15000 && WishFreshMs(0) == 0, "WishFreshMs: 1.5 status periods");
+    Rules r;
+    r.mode = 1;
+    r.types = kTypeQuest;
+    r.statusSeconds = 10;
+    r.intervalMs = 1000;
+    Engine e;
+    World w;
+    FakeIo io;
+    SetWish(w, 1, 1000, 300, 0.0f, 0.0f);
+    SetWish(w, 2, 1000, 300, 100.0f, 0.0f);
+    SetStatus(w, 1, 20000, 0.0f, 0.0f, 300, -1);
+    SetStatus(w, 2, 20000, 100.0f, 0.0f, 300, -1);
+    SetEdge(w, 1, 20000);
+    SetEdge(w, 2, 20000);
+    Run(e, w, r, io, 20000);
+    Require(io.joins.empty(), "a 19 s old wish (status period 10 s) forms no QUEST group");
+    SetWish(w, 1, 21000, 300, 0.0f, 0.0f);
+    SetWish(w, 2, 21000, 300, 100.0f, 0.0f);
+    Refresh(w, 21000);
+    Run(e, w, r, io, 21000);
+    Require(io.joins.size() == 1 && io.joins[0].type == GroupType::Quest, "a wish of the latest period forms as before");
+}
+
 // The minute lines: fixed fields, only while Types != 0 or the registry holds anything.
 void TestMinuteLine()
 {
@@ -1296,6 +1324,7 @@ int main()
     TestSwitchOff();
     TestForeignGroup();
     TestQuestAttempts();
+    TestWishLeftover();
     TestMinuteLine();
     TestWrap();
     TestFormingNoAttempt();
