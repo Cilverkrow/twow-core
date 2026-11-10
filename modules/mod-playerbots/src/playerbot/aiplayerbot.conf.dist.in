@@ -4497,6 +4497,10 @@ AiPlayerbot.PerfMonEnabled = 0
 #         attackspeed     (very fast attackspeed)
 #         breath          (underwater breathing)
 #         quest           (quests complete instantly)
+# [ConfigEcho] (T24, OB-00 10.11.2026; log only) proves both keys as the parsed bit mask in decimal, the sum of the bits of
+# the names it understood (unknown names are dropped): taxi 1, gold 2, health 4, mana 8, power 16, item 32, cooldown 64,
+# repair 128, movespeed 256, attackspeed 512, breath 1024, glyph 2048, quest 4096. Item cheat on = bit 32 set;
+# "repair,breath" = 1152, "repair,breath,item" = 1184, nothing = 0.
 # Cheats for alts
 AiPlayerbot.BotCheats = repair,breath
 # Cheats for randombots
