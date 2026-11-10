@@ -39,6 +39,7 @@
 #include "playerbot/AiFactory.h"
 #include "playerbot/StartZonePolicy.h"
 #include "playerbot/ZoneKeepPolicy.h"   // twow-repo#601 owner rule R1 (StartZoneMinLevel rescue gate)
+#include "playerbot/LevelGuardPolicy.h" // twow-repo#575 LevelGuard.SkipHarmless: RefreshActiveEvents
 #include "playerbot/RescueHubPolicy.h"   // twow-repo#575 RG-a (QuestRescue.HomeHubs): the anchor table
 #include "playerbot/CohortPolicy.h"     // twow-repo#601 owner rule R1 (StartZoneMinLevel.Cohort)
 #include "PlayerbotCommandServer.h"
@@ -2161,6 +2162,8 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     ReportStaleTarget();    // A3-HARM-UPSTREAM H6 (T40): [StaleTarget] once per minute (AiPlayerbot.Rotation.ReleaseStaleTarget / .Shadow)
     ai::stale_objective::ReportMinute();   // A3-GERUEST-L60 8.4 lever 3: [StaleObjectiveMin] once per minute (StaleObjectiveFilter on)
     ai::zone_keep::ReportObjectiveWindowMinute();   // twow-repo#575 SZF-Q: objective_window lines + [ZoneKeepMin] (ObjectiveWindow on)
+    if (sPlayerbotAIConfig.rosterFarMoveLevelGuardSkipHarmless)
+        ai::level_guard::RefreshActiveEvents();   // twow-repo#575 LevelGuard.SkipHarmless: active-event snapshot (world thread)
     ReportTankKit();        // twow-repo#602: [TankKit] once per minute (AiPlayerbot.Rotation.TankKitFromLevel)
     ReportParkSleep();    // twow-repo#541: core switches + cell source lines once per minute (AiPlayerbot.Park.CellSourceStats)
     ReportCombatIdle();   // twow-repo#541 (audit A17): [CombatIdle] once per minute (AiPlayerbot.Perf.CombatIdleYield)

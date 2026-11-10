@@ -1159,6 +1159,9 @@ public:
     uint32 rpgTurnInFirst = 0;
     uint32 rosterFarMoveLevelGuardMargin = 3;    // spawn level_max >= bot level + Margin (LevelGuardPolicy.h, 1..10)
     float rosterFarMoveLevelGuardRadius = 50.0f; // yd around the chosen point, 2D (10..100)
+    // twow-repo#575 / #703 item 5 (LevelGuardPolicy.h): both 0 = the rule above unchanged.
+    uint32 rosterFarMoveLevelGuardZWindow = 0;      // a spawn counts only within ZWindow yd of the travel point's z; 0 off, 5..100
+    uint32 rosterFarMoveLevelGuardSkipHarmless = 0; // 1: no-aggro / trigger spawns out, event-only spawns only while their event runs
     // twow-repo#595 P4 S0 + B1 (shortcuts by player proximity): all 0 = today's behaviour (ShortcutPolicy.h)
     uint32 shortcutNearScope = 0;  // 0 = off (ShortcutNear answers Unknown), 1 = radius, 2 = same zone or radius
     float shortcutNearRadius = 0.0f;  // yards, 0 = map visibility + ReactDistance
