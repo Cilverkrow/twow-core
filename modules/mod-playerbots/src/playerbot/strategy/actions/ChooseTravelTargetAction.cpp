@@ -1028,7 +1028,8 @@ bool ChooseTravelTargetAction::Execute(Event& event)
                 ai::zone_keep::KeepsZone(ai::cohort::Applies(sPlayerbotAIConfig.questFirstProgressionStaleKeepZone, bot->GetGUIDLow()), lastStaleObjective);
             bool const startZoneHold = zoneRuleBot &&
                 ai::zone_keep::StartZoneGated(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevel, bot->GetLevel()) &&
-                ai::cohort::Applies(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevelCohort, bot->GetGUIDLow());
+                ai::cohort::Applies(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevelCohort, bot->GetGUIDLow()) &&
+                !ai::zone_keep::CustomStartUngated(bot->getRace(), sPlayerbotAIConfig.customRaceStartZones);   // SZM adoption review 10.11.2026
             if (staleKeepZone)
             {
                 uint32 const until = uint32(time(nullptr)) + sPlayerbotAIConfig.questFirstProgressionStaleKeepZoneSeconds;

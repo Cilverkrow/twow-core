@@ -1,7 +1,7 @@
 cmake_policy(VERSION 3.16)
 # twow-repo#601 owner rule R1 (owner 04.11.2026 via OB-00; CLI-Deep, ZoneKeepPolicy.h): AiPlayerbot.QuestFirstProgression.StaleKeepZone
 # (cohort modes, default 0) - an empty quest search with stale skips neither widens nor counts toward a band step, and for .Seconds no
-# quest point outside the bot's zone (turn-ins exempt); AiPlayerbot.QuestFirstProgression.StartZoneMinLevel (default 0, owner value 5) -
+# quest point outside the bot's zone (turn-ins exempt); AiPlayerbot.QuestFirstProgression.StartZoneMinLevel (default 5 = the owner value since the SZM adoption 10.11.2026, 0 = rollback) -
 # below it no travel point outside the start zone, no band step, no rescue out of it. Plus the lock-free stale query (cand4G T cause:
 # one lock per candidate before). Pins the keys, the gates and their order, the counters and lines, the rescue gate and the fast path.
 
@@ -60,24 +60,26 @@ read_source("TravelMgr.cpp" travel)
 read_source("RandomPlayerbotMgr.cpp" random_mgr)
 read_source("strategy/actions/ChooseTravelTargetAction.cpp" choose)
 
-# 1. Keys: default 0, an unknown value is off, the keep time clamped, documented, echoed in sorted order.
+# 1. Keys: StaleKeepZone default 0, StartZoneMinLevel default 5 (SZM adoption 10.11.2026, 0 = rollback), an unknown value is off,
+#    the keep time clamped, documented, echoed in sorted order.
 require_text("${config_h}" "uint32 questFirstProgressionStaleKeepZone = 0;" "StaleKeepZone member off")
-require_text("${config_h}" "uint32 questFirstProgressionStartZoneMinLevel = 0;" "StartZoneMinLevel member off")
+require_text("${config_h}" "uint32 questFirstProgressionStartZoneMinLevel = 5;" "StartZoneMinLevel member 5 (SZM adoption)")
 require_text("${config_cpp}" "questFirstProgressionStaleKeepZone = config.GetIntDefault(\"AiPlayerbot.QuestFirstProgression.StaleKeepZone\", 0);" "StaleKeepZone default 0")
 require_text("${config_cpp}" "if (questFirstProgressionStaleKeepZone > 3)" "unknown mode off")
 require_text("${config_cpp}" "std::min<uint32>(3600, uint32(std::max<int32>(60, config.GetIntDefault(\"AiPlayerbot.QuestFirstProgression.StaleKeepZone.Seconds\", 900))))" "keep time 60..3600, default 900")
-require_text("${config_cpp}" "config.GetIntDefault(\"AiPlayerbot.QuestFirstProgression.StartZoneMinLevel\", 0)" "StartZoneMinLevel default 0")
+require_text("${config_cpp}" "config.GetIntDefault(\"AiPlayerbot.QuestFirstProgression.StartZoneMinLevel\", 5)" "StartZoneMinLevel default 5")
 require_text("${config_cpp}" "if (questFirstProgressionStartZoneMinLevel == 1 || questFirstProgressionStartZoneMinLevel > 60)" "StartZoneMinLevel 2..60")
 require_order("${config_cpp}" "{\"QuestFirstProgression.SkipSkillLockedObjectives\"" "{\"QuestFirstProgression.StaleKeepZone\", Value(questFirstProgressionStaleKeepZone)}," "echo sorted (before)")
 require_order("${config_cpp}" "{\"QuestFirstProgression.StaleKeepZone.Seconds\", Value(questFirstProgressionStaleKeepZoneSeconds)}," "{\"QuestFirstProgression.StaleObjectiveFilter\", Value(" "echo sorted (StaleK < StaleO)")
 require_order("${config_cpp}" "{\"QuestFirstProgression.StaleObjectiveFilter.WindowSeconds\"" "{\"QuestFirstProgression.StartZoneMinLevel\", Value(questFirstProgressionStartZoneMinLevel)}," "echo sorted (Stal < Star)")
 require_text("${conf_dist}" "\nAiPlayerbot.QuestFirstProgression.StaleKeepZone = 0\n" "documented off")
 require_text("${conf_dist}" "\nAiPlayerbot.QuestFirstProgression.StaleKeepZone.Seconds = 900\n" "documented keep time")
-require_text("${conf_dist}" "\nAiPlayerbot.QuestFirstProgression.StartZoneMinLevel = 0\n" "documented off")
+require_text("${conf_dist}" "\nAiPlayerbot.QuestFirstProgression.StartZoneMinLevel = 5\n" "documented 5 (SZM adoption)")
+require_text("${conf_dist}" "#   0 = off (rollback), 2..60, default 5 (the owner value); other values act like 0." "dist value text: 0 = rollback, 5 = default")
 require_text("${config_h}" "uint32 questFirstProgressionStartZoneMinLevelCohort = 1;" "cohort selector default all")
 require_text("${config_cpp}" "if (questFirstProgressionStartZoneMinLevelCohort > 3)" "unknown cohort selector acts like 1")
 require_text("${conf_dist}" "\nAiPlayerbot.QuestFirstProgression.StartZoneMinLevel.Cohort = 1\n" "documented cohort selector")
-require_text("${choose}" "ai::cohort::Applies(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevelCohort, bot->GetGUIDLow());" "cohort selector in the travel gates")
+require_text("${choose}" "ai::cohort::Applies(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevelCohort, bot->GetGUIDLow())" "cohort selector in the travel gates")
 
 # 2. The rule (pure): the start zone, the gates, the window across the wrap, turn-ins exempt.
 require_text("${policy}" "#include \"StartZonePolicy.h\"" "custom start zones from StartZonePolicy")
@@ -113,8 +115,12 @@ require_text("${choose}" "if (sPlayerbotAIConfig.questFirstProgressionBandLadder
 
 # 5. The rescue: below StartZoneMinLevel never out of the start zone - before every other rescue rule.
 between("${random_mgr}" "std::vector<WorldLocation> RandomPlayerbotMgr::QuestRescueTargets(Player* bot)" "\n}\n" rescue_fn)
-require_order("${rescue_fn}" "if (ai::zone_keep::StartZoneGated(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevel, level) &&\n        ai::cohort::Applies(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevelCohort, bot->GetGUIDLow()))" "if (ai::quest_search::goblin_island::UsesGoblinStartRescue(" "gate first, cohort-selected")
+require_order("${rescue_fn}" "if (startZoneRules && ai::zone_keep::StartZoneGated(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevel, level) &&\n        ai::cohort::Applies(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevelCohort, bot->GetGUIDLow()))" "if (ai::quest_search::goblin_island::UsesGoblinStartRescue(" "gate first, cohort-selected")
 require_text("${rescue_fn}" "[ZoneKeep] state=rescue_gate bot=%u level=%u zone=%u start_zone=%u in_start=%u result=%s" "visible gate")
+# SZM adoption review (10.11.2026): roster bots without a real player master only (as StartZoneHolds); a custom start race without
+# CustomRaceStartZones has an unknown start zone (proxy start vs the playercreateinfo zone) and fails open.
+require_text("${rescue_fn}" "bool const startZoneRules = IsPersistentRosterMember(bot->GetGUIDLow()) && !(rescueAi && rescueAi->HasRealPlayerMaster());" "rescue gate scope = travel gate scope")
+require_text("${policy}" "inline bool StartZoneKnown(std::uint32_t race, bool customStarts, std::uint32_t createZone)\n{\n    if (start_zone::IsCustomStartRace(race))\n        return customStarts;\n    return createZone != 0;\n}" "custom start races known only with custom starts")
 
 # 6. The stale query: no lock while no mark is active; a per-thread snapshot rebuilt under the one mutex after a store change.
 between("${travel}" "bool ai::stale_objective::IsObjectiveStale(" "\n}\n" query_fn)
@@ -133,6 +139,11 @@ require_text("${travel_h}" "bool StartZoneHolds(Player* bot, PlayerbotAI* botAI)
 between("${travel}" "bool ai::zone_keep::StartZoneHolds(" "\n}\n" holds_fn)
 require_text("${holds_fn}" "ai::cohort::Applies(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevelCohort, bot->GetGUIDLow())" "cohort-selected")
 require_text("${holds_fn}" "sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !(botAI && botAI->HasRealPlayerMaster())" "roster bots on their own")
+# SZM adoption review (10.11.2026): a custom start race without CustomRaceStartZones is never held - in StartZoneHolds (travel gate,
+# forced trips, follow / group rules, manager facts) and in the band-step hold of the quest search.
+require_text("${holds_fn}" "!ai::zone_keep::CustomStartUngated(bot->getRace(), sPlayerbotAIConfig.customRaceStartZones);" "custom start races without custom starts never held")
+require_text("${choose}" "ai::cohort::Applies(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevelCohort, bot->GetGUIDLow()) &&\n                !ai::zone_keep::CustomStartUngated(bot->getRace(), sPlayerbotAIConfig.customRaceStartZones);" "band-step hold: the same exception")
+require_text("${policy}" "inline bool CustomStartUngated(std::uint32_t race, bool customStarts)\n{\n    return start_zone::IsCustomStartRace(race) && !customStarts;\n}" "pure rule")
 between("${travel}" "void ai::zone_keep::NoteForcedHold(" "\n}\n" hold_fn)
 require_text("${hold_fn}" "if (!bot || !botAI || ai::zone_keep::ForcedHoldActive(botAI))\n        return;" "one line per hold period")
 require_order("${hold_fn}" "->Set(int(uint32(time(nullptr)) + StartZoneForcedHoldSeconds));" "[ZoneKeep] state=forced_hold bot=%u" "hold set with the line")
