@@ -589,6 +589,9 @@ public:
     uint32 professionUseCraftIntervalSeconds = 300;
     bool professionUseTrace = false;
     uint32 professionUseTraceCooldownSeconds = 300;
+    // twow-repo#333 T28-M (OB-00 09.11.2026): one [Gathering] event=share line per roster bot on its own and online hour (the time
+    // share of gathering purposes, profession trips and gathering / craft casts, GatheringTracePolicy.h); log only. 0 off, 1 on.
+    uint32 gatheringTrace = 0;
     // twow-repo#485: craft with real reagents from the bags (the item cheat
     // made every recipe look craftable). false = legacy "craft random item".
     bool professionUseRealReagents = false;
@@ -635,6 +638,8 @@ public:
     bool parkHideFromBots = false;  // twow-repo#541/#551: parked bots invisible to other bots (core Player flag)
     bool buffRealPlayerStyle = false;  // twow-repo#588 (owner 14.10): buff group, then guild, strangers only once per cooldown
     uint32 buffStrangerCooldownSeconds = 900;
+    bool lootHoldTravelWhileLootable = false;  // twow-repo#575 H1 (bug fix; code default 0 until its acceptance unit, then the flip pair): move to rpg / travel target and the rpg-target heal stand back while the loot target is open (LootHoldPolicy.h), 0 = as before
+    uint32 lootHoldTravelWhileLootableMaxSeconds = 60;  // twow-repo#575 H1 (OB-10 review): seconds a loot target may hold the bot at most (10..600); then that loot target holds no more ([LootHold] result=expired)
     uint32 lootRoleWeights = 0;       // twow-repo#308 LOOT-ROLE-01: 1 = weight scale from the premade path from L1, quest reward by gain; 2 = and the owner stat table v2
     bool lootFeralFixedSpec = true;   // twow-repo#308 (owner 26.09.): bear/cat scale by the premade path, not a coin per check
     // OB-00 08.11.2026 (bug fix: code default 1, 0 = rollback): "loot chance" of a game object reads its loot template; the old
@@ -715,6 +720,10 @@ public:
     uint32 rotationDuelRule = 1;  // twow-repo#602 (W24 duel hang 06.11., OB-00: HARM per R4, code default 1, 0 = rollback): no rpg duel against a group member, accept only as the challenged player, a running duel picks the opponent, a bot-vs-bot duel without a fight is cancelled (DuelRulePolicy.h); 0 off, 1 all, 2 cohort B
     uint32 rotationDuelRuleCancelSeconds = 60;  // ... a bot-vs-bot duel (requested or running) without a fight is cancelled after this many seconds; 0 = never
     uint32 rotationInvalidTargetQuiet = 1;  // twow-repo#602 (failure census 28.10., OB-00: code default 1, 0 = rollback): "invalid target" stays quiet for an empty current target while nothing attacks the bot (InvalidTargetPolicy.h); 0 off, 1 all, 2 cohort B
+    uint32 rotationReleaseStaleTarget = 0;  // A3-HARM-UPSTREAM H6 (T40) (BEHAVIOUR CHANGE, default 0 = the old rule): a bot out of combat that keeps a valid current target and stands still drops only that current target, so "no target" -> "attack anything" re-picks (StaleTargetPolicy.h); 0 off, 1 all, 2 cohort B
+    uint32 rotationReleaseStaleTargetShadow = 0;  // ... 1 = the control cohort (mode on, the bot not in it) counts "would release" episodes, never acts; 0 off
+    uint32 rotationReleaseStaleTargetStillSeconds = 60;  // ... seconds without a move of MoveYards (5 yd) before the release; 0 = this clause off
+    uint32 rotationReleaseStaleTargetStoppedSeconds = 5;  // ... seconds standing (not moving) before the release; 0 = this clause off
     uint32 rotationLosCacheMs = 500;  // twow-repo#602 (REF-next v2 tick 29.10., OB-00: code default 500, 0 = rollback): a bot keeps one line-of-sight verdict per target for this many ms (LosCachePolicy.h): the CastLosGate cast checks and the reach prerequisite reuse it
     uint32 rotationRetargetEmptyTrace = 0;  // twow-repo#602 (W24 pattern B, OB-00 06.11.2026 decision (A), log only): one [RetargetEmpty] line per bot at most every 10 s when the dps/tank assist picks nothing while "has attackers" is true - the first attacker that is not a possible attack target and the first filter it fails (RetargetEmptyPolicy.h); 0 off, 1 all, 2 cohort B
     uint32 rotationRogueTankStance = 0;  // twow-repo#654 (owner 29.10., BEHAVIOUR CHANGE, A/B with 2): a rogue on the tank path learns the Shadow Dance stance from 20 when the core switch covers bots, keeps it up while it tanks and drops it otherwise, no Stealth / Vanish in it (RogueTankStancePolicy.h); 0 off, 1 all, 2 cohort B
@@ -1165,13 +1174,14 @@ public:
     bool pathTransportDeckProbe = false;  // twow-repo#342 (S3b-0): once per dock wait 8 fixed vessel deck probes, one [TransportDeck] line (30/min) + [TransportBoard] summary, 0 = off
     uint32 pathTransportWaitTimeoutMin = 15;  // twow-repo#342 (S3b-0): minutes at a dock / aboard before the S1 wait_timeout / overrun, 1-240 (<= 0 -> 15)
     bool pathTransportBoardFix = false;  // twow-repo#342 (S3b-1): bots board ships / zeppelins (deck hit, stop gate, dock-hop entry, ride record, exit at the arrival dock, lost-ride recovery), 0 = off
+    bool pathTransportSameMapGuard = false;  // twow-repo#575 H4 (bug fix; code default 0 until its acceptance unit, then the flip pair): UseTransport scans a dock's vessels only on the bot's map (no read of another map's transports from this thread), 0 = as before
     bool pathTaxiCancelForm = false;  // twow-repo#575 (PATH-01 b): cancel a disallowed mount form (travel form, Ghost Wolf) before a flight, 0 = off
     bool pathRescueSkipCustomStarts = false;  // twow-repo#575 (PATH-01 E6): the quest rescue sends only goblins / high elves to their start zones, 0 = off
     // twow-repo#575 A3 step 4 M-c (OB-00 06.11.2026, IslandGuardPolicy.h): no far-move arrival on a navmesh micro-island (the
-    // arrival point moves to the nearest main ground), and a bot already on one steps off it. 0 off (default), 1 all, 2 cohort B,
-    // 3 cohort A; any other value acts like 0. The other three keys: island threshold (polys), vertical window of the arrival
-    // snap (yd), step-off reach (yd, 0 = no step-off).
-    uint32 pathIslandGuard = 0;
+    // arrival point moves to the nearest main ground), and a bot already on one steps off it. 0 off (rollback), 1 all (default
+    // since the IslandGuard A/B, ACCEPT 09.11.2026), 2 cohort B, 3 cohort A; any other value acts like 0. The other three keys:
+    // island threshold (polys), vertical window of the arrival snap (yd), step-off reach (yd, 0 = no step-off).
+    uint32 pathIslandGuard = 1;
     uint32 pathIslandMaxPolys = 200;
     float pathIslandSnapDz = 10.0f;
     float pathIslandStepOffYards = 7.0f;
@@ -1181,6 +1191,7 @@ public:
     // the reclaim at the corpse runs, the spirit healer only with a reason (no corpse, sickness, durability, loop, timeout).
     uint32 reviveCorpseRunFirst = 0;
     uint32 reviveCorpseRunFirstMaxSeconds = 600;
+    uint32 reviveDelayResurrectRequest = 0;  // twow-repo#575 H3 (bug fix; code default 0 until its acceptance unit, then the flip pair): a resurrect request is kept for the next packet pass while the trigger holds one (no drop); mode 0 off / 1 all / 2 guid bit 1 set / 3 guid bit 1 clear (ResurrectDelayPolicy.h, not the CohortPolicy parity)
     // twow-repo#575 A3 step 4 S4-2 (AiPlayerbot.Rescue.RepopDeadOnly, RepopDeadOnlyPolicy.h): cohort mode 0 off / 1 all / 2 B / 3 A;
     // repop only for a dead bot; an alive bot without a usable hearthstone gets QuestRescue, else a reset.
     uint32 rescueRepopDeadOnly = 0;

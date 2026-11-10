@@ -1,6 +1,7 @@
 
 #include "playerbot/playerbot.h"
 #include "WorldPacketHandlerStrategy.h"
+#include "playerbot/PlayerbotAIConfig.h"   // twow-repo#333 T28-M
 
 using namespace ai;
 
@@ -159,6 +160,13 @@ void WorldPacketHandlerStrategy::InitNonCombatTriggers(std::list<TriggerNode*> &
     triggers.push_back(new TriggerNode(
         "summon request",
         NextAction::array(0, new NextAction("accept summon", relevance), NULL)));
+
+    // twow-repo#333 T28-M (AiPlayerbot.Gathering.Trace, default 0): the sampler of the [Gathering] event=share line, in every engine
+    // (the combat and dead triggers are these). Added only with the key on; no handler - the trigger never fires (log only).
+    if (sPlayerbotAIConfig.gatheringTrace)
+        triggers.push_back(new TriggerNode(
+            "gathering trace",
+            NextAction::array(0, NULL)));
 }
 
 void WorldPacketHandlerStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)

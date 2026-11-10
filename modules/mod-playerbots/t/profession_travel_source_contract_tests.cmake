@@ -1,5 +1,5 @@
 # twow-repo#333 Berufe P1-a / P1-b (CLI-BERUFE PLAN-B1, OB-00 go 25.10.2026): AiPlayerbot.ProfessionTraining.Travel and
-# AiPlayerbot.ProfessionUse.ToolBuy, modes 0 / 1 / 2 (in-realm A/B), default 0, ConfigEcho. Gap-filler trips of a roster bot
+# AiPlayerbot.ProfessionUse.ToolBuy, modes 0 / 1 / 2 / 3 (in-realm A/B; 3 = cohort A since T28a), default 0, ConfigEcho. Gap-filler trips of a roster bot
 # to the trainer of a phase-one profession and to the vendor of its missing pick / knife, below the quest request (6.3);
 # with ToolBuy a mining/skinning gather purpose needs its tool. #306 stays: "trainer trade" is still refused for roster bots.
 
@@ -51,11 +51,13 @@ foreach(pair "professionTrainingTravel|ProfessionTraining.Travel" "professionUse
   list(GET parts 1 key)
   require_text("${config_h}" "uint32 ${member} = 0;" "${key} default off, a mode")
   require_text("${config_cpp}" "${member} = config.GetIntDefault(\"AiPlayerbot.${key}\", 0);" "${key} config read")
-  require_text("${config_cpp}" "if (${member} > 2)\n        ${member} = 0;" "${key} unknown mode is off")
+  # T28a crossover (OB-00 09.11.2026): 3 = only cohort A; above 3 is off.
+  require_text("${config_cpp}" "if (${member} > 3)\n        ${member} = 0;" "${key} unknown mode is off")
   require_text("${config_cpp}" "{\"${key}\", Value(${member})}," "${key} ConfigEcho entry")
   require_text("${conf_dist}" "\nAiPlayerbot.${key} = 0\n" "${key} documented, 0 by default")
   forbid_text("${conf_dist}" "\nAiPlayerbot.${key} = 1" "${key} default 1 in the dist")
   forbid_text("${conf_dist}" "\nAiPlayerbot.${key} = 2" "${key} default 2 in the dist")
+  forbid_text("${conf_dist}" "\nAiPlayerbot.${key} = 3" "${key} default 3 in the dist")
 endforeach()
 
 # Pure rules: no game headers, the gap rule of CLI-Deep, phase-one skills, tools.

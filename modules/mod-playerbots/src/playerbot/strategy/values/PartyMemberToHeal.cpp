@@ -3,6 +3,7 @@
 #include "PartyMemberToHeal.h"
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/ServerFacade.h"
+#include "playerbot/LootHoldPolicy.h"
 
 using namespace ai;
 
@@ -56,12 +57,18 @@ Unit* PartyMemberToHeal::Calculate()
         }
     }
 
-    if (GuidPosition rpgTarget = AI_VALUE(GuidPosition, "rpg target"))
+    // A3-HARM-UPSTREAM H1 (AiPlayerbot.Loot.HoldTravelWhileLootable, LootHoldPolicy.h; default 0): while the bot's loot target is still
+    // lootable, the rpg target is not a heal target (healing it drew the bot back to the rpg target before the loot: loot ping-pong).
+    // The selection and party heal targets are unchanged.
+    if (!(sPlayerbotAIConfig.lootHoldTravelWhileLootable && ai::loot_hold::LootTargetOpen(ai)))
     {
-        Unit* target = rpgTarget.GetCreature(bot->GetInstanceId());
-        if (target && sServerFacade.IsFriendlyTo(bot, target) && target->GetHealthPercent() < 100)
+        if (GuidPosition rpgTarget = AI_VALUE(GuidPosition, "rpg target"))
         {
-            needHeals.push_back(target);
+            Unit* target = rpgTarget.GetCreature(bot->GetInstanceId());
+            if (target && sServerFacade.IsFriendlyTo(bot, target) && target->GetHealthPercent() < 100)
+            {
+                needHeals.push_back(target);
+            }
         }
     }
 

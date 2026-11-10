@@ -264,6 +264,9 @@ namespace ai
         float currentHeight() const { return coord_z - getHeight(); }
 
         std::set<GenericTransport*> getTransports(uint32 entry = 0);
+        // twow-repo#575 H4 (Path.TransportSameMapGuard): the same scan on the given map instance (nullptr: none). The overload
+        // above scans getMap(getFirstInstanceId()), the first instance with this map id - under the region layout any region.
+        std::set<GenericTransport*> getTransports(uint32 entry, Map* map);
         void CalculatePassengerPosition(GenericTransport* transport);
         void CalculatePassengerOffset(GenericTransport* transport);
 
