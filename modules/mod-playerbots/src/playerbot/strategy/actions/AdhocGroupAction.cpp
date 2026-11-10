@@ -6,6 +6,7 @@
 #include "playerbot/ServerFacade.h"
 #include "playerbot/CohortPolicy.h"
 #include "playerbot/GroupOps.h"   // BOT-12: BotGroups.OpQueue
+#include "playerbot/GroupManagerView.h"   // A3 step 6 T30-1: the manager gate (G1)
 #include "Group/Group.h"
 
 #include <algorithm>
@@ -24,7 +25,8 @@ bool AdhocGroupAction::isUseful()
     // leaves the ad-hoc groups; this map-thread action then does nothing.
     return sPlayerbotAIConfig.botGroupsEnabled && !sPlayerbotAIConfig.botGroupsAdhocWorldThread &&
         sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) &&
-        !ai->HasRealPlayerMaster() && !bot->InBattleGround() && !bot->InBattleGroundQueue();
+        !ai->HasRealPlayerMaster() && !bot->InBattleGround() && !bot->InBattleGroundQueue() &&
+        !group_mgr::Blocks(bot->GetGUIDLow());   // G1 (T30-1): the group manager owns or holds the bot
 }
 
 void AdhocGroupAction::SendInvite(Player* inviter, Player* invitee) const
