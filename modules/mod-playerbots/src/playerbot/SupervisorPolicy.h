@@ -138,6 +138,8 @@ enum class WriterId : std::uint8_t
     Command,
     Brain,
     Test,
+    Group,    // A3 step 3 T02-a: the group lane (AiPlayerbot.Supervisor.Arbiter = 2, default 0)
+    Errand,   // A3 step 3 T02-a: the close-then-request errands (petition, guild trip, profession trip, station craft)
 };
 
 inline char const* ModeName(Mode mode)
@@ -460,22 +462,24 @@ inline std::size_t FormatPlanLine(char* buf, std::size_t n, PlanLine const& l)
 // the live travel target of a bot the supervisor runs for: one observer at the end of the status write, the steps of one engine
 // pass bundled into one record. A line is written only for an open target closed by a family that is not its own plan, for a
 // COOLDOWN expiry and for a writer without scope; every other bundle is only counted, once per minute and cohort
-// ([ArbiterMin]). The shadow writes nothing of the bot. 2 (enforcement) has no code yet, so every value above 1 is off.
+// ([ArbiterMin]). The shadow writes nothing of the bot. A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2, default 0): 2 is
+// enforcement (the shadow stays on, because 2 >= 1); every value above 2 is off.
 inline bool ValidArbiter(std::uint32_t value)
 {
-    return value <= 1;
+    return value <= 2;
 }
 
 // Live arbiter switch (OB-00 09.11.2026, arbiter shadow run: the kit switches the shadow without a config reload). The console
-// command "rndbot arbiter on|off" sets an override: kArbiterFollowConfig (the start state) = the gate uses
-// AiPlayerbot.Supervisor.Arbiter, kArbiterOff / kArbiterOn = the console value until the next restart. The conf key stays the
-// start value; enforcement (2) has no switch here either.
+// command "rndbot arbiter on|off|enforce" sets an override: kArbiterFollowConfig (the start state) = the gate uses
+// AiPlayerbot.Supervisor.Arbiter, kArbiterOff / kArbiterOn / kArbiterEnforce = the console value until the next restart. The
+// conf key stays the start value. A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2, default 0): enforce = 2.
 constexpr int kArbiterFollowConfig = -1;
 constexpr int kArbiterOff = 0;
 constexpr int kArbiterOn = 1;
+constexpr int kArbiterEnforce = 2;
 
-// The console argument: "on" or "1" = kArbiterOn, "off" or "0" = kArbiterOff (surrounding blanks ignored); anything else, the
-// empty argument too, is kArbiterFollowConfig = usage, nothing is set.
+// The console argument: "on" or "1" = kArbiterOn, "off" or "0" = kArbiterOff, "enforce" or "2" = kArbiterEnforce (surrounding
+// blanks ignored); anything else, the empty argument too, is kArbiterFollowConfig = usage, nothing is set.
 inline int ParseArbiterSwitch(char const* arg)
 {
     if (!arg)
@@ -498,17 +502,22 @@ inline int ParseArbiterSwitch(char const* arg)
         return kArbiterOn;
     if (is("off") || is("0"))
         return kArbiterOff;
+    if (is("enforce") || is("2"))
+        return kArbiterEnforce;
     return kArbiterFollowConfig;
 }
 
-// The value the gate passes to Tick: the console override when one is set, else the config value (only 1 is the shadow).
-inline bool ArbiterEffective(int override, std::uint32_t configValue)
+// The value the gate passes to Tick: the console override when one is set, else the config value (0 off, 1 shadow, 2 enforce;
+// above 2 is off).
+inline std::uint32_t ArbiterEffective(int override, std::uint32_t configValue)
 {
-    if (override == kArbiterOn)
-        return true;
     if (override == kArbiterOff)
-        return false;
-    return configValue == 1;
+        return 0;
+    if (override == kArbiterOn)
+        return 1;
+    if (override == kArbiterEnforce)
+        return 2;
+    return configValue <= 2 ? configValue : 0;
 }
 
 // The travel status as numbers, in the order of the game's enum (TravelMgr.h TravelStatus, uint8), so this header stays free of
@@ -544,7 +553,7 @@ inline bool IsOpen(std::uint8_t status, bool nullDest)
     return !nullDest && (status == kStatusReady || status == kStatusTravel || status == kStatusWork || status == kStatusCooldown);
 }
 
-constexpr std::size_t kWriterIds = 10;
+constexpr std::size_t kWriterIds = 12;
 
 inline char const* WriterName(WriterId writer)
 {
@@ -560,6 +569,8 @@ inline char const* WriterName(WriterId writer)
         case WriterId::Command: return "Command";
         case WriterId::Brain: return "Brain";
         case WriterId::Test: return "Test";
+        case WriterId::Group: return "Group";
+        case WriterId::Errand: return "Errand";
     }
     return "Unknown";
 }
@@ -569,7 +580,7 @@ inline char const* WriterName(WriterId writer)
 inline bool CloserIsLine(WriterId writer)
 {
     return writer == WriterId::Select || writer == WriterId::Requester || writer == WriterId::GroupFollow ||
-        writer == WriterId::Manager || writer == WriterId::Brain || writer == WriterId::Unknown;
+        writer == WriterId::Manager || writer == WriterId::Brain || writer == WriterId::Group || writer == WriterId::Unknown;
 }
 
 constexpr std::size_t kPathSlots = 4;
@@ -708,6 +719,10 @@ inline char const* ReasonFor(Bundle const& b)
         return "lifecycle";
     if (writer == WriterId::Manager)
         return "manager";
+    if (writer == WriterId::Errand)
+        return "lifecycle";
+    if (writer == WriterId::Group)
+        return "group";
     return "other";
 }
 
@@ -800,6 +815,15 @@ struct ArbiterMinute
     std::uint32_t gaps = 0;
     std::uint32_t closesOpen = 0;
     std::uint32_t expireCooldown = 0;
+    // A3 step 3 T02-a enforcement counters (minute increments, AiPlayerbot.Supervisor.Arbiter = 2, default 0).
+    std::uint32_t deny = 0;
+    std::uint32_t denyProbe = 0;
+    std::uint32_t heldRequest = 0;
+    std::uint32_t heldErrand = 0;
+    std::uint32_t probePass = 0;
+    std::uint32_t probeFail = 0;
+    std::uint32_t probeShadow = 0;
+    std::uint32_t depthOverflow = 0;
     std::uint32_t family[kWriterIds] = {};
 };
 
@@ -824,10 +848,14 @@ inline std::size_t FormatArbiterMin(char* buf, std::size_t n, char cohort, Arbit
         return 0;
     auto const f = [&m](WriterId id) { return m.family[std::size_t(id)]; };
     int const w = std::snprintf(buf, n, "[ArbiterMin] cohort=%c bundles=%u lines=%u dropped=%u unknown=%u offthread_writes=%u "
-        "cross_writes=%u gaps=%u closes_open=%u expire_cooldown=%u sel=%u req=%u exe=%u life=%u mgr=%u grp=%u cmd=%u brain=%u test=%u",
+        "cross_writes=%u gaps=%u closes_open=%u expire_cooldown=%u sel=%u req=%u exe=%u life=%u mgr=%u grp=%u cmd=%u brain=%u test=%u"
+        " grp_t02=%u errand=%u deny=%u deny_probe=%u held_request=%u held_errand=%u probe_pass=%u probe_fail=%u probe_shadow=%u "
+        "depth_overflow=%u",
         cohort, m.bundles, m.lines, m.dropped, m.unknown, m.offthreadWrites, m.crossWrites, m.gaps, m.closesOpen, m.expireCooldown,
         f(WriterId::Select), f(WriterId::Requester), f(WriterId::Execution), f(WriterId::Lifecycle), f(WriterId::Manager),
-        f(WriterId::GroupFollow), f(WriterId::Command), f(WriterId::Brain), f(WriterId::Test));
+        f(WriterId::GroupFollow), f(WriterId::Command), f(WriterId::Brain), f(WriterId::Test), f(WriterId::Group),
+        f(WriterId::Errand), m.deny, m.denyProbe, m.heldRequest, m.heldErrand, m.probePass, m.probeFail, m.probeShadow,
+        m.depthOverflow);
     return Sanitize(buf, w, n);
 }
 }

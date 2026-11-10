@@ -88,6 +88,6 @@ require_text("${policy}" "return areaLevel > 0 && areaLevel > std::int32_t(botLe
 require_text("${choose_cpp}" "    if (sPlayerbotAIConfig.travelRpgAreaLevelFromSpawn)\n        if (RpgTravelDestination const* rpg = dynamic_cast<RpgTravelDestination const*>(newTarget.GetDestination()))" "only with a mode set, only RPG targets")
 require_text("${choose_cpp}" "sLog.outBasic(\"[RpgAreaLevel] state=trip purpose=%s bot=%u level=%u cohort=%c arm=%u entry=%d zone=%u target_area_level=%d distance=%.0f\"," "the trip line")
 require_text("${choose_cpp}" "sLog.outBasic(\"[RpgAreaLevel] state=origin area_level=%d\", GuidPosition(HIGHGUID_UNIT, 1).getAreaLevel());" "the origin level once")
-require_order("${choose_cpp}" "[RpgAreaLevel] state=trip" "    setNewTarget(requester, &newTarget, travelTarget);" "before the target is set")
+require_order("${choose_cpp}" "[RpgAreaLevel] state=trip" "    if (!setNewTarget(requester, &newTarget, travelTarget))" "before the target is set")
 
 message(STATUS "#333 P1-v service target source contract passed")
