@@ -38,6 +38,8 @@
 #include "playerbot/CohortPolicy.h"
 #include "playerbot/RpgAreaLevelPolicy.h"   // twow-repo#333 P1-v (Travel.RpgAreaLevelFromSpawn)
 #include <mutex>
+#include <chrono>                              // twow-repo#575 LevelGuard: grid build time (ms=)
+#include "GameEventMgr.h"                      // twow-repo#575 LevelGuard.SkipHarmless: event spawns
 #include "playerbot/QuestSkillLockPolicy.h"   // twow-repo#601 QuestFirstProgression.SkipSkillLockedObjectives
 #include "Guild/GuildMgr.h"
 #include "Formulas.h"
@@ -619,9 +621,13 @@ PostActiveDeferral PostActiveDeferralOf(PlayerbotAI* ai, Player* bot, TravelTarg
         position->getMapId() == bot->GetMapId() && position->distance(WorldPosition(bot)) > sPlayerbotAIConfig.reactDistance)
     {
         // the answer goes back through guardHit (the main loop counts and logs it; the hub pre-loop passes none - no side effect)
+        // twow-repo#575 / #703 item 5: the z is the travel point's (position), not the bot's; ZWindow 0 / SkipHarmless 0 = the 2D rule
         ai::level_guard::Hit hit = ai::level_guard::SharedGrid().Query(bot->GetMapId(), position->getX(), position->getY(),
-            sPlayerbotAIConfig.rosterFarMoveLevelGuardRadius, bot->GetLevel(), sPlayerbotAIConfig.rosterFarMoveLevelGuardMargin,
-            bot->GetTeam() == ALLIANCE ? ai::level_guard::MaskAlliance : ai::level_guard::MaskHorde);
+            position->getZ(), sPlayerbotAIConfig.rosterFarMoveLevelGuardRadius, bot->GetLevel(),
+            sPlayerbotAIConfig.rosterFarMoveLevelGuardMargin,
+            bot->GetTeam() == ALLIANCE ? ai::level_guard::MaskAlliance : ai::level_guard::MaskHorde,
+            sPlayerbotAIConfig.rosterFarMoveLevelGuardZWindow, sPlayerbotAIConfig.rosterFarMoveLevelGuardSkipHarmless != 0,
+            [](int16_t eventId) { return ai::level_guard::EventActive(eventId); });
         hit.checked = true;
         if (guardHit)
             *guardHit = hit;
@@ -852,6 +858,25 @@ namespace ai::level_guard
         Grid sharedGrid;
         std::atomic<bool> gridReady{ false };
         std::once_flag gridOnce;
+        // twow-repo#575 SkipHarmless: the event ids of the grid's event spawns and their active state, written by the world
+        // thread (BuildGrid at startup, RefreshActiveEvents each world update), read by the target choice. Filled before
+        // gridReady is published and never resized after.
+        std::vector<int16_t> gridEvents;
+        std::unique_ptr<std::atomic<bool>[]> gridEventActive;
+        uint32_t gridEventSlots = 0;
+    }
+
+    bool EventActive(int16_t eventId)
+    {
+        return eventId > 0 && uint32_t(eventId) < gridEventSlots && gridEventActive[eventId].load(std::memory_order_relaxed);
+    }
+
+    void RefreshActiveEvents()
+    {
+        if (!Ready() || gridEvents.empty())
+            return;
+        for (int16_t const id : gridEvents)
+            gridEventActive[id].store(sGameEventMgr.IsActiveEvent(uint16(id)), std::memory_order_relaxed);
     }
 
     Counters& SharedCounters()
@@ -867,6 +892,28 @@ namespace ai::level_guard
     {
         std::call_once(gridOnce, []()
         {
+            auto const buildStart = std::chrono::steady_clock::now();
+            bool const skipHarmless = sPlayerbotAIConfig.rosterFarMoveLevelGuardSkipHarmless != 0;
+            // twow-repo#575 SkipHarmless (OB-10 review a4f2daef): guid -> event once from GameEventMgr's lists (loaded before
+            // InitPlayerbotsAtStartup), not GetGameEventId per spawn (a linear scan). Only event ids > 0 (spawned only during
+            // the event); < 0 is a normal spawn an event removes for a while and stays a normal spawn.
+            std::unordered_map<uint32, int16_t> eventOf;
+            if (skipHarmless)
+            {
+                auto const& lists = sGameEventMgr.GetCreatureGuidLists();
+                uint32_t const eventCount = uint32_t(sGameEventMgr.GetEventMap().size());
+                for (uint32_t slot = 0; slot < lists.size(); ++slot)
+                {
+                    int32_t const eventId = EventIdOfList(slot, eventCount);
+                    if (!EventOnly(eventId))
+                        continue;
+                    for (uint32 const guid : lists[slot])
+                        eventOf[guid] = int16_t(eventId);
+                }
+            }
+            uint32 skippedHarmless = 0;
+            uint32 eventSpawns = 0;
+            int16_t maxEvent = 0;
             for (auto const& itr : sObjectMgr.GetAllCreatureData())
             {
                 CreatureData const& data = itr.second;
@@ -878,17 +925,47 @@ namespace ai::level_guard
                 FactionTemplateEntry const* faction = sObjectMgr.GetFactionTemplateEntry(info->faction);
                 if (!faction || !(faction->hostileMask & (MaskPlayer | MaskAlliance | MaskHorde)))
                     continue;
+                if (skipHarmless && Harmless(info->flags_extra))
+                {
+                    ++skippedHarmless;
+                    continue;
+                }
                 Spawn spawn;
                 spawn.x = data.position.x;
                 spawn.y = data.position.y;
+                spawn.z = data.position.z;
                 spawn.entry = info->entry;
                 spawn.levelMax = uint8_t(std::min<uint32>(info->level_max, 255));
                 spawn.rank = uint8_t(std::min<uint32>(info->rank, 255));
                 spawn.hostileMask = uint8_t(faction->hostileMask & (MaskPlayer | MaskAlliance | MaskHorde));
+                if (skipHarmless)
+                {
+                    auto const ev = eventOf.find(itr.first);
+                    if (ev != eventOf.end())
+                    {
+                        spawn.event = ev->second;
+                        ++eventSpawns;
+                        maxEvent = std::max(maxEvent, ev->second);
+                        if (std::find(gridEvents.begin(), gridEvents.end(), ev->second) == gridEvents.end())
+                            gridEvents.push_back(ev->second);
+                    }
+                }
                 sharedGrid.Add(data.position.mapId, spawn);
             }
+            if (!gridEvents.empty())
+            {
+                gridEventSlots = uint32_t(maxEvent) + 1;
+                gridEventActive.reset(new std::atomic<bool>[gridEventSlots]);
+                for (uint32_t i = 0; i < gridEventSlots; ++i)
+                    gridEventActive[i].store(false, std::memory_order_relaxed);
+                for (int16_t const id : gridEvents)
+                    gridEventActive[id].store(sGameEventMgr.IsActiveEvent(uint16(id)), std::memory_order_relaxed);
+            }
             gridReady.store(true, std::memory_order_release);
-            sLog.outBasic("[FarMoveGuard] state=grid spawns=%u", sharedGrid.Count());
+            uint32 const buildMs = uint32(std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - buildStart).count());
+            sLog.outBasic("[FarMoveGuard] state=grid spawns=%u skipped_harmless=%u event_spawns=%u ms=%u", sharedGrid.Count(),
+                skippedHarmless, eventSpawns, buildMs);
         });
     }
 }
@@ -1947,6 +2024,11 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
                 PostActiveDeferral const deferral = PostActiveDeferralOf(ai, bot, target, destination, position, hit, &guardHit);
                 if (guardHit.checked)
                     ai::level_guard::SharedCounters().checked.fetch_add(1, std::memory_order_relaxed);
+                // twow-repo#575 / #703 item 5: spawns the sub-keys left out at this point (0 unless ZWindow / SkipHarmless is on)
+                if (guardHit.zFiltered)
+                    ai::level_guard::SharedCounters().zFiltered.fetch_add(guardHit.zFiltered, std::memory_order_relaxed);
+                if (guardHit.eventFiltered)
+                    ai::level_guard::SharedCounters().eventFiltered.fetch_add(guardHit.eventFiltered, std::memory_order_relaxed);
                 switch (deferral)
                 {
                     case PostActiveDeferral::BattlegroundQuest:
@@ -1982,12 +2064,13 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
                         if (levelGuardLogged++ < ai::level_guard::LogsPerChoice)
                         {
                             QuestTravelDestination const* questDestination = dynamic_cast<QuestTravelDestination const*>(destination);
-                            sLog.outBasic("[FarMoveGuard] result=skip bot=%u level=%u cohort=%c purpose=%u quest=%u entry=%d map=%u x=%.0f y=%.0f dist=%.0f hit_entry=%u hit_lvl=%u hit_rank=%u hit_dist=%.0f n_hostile=%u margin=%u radius=%.0f",
+                            sLog.outBasic("[FarMoveGuard] result=skip bot=%u level=%u cohort=%c purpose=%u quest=%u entry=%d map=%u x=%.0f y=%.0f dist=%.0f hit_entry=%u hit_lvl=%u hit_rank=%u hit_dist=%.0f n_hostile=%u margin=%u radius=%.0f dz=%.0f harmless=%u",
                                 bot->GetGUIDLow(), bot->GetLevel(), ai::cohort::Letter(bot->GetGUIDLow()), uint32(destination->GetPurpose()),
                                 questDestination ? questDestination->GetQuestId() : 0u, destination->GetEntry(), position->getMapId(),
                                 position->getX(), position->getY(), position->distance(WorldPosition(bot)), guardHit.entry, guardHit.level,
                                 guardHit.rank, guardHit.dist, guardHit.hostile, sPlayerbotAIConfig.rosterFarMoveLevelGuardMargin,
-                                sPlayerbotAIConfig.rosterFarMoveLevelGuardRadius);
+                                sPlayerbotAIConfig.rosterFarMoveLevelGuardRadius, guardHit.dz,
+                                sPlayerbotAIConfig.rosterFarMoveLevelGuardSkipHarmless);
                         }
                         continue;
                     }

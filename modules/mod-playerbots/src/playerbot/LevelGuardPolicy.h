@@ -47,14 +47,38 @@ namespace ai::level_guard
     inline float ClampRadius(float radius) { return (radius >= 10.0f && radius <= 100.0f) ? radius : DefaultRadius; }
     inline uint32_t ClampMargin(uint32_t margin) { return (margin >= 1 && margin <= 10) ? margin : DefaultMargin; }
 
+    // twow-repo#575 / #703 item 5 (CLI-PATH 10.11.2026, design szf/DESIGN-LEVELGUARD-FALSEALARM-20261110.md v2, OB-10 review
+    // a4f2daef): two sub-keys against false alarms, both 0 = the rule above byte-for-byte.
+    // ZWindow: a spawn counts only if abs(spawn z - travel point z) <= ZWindow yd (0 = 2D as before; 5..100, any other value 0).
+    //   SZM R3: 1125 skips of q380 came from spawns 38-59 yd above / 46-48 yd below the spiders (Rogue Heights, Graypaw wolves).
+    // SkipHarmless: spawns whose template never attacks (CREATURE_FLAG_EXTRA_NO_AGGRO) or is a trigger (CREATURE_FLAG_EXTRA_
+    //   INVISIBLE, Creature::IsTrigger) leave the grid; a spawn that exists only during a game event counts only while that
+    //   event is active. GetGameEventId<Creature> returns > 0 for such a spawn and < 0 for a normal spawn that an event removes
+    //   for a while, so only > 0 is an event spawn (< 0 and 0 always count).
+    constexpr uint32_t FlagExtraNoAggro = 0x00000002;     // CREATURE_FLAG_EXTRA_NO_AGGRO (Creature.h)
+    constexpr uint32_t FlagExtraInvisible = 0x00000080;   // CREATURE_FLAG_EXTRA_INVISIBLE (Creature.h, Creature::IsTrigger)
+    constexpr int32_t ZWindowMin = 5;
+    constexpr int32_t ZWindowMax = 100;
+
+    inline uint32_t ClampZWindow(int32_t window) { return (window >= ZWindowMin && window <= ZWindowMax) ? uint32_t(window) : 0u; }
+    inline uint32_t ClampSkipHarmless(int32_t value) { return value == 1 ? 1u : 0u; }
+    inline bool InZWindow(float dz, uint32_t window) { return window == 0 || std::fabs(dz) <= float(window); }
+    inline bool Harmless(uint32_t flagsExtra) { return (flagsExtra & (FlagExtraNoAggro | FlagExtraInvisible)) != 0; }
+    inline bool EventOnly(int32_t eventId) { return eventId > 0; }
+    inline bool EventSpawnCounts(int32_t eventId, bool eventActive) { return !EventOnly(eventId) || eventActive; }
+    // GameEventMgr keeps the creature guid lists in 2 * S - 1 slots; slot i holds event i + 1 - S (as GetGameEventId<Creature>).
+    inline int32_t EventIdOfList(uint32_t slot, uint32_t eventCount) { return int32_t(slot) + 1 - int32_t(eventCount); }
+
     struct Spawn
     {
         float x = 0.0f;
         float y = 0.0f;
+        float z = 0.0f;           // spawn z (ZWindow)
         uint32_t entry = 0;
         uint8_t levelMax = 0;
         uint8_t rank = 0;
         uint8_t hostileMask = 0;
+        int16_t event = 0;        // > 0: spawned only during this game event (set only with SkipHarmless)
     };
 
     // The answer for one point: the firing spawn with the highest level (nearest of equal ones); without a firing spawn the
@@ -68,6 +92,9 @@ namespace ai::level_guard
         uint32_t rank = 0;
         float dist = 0.0f;
         uint32_t hostile = 0;
+        float dz = 0.0f;              // the chosen spawn's z minus the travel point's z (skip line dz=)
+        uint32_t zFiltered = 0;       // hostile spawns inside the 2D radius but outside the z window (guard_zfiltered)
+        uint32_t eventFiltered = 0;   // event spawns inside the radius whose event is not active (guard_eventfiltered)
     };
 
     class Grid
@@ -81,7 +108,18 @@ namespace ai::level_guard
 
         uint32_t Count() const { return count_; }
 
+        // The 2D rule as before (no z window, no event test): the original signature, kept for its tests.
         Hit Query(uint32_t map, float x, float y, float radius, uint32_t botLevel, uint32_t margin, uint32_t sideMask) const
+        {
+            return Query(map, x, y, 0.0f, radius, botLevel, margin, sideMask, 0u, false, [](int16_t) { return true; });
+        }
+
+        // z = the travel point's z (not the bot's). zWindow 0: no z test (the 2D result exactly). skipHarmless false: no event
+        // test (the harmless spawns are left out at the build, so the grid holds none of them then). eventActive(id) is asked
+        // only for a spawn with event > 0.
+        template <class EventActive>
+        Hit Query(uint32_t map, float x, float y, float z, float radius, uint32_t botLevel, uint32_t margin, uint32_t sideMask,
+            uint32_t zWindow, bool skipHarmless, EventActive const& eventActive) const
         {
             Hit hit;
             int32_t const cx0 = Cell(x - radius), cx1 = Cell(x + radius);
@@ -99,6 +137,17 @@ namespace ai::level_guard
                         float const d = std::sqrt((s.x - x) * (s.x - x) + (s.y - y) * (s.y - y));
                         if (d > radius)
                             continue;
+                        float const dz = s.z - z;
+                        if (zWindow && !InZWindow(dz, zWindow))
+                        {
+                            ++hit.zFiltered;
+                            continue;
+                        }
+                        if (skipHarmless && !EventSpawnCounts(s.event, EventOnly(s.event) && eventActive(s.event)))
+                        {
+                            ++hit.eventFiltered;
+                            continue;
+                        }
                         ++hit.hostile;
                         bool const fires = Fires(s.levelMax, botLevel, margin);
                         // a firing spawn beats a non-firing one; then the higher level; then the nearer one
@@ -111,6 +160,7 @@ namespace ai::level_guard
                             hit.level = s.levelMax;
                             hit.rank = s.rank;
                             hit.dist = d;
+                            hit.dz = dz;
                         }
                     }
                 }
@@ -135,12 +185,18 @@ namespace ai::level_guard
         std::atomic<uint32_t> checked{ 0 };
         std::atomic<uint32_t> skip{ 0 };
         std::atomic<uint32_t> skipB{ 0 };
+        std::atomic<uint32_t> zFiltered{ 0 };       // guard_zfiltered (only with ZWindow on)
+        std::atomic<uint32_t> eventFiltered{ 0 };   // guard_eventfiltered (only with SkipHarmless on)
     };
 
     // Defined in ChooseTravelTargetAction.cpp (game side): the shared grid, built once by BuildGrid (PlayerbotAIConfig::Initialize,
     // only with the switch on); Ready() is false until then and the guard does nothing.
+    // EventActive(id): the world thread's snapshot of the grid's event ids (RefreshActiveEvents, called from the world update;
+    // GameEventMgr's active list is not thread-safe outside it). Both do nothing without event spawns in the grid.
     Counters& SharedCounters();
     Grid const& SharedGrid();
     bool Ready();
     void BuildGrid();
+    bool EventActive(int16_t eventId);
+    void RefreshActiveEvents();
 }

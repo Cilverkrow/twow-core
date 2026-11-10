@@ -2263,6 +2263,18 @@ bool MovementAction::MoveTo2(const WorldPosition& endPos, bool idle, bool react,
                             g.checked.exchange(0, std::memory_order_relaxed), g.skip.exchange(0, std::memory_order_relaxed),
                             g.skipB.exchange(0, std::memory_order_relaxed));
                         safe += buf;
+                        // twow-repo#575 / #703 item 5: the sub-keys' mechanism counts, each only with its key on (the line is
+                        // unchanged with both 0)
+                        if (sPlayerbotAIConfig.rosterFarMoveLevelGuardZWindow)
+                        {
+                            snprintf(buf, sizeof(buf), " guard_zfiltered=%u", g.zFiltered.exchange(0, std::memory_order_relaxed));
+                            safe += buf;
+                        }
+                        if (sPlayerbotAIConfig.rosterFarMoveLevelGuardSkipHarmless)
+                        {
+                            snprintf(buf, sizeof(buf), " guard_eventfiltered=%u", g.eventFiltered.exchange(0, std::memory_order_relaxed));
+                            safe += buf;
+                        }
                     }
                     sLog.outBasic("[FarMove] started=%u retargeted=%u arrived=%u watched=%u arrive_alt=%u arrive_walk=%u arrive_deaths=%u arrived_b=%u arrive_deaths_b=%u%s",
                         started, retargeted, arrived, watched, arriveAlt, arriveWalk, arriveDeaths, arrivedB, arriveDeathsB, safe.c_str());
