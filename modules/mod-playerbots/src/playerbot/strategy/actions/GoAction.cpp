@@ -617,7 +617,10 @@ bool GoAction::TravelTo(TravelDestination* dest, Player* requester) const
         if (!point)
             return false;
 
-        target->SetTarget(dest, point);
+        // A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2, default 0): the Command writer is neutral and never denied; the
+        // result is still checked, so a denial would write nothing more.
+        if (!target->SetTarget(dest, point))
+            return false;
         target->SetForced(true);
         target->SetConditions({ "not::manual bool::is travel refresh"});
 

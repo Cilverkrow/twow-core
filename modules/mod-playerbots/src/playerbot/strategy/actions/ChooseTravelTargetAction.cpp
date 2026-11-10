@@ -1,6 +1,8 @@
 
 #include "playerbot/playerbot.h"
 #include "playerbot/SupervisorShadow.h"   // A3 step 3 arbiter shadow: writer scopes
+#include "playerbot/SupervisorEnforce.h"  // A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2, default 0): the request lane check
+#include "playerbot/ArbiterLanePolicy.h"  // A3 step 3 T02-a: Lane
 #include "playerbot/LootObjectStack.h"
 #include "ChooseTravelTargetAction.h"
 #include "playerbot/BotUpdateTrace.h"   // OB-10 18.10.: NowUs/SinceUs/Prevalidate for "TIME:prevalidate" and [PreValidate]
@@ -52,6 +54,13 @@ using namespace ai;
 
 namespace
 {
+// A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2, default 0): the null target is neutral for the arbiter (the same rule as
+// TravelMgr.cpp and the shadow's IsNullDest).
+bool IsNullDest(TravelDestination const* dest)
+{
+    return !dest || dynamic_cast<NullTravelDestination const*>(dest) != nullptr;
+}
+
 // Re-deaths at camps (AiPlayerbot.DangerMap.CountAddDeaths): the shared map is read with the add-death rule only for bots the
 // switch applies to (mode 2 = cohort B); everything else comes from DangerMapConfig.h.
 danger_map::Params DangerMapParams(Player const* bot)
@@ -1466,7 +1475,9 @@ bool ChooseTravelTargetAction::Execute(Event& event)
                 targetPos ? targetPos->getAreaLevelOrParent() : 0, newTarget.Distance(bot));
         }
 
-    setNewTarget(requester, &newTarget, travelTarget);
+    // A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2, default 0): false = the arbiter denied the choice.
+    if (!setNewTarget(requester, &newTarget, travelTarget))
+        return false;
     
     return true;
 }
@@ -1516,15 +1527,18 @@ bool ChooseTravelTargetAction::isUseful()
     return true;
 }
 
-void ChooseTravelTargetAction::setNewTarget(Player* requester, TravelTarget* newTarget, TravelTarget* oldTarget)
+bool ChooseTravelTargetAction::setNewTarget(Player* requester, TravelTarget* newTarget, TravelTarget* oldTarget)
 {
     // A3 step 3 arbiter shadow: every module caller has its own scope; an empty stack here is the bot brain's override.
     ai::supervisor::WriterScope const writerScope = ai::supervisor::WriterScope::IfEmpty(ai::supervisor::WriterId::Brain);
-    if (CanFreeMoveValue::CanFreeMoveTo(ai, newTarget->GetPosStr()))
+    // A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2, default 0): no report and no ignore-list cleanup for a choice the
+    // arbiter denies below (the same decision, read only). Always true below 2.
+    bool const admitted = ai::supervisor::WouldAdmitTargetWrite(ai, oldTarget, IsNullDest(newTarget->GetDestination()));
+    if (admitted && CanFreeMoveValue::CanFreeMoveTo(ai, newTarget->GetPosStr()))
         ReportTravelTarget(bot, requester, newTarget, oldTarget);
 
     //If we are heading to a creature/npc clear it from the ignore list. 
-    if (oldTarget && oldTarget == newTarget && newTarget->GetEntry())
+    if (admitted && oldTarget && oldTarget == newTarget && newTarget->GetEntry())
     {
         std::set<ObjectGuid>& ignoreList = context->GetValue<std::set<ObjectGuid>&>("ignore rpg target")->Get();
 
@@ -1541,8 +1555,9 @@ void ChooseTravelTargetAction::setNewTarget(Player* requester, TravelTarget* new
 
     //Actually apply the new target to the travel target used by the bot.
     // twow-repo#485: refused (and the old target expired) for the taker of a parked turn-in.
+    // A3 step 3 T02-a: false to the caller only when the arbiter denied it; the parked refusal returns true as before.
     if (!oldTarget->CopyTarget(newTarget))
-        return;
+        return !oldTarget->TakeArbiterDenied();
 
     if (oldTarget->IsForced()) //Make sure travel goes into cooldown after getting to the destination.
         oldTarget->SetExpireIn(HOUR * IN_MILLISECONDS);
@@ -1583,6 +1598,7 @@ void ChooseTravelTargetAction::setNewTarget(Player* requester, TravelTarget* new
     RESET_AI_VALUE(bool, "travel target active");
     context->ClearValues("no active travel destinations");
     SET_AI_VALUE2(std::string, "manual string", "future travel detail", std::string());
+    return true;
 };
 
 //Tell the master what travel target we are moving towards.
@@ -2106,6 +2122,7 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
                     continue;
                 }
 
+                // local target, not live: no gate (A3 step 3 T02-a)
                 target->SetTarget(destination, position);
                 hasTarget = true;
                 // A3 step 2 QB-S (AiPlayerbot.QuestBook.SourceChoice, default 0): one line per objective pick of a bot the switch
@@ -2144,7 +2161,7 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
     bool campFallbackTaken = false;
     if (!hasTarget && !chooseBudgetExceeded && campFallbackDestination)
     {
-        target->SetTarget(campFallbackDestination, campFallbackPosition);
+        target->SetTarget(campFallbackDestination, campFallbackPosition);   // local target, not live: no gate (A3 step 3 T02-a)
         hasTarget = campFallbackTaken = true;
     }
     if (campSkipped || campRankedLower)
@@ -2397,7 +2414,9 @@ bool ChooseGroupTravelTargetAction::Execute(Event& event)
 
     newTarget.SetGroupCopy(playerDesitnations[newTarget.GetDestination()]);
 
-    setNewTarget(requester, &newTarget, oldTarget);
+    // A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2, default 0): denied = no conditions written.
+    if (!setNewTarget(requester, &newTarget, oldTarget))
+        return false;
 
     oldTarget->SetConditions(conditions[newTarget.GetDestination()]);
 
@@ -2499,7 +2518,9 @@ bool RefreshTravelTargetAction::Execute(Event& event)
     if (!conditionsStillActive)
         return false;
 
-    target->SetTarget(oldDestination, newPosition);
+    // A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2, default 0): denied = no READY, no retry count.
+    if (!target->SetTarget(oldDestination, newPosition))
+        return false;
 
     target->SetStatus(TravelStatus::TRAVEL_STATUS_READY);
     target->IncRetry(false);
@@ -2557,7 +2578,10 @@ bool ResetTargetAction::Execute(Event& event)
 
     TravelTarget newTarget = TravelTarget(ai);
     Player* requester = event.getOwner() ? event.getOwner() : GetMaster();
-    setNewTarget(requester, &newTarget, oldTarget);
+    // A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2, default 0): denied = no cooldown, no expiry (a null choice is neutral,
+    // so this is a guard only).
+    if (!setNewTarget(requester, &newTarget, oldTarget))
+        return false;
 
     oldTarget->SetStatus(TravelStatus::TRAVEL_STATUS_COOLDOWN);
     oldTarget->SetExpireIn(60000); //1 minute;
@@ -2656,6 +2680,11 @@ bool RequestTravelTargetAction::isUseful() {
         return false;
 
     if (AI_VALUE(bool, "travel target active"))
+        return false;
+
+    // A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2, default 0): Execute closes the live target (PREPARE); not while a lane
+    // above the quest book holds it (counted held_request). Named and quest requests inherit this. Always free below 2.
+    if (!ai::supervisor::LaneFree(ai, ai::supervisor::Lane::Questbook, "request"))
         return false;
 
     if (AI_VALUE2(bool, "no active travel destinations", (getQualifier().empty() ? "quest" : getQualifier())))

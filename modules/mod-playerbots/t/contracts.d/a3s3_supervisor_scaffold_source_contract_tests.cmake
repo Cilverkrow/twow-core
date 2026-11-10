@@ -96,7 +96,7 @@ endfunction()
 
 # ---- the one tick --------------------------------------------------------------------------------------------------------
 set(SCPHASE "        SC_PHASE(\"UpdateAI.UpdateAIInternal\", bot ? bot->GetName() : \"(null)\");")
-set(GATE "        if (sPlayerbotAIConfig.supervisor && ai::supervisor::Applies(sPlayerbotAIConfig.supervisor, bot->GetGUIDLow()))\n            EnsureSupervisor()->Tick(WorldTimer::getMSTime(), ai::supervisor::ArbiterOn(sPlayerbotAIConfig.supervisorArbiter));\n        else if (supervisor_)\n        {\n            supervisor_->Release();\n            supervisor_.reset();\n        }\n\n${SCPHASE}")
+set(GATE "        if (sPlayerbotAIConfig.supervisor && ai::supervisor::Applies(sPlayerbotAIConfig.supervisor, bot->GetGUIDLow()))\n            EnsureSupervisor()->Tick(WorldTimer::getMSTime(), ai::supervisor::ArbiterValue(sPlayerbotAIConfig.supervisorArbiter));\n        else if (supervisor_)\n        {\n            supervisor_->Release();\n            supervisor_.reset();\n        }\n\n${SCPHASE}")
 set(COUNTDOWN "        aiInternalUpdateDelay = 0;\n        isWaiting = false;\n    }")
 set(REACTION "if(!UpdateAIReaction(elapsed, doMinimalReaction, bot->IsTaxiFlying()) && CanUpdateAIInternal())")
 set(PASS "        UpdateAIInternal(elapsed, minimal);")
@@ -194,14 +194,18 @@ function(check_no_behaviour sup_h sup_cpp all_sources out)
   # Behaviour pair 1: the tick is the counter plus the hand-over to the arbiter shadow; the mailbox pair puts the bot's own mail
   # take between them (TakeMail, pinned by a3s3_supervisor_mailbox_source_contract_tests.cmake), nothing else; Release only lets
   # the shadow close its bundle.
-  string(FIND "${sup_cpp}" "void Supervisor::Tick(std::uint32_t /*nowMs*/, bool shadowOn)\n{\n    ++ticks_;\n    TakeMail();\n    ShadowTick(ai_, shadow_, shadowOn);\n}" at)
+  # A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2, default 0): the tick takes the gate's value (0, 1, 2). The shadow hand-over
+  # stays; below 2 and without an edge the rest is the enforcement edge compare and the probe call (its first statement is the
+  # ArbiterProbe key check, pinned by a3s3_arbiter_enforce_source_contract_tests.cmake). The enforcement writes live in
+  # ArmEnforce / DisarmEnforce / ProbeTick, not in the tick.
+  string(FIND "${sup_cpp}" "void Supervisor::Tick(std::uint32_t nowMs, std::uint32_t arbiter)\n{\n    ++ticks_;\n    TakeMail();\n    ShadowTick(ai_, shadow_, arbiter >= 1);\n    bool const enforce = arbiter == 2;\n    if (enforce != enforce_)\n    {\n        enforce_ = enforce;\n        if (enforce)\n            ArmEnforce();\n        else\n            DisarmEnforce(arbiter);\n    }\n    if (arbiter >= 1)\n        ProbeTick(nowMs, arbiter);\n}" at)
   if(at EQUAL -1)
-    set(${out} "Supervisor.cpp: the tick is not the counter, the mail take and the shadow hand-over" PARENT_SCOPE)
+    set(${out} "Supervisor.cpp: the tick is not the counter, the mail take, the shadow hand-over, the enforcement edges and the probe call" PARENT_SCOPE)
     return()
   endif()
-  string(FIND "${sup_cpp}" "void Supervisor::Release()\n{\n    ShadowRelease(ai_, shadow_);\n}" at)
+  string(FIND "${sup_cpp}" "void Supervisor::Release()\n{\n    ShadowRelease(ai_, shadow_);\n    owner_ = Lane::None;\n    enforce_ = false;\n}" at)
   if(at EQUAL -1)
-    set(${out} "Supervisor.cpp: the release does more than close the shadow's bundle" PARENT_SCOPE)
+    set(${out} "Supervisor.cpp: the release does more than close the shadow's bundle and drop the lane owner and the enforcement state" PARENT_SCOPE)
     return()
   endif()
   string(FIND "${sup_cpp}" "Supervisor::~Supervisor()\n{\n    ShadowDrop(shadow_);\n}" at)

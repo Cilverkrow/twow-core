@@ -1,5 +1,6 @@
 #include "playerbot/playerbot.h"
 #include "playerbot/SupervisorShadow.h"   // A3 step 3 arbiter shadow: writer scopes
+#include "playerbot/SupervisorEnforce.h"   // A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2, default 0): LaneFree
 #include "TravelValues.h"
 #include "QuestValues.h"
 #include "SharedValueContext.h"
@@ -927,7 +928,7 @@ uint8 ai::ProfessionTripOpenKind(PlayerbotAI* ai)
 // end as lost. PREPARE: nothing (the target still carries the old conditions).
 void ai::ProfessionTripTick(PlayerbotAI* ai)
 {
-    ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::Lifecycle);
+    ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::Errand);
     Player* bot = ai->GetBot();
     if (!ai::cohort::Applies(sPlayerbotAIConfig.professionTrainingTripNoGrind, bot->GetGUIDLow()) || ai->HasRealPlayerMaster() ||
         !sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()))
@@ -951,7 +952,8 @@ void ai::ProfessionTripTick(PlayerbotAI* ai)
         if (kind == ownKind)
         {
             if (!ProfessionTripHolds(ai, key.c_str(), ai::profession_travel::TripKindName(kind), ProfessionTripReasonLasts(ai, kind)) &&
-                status != TravelStatus::TRAVEL_STATUS_COOLDOWN)
+                status != TravelStatus::TRAVEL_STATUS_COOLDOWN &&
+                ai::supervisor::LaneFree(ai, ai::supervisor::Lane::Questbook, "profession_trip"))   // A3 step 3 T02-a (Arbiter = 2, default 0)
             {
                 travelTarget->SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);
                 context->ClearValues("no active travel destinations");
