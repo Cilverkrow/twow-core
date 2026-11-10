@@ -2246,7 +2246,11 @@ AiPlayerbot.Revive.CorpseRunFirst.MaxSeconds = 600
 # is still open). Accepted resurrects shorten deaths and move the base for deaths and re-deaths in A/B units.
 # Read when the bot's AI is created (the packet handler table, at login): a config reload affects only bots logged in
 # afterwards.
-# 0 = as before (default until the acceptance unit; then 1 by default, 0 = rollback).
+# Mode (ResurrectDelayPolicy.h; OB-00 09.11.2026: the acceptance rides along in CLI-GRP's in-realm cohort test T30-1):
+#   0 = as before (default until the acceptance unit; then 1 by default, 0 = rollback), 1 = every bot,
+#   2 = only bots whose low guid has bit 1 set ((guid >> 1) & 1 = 1), 3 = only bots with bit 1 clear; any other value acts
+#   like 0. 2 / 3 are NOT the cohort B / A modes of other keys (those split by parity, bit 0): bit 1 is independent of
+#   the parity, so a parity A/B and this key give a balanced 2x2 in one realm.
 AiPlayerbot.Revive.DelayResurrectRequest = 0
 # twow-repo#575 A3 step 4 S4-2 (OB-00 07.11.2026): repop only when dead. "unstuck" sent an ALIVE bot to repop for "move long
 # stuck" / "combat long stuck" whenever its hearthstone was not useful (e.g. the homebind zone above its level): a teleport
