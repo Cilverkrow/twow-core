@@ -17,6 +17,12 @@ cmake_policy(VERSION 3.16)
 #   (h) the unit test is registered;
 #   (i) DirectiveAck (addendum 09.11., agreed with CLI-Projekt): appended to Kind, PostDirectiveAck posts it through the inbox's
 #       own Post, counted as ack=<inc>; no caller in this pair. Post sites = the status hook + PostDirectiveAck.
+# T30-0 (design T30 v1.1, Fakten + Op-Weg) extends this pair, measurement only: GroupEdge appended to Kind; the status hook's
+# PostManagerStatus posts Status (flags + objective key), GroupEdge (on a change, compared each engine pass, and with every
+# status) and GroupWish (with the status) - three Post sites, all in PostManagerStatus behind the same gate; the manager keeps the
+# latest status, edge and wish per bot and appends edge/wish/key_overflow increments and table/shadow stands to its line.
+# The T30-0 specifics (facts read from the bot only, op path without caller, Run* bodies unchanged) are pinned by
+# a3s6_t30_facts_source_contract_tests.cmake.
 # Pure rules: t/manager_inbox_policy_tests.cpp. Every check_* returns "" when it holds, else the reason; the negative probes at
 # the end reuse them on mutated text.
 if(NOT DEFINED PB_SOURCE_DIR)
@@ -205,25 +211,36 @@ function(check_hook ai_cpp ai_h all_sources out)
     set(${out} "->Tick( appears ${n} times in the module (1 expected: the supervisor gate)" PARENT_SCOPE)
     return()
   endif()
-  # The post itself: due by StatusDue, roster bot without a real player master, own values only, one Post call.
+  # The post itself: due by StatusDue, roster bot without a real player master, own values only. T30-0: the status, the edge (on
+  # a change or with the status) and the wish (with the status) - all after the scope test, the status only when due.
   region("${ai_cpp}" "void PlayerbotAI::PostManagerStatus()\n{" "\n}\n" body)
   if(body STREQUAL "")
     set(${out} "PlayerbotAI.cpp: PostManagerStatus not defined" PARENT_SCOPE)
     return()
   endif()
   foreach(needle
-      "    if (!ai::manager_inbox::StatusDue(managerStatusLastMs, nowMs, sPlayerbotAIConfig.botGroupsManagerStatusSeconds * 1000))\n        return;"
-      "    if (!bot->IsInWorld() || !InQuestBookScope())\n        return;"
-      "    managerStatusLastMs = ai::manager_inbox::PostStamp(nowMs);"
-      "    event.kind = ai::manager_inbox::Kind::Status;"
-      "    event.role = 0;"
-      "    ai::manager_inbox::Post(event);\n}")
+      "    if (!bot->IsInWorld())\n        return;"
+      "    bool const due = ai::manager_inbox::StatusDue(managerStatusLastMs, nowMs, sPlayerbotAIConfig.botGroupsManagerStatusSeconds * 1000);"
+      "    if (!due && !edgeChanged)\n        return;\n    if (!InQuestBookScope())\n        return;"
+      "    if (due)\n    {\n        managerStatusLastMs = ai::manager_inbox::PostStamp(nowMs);"
+      "        event.kind = ai::manager_inbox::Kind::Status;"
+      "        event.role = 0;"
+      "        ai::manager_inbox::Post(event);\n    }"
+      "    ai::manager_inbox::Post(ai::manager_inbox::MakeEdge(bot->GetGUIDLow(), edge, x, y));\n    if (!due)\n        return;"
+      "        ai::manager_inbox::Post(ai::manager_inbox::MakeWish(bot->GetGUIDLow(), managerStatusSeq, wish));\n}")
     string(FIND "${body}" "${needle}" at)
     if(at EQUAL -1)
       set(${out} "PostManagerStatus: missing ${needle}" PARENT_SCOPE)
       return()
     endif()
   endforeach()
+  # The scope test comes before any post.
+  string(FIND "${body}" "    if (!InQuestBookScope())" scope)
+  string(FIND "${body}" "manager_inbox::Post(" first_post)
+  if(first_post EQUAL -1 OR NOT scope LESS first_post)
+    set(${out} "PostManagerStatus: a post before the roster scope test" PARENT_SCOPE)
+    return()
+  endif()
   # The roster rule has one home (shared with the quest book): a roster bot without a real player master.
   string(FIND "${ai_cpp}" "bool PlayerbotAI::InQuestBookScope()\n{\n    return bot && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !HasRealPlayerMaster();\n}" at)
   if(at EQUAL -1)
@@ -231,8 +248,9 @@ function(check_hook ai_cpp ai_h all_sources out)
     return()
   endif()
   count_text("${all_sources}" "manager_inbox::Post(" n)
-  if(NOT n EQUAL 1)
-    set(${out} "manager_inbox::Post( called ${n} times in the module (1 expected: PostManagerStatus)" PARENT_SCOPE)
+  count_text("${body}" "manager_inbox::Post(" nb)
+  if(NOT n EQUAL 3 OR NOT nb EQUAL 3)
+    set(${out} "manager_inbox::Post( called ${n} times in the module, ${nb} in PostManagerStatus (3 expected there: status, edge, wish)" PARENT_SCOPE)
     return()
   endif()
   foreach(needle "    uint32 managerStatusLastMs = 0;" "    uint32 managerStatusSeq = 0;" "    void PostManagerStatus();")
@@ -269,10 +287,12 @@ function(check_drain mgr_cpp inbox_cpp inbox_h policy all_sources out)
   endif()
   foreach(needle
       "void WorldThreadManager::Update(std::map<std::uint32_t, Player*> const& bots, std::uint32_t /*now*/)\n{\n    ++passes_;\n    DrainInbox(bots, WorldTimer::getMSTime());\n}"
-      "    bool const resumed = minuteStarted_ && manager_inbox::ResumedAfterGap(lastPassMs_, nowMs);\n    lastPassMs_ = nowMs;\n    if (resumed)\n    {\n        minuteStarted_ = false;\n        status_.clear();\n    }"
-      "        if (!resumed && event.kind == manager_inbox::Kind::Status)\n            status_[event.botLow] = manager_inbox::SnapshotOf(event, nowMs);"
-      "        seen_ = manager_inbox::Read();\n        statusSeen_ = kindTotals_[manager_inbox::KindIndex(manager_inbox::Kind::Status)];\n        ackSeen_ = kindTotals_[manager_inbox::KindIndex(manager_inbox::Kind::DirectiveAck)];\n        return;"
-      "        if (bots.find(it->first) == bots.end())\n            it = status_.erase(it);")
+      "    bool const resumed = minuteStarted_ && manager_inbox::ResumedAfterGap(lastPassMs_, nowMs);\n    lastPassMs_ = nowMs;\n    if (resumed)\n    {\n        minuteStarted_ = false;\n        status_.clear();\n        edges_.clear();\n        wishes_.clear();\n    }"
+      "        if (!resumed)\n            StoreEvent(event, nowMs);"
+      "        case manager_inbox::Kind::Status:\n            status_[event.botLow] = manager_inbox::SnapshotOf(event, nowMs);"
+      "        seen_ = manager_inbox::Read();\n        statusSeen_ = kindTotals_[manager_inbox::KindIndex(manager_inbox::Kind::Status)];\n        ackSeen_ = kindTotals_[manager_inbox::KindIndex(manager_inbox::Kind::DirectiveAck)];\n        edgeSeen_ = kindTotals_[manager_inbox::KindIndex(manager_inbox::Kind::GroupEdge)];\n        wishSeen_ = kindTotals_[manager_inbox::KindIndex(manager_inbox::Kind::GroupWish)];\n        return;"
+      "        if (bots.find(it->first) == bots.end())\n            it = table.erase(it);"
+      "    DropGone(status_, bots);\n    DropGone(edges_, bots);\n    DropGone(wishes_, bots);")
     string(FIND "${mgr_cpp}" "${needle}" at)
     if(at EQUAL -1)
       set(${out} "GroupManager.cpp: missing ${needle}" PARENT_SCOPE)
@@ -343,8 +363,8 @@ function(check_pure policy out)
       "static_assert(sizeof(Event) == 32,"
       "static_assert(std::is_trivially_copyable<Event>::value,"
       "static_assert(std::is_standard_layout<Event>::value,"
-      "enum class Kind : std::uint8_t\n{\n    QueueRequest,\n    DungeonWish,\n    GroupWish,\n    Status,\n    RepopEdge,\n    ReviveEdge,\n    RunEnded,\n    QueueLeave,\n    DirectiveAck,\n};"
-      "constexpr std::size_t kKinds = std::size_t(Kind::DirectiveAck) + 1;"
+      "enum class Kind : std::uint8_t\n{\n    QueueRequest,\n    DungeonWish,\n    GroupWish,\n    Status,\n    RepopEdge,\n    ReviveEdge,\n    RunEnded,\n    QueueLeave,\n    DirectiveAck,\n    GroupEdge,\n};"
+      "constexpr std::size_t kKinds = std::size_t(Kind::GroupEdge) + 1;"
       "constexpr std::size_t kKindBuckets = kKinds + 1;"
       "    return i < kKinds ? i : kKinds;"
       "constexpr std::size_t Capacity = 4096;"
@@ -360,7 +380,8 @@ endfunction()
 
 # ---- (g) the minute line ----------------------------------------------------------------------------------------------------
 function(check_minute policy inbox_h inbox_cpp mgr_h mgr_cpp all_sources out)
-  string(FIND "${policy}" "\"[ManagerInbox] posted=%llu dropped=%llu drained=%llu status=%llu ack=%llu snapshots=%llu\"" at)
+  # T30-0 appends its fields after snapshots= (the inbox pair's fields keep their place).
+  string(FIND "${policy}" "\"[ManagerInbox] posted=%llu dropped=%llu drained=%llu status=%llu ack=%llu snapshots=%llu\"\n        \" edge=%llu wish=%llu key_overflow=%llu edges=%llu wishes=%llu stale_snap=%llu cand_busy=%llu cand_adhoc=%llu\"\n        \" cand_quest=%llu cand_zone_hold=%llu no_supervisor=%llu\"" at)
   if(at EQUAL -1)
     set(${out} "ManagerInboxPolicy.h: the [ManagerInbox] line format changed" PARENT_SCOPE)
     return()
@@ -390,6 +411,9 @@ function(check_minute policy inbox_h inbox_cpp mgr_h mgr_cpp all_sources out)
       "    line.drained = manager_inbox::TakeDelta(totals.drained, seen_.drained);"
       "    line.status = manager_inbox::TakeDelta("
       "    line.ack = manager_inbox::TakeDelta(kindTotals_[manager_inbox::KindIndex(manager_inbox::Kind::DirectiveAck)], ackSeen_);"
+      "    line.edge = manager_inbox::TakeDelta(kindTotals_[manager_inbox::KindIndex(manager_inbox::Kind::GroupEdge)], edgeSeen_);"
+      "    line.wish = manager_inbox::TakeDelta(kindTotals_[manager_inbox::KindIndex(manager_inbox::Kind::GroupWish)], wishSeen_);"
+      "    line.keyOverflow = manager_inbox::TakeDelta(totals.keyOverflow, seen_.keyOverflow);"
       "    if (manager_inbox::MinuteLineDue(line))\n        manager_inbox::LogMinute(line);")
     string(FIND "${mgr_cpp}" "${needle}" at)
     if(at EQUAL -1)
@@ -399,7 +423,7 @@ function(check_minute policy inbox_h inbox_cpp mgr_h mgr_cpp all_sources out)
   endforeach()
   # A silent minute (StatusSeconds 0, no ack) writes no line; kind totals have an "other" bucket.
   foreach(needle
-      "    return m.posted || m.dropped || m.drained || m.status || m.ack || m.snapshots;"
+      "    return m.posted || m.dropped || m.drained || m.status || m.ack || m.snapshots || m.edge || m.wish || m.keyOverflow ||\n        m.edges || m.wishes;"
       "    std::uint64_t ack = 0;")
     string(FIND "${policy}" "${needle}" at)
     if(at EQUAL -1)
@@ -483,7 +507,8 @@ function(check_unit tests_cmake unit_test out)
     endif()
   endforeach()
   foreach(needle "    TestFifo();" "    TestFull();" "    TestDrainMax();" "    TestCounters();" "    TestStatusDue();" "    TestPerMille();"
-      "    TestLayout();" "    TestMinuteDue();" "    TestSnapshotAndLine();")
+      "    TestLayout();" "    TestMinuteDue();" "    TestSnapshotAndLine();" "    TestFlagsAndKey();" "    TestEdgeAndWish();"
+      "    TestShadow();" "    TestT30MinuteDue();")
     string(FIND "${unit_test}" "${needle}" at)
     if(at EQUAL -1)
       set(${out} "t/manager_inbox_policy_tests.cpp: missing ${needle}" PARENT_SCOPE)
@@ -537,7 +562,7 @@ check_hook("${m}" "${ai_h}" "${all_sources}" r)
 expect_caught("hook not gated on StatusSeconds" "${r}")
 check_hook("${ai_cpp}" "${ai_h}" "${all_sources}\n    ai::manager_inbox::Post(other);" r)
 expect_caught("a second Post site" "${r}")
-string(REPLACE "    if (!bot->IsInWorld() || !InQuestBookScope())\n" "    if (!bot->IsInWorld())\n" m "${ai_cpp}")
+string(REPLACE "    if (!InQuestBookScope())\n        return;\n" "" m "${ai_cpp}")
 check_hook("${m}" "${ai_h}" "${all_sources}" r)
 expect_reason("a real player's bot posts" "${r}" "PostManagerStatus: missing")
 string(REPLACE "    return bot && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !HasRealPlayerMaster();" "    return bot && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow());" m "${ai_cpp}")
@@ -562,7 +587,7 @@ expect_caught("the prune reads a map value" "${r}")
 # Every needle intact, only the map-keys ban can fire.
 check_drain("${mgr_cpp}\nvoid Peek(std::map<std::uint32_t, Player*> const& bots) { for (auto const& b : bots) if (b.second->IsAlive()) {} }" "${inbox_cpp}" "${inbox_h}" "${policy}" "${all_sources}" r)
 expect_reason("a map value read in the manager" "${r}" "reads beyond the map keys")
-string(REPLACE "        if (!resumed && event.kind == manager_inbox::Kind::Status)" "        if (event.kind == manager_inbox::Kind::Status)" m "${mgr_cpp}")
+string(REPLACE "        if (!resumed)\n            StoreEvent(event, nowMs);" "        StoreEvent(event, nowMs);" m "${mgr_cpp}")
 check_drain("${m}" "${inbox_cpp}" "${inbox_h}" "${policy}" "${all_sources}" r)
 expect_reason("stale events stored as fresh snapshots after a resume" "${r}" "GroupManager.cpp: missing")
 string(REPLACE "        minuteStarted_ = false;\n        status_.clear();\n" "        minuteStarted_ = false;\n" m "${mgr_cpp}")
@@ -580,10 +605,10 @@ expect_caught("a group handler in the inbox" "${r}")
 check_isolation("${policy}" "${inbox_h}" "${inbox_cpp}\nvoid X() { group->AddMember(guid, name); }" "${mgr_h}" "${mgr_cpp}" "${ai_cpp}" r)
 expect_caught("AddMember in the inbox" "${r}")
 # (f) a pointer in the event, a game include, a size change.
-string(REPLACE "    std::uint32_t reserved;\n" "    Player* sender;\n" m "${policy}")
+string(REPLACE "    std::uint32_t reserved;" "    Player* sender;" m "${policy}")
 check_pure("${m}" r)
 expect_caught("a pointer in the event" "${r}")
-string(REPLACE "    std::uint32_t reserved;\n" "    char const* tag;\n" m "${policy}")
+string(REPLACE "    std::uint32_t reserved;" "    char const* tag;" m "${policy}")
 check_pure("${m}" r)
 expect_caught("a char pointer in the event" "${r}")
 check_pure("#include \"playerbot/playerbot.h\"\n${policy}" r)
@@ -617,13 +642,13 @@ check_minute("${policy}" "${inbox_h}" "${inbox_cpp}" "${mgr_h}" "${m}" "${all_so
 expect_reason("acks not counted per minute" "${r}" "GroupManager.cpp: missing")
 set(GATED_LOG "    if (manager_inbox::MinuteLineDue(line))\n        manager_inbox::LogMinute(line);")
 string(REPLACE "${GATED_LOG}" "" m "${mgr_cpp}")
-string(REPLACE "    // The minute window opens" "${GATED_LOG}\n    // The minute window opens" m "${m}")
+string(REPLACE "    // (3) the minute line." "${GATED_LOG}\n    // (3) the minute line." m "${m}")
 check_minute("${policy}" "${inbox_h}" "${inbox_cpp}" "${mgr_h}" "${m}" "${all_sources}" r)
 expect_reason("line before the minute gate" "${r}" "not behind the minute gate")
 string(REPLACE "${GATED_LOG}" "    manager_inbox::LogMinute(line);" m "${mgr_cpp}")
 check_minute("${policy}" "${inbox_h}" "${inbox_cpp}" "${mgr_h}" "${m}" "${all_sources}" r)
 expect_reason("a line for every silent minute (StatusSeconds 0)" "${r}" "GroupManager.cpp: missing")
-string(REPLACE "    return m.posted || m.dropped || m.drained || m.status || m.ack || m.snapshots;" "    return true;" m "${policy}")
+string(REPLACE "    return m.posted || m.dropped || m.drained || m.status || m.ack || m.snapshots || m.edge" "    return true || m.edge" m "${policy}")
 check_minute("${m}" "${inbox_h}" "${inbox_cpp}" "${mgr_h}" "${mgr_cpp}" "${all_sources}" r)
 expect_reason("MinuteLineDue always true" "${r}" "ManagerInboxPolicy.h: missing")
 string(REPLACE "std::array<std::uint64_t, manager_inbox::kKindBuckets>" "std::array<std::uint64_t, manager_inbox::kKinds>" m "${mgr_h}")

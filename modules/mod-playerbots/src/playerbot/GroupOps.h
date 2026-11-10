@@ -1,8 +1,11 @@
 #pragma once
 
 #include "playerbot/GroupOpQueue.h"
+#include "playerbot/GroupManagerPolicy.h"   // A3 step 6 T30-0: group_mgr::GroupType of a manager join
 
+#include <cstddef>
 #include <cstdint>
+#include <vector>
 
 class PlayerbotAI;
 class Player;
@@ -127,4 +130,19 @@ bool QueueLeave(PlayerbotAI* ai, OpSource source, std::uint8_t tail);
 bool QueueAccept(PlayerbotAI* ai, std::uint32_t inviterGuidLow, bool decline);
 bool QueueInvite(PlayerbotAI* ai, Player* invitee, bool raidConvert);
 bool QueueLeader(PlayerbotAI* ai, Player* newLeader, bool reset);
+
+// ---- A3 step 6 T30-0 (design T30 v1.1 3.5): the group manager's op path. NO CALLER in T30-0 (T30-1 wires the manager) -------
+// World thread only (the manager pass in RandomPlayerbotMgr::UpdateAIInternal, maps idle). They take guids, not pointers: the
+// group manager reads no Player*; these look the bots up themselves (FindPlayer, GetBotAI) to set the pending marks Enqueue
+// needs. source = OpSource::Manager. true = queued; false = a bot not found, a dungeon type (T34) or the push refused.
+// Join: the inviter's group joins the invitee (groupId 0 = a new group; Join n+1 of a QUEST group carries its confirmed id, M8).
+// Until T30-1 RunJoin still applies the ad-hoc size and range (BotGroups.MaxBots, 2 x AdHoc.Radius) and registers the group
+// in the ad-hoc registry (3.5 rows 3-4 move to T30-1 with the RunJoin re-pin): do not call this before then.
+bool QueueManagerJoin(std::uint32_t inviteeLow, std::uint32_t inviterLow, std::uint32_t groupId, group_mgr::GroupType type,
+    std::uint32_t questId, std::uint8_t objective);
+// Leave of the manager's group (kLeaveQueued: the LeaveGroupAction tail; another group by now -> DropGroupChanged).
+bool QueueManagerLeave(std::uint32_t botLow, std::uint32_t groupId, std::uint32_t leaderLow);
+// World thread: totals since start, and the outcomes of manager ops since the last take (bounded, kManagerOutcomesMax).
+ManagerOpCounts ReadManagerOpCounts();
+std::size_t TakeManagerOutcomes(std::vector<ManagerOutcome>& out);
 }

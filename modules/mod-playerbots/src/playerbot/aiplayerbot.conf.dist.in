@@ -1390,9 +1390,13 @@ AiPlayerbot.BotGroups.OpQueueAlertAgeSeconds = 60
 # cohort A (even low guid). Any other value acts like 0 (one error line at load).
 AiPlayerbot.BotGroups.Manager = 0
 # A3-GERUEST-L60 7.2.11 (manager inbox): MEASUREMENT ONLY, default 0, no behaviour change. With Manager on, a roster bot of
-# the Manager's cohort without a real player master posts its status (level, HP/mana per mille, map, x/y; role unknown) to
-# the manager inbox every StatusSeconds; the manager keeps the latest per bot and decides nothing from it yet. The manager
-# writes "[ManagerInbox] posted= dropped= drained= status= snapshots=" once a minute (increments; snapshots = table size).
+# the Manager's cohort without a real player master posts its status (level, HP/mana per mille, map, x/y, its flags and its
+# objective key; role unknown) to the manager inbox every StatusSeconds. T30-0: the bot also posts its own group edge (on a
+# change, compared every engine pass, and with every status) and an interim group wish (right after the status). The manager
+# keeps the latest of each per bot and only counts shadow candidates (no op, no directive). Once a minute it writes
+# "[ManagerInbox] posted= dropped= drained= status= ack= snapshots= edge= wish= key_overflow= edges= wishes= stale_snap=
+# cand_busy= cand_adhoc= cand_quest= cand_zone_hold= no_supervisor=" (posted..ack, edge, wish, key_overflow = increments;
+# snapshots, edges, wishes, stale_snap, cand_*, no_supervisor = table stands at the line).
 # 0 = no posts (default), 1..3600 seconds; a larger value acts like 3600 (one error line at load).
 AiPlayerbot.BotGroups.Manager.StatusSeconds = 0
 # L1 (owner 07.11.2026, owner-ordered behaviour change): a bot resets its raid lockouts ("reset raids", which drops every bind

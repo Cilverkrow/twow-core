@@ -28,6 +28,7 @@
 #include "playerbot/QuestBook.h"    // A3 step 2 (AiPlayerbot.QuestBook): the per-bot quest book core
 #include "playerbot/GroupManagerPolicy.h"   // A3-GERUEST-L60 7.2.11: the manager's cohort rule for the status post
 #include "playerbot/ManagerInbox.h"         // A3-GERUEST-L60 7.2.11: the manager inbox (Status post)
+#include "playerbot/ManagerFacts.h"         // A3 step 6 T30-0: the bot's own facts for the status, edge and wish posts
 #include "Maps/PathFinder.h"
 #include <stdarg.h>
 #include <array>
@@ -452,29 +453,59 @@ void PlayerbotAI::BackoffOutOfMana(bool yieldSetDelay, bool minimal)
 // values on its own map thread and posts them by value; the manager (world thread) never reads the bot directly. Only a
 // roster bot without a real player master (the manager's bots; one rule with the quest book, InQuestBookScope). A full inbox
 // drops the snapshot (counted); the next one follows after StatusSeconds, no retry.
+// T30-0 (design T30 v1.1 3.1, same gate, measurement only): the status carries the bot's flags and objective key; the group
+// edge (own group header only) goes out on a change, compared every engine pass, and with every status; the interim group
+// wish (S7 predicates, F3 (a)) goes out right after the status. All reads: ManagerFacts.cpp, the bot itself only.
 void PlayerbotAI::PostManagerStatus()
 {
+    if (!bot->IsInWorld())
+        return;
     uint32 const nowMs = WorldTimer::getMSTime();
-    if (!ai::manager_inbox::StatusDue(managerStatusLastMs, nowMs, sPlayerbotAIConfig.botGroupsManagerStatusSeconds * 1000))
+    bool const due = ai::manager_inbox::StatusDue(managerStatusLastMs, nowMs, sPlayerbotAIConfig.botGroupsManagerStatusSeconds * 1000);
+    ai::manager_inbox::EdgeFacts const edge = ai::manager_facts::ReadEdge(bot);
+    bool const edgeChanged = !managerEdgeKnown || edge != managerEdgeLast;
+    managerEdgeLast = edge;
+    managerEdgeKnown = true;
+    if (!due && !edgeChanged)
         return;
-    if (!bot->IsInWorld() || !InQuestBookScope())
+    if (!InQuestBookScope())
         return;
-    managerStatusLastMs = ai::manager_inbox::PostStamp(nowMs);
+    float const x = bot->GetPositionX();
+    float const y = bot->GetPositionY();
 
-    ai::manager_inbox::Event event{};
-    event.botLow = bot->GetGUIDLow();
-    event.kind = ai::manager_inbox::Kind::Status;
-    // Role stays 0 (unknown): group_mgr::ResolveRole needs the roster plan role and the kit rule (E2, owner open), which the
-    // bot cannot read cheaply here; the manager pair that forms groups fills it.
-    event.role = 0;
-    event.level = uint8(std::min<uint32>(255, bot->GetLevel()));
-    event.mapOrDungeon = bot->GetMapId();
-    event.seq = ++managerStatusSeq;
-    event.hpPct10 = ai::manager_inbox::PerMille(bot->GetHealth(), bot->GetMaxHealth());
-    event.manaPct10 = ai::manager_inbox::PerMille(bot->GetPower(POWER_MANA), bot->GetMaxPower(POWER_MANA));
-    event.x = bot->GetPositionX();
-    event.y = bot->GetPositionY();
-    ai::manager_inbox::Post(event);
+    if (due)
+    {
+        managerStatusLastMs = ai::manager_inbox::PostStamp(nowMs);
+        ai::manager_inbox::Event event{};
+        event.botLow = bot->GetGUIDLow();
+        event.kind = ai::manager_inbox::Kind::Status;
+        // Role stays 0 (unknown): group_mgr::ResolveRole needs the roster plan role and the kit rule (E2, owner open), which the
+        // bot cannot read cheaply here; the manager pair that forms groups fills it.
+        event.role = 0;
+        event.level = uint8(std::min<uint32>(255, bot->GetLevel()));
+        event.mapOrDungeon = bot->GetMapId();
+        event.seq = ++managerStatusSeq;
+        event.hpPct10 = ai::manager_inbox::PerMille(bot->GetHealth(), bot->GetMaxHealth());
+        event.manaPct10 = ai::manager_inbox::PerMille(bot->GetPower(POWER_MANA), bot->GetMaxPower(POWER_MANA));
+        event.x = x;
+        event.y = y;
+        event.reason = ai::manager_inbox::PackFlags(ai::manager_facts::ReadFlags(bot, this));
+        uint32 key = 0;
+        if (!ai::manager_inbox::PackKey(ai::manager_facts::ReadKey(bot), key))
+            ai::manager_inbox::CountKeyOverflow();   // a quest id >= 2^23: the key went out empty
+        event.reserved = key;
+        ai::manager_inbox::Post(event);
+    }
+
+    // The edge on a change and with every status (after it: the manager stores both from one drain, FIFO).
+    ai::manager_inbox::Post(ai::manager_inbox::MakeEdge(bot->GetGUIDLow(), edge, x, y));
+    if (!due)
+        return;
+
+    // The wish right after its status: the manager drops a bot's wish on each status, so no wish here = no wish there.
+    ai::manager_inbox::WishFacts wish;
+    if (ai::manager_facts::ReadWish(bot, this, wish))
+        ai::manager_inbox::Post(ai::manager_inbox::MakeWish(bot->GetGUIDLow(), managerStatusSeq, wish));
 }
 
 // A3 step 5 (AiPlayerbot.CombatRule.ProgressGuard, default 0; A3 §4.3 R8, CombatRulePolicy.h): one reading of the combat progress

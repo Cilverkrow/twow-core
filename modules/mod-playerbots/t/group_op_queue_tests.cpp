@@ -698,5 +698,75 @@ int main()
         Require(Merge(LeaveResetOnly, JoinReset) == JoinReset, "a join drops a pending reset-only leave");
         Require(Merge(LeaveReset, JoinReset) == JoinReset, "a join drops a pending leave (unchanged)");
     }
+
+    // ---- A3 step 6 T30-0: the manager's op path (no new OpKind, no new verdict) -------------------------------------------
+    Require(std::uint8_t(OpSource::Manager) == 7 && std::uint8_t(OpSource::AdhocAction) == 0, "OpSource::Manager appended (7)");
+    Require(kKinds == 5 && kVerdicts == 9, "no new op kind, no new verdict");
+    Require(ManagerJoinReason(false) == kJoinManager && ManagerJoinReason(true) == (kJoinManager | kJoinQuest),
+        "join bits: manager, manager + quest");
+    Require(kJoinManager == 0x01 && kJoinQuest == 0x02, "join bit values");
+    Require(LeaveTailOf(kLeaveQueued) == LeaveTail::Command, "a manager leave (kLeaveQueued) keeps the LeaveGroupAction tail");
+    Require(ManagerOpResultOf(Verdict::Execute, 3, 3) == ManagerOpResult::Executed, "ran, no new failure: executed");
+    Require(ManagerOpResultOf(Verdict::Execute, 3, 4) == ManagerOpResult::Failed, "ran, the failed count moved: failed");
+    Require(ManagerOpResultOf(Verdict::DropStalePair, 3, 3) == ManagerOpResult::Stale &&
+        ManagerOpResultOf(Verdict::DropGroupChanged, 0, 0) == ManagerOpResult::Stale, "a drop: stale");
+    Require(ManagerOpResultOf(Verdict::Execute, 0xFFFFFFFFu, 0) == ManagerOpResult::Failed, "failed across a counter wrap");
+    Require(kManagerOpResults == 4 && kManagerOutcomesMax == 256, "outcome kinds and bound");
+    {
+        ManagerOpCounts c;
+        Require(c.queued[0] == 0 && c.refused[1] == 0 && c.results[1][0] == 0 && c.outcomesDropped == 0, "counts start at 0");
+        ManagerOutcome o;
+        Require(o.verdict == Verdict::Retry && o.result == ManagerOpResult::Stale, "an outcome defaults to not run");
+    }
+    {
+        // A manager leave replaces the bot's waiting manager join (design 2.3: join_failed leave); the join never runs.
+        Queue q;
+        Op j = Join(50, 51, 0, 10);
+        j.source = std::uint8_t(OpSource::Manager);
+        j.reason = ManagerJoinReason(true);
+        Require(q.Push(j, 16) == Pushed::Queued, "manager join queued");
+        Op l = Leave(50, 9, 11);
+        l.source = std::uint8_t(OpSource::Manager);
+        l.reason = kLeaveQueued;
+        Require(q.Push(l, 16) == Pushed::Queued, "the invitee's manager leave replaces its waiting join");
+        Op op;
+        Require(q.Pop(op) == Popped::Live && op.seq == l.seq && op.source == std::uint8_t(OpSource::Manager), "the leave runs");
+        q.Finish(op);
+        Require(q.Pop(op) == Popped::Superseded && op.seq == j.seq && op.reason == (kJoinManager | kJoinQuest),
+            "the manager join is superseded, its bits intact");
+        q.Finish(op);
+        Require(q.Depth() == 0 && !q.IsPending(50) && !q.IsPending(51), "nothing left");
+    }
+    {
+        // Design T30 6: DecideJoinOp with QUEST size and range (maxMembers = QuestGroups.MaxSize, inRange = within
+        // QuestGroups.RecruitRadius). The rule takes them as given; RunJoin still fills the ad-hoc values until T30-1 (3.5).
+        JoinOpFacts quest;
+        quest.found = true;
+        quest.inWorld = true;
+        quest.sameMap = true;
+        quest.inRange = true;
+        quest.maxMembers = 5;
+        quest.opGroupId = 21;
+        quest.inviterGroupId = 21;
+        quest.inviterLeads = true;
+        quest.inviterMembers = 4;
+        Require(DecideJoinOp(quest) == Verdict::Execute, "quest join: room for the fifth member: execute");
+        JoinOpFacts g = quest;
+        g.inviterMembers = 5;
+        Require(DecideJoinOp(g) == Verdict::DropStalePair, "quest join: QuestGroups.MaxSize reached: drop");
+        g = quest;
+        g.maxMembers = 3;
+        g.inviterMembers = 3;
+        Require(DecideJoinOp(g) == Verdict::DropStalePair, "quest join: a smaller MaxSize is honoured: drop");
+        g = quest;
+        g.inRange = false;
+        Require(DecideJoinOp(g) == Verdict::DropStalePair, "quest join: beyond RecruitRadius now: drop");
+        g = quest;
+        g.opGroupId = 0;
+        g.inviterGroupId = 0;
+        g.inviterLeads = false;
+        g.inviterMembers = 0;
+        Require(DecideJoinOp(g) == Verdict::Execute, "quest join n=1: a new group: execute");
+    }
     return 0;
 }
