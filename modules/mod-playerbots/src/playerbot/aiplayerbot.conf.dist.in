@@ -236,6 +236,15 @@ AiPlayerbot.Loot.HoldTravelWhileLootable = 0
 # would otherwise hold the bot without end. After the limit that loot target holds no more until the bot takes another
 # one; one [LootHold] bot= ... held_s= result=expired line each time.
 AiPlayerbot.Loot.HoldTravelWhileLootable.MaxSeconds = 60
+# twow-repo#703 item 3 (move-to-loot loop; A3-PLAN-ZIEL, owner standing approval 09.11.2026): "move to loot" follows the
+# bot's loot target without an attempt count, so a target the path finder cannot reach ("mmap pts=1, keep last") held bots
+# for hours (ARB N1: 219-262 min, moved=0.0). With the key a roster bot without a real player master gives the loot target up
+# when it came no nearer (>= 1 yd better than its best distance) for 30 s of continuous trying with >= 5 tries (a gap > 5 s
+# between two tries starts again): the loot target is reset and the object stays out of the bot's loot list for 600 s
+# (every loot kind: corpse, herb, ore, chest; at most 16 objects per bot). One [LootGiveUp] bot= guid= entry= dist_start=
+# dist_best= tries= waited_s= mode= line per give-up; [LootGiveUpMin] mode= loot_giveup= loot_blocked= once a minute.
+# Cohort mode: 0 = off, as before (default until its A/B); 1 = all bots; 2 = cohort B (odd guid); 3 = cohort A; other = 0.
+AiPlayerbot.Loot.MoveGiveUp = 0
 # OB-00 08.11.2026 (BUG FIX: code default 1, 0 = rollback): the "loot chance" value of a game object. The drop map keeps a
 # game object entry negated; the value put that negative entry into the game object guid as it was, the entry ran into the
 # high guid bits, the guid was no game object guid and every game object had loot chance 0. With 1 it reads the game object's
@@ -1262,6 +1271,13 @@ AiPlayerbot.QuestRescue.HomeHubs = 1
 # a pending band rescue is consumed, the 2 h per-bot rescue cooldown as before), a non-empty one asks the limiter as before.
 # Logs [QuestRescueMin] notarget_noslot= rung_mismatch= once per minute. 0 = as before (default); other values act like 0.
 AiPlayerbot.QuestRescue.NoTargetFreeSlot = 0
+# twow-repo#703 item 2 (11.11.2026): L5-10 rows of the HomeHubs table for the races whose faction has another start point on their
+# continent: human (Goldshire), dwarf / gnome (Kharanos), orc / troll (Razor Hill), tauren (Bloodhoof Village). Without them a stalled
+# L5-10 bot of these races is rescued into another race's start valley (ARB N1: 41 of 41 L5+ teleports) and the band ladder sends it
+# back within seconds. A bot that already stands at its hub (all anchor spawns within 100 yd) gets no target (result=at_hub,
+# [RescueHubMin] at_hub=) instead of the legacy targets. Acts only where HomeHubs applies; night elf / undead keep their next-zone rows.
+# Cohort mode: 0 = off (default, today's table), 1 = all bots, 2 = cohort B (odd guid), 3 = cohort A (even guid); other values act like 0.
+AiPlayerbot.QuestRescue.HomeHubs.L5OwnHub = 0
 # A creature entry that killed the bot GrindAvoid.MaxDeaths times within
 # WindowSeconds is skipped as a grind target for AvoidSeconds. 0 = off.
 AiPlayerbot.GrindAvoid.MaxDeaths = 0
@@ -4223,6 +4239,16 @@ AiPlayerbot.Rotation.ReachDropEngagement = 0
 # Own switch (an A/B tells it apart from ReachDropEngagement). Read when the strategies are built (a reload takes effect with the
 # next strategy reset). 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
 AiPlayerbot.Rotation.FollowUnstealth = 0
+# twow-repo#703 item 4 (endless fight on an unreachable target; A3-PLAN-ZIEL, owner standing approval 09.11.2026): hotfix 8.2 ignores
+# a target the bot comes no nearer to for 300 s, then the bot picks the same mob again (ARB N1 bot 798: 12x [Unreachable] on one
+# entry, about 260 min in combat, freed only by the rescue teleport). With the key a roster bot without a real player master, with
+# no group or not its leader, counts the [Unreachable] results per target guid (4 guids per bot); the 3rd on one guid within
+# 30 min gives that target up: attack / pull / old target, selection and swing are dropped, the ignore lasts 1800 s, and when the
+# entry is the current quest objective's, that camp (quest, entry) is marked empty for 1800 s (at most once an hour per camp) and
+# the travel target ends, so the router picks another. One [UnreachableGiveUp] bot= guid= entry= quest= count= ignore_s=
+# mark_s= mark=set|none|skip_1h evicted= reason=unreachable_k line per give-up.
+# Cohort mode: 0 = off, as before (default until its A/B); 1 = all bots; 2 = cohort B (odd guid); 3 = cohort A; other = 0.
+AiPlayerbot.Rotation.UnreachableGiveUp = 0
 
 # twow-repo#602 ROT-01 3c (priest Farathil loop, OB-00 24.10.2026, BEHAVIOUR CHANGE, enable only after A/B + owner go): "low mana"
 # pushes "dark rune" (alternative "mana potion") on every evaluation, in the combat and the reaction engine. Without a rune in

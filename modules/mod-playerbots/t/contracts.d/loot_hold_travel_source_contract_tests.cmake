@@ -87,7 +87,7 @@ require_text("${dist}" "\nAiPlayerbot.Loot.HoldTravelWhileLootable = 0\n" "dist 
 count_text("${dist}" "AiPlayerbot.Loot.HoldTravelWhileLootable =" 1 "one dist line")
 require_text("${config_h}" "    bool lootHoldTravelWhileLootable = false;" "member default false")
 require_text("${config_cpp}" "    lootHoldTravelWhileLootable = config.GetBoolDefault(\"AiPlayerbot.Loot.HoldTravelWhileLootable\", false);" "read with default false")
-require_text("${config_cpp}" "            {\"LogInGroupOnly\", Value(logInGroupOnly)},\n            {\"Loot.HoldTravelWhileLootable\", Value(lootHoldTravelWhileLootable)},\n            {\"Loot.HoldTravelWhileLootable.MaxSeconds\", Value(lootHoldTravelWhileLootableMaxSeconds)},\n            {\"Loot.RoleWeights\", Value(lootRoleWeights)}," "[ConfigEcho] sorted")
+require_text("${config_cpp}" "            {\"LogInGroupOnly\", Value(logInGroupOnly)},\n            {\"Loot.HoldTravelWhileLootable\", Value(lootHoldTravelWhileLootable)},\n            {\"Loot.HoldTravelWhileLootable.MaxSeconds\", Value(lootHoldTravelWhileLootableMaxSeconds)},\n            {\"Loot.MoveGiveUp\", Value(lootMoveGiveUp)},\n            {\"Loot.RoleWeights\", Value(lootRoleWeights)}," "[ConfigEcho] sorted (twow-repo#703 item 3: Loot.MoveGiveUp between)")
 # The hold limit (OB-10 review 09.11.): dist 60, member 60, read through the clamp with the policy default.
 require_text("${dist}" "\nAiPlayerbot.Loot.HoldTravelWhileLootable.MaxSeconds = 60\n" "limit dist default 60")
 require_text("${config_h}" "    uint32 lootHoldTravelWhileLootableMaxSeconds = 60;" "limit member default 60")
