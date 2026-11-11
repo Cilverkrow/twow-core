@@ -5,8 +5,8 @@ cmake_policy(VERSION 3.16)
 # [ArbiterGrp] field gather_kind3, so a packing error shows. This contract pins, each with a negative probe at the end:
 #   (1) GatherKindUndefined defined once in SupervisorGroupPolicy.h: Enter or Change, and the kind equal to kGatherUndefined (3);
 #   (2) the one count CountGrp(guidLow, GrpField::GatherKind3) sits in HandleMail behind GatherKindUndefined, and nowhere else;
-#   (3) kGatherUndefined is used only by that helper (no ack, move or check branches on kind 3; ChooseMove has no kind 3 case),
-#       and no code compares a gather kind with the literal 3;
+#   (3) kGatherUndefined is used only by that helper and the helper is called only by the count (no ack, move or check
+#       branches on kind 3; ChooseMove has no kind 3 case), and no gather file compares a kind with a number or switches on it;
 #   (4) gather_kind3 is the last GrpField (51 fields, the last name), mirrored by EnforceCount (A3_GRP_SAME, the span assert);
 #   (5) the unit test calls TestGatherKind3.
 # Every check_* returns "" when it holds, else the reason; the negative probes reuse them on mutated text.
@@ -101,6 +101,12 @@ foreach(f IN LISTS all_files)
   string(REPLACE "\r" "" t "${t}")
   string(APPEND all_sources "${t}\n")
 endforeach()
+# The files that read the gather kind (the literal-compare scan stays here, so unrelated "kind" code elsewhere cannot trip it).
+set(gather_sources "")
+foreach(path "SupervisorGroup.cpp" "SupervisorGroupPolicy.h" "GroupDirectivePolicy.h" "Supervisor.h" "Supervisor.cpp")
+  read_source("${path}" t)
+  string(APPEND gather_sources "${t}\n")
+endforeach()
 
 # ---- (1) the helper ----------------------------------------------------------------------------------------------------------
 set(DEF_UNDEF "inline bool GatherKindUndefined(VerbClass v, std::uint8_t gatherKind)\n{")
@@ -123,10 +129,12 @@ set(COUNT_K3 "            if (GatherKindUndefined(v, d.gatherKind))\n           
 function(check_count group_cpp all_sources out)
   count_text("${all_sources}" "GrpField::GatherKind3" n)
   count_text("${all_sources}" "GatherKindUndefined(v, d.gatherKind)" nc)
+  strip_comments("${all_sources}" code)
+  count_text("${code}" "GatherKindUndefined(" nu)
   region("${group_cpp}" "${DEF_HANDLE}" "\n}\n" body)
   string(FIND "${body}" "${COUNT_K3}" at)
-  if(NOT n EQUAL 1 OR NOT nc EQUAL 1 OR at EQUAL -1)
-    set(${out} "count: GrpField::GatherKind3 appears ${n} times and the guard ${nc} times under PB/ (1 and 1 expected), in HandleMail: ${at}" PARENT_SCOPE)
+  if(NOT n EQUAL 1 OR NOT nc EQUAL 1 OR NOT nu EQUAL 2 OR at EQUAL -1)
+    set(${out} "count: GrpField::GatherKind3 appears ${n} times, the guard ${nc} times, GatherKindUndefined( ${nu} times in code under PB/ (1, 1 and 2 expected: the definition, the guard), in HandleMail: ${at}" PARENT_SCOPE)
     return()
   endif()
   set(${out} "" PARENT_SCOPE)
@@ -134,11 +142,14 @@ endfunction()
 
 # ---- (3) kind 3 drives nothing -----------------------------------------------------------------------------------------------
 set(DEF_CHOOSE "inline MoveKind ChooseMove(bool gatherFlag, std::uint8_t gatherKind, bool isLeader, bool atPoint = false)\n{")
-function(check_inert all_sources gpolicy out)
+# The literal scan (gather files only): a kind compared with a number either way round, a kind above kind c, a switch on it.
+set(KIND_LIT "[Kk]ind_? *(==|!=|<=|>=|<|>) *(0x)?[0-9]|[Kk]ind_? *(>=|>) *kGather|[0-9] *(==|!=|<=|>=|<|>) *[A-Za-z_.]*[Kk]ind|switch *\\([^)]*[Gg]atherKind")
+function(check_inert all_sources gather_sources gpolicy out)
   strip_comments("${all_sources}" code)
   count_text("${code}" "kGatherUndefined" n)
   region("${gpolicy}" "${DEF_CHOOSE}" "\n}\n" choose)
-  string(REGEX MATCH "[Kk]ind_? *[!=]= *3[^0-9]" lit "${code}")
+  strip_comments("${gather_sources}" gcode)
+  string(REGEX MATCH "${KIND_LIT}" lit "${gcode}")
   string(FIND "${choose}" "kGatherUndefined" ac)
   if(choose STREQUAL "")
     set(${out} "inert: ChooseMove not found" PARENT_SCOPE)
@@ -185,7 +196,7 @@ check_helper("${gpolicy}" "${all_sources}" r)
 fail_if("${r}")
 check_count("${group_cpp}" "${all_sources}" r)
 fail_if("${r}")
-check_inert("${all_sources}" "${gpolicy}" r)
+check_inert("${all_sources}" "${gather_sources}" "${gpolicy}" r)
 fail_if("${r}")
 check_field("${policy}" "${shadow_h}" "${shadow_cpp}" r)
 fail_if("${r}")
@@ -214,13 +225,21 @@ check_count("${m}" "${all_sources}" r)
 expect_reason("the count without the guard" "${r}" "in HandleMail: -1")
 
 # (3) an ack on kind 3, a kind 3 case in ChooseMove, a literal compare.
-check_inert("${all_sources}\n    if (d.gatherKind == kGatherUndefined)\n        return AckNo(1);" "${gpolicy}" r)
+check_inert("${all_sources}\n    if (d.gatherKind == kGatherUndefined)\n        return AckNo(1);" "${gather_sources}" "${gpolicy}" r)
 expect_reason("an ack branching on kind 3" "${r}" "appears 3 times")
 string(REPLACE "${DEF_CHOOSE}" "${DEF_CHOOSE}\n    if (gatherKind == kGatherUndefined)\n        return MoveKind::PointGo;" m "${gpolicy}")
-check_inert("${all_sources}" "${m}" r)
+check_inert("${all_sources}" "${gather_sources}" "${m}" r)
 expect_reason("a kind 3 case in ChooseMove" "${r}" "kind 3 case in ChooseMove: [0-9]")
-check_inert("${all_sources}\n    if (gatherKind_ == 3)\n        return;" "${gpolicy}" r)
+check_inert("${all_sources}" "${gather_sources}\n    if (gatherKind_ == 3)\n        return;" "${gpolicy}" r)
 expect_reason("a literal kind 3 compare" "${r}" "literal kind 3 compare: 'Kind_ == 3")
+check_inert("${all_sources}" "${gather_sources}\n    if (3 == d.gatherKind)\n        return;" "${gpolicy}" r)
+expect_reason("a reversed literal compare" "${r}" "literal kind 3 compare: '3 == d.gatherKind")
+check_inert("${all_sources}" "${gather_sources}\n    if (d.gatherKind > kGatherMeet)\n        return;" "${gpolicy}" r)
+expect_reason("a kind above kind c" "${r}" "literal kind 3 compare: 'Kind > kGather")
+check_inert("${all_sources}" "${gather_sources}\n    switch (d.gatherKind)\n    {\n    }" "${gpolicy}" r)
+expect_reason("a switch on the kind" "${r}" "literal kind 3 compare: 'switch \\(d.gatherKind")
+check_count("${group_cpp}" "${all_sources}\n    if (GatherKindUndefined(cls, d.gatherKind))\n        return;" r)
+expect_reason("a second helper call" "${r}" "GatherKindUndefined\\( 3 times")
 
 # (4) the field not last, the name gone, the mirror gone.
 string(REPLACE "    HandlerOff,\n    GatherKind3,\n    Count" "    GatherKind3,\n    HandlerOff,\n    Count" m "${policy}")
@@ -232,6 +251,12 @@ expect_reason("the name gone" "${r}" "lacks the last field")
 string(REPLACE "A3_GRP_SAME(GatherKind3);" "" m "${shadow_cpp}")
 check_field("${policy}" "${shadow_h}" "${m}" r)
 expect_reason("the shadow assert gone" "${r}" "A3_GRP_SAME 0 times")
+string(REPLACE "    HandlerOff,\n    GatherKind3,\n};" "    GatherKind3,\n    HandlerOff,\n};" m "${shadow_h}")
+check_field("${policy}" "${m}" "${shadow_cpp}" r)
+expect_reason("GatherKind3 not the last EnforceCount" "${r}" "last EnforceCount -1")
+string(REPLACE "EnforceCount::GatherKind3) - std::size_t(kGrpFirst)" "EnforceCount::HandlerOff) - std::size_t(kGrpFirst)" m "${shadow_h}")
+check_field("${policy}" "${m}" "${shadow_cpp}" r)
+expect_reason("the span assert on the old last field" "${r}" "span assert -1")
 
 # (5) the unit test not called.
 string(REPLACE "    TestGatherKind3();\n" "" m "${unit_cpp}")
