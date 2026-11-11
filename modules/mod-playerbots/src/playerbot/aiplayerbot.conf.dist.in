@@ -1437,6 +1437,8 @@ AiPlayerbot.BotGroups.Manager.StatusSeconds = 0
 # line). Lines: "[GroupMgr] event=..." per op / directive / ack / end and "[GroupMgr] minute ..." / "[GroupMgr] minute2 ...".
 # All [GroupMgr] and [ManagerInbox] lines are key=value pairs; later pairs only append fields at the end. Evaluators parse the
 # key=value pairs and ignore keys they do not know (OB-10 rule).
+# T30-1e: the pass that empties the registry with Types 0 (switch_off, the disarm) prints minute and minute2 once more with
+# the increments of the minute so far (a shorter window); then the lines stop until the manager runs again.
 # T30-1b: a bot that leaves the GROUP mode itself (T02-GROUP; ack state 4 "left", seq 0, the group serial it held) ends its
 # membership only while its Enter is applied, the serial is that of its current group and no Exit of it is open; then
 # "[GroupMgr] event=self_left group= bot= reason=" and the member ends with bot_left_done (goal_done, a natural end),

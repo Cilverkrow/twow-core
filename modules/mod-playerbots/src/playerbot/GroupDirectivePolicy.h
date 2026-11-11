@@ -948,6 +948,7 @@ public:
         goneEpisodes_.clear();
         staleMs_ = manager_inbox::StaleMs(r.statusSeconds);
         wishMs_ = WishFreshMs(r.statusSeconds);
+        heldAtPassStart_ = HasGroups();   // T30-1e: the registry held anything when this pass began (the final minute flush)
         ++passNo_;
         swept_.clear();
         retryCooldownSec_ = r.retryCooldownMinutes * 60;
@@ -2678,7 +2679,11 @@ private:
             keyOverflowSeen_ = in.keyOverflow;
             return;
         }
-        if (in.nowMs - minuteStartMs_ < 60000)
+        // T30-1e (CLI-Projekt, R9 P5): the pass in which the registry empties with Types 0 (switch_off, the disarm) prints the
+        // minute lines once with the increments so far. From the next pass on RunDirectives returns early (no Types, nothing
+        // held), so that minute's switch_off leaves, acks, left acks and exits would never be printed.
+        bool const finalFlush = !r.types && heldAtPassStart_ && !HasGroups();
+        if (!finalFlush && in.nowMs - minuteStartMs_ < 60000)
             return;
         minuteStartMs_ = in.nowMs;
         linesThisMinute_ = 0;
@@ -2688,8 +2693,8 @@ private:
             it = now_ - it->second >= kLeaveConfirmMs ? strayMs_.erase(it) : std::next(it);
         for (auto it = skipLineMs_.begin(); it != skipLineMs_.end();)
             it = now_ - it->second >= kSkipLineMs ? skipLineMs_.erase(it) : std::next(it);
-        // 5.3: only while Types != 0 or the registry holds anything.
-        if (r.types || HasGroups())
+        // 5.3: only while Types != 0 or the registry holds anything, and once more in the pass that empties it (T30-1e).
+        if (r.types || HasGroups() || finalFlush)
         {
             stands_.groups = groups_.size();
             for (auto const& entry : groups_)
@@ -2715,6 +2720,8 @@ private:
             io.Line(buf);
         }
         minute_ = MinuteCounts();
+        if (finalFlush)
+            minuteStarted_ = false;   // T30-1e: a later start counts its first minute from its own first pass
     }
 
     struct StrayLeave
@@ -2771,6 +2778,7 @@ private:
     std::uint64_t passNo_ = 0;
     std::uint32_t lastQueueSweepMs_ = 0;
     bool minuteStarted_ = false;
+    bool heldAtPassStart_ = false;   // T30-1e: HasGroups() at the start of this pass
     std::uint32_t minuteStartMs_ = 0;
     std::uint32_t linesThisMinute_ = 0;
     std::uint64_t keyOverflowSeen_ = 0;
