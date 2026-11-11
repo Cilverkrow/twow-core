@@ -41,6 +41,7 @@ constexpr std::uint32_t kFormingMaxSec = 120;          // a group not active by 
 constexpr std::uint32_t kSkipLineMs = 60000;           // one foreign skip line per bot per minute (the rest is counted only)
 constexpr std::uint32_t kGapShiftMaxMs = 120000;       // the stale-anchor credit stops at the resume limit (M15/M16)
 constexpr std::uint32_t kSkipUnknownLongSec = 1800;    // T30-1b: minute2 skip_unknown_30m counts bots skip_unknown this long
+constexpr std::uint32_t kOtherMapLongMs = 600000;      // T30-1d: minute2 follow_other_map_600 counts episodes this long
 
 // a is later than b on the 32-bit ms clock (unsigned difference, wraps).
 inline bool After(std::uint32_t a, std::uint32_t b)
@@ -496,6 +497,8 @@ struct Member
     std::uint32_t leaderOtherMapSince = 0;
     bool ackKnown = false;           // T30-1b osc: its Enter was applied (ack 2) at ackSec
     std::uint32_t ackSec = 0;
+    std::uint32_t otherMapSinceMs = 0;   // T30-1d: an open other-map episode (QUEST follower) since (PostStamp), 0 = none
+    bool otherMapConfirmed = false;      // T30-1d: two maps again on snapshots of both received at or after the open
 };
 
 enum class GroupState : std::uint8_t
@@ -772,6 +775,12 @@ enum class Cnt : std::uint8_t
     SelfLeft,
     // T30-1c (OB-10 note on #992): appended after skip_unknown_30m, at the very end of minute2 (kCountsMinute2Loop).
     LeftStale,
+    // T30-1d (OB-10 review of R9, B4): a QUEST follower on another map than its leader, appended after left_stale.
+    FollowOtherMap,
+    FollowOtherMap600,
+    FollowOtherMapMs,
+    FollowQuestMs,
+    FollowOtherMapShort,
     Count,
 };
 constexpr std::size_t kCounts = std::size_t(Cnt::Count);
@@ -822,6 +831,11 @@ inline char const* CntName(Cnt c)
         case Cnt::Osc: return "osc";                       // G5: a membership ended < kOscSec after its ack 2, no natural end
         case Cnt::SelfLeft: return "self_left";            // a left ack (state 4) that ended its member
         case Cnt::LeftStale: return "left_stale";          // T30-1c: a left ack that did not match (not counted as ack_stale)
+        case Cnt::FollowOtherMap: return "follow_other_map";          // T30-1d: other-map episodes closed
+        case Cnt::FollowOtherMap600: return "follow_other_map_600";   // T30-1d: of them >= kOtherMapLongMs
+        case Cnt::FollowOtherMapMs: return "follow_other_map_ms";     // T30-1d: their ms
+        case Cnt::FollowQuestMs: return "follow_quest_ms";            // T30-1d: ms of acked QUEST followers (the base)
+        case Cnt::FollowOtherMapShort: return "follow_other_map_short";   // T30-1d: episodes closed before confirmed (no line)
         case Cnt::Count: break;
     }
     return "unknown";
@@ -855,6 +869,11 @@ struct MinuteCounts
     // T30-1b (OB-10 smoke note): a level, not an increment - the bots skip_unknown without a break for >= kSkipUnknownLongSec at
     // the minute line (minute2 skip_unknown_30m).
     std::uint64_t skipUnknown30m = 0;
+    // T30-1d: the longest other-map episode closed in the minute (ms), the open episodes at the line and the age of the oldest
+    // of them (levels: a run's last minute2 shows an episode still open at its end).
+    std::uint64_t otherMapMaxMs = 0;
+    std::uint64_t otherMapOpen = 0;
+    std::uint64_t otherMapOpenMaxMs = 0;
 };
 
 // "[GroupMgr] minute types= passes= cand_adhoc= ... owned=": fixed fields, increments except the stands (types, groups,
@@ -875,9 +894,11 @@ inline int FormatMinute(char* buf, std::size_t size, MinuteCounts const& m, Stan
     return n;
 }
 
-// "[GroupMgr] minute2 leave_<reason>=.. osc= self_left= skip_unknown_30m= left_stale=": every reason, 0 included (increments),
-// then the T30-1b counters osc and self_left (increments), skip_unknown_30m (a level) and the T30-1c left_stale (an increment),
-// each appended at the end.
+// "[GroupMgr] minute2 leave_<reason>=.. osc= self_left= skip_unknown_30m= left_stale= follow_other_map= follow_other_map_600=
+// follow_other_map_ms= follow_quest_ms= follow_other_map_short= follow_other_map_max_ms= follow_other_map_open=
+// follow_other_map_open_max_ms=": every reason, 0 included (increments), then the T30-1b counters osc and self_left
+// (increments), skip_unknown_30m (a level), the T30-1c left_stale (an increment) and the T30-1d counters (increments, then the
+// minute's max, and the open episodes and the oldest one's age, levels), each appended at the end.
 inline int FormatMinute2(char* buf, std::size_t size, MinuteCounts const& m)
 {
     int n = std::snprintf(buf, size, "[GroupMgr] minute2");
@@ -889,6 +910,10 @@ inline int FormatMinute2(char* buf, std::size_t size, MinuteCounts const& m)
         n += std::snprintf(buf + n, size - std::size_t(n), " skip_unknown_30m=%llu", (unsigned long long)m.skipUnknown30m);
     for (std::size_t i = kCountsMinute2Loop; i < kCounts && n > 0 && std::size_t(n) < size; ++i)
         n += std::snprintf(buf + n, size - std::size_t(n), " %s=%llu", CntName(Cnt(i)), (unsigned long long)m.c[i]);
+    if (n > 0 && std::size_t(n) < size)
+        n += std::snprintf(buf + n, size - std::size_t(n), " follow_other_map_max_ms=%llu follow_other_map_open=%llu"
+            " follow_other_map_open_max_ms=%llu", (unsigned long long)m.otherMapMaxMs, (unsigned long long)m.otherMapOpen,
+            (unsigned long long)m.otherMapOpenMaxMs);
     return n;
 }
 
@@ -917,6 +942,10 @@ public:
     {
         now_ = in.nowMs;
         nowSec_ = in.nowSec;
+        passDeltaMs_ = passed_ ? now_ - lastPassMs_ : 0u;   // T30-1d: follow_quest_ms accrues by the time since the last pass
+        for (GoneEpisode const& ge : goneEpisodes_)          // T30-1d: the episodes ForgetGone closed before this pass
+            OtherMapLine(io, ge.serial, ge.low, ge.ms, "gone", "-");
+        goneEpisodes_.clear();
         staleMs_ = manager_inbox::StaleMs(r.statusSeconds);
         wishMs_ = WishFreshMs(r.statusSeconds);
         heldAtPassStart_ = HasGroups();   // T30-1e: the registry held anything when this pass began (the final minute flush)
@@ -955,6 +984,7 @@ public:
                     // find no member, so the slot is freed here.
                     if (!m.inviter && (m.opQueued || (m.state == MemberState::Joining && m.opExecMs)))
                         entry.second.joinInFlight = false;
+                    CloseOtherMap(entry.second, m, "gone", "-", now_, nullptr);   // T30-1d: now_ = the last pass, line next pass
                     m.state = MemberState::Left;
                     m.leaveWanted = false;
                     m.opWanted = false;
@@ -1279,6 +1309,8 @@ private:
                 g.realPlayerSinceMs = 0;
                 for (Member& m : g.m)
                 {
+                    // T30-1d: an open episode ends at the last pass before the gap (the base skips the gap as well).
+                    CloseOtherMap(g, m, "resume", "-", lastPassMs_, &io);
                     if (m.opExecMs)
                         m.opExecMs = manager_inbox::PostStamp(now_);
                     if (m.sentMs)
@@ -1540,10 +1572,65 @@ private:
     }
 
     // ---- ending a member / a group ----
+    // T30-1d: a QUEST follower on another map than its leader (OB-10 review of R9, B4). An episode opens on fresh snapshots
+    // that show two maps and counts only once confirmed: a later pass still shows two maps on snapshots of both received at or
+    // after the open. Without that a joint map change (portal, boat, a dissolving leader_stuck group) would make a phantom
+    // episode of up to one status period, so an unconfirmed close only counts follow_other_map_short. The episode closes when
+    // both are on one map again (end=back), when the member ends (end=ended with its reason: every end, switch_off and disarm
+    // included), when it leaves the bot map (end=gone, ForgetGone) or at a resume (end=resume, at the last pass before the gap:
+    // the base skips the gap too). One line per counted episode (the line budget) and the minute2 counters, which count even
+    // when lines drop.
+    void OtherMapEpisode(ManagedGroup& g, Member& m, bool otherMap, std::uint32_t leaderRcvMs, std::uint32_t memberRcvMs, Io& io)
+    {
+        if (otherMap && !m.otherMapSinceMs)
+        {
+            m.otherMapSinceMs = manager_inbox::PostStamp(now_);
+            m.otherMapConfirmed = false;
+        }
+        else if (otherMap && !m.otherMapConfirmed && !After(m.otherMapSinceMs, leaderRcvMs) && !After(m.otherMapSinceMs, memberRcvMs))
+            m.otherMapConfirmed = true;
+        else if (!otherMap && m.otherMapSinceMs)
+            CloseOtherMap(g, m, "back", "-", now_, &io);
+    }
+
+    // Closes an open episode at atMs; io null (ForgetGone runs before the pass) queues the line for the next pass.
+    void CloseOtherMap(ManagedGroup& g, Member& m, char const* end, char const* reason, std::uint32_t atMs, Io* io)
+    {
+        if (!m.otherMapSinceMs)
+            return;
+        std::uint32_t const ms = After(atMs, m.otherMapSinceMs) ? atMs - m.otherMapSinceMs : 0u;
+        bool const confirmed = m.otherMapConfirmed;
+        m.otherMapSinceMs = 0;
+        m.otherMapConfirmed = false;
+        if (!confirmed)
+        {
+            Count(Cnt::FollowOtherMapShort);
+            return;
+        }
+        Count(Cnt::FollowOtherMap);
+        Count(Cnt::FollowOtherMapMs, ms);
+        if (ms >= kOtherMapLongMs)
+            Count(Cnt::FollowOtherMap600);
+        minute_.otherMapMaxMs = std::max<std::uint64_t>(minute_.otherMapMaxMs, ms);
+        if (io)
+            OtherMapLine(*io, g.serial, m.low, ms, end, reason);
+        else
+            goneEpisodes_.push_back(GoneEpisode{ g.serial, m.low, ms });
+    }
+
+    void OtherMapLine(Io& io, std::uint32_t serial, std::uint32_t low, std::uint32_t ms, char const* end, char const* reason)
+    {
+        char line[192];
+        std::snprintf(line, sizeof(line), "[GroupMgr] event=other_map group=%u bot=%u ms=%u end=%s reason=%s", serial, low, ms, end,
+            reason);
+        Emit(io, line);
+    }
+
     void EndMember(ManagedGroup& g, Member& m, EndReason why, Io& io, bool mayBeGrouped)
     {
         if (m.state == MemberState::Leaving || m.state == MemberState::Left)
             return;
+        CloseOtherMap(g, m, "ended", EndReasonName(why), now_, &io);
         m.reason = why;
         ++minute_.leave[std::size_t(why)];
         ++totalLeave_[std::size_t(why)];
@@ -1633,6 +1720,7 @@ private:
     {
         if (m.state == MemberState::Left)
             return;
+        CloseOtherMap(g, m, "ended", EndReasonName(m.reason), now_, &io);
         m.state = MemberState::Left;
         m.leaveWanted = false;
         m.leaveQueued = false;
@@ -1910,6 +1998,9 @@ private:
             manager_inbox::EdgeSnapshot const* e = FindEdge(in.edges, m.low);
             if (e && Fresh(e->receivedMs) && e->edge.groupId == g.coreGroupId)
                 ++reporters;
+            // T30-1d: the base of follow_other_map - every acked follower (silent or bg_wait too) for the time since the last pass.
+            if (m.state == MemberState::Acked && m.low != g.leaderLow)
+                Count(Cnt::FollowQuestMs, passDeltaMs_);
             if (m.state != MemberState::Acked || m.silent || m.bgWait)
                 continue;
             ++members;
@@ -1918,6 +2009,10 @@ private:
                 continue;
             manager_inbox::KeyFacts const k = manager_inbox::UnpackKey(s->key);
             TrackProgress(g, m, k);
+            // T30-1d: an episode opens or closes only on fresh snapshots of the follower and its leader (no old map after a
+            // teleport); without them it stays as it is.
+            if (m.low != g.leaderLow && ls && Fresh(ls->receivedMs) && Fresh(s->receivedMs))
+                OtherMapEpisode(g, m, ls->mapId != s->mapId, ls->receivedMs, s->receivedMs, io);
             bool const sameKey = k.questId == g.questId;
             if (sameKey && k.questStatus == manager_inbox::kQuestRewarded)
                 m.turnedIn = true;
@@ -2609,6 +2704,12 @@ private:
                         continue;
                     ++stands_.members;
                     stands_.silent += m.silent ? 1 : 0;
+                    if (m.otherMapSinceMs)
+                    {
+                        ++minute_.otherMapOpen;
+                        minute_.otherMapOpenMaxMs = std::max<std::uint64_t>(minute_.otherMapOpenMaxMs,
+                            After(now_, m.otherMapSinceMs) ? now_ - m.otherMapSinceMs : 0u);
+                    }
                 }
             for (auto const& entry : skipUnknown_)
                 minute_.skipUnknown30m += nowSec_ - entry.second.sinceSec >= kSkipUnknownLongSec ? 1 : 0;
@@ -2665,6 +2766,14 @@ private:
     std::uint32_t staleMs_ = manager_inbox::kStaleMinMs;
     std::uint32_t wishMs_ = 0;       // WishFreshMs: a wish counts only from the latest status period (OB-10 note on #984)
     std::uint32_t lastPassMs_ = 0;
+    std::uint32_t passDeltaMs_ = 0;   // T30-1d: now_ - lastPassMs_ of this pass (0 on the first)
+    struct GoneEpisode
+    {
+        std::uint32_t serial = 0;
+        std::uint32_t low = 0;
+        std::uint32_t ms = 0;
+    };
+    std::vector<GoneEpisode> goneEpisodes_;   // T30-1d: closed by ForgetGone (no Io there), their lines at the next pass
     bool passed_ = false;
     std::uint64_t passNo_ = 0;
     std::uint32_t lastQueueSweepMs_ = 0;
