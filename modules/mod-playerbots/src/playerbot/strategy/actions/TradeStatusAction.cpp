@@ -19,6 +19,13 @@ bool TradeStatusAction::Execute(Event& event)
     if (!trader)
         return false;
 
+    // HARM-RACE guard pair: the partner's trade data, money and items are read below; a partner on another Map object (region thread) is
+    // never read from this thread. No cancel call here (OB-10 review of #1030): cancelling deletes and nulls the PARTNER's trade data and
+    // sends on the partner's session - a write and a delete of foreign state from this thread (use-after-free against the partner's own thread).
+    // The core ends such a trade on the partner's own thread (region switch / teleport, distance check on accept).
+    if (!SameMapObject(bot, trader))
+        return false;
+
     bool shouldTrade = true;
     if (!GetBotAI(trader))
     {

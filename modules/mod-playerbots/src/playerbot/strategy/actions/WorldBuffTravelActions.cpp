@@ -183,10 +183,13 @@ void WorldBuffTravelApplyAction::ApplyBuffToSelfAndRealPlayers(uint32 spellId)
         if (!ai->IsRealPlayer(member))
             continue;
 
-        if (member->HasAura(spellId))
+        // HARM-RACE guard pair: HasAura reads the member's aura container and AddAura below WRITES it: only a member on this bot's own Map object
+        // (region thread rule, #697), tested before the first read. A real player in another region is not buffed by this bot (it was not
+        // reachable by the distance test anyway).
+        if (!SameMapObject(bot, member))
             continue;
 
-        if (member->GetMapId() != bot->GetMapId())
+        if (member->HasAura(spellId))
             continue;
 
         if (bot->GetDistance(member) > 100.0f)

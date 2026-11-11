@@ -11620,7 +11620,9 @@ uint32 PlayerbotAI::GetBuffedCount(Player* player, std::string spellname)
         for (GroupReference *gref = group->GetFirstMember(); gref; gref = gref->next())
         {
             Player* member = gref->getSource();
-            if (!member || !member->IsInWorld() && member->GetMapId() != bot->GetMapId())
+            // HARM-RACE guard pair: was `!IsInWorld() && GetMapId() != ...` (&& binds tighter: the map test ran only for a member that is not in
+            // the world, so a member in another region passed): a member must be in the world AND on this bot's own Map object.
+            if (!member || !member->IsInWorld() || !SameMapObject(bot, member))
                 continue;
 
             if (!member->IsInGroup(player, true))

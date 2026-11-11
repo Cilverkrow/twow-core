@@ -451,7 +451,9 @@ ItemUsage ItemUsageValue::Calculate()
     }
 
     //QUEST
-    if (!ai->GetMaster() || !sPlayerbotAIConfig.syncQuestWithPlayer || !IsNeededForQuest(ai->GetMaster(), itemId))
+    // twow-repo#563 HARM-RACE guard pair: the master's quest slots / quest map / inventory are read by IsNeededForQuest; only for a master on
+    // this bot's own Map object (a master in another region is updated by another thread). Otherwise the master "does not need it" as before.
+    if (!ai->GetMaster() || !sPlayerbotAIConfig.syncQuestWithPlayer || !SameMapObject(bot, ai->GetMaster()) || !IsNeededForQuest(ai->GetMaster(), itemId))
     {
         if (IsNeededForQuest(bot, itemId))
             return ItemUsage::ITEM_USAGE_QUEST;
@@ -1030,8 +1032,9 @@ bool ItemUsageValue::IsNeededForQuest(Player* player, uint32 itemId, bool ignore
         if (!quest)
             continue;
 
-        QuestStatusData& qData = player->getQuestStatusMap()[quest->GetQuestId()];
-        if (qData.m_status != QUEST_STATUS_INCOMPLETE)
+        // find(), not operator[]: a missing entry must not be inserted into the quest map of a player that may not be the calling bot
+        auto const qIt = player->getQuestStatusMap().find(quest->GetQuestId());
+        if (qIt == player->getQuestStatusMap().end() || qIt->second.m_status != QUEST_STATUS_INCOMPLETE)
             continue;
 
         for (int i = 0; i < 4; i++)
