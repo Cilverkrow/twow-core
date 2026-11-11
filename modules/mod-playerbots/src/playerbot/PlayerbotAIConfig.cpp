@@ -25,6 +25,7 @@
 #include "playerbot/SupervisorPolicy.h"   // A3 step 3: Supervisor mode
 #include "playerbot/QuestBookPolicy.h"   // A3 step 2: QuestBook mode
 #include "playerbot/QuestBundlePolicy.h"   // A3 step 2 QB-B: QuestBook.BundleRadius clamp
+#include "playerbot/QuestNeedPolicy.h"   // A3 step 2 H5: QuestBook.NeedPerObjective mode
 #include "playerbot/ZoneKeepPolicy.h"   // twow-repo#601 R1: StartZoneMinLevel.Complete parse
 #include "playerbot/LockoutPolicy.h"   // L1: BotGroups.ResetRaidsRealInviterOnly parse
 #include "playerbot/LootChancePolicy.h"   // OB-00 08.11.: LootChance.GameObjectEntryFix / QuestRelation.GameObjectChanceDrops
@@ -1063,6 +1064,15 @@ bool PlayerbotAIConfig::Initialize()
         questBookBundle = 0;
     }
     questBookBundleRadius = ai::questbundle::ClampRadius(config.GetIntDefault("AiPlayerbot.QuestBook.BundleRadius", 100));
+    // A3 step 2 H5 (QuestNeedPolicy.h): need per open objective + quest item use by need; an unknown mode is off.
+    questBookNeedPerObjective = uint32(config.GetIntDefault("AiPlayerbot.QuestBook.NeedPerObjective", 0));
+    if (!ai::quest_need::ValidMode(questBookNeedPerObjective))
+    {
+        sLog.outError("[QuestNeed] config key=QuestBook.NeedPerObjective value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", questBookNeedPerObjective);
+        questBookNeedPerObjective = 0;
+    }
+    questBookNeedPerObjectiveItemUse = config.GetIntDefault("AiPlayerbot.QuestBook.NeedPerObjective.ItemUse", 0) != 0;
+    questBookNeedPerObjectiveLog = config.GetIntDefault("AiPlayerbot.QuestBook.NeedPerObjective.Log", 0) != 0;
     questGroupsEnable = (uint32)config.GetIntDefault("AiPlayerbot.QuestGroups.Enable", 0);
     questGroupsScanSeconds = std::max<uint32>(10, config.GetIntDefault("AiPlayerbot.QuestGroups.ScanSeconds", 60));
     questGroupsScanSlices = std::min<uint32>(64, (uint32)config.GetIntDefault("AiPlayerbot.QuestGroups.ScanSlices", 0));
@@ -2276,6 +2286,9 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestBook.BundleRadius", Value(questBookBundleRadius)},
             {"QuestBook.Exclude.count", Value(uint32(questBookExclude.size()))},
             {"QuestBook.KillSeconds", Value(questBookKillSeconds)},
+            {"QuestBook.NeedPerObjective", Value(questBookNeedPerObjective)},
+            {"QuestBook.NeedPerObjective.ItemUse", Value(questBookNeedPerObjectiveItemUse)},
+            {"QuestBook.NeedPerObjective.Log", Value(questBookNeedPerObjectiveLog)},
             {"QuestBook.Shadow", Value(questBookShadow)},
             {"QuestBook.SingleSpawnMargin", Value(questBookSingleSpawnMargin)},
             {"QuestBook.SourceChoice", Value(questBookSourceChoice)},
