@@ -884,6 +884,7 @@ public:
     // #421: rescue teleport after this many minutes without quest progress.
     uint32 questRescueIdleMinutes = 30;
     bool questRescueKeepRequestWhenFull = false;  // twow-repo#587: a pending rescue request stays with the bot while the global limit is used up
+    uint32 questRescueNoTargetFreeSlot = 0;  // twow-repo#703 item 1: 1 = the rescue targets before the global limiter, a no_target takes no slot (QuestRescueSlotPolicy.h), 0 = as before
     uint32 questRescueHomeHubsL5OwnHub = 0;  // twow-repo#703 item 2: the L5-10 own-hub rows of the HomeHubs table (cohort modes, 0 = off = today's table)
     uint32 questRescueHomeHubs = 1;  // twow-repo#575 RG-a: the quest rescue's anchor table (own start-zone hub < L5, next zone L5-10; cohort modes); 1 = default (SZM adoption 10.11.2026), 0 = rollback
     uint32 grindAvoidMaxDeaths = 0;       // 0 = off
@@ -1196,7 +1197,7 @@ public:
     bool pathTransportDeckProbe = false;  // twow-repo#342 (S3b-0): once per dock wait 8 fixed vessel deck probes, one [TransportDeck] line (30/min) + [TransportBoard] summary, 0 = off
     uint32 pathTransportWaitTimeoutMin = 15;  // twow-repo#342 (S3b-0): minutes at a dock / aboard before the S1 wait_timeout / overrun, 1-240 (<= 0 -> 15)
     bool pathTransportBoardFix = false;  // twow-repo#342 (S3b-1): bots board ships / zeppelins (deck hit, stop gate, dock-hop entry, ride record, exit at the arrival dock, lost-ride recovery), 0 = off
-    bool pathTransportSameMapGuard = false;  // twow-repo#575 H4 (bug fix; code default 0 until its acceptance unit, then the flip pair): UseTransport scans a dock's vessels only on the bot's map (no read of another map's transports from this thread), 0 = as before
+    bool pathTransportSameMapGuard = true;  // twow-repo#575 H4 (bug fix; default 1 since its acceptance unit passed, 10.11.2026; 0 = rollback): UseTransport scans a dock's vessels only on the bot's map (no read of another map's transports from this thread), 0 = as before
     bool pathTaxiCancelForm = false;  // twow-repo#575 (PATH-01 b): cancel a disallowed mount form (travel form, Ghost Wolf) before a flight, 0 = off
     bool pathRescueSkipCustomStarts = false;  // twow-repo#575 (PATH-01 E6): the quest rescue sends only goblins / high elves to their start zones, 0 = off
     // twow-repo#575 A3 step 4 M-c (OB-00 06.11.2026, IslandGuardPolicy.h): no far-move arrival on a navmesh micro-island (the

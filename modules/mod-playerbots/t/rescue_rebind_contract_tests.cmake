@@ -5,7 +5,13 @@ string(FIND "${mgr}" "void RandomPlayerbotMgr::ProcessQuestRescues()" rescue_at)
 if (rescue_at EQUAL -1)
   message(FATAL_ERROR "rescue rebind: ProcessQuestRescues missing")
 endif()
-string(SUBSTRING "${mgr}" ${rescue_at} 6000 rescue)
+# twow-repo#703 item 1: the whole function, up to the next one (it outgrew the old fixed 6000-character window).
+string(SUBSTRING "${mgr}" ${rescue_at} -1 rescue)
+string(FIND "${rescue}" "\nvoid RandomPlayerbotMgr::RandomTeleportForLevel(" rescue_end)
+if (rescue_end EQUAL -1)
+  message(FATAL_ERROR "rescue rebind: ProcessQuestRescues end missing")
+endif()
+string(SUBSTRING "${rescue}" 0 ${rescue_end} rescue)
 foreach (needle
     "ai::quest_search::RebindAtRescue(IsPersistentRosterMember(bot->GetGUIDLow()), ai->HasRealPlayerMaster(),"
     "bot->SetHomebindToLocation(target, area ? area->ID : 0);"
