@@ -8,9 +8,9 @@
 -- source = quest giver, the item goes to the player), and the chest gets one spawn in Ravenholdt Manor.
 -- Both items are quest items of 42036 (ReqSourceId), so abandoning the quest removes them and accepting it
 -- again hands them out again. Players already stuck: abandon 42036 and accept it again (no DB repair).
--- Chest position: PROVISIONAL, behind Lord Jorach Ravenholdt in his upstairs room (Jorach 27.6 / -1625.3 /
--- 204.0). The quest text says "upstairs in the tower of my manor"; the exact spot is confirmed or corrected
--- with a GM .gps on the test realm before merge (no data source has the original position).
+-- Chest position: the top room of the Ravenholdt Manor tower (18.59 / -1612.36 / 217.64, between crate and barrel),
+-- chosen by the owner in the GM check on the test realm 11.11.2026 (.gps); the quest text says "upstairs in the tower
+-- of my manor". No data source has the original position.
 -- gameobject guid 2990001 opens a custom range for gameobjects (no gameobject guid 2990000-2999999 exists).
 -- Idempotent: each script row only if 42036 does not create that item yet; chest only if 2020340 has no spawn and the guid is free.
 -- Rollback (exact): DELETE FROM `quest_start_scripts` WHERE `id` = 42036 AND `command` = 17 AND `datalong` IN (42317, 42318);
@@ -32,7 +32,7 @@ SELECT 42036, 0, 1, 17, 42318, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 INSERT INTO `gameobject` (`guid`, `id`, `map`, `position_x`, `position_y`, `position_z`, `orientation`,
                           `rotation0`, `rotation1`, `rotation2`, `rotation3`, `spawntimesecsmin`, `spawntimesecsmax`,
                           `animprogress`, `state`, `spawn_flags`, `visibility_mod`)
-SELECT 2990001, 2020340, 0, 30.0, -1625.3, 204.0, 3.12414, 0, 0, 0.999962, 0.008726, 180, 180, 100, 1, 0, 0
+SELECT 2990001, 2020340, 0, 18.59, -1612.36, 217.64, 3.47806, 0, 0, -0.985882, 0.167439, 180, 180, 100, 1, 0, 0
   FROM DUAL
  WHERE NOT EXISTS (SELECT 1 FROM `gameobject` WHERE `id` = 2020340)
    AND NOT EXISTS (SELECT 1 FROM `gameobject` WHERE `guid` = 2990001);
