@@ -93,7 +93,7 @@ public:
         for (Group::member_citerator itr = groupSlot.begin(); itr != groupSlot.end(); itr++)
         {
             Player *member = sObjectMgr.GetPlayer(itr->guid);
-            if(!member || !sServerFacade.IsAlive(member) || member == bot || bot->GetMapId() != member->GetMapId())
+            if(!member || !sServerFacade.IsAlive(member) || member == bot || !SameMapObject(bot, member))   // HARM-RACE guard pair: IsTank(member) reads the member's class/spec: own Map object only
                 continue;
 
             if (!ai->IsTank(member))

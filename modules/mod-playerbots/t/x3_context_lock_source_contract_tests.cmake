@@ -103,7 +103,7 @@ require_text("${ai_cpp}" "ai::InboxDroppedByClass(ai::InboxDropWrite).fetch_add(
 require_text("${rnd_mgr}" "drop_write=%llu write_target_gone=%llu" "minute line fields")
 
 # The three write sites: queued with the switch, the old direct write only in the else branch.
-require_order("${emote}" "if (sPlayerbotAIConfig.x3cInboxWrites)" "PlayerbotAI::QueueContextWriteTo(player, [talker](AiObjectContext* other)" "talk target queued")
+require_order("${emote}" "if (sPlayerbotAIConfig.x3cInboxWrites || !SameMapObject(bot, player))" "PlayerbotAI::QueueContextWriteTo(player, [talker](AiObjectContext* other)" "talk target queued")
 require_order("${emote}" "PlayerbotAI::QueueContextWriteTo(player, [talker]" "else\n                GetBotAI(player)->GetAiObjectContext()->GetValue<ObjectGuid>(\"talk target\")->Set(bot->GetObjectGuid());" "old talk target in else")
 require_order("${say}" "if (sPlayerbotAIConfig.x3cInboxWrites)" "memberAi->QueueContextWrite([lastSaidQualifier, until](AiObjectContext* other)" "last said queued")
 require_text("${say}" "else\n                memberAi->GetAiObjectContext()->GetValue<time_t>(\"last said\", qualifier)->Set(until);" "old last said in else")

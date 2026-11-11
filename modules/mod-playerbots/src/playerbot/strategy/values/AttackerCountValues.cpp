@@ -101,7 +101,7 @@ uint8 BalancePercentValue::Calculate()
             for (Group::member_citerator itr = groupSlot.begin(); itr != groupSlot.end(); itr++)
             {
                 Player* player = sObjectMgr.GetPlayer(itr->guid);
-                if (!player || !sServerFacade.IsAlive(player) || !player->IsInWorld() || player->GetMapId() != bot->GetMapId() || sServerFacade.GetDistance2d(bot, player) > 30.0f)
+                if (!player || !sServerFacade.IsAlive(player) || !player->IsInWorld() || !SameMapObject(bot, player) || sServerFacade.GetDistance2d(bot, player) > 30.0f)
                     continue;
 
                 playerLevel += player->GetLevel();
