@@ -74,6 +74,16 @@ function(tick_order_violations out world_text map_text)
   if (NOT hook_calls EQUAL 1)
     list(APPEND errors "World.cpp must contain exactly one WORLDHOOK_ON_UPDATE call, found ${hook_calls}")
   endif()
+  # OB-10 review of #1004/#1005: the two order anchors must be unique in the file, otherwise an unrelated earlier occurrence
+  # (a comment, another function) would satisfy the order check without the real call being before the hook.
+  count_text(map_update_calls "${world_text}" "    sMapMgr.Update(diff);")
+  if (NOT map_update_calls EQUAL 1)
+    list(APPEND errors "World.cpp must contain exactly one 'sMapMgr.Update(diff);', found ${map_update_calls}")
+  endif()
+  count_text(job_waits "${world_text}" "        job.wait();")
+  if (NOT job_waits EQUAL 1)
+    list(APPEND errors "World.cpp must contain exactly one 'job.wait();', found ${job_waits}")
+  endif()
 
   # --- MapManager::Update: instance pool wait, continents wait, only then the world thread alone switches players ---
   string(FIND "${map_text}" "void MapManager::Update(uint32 diff)" has_update)
@@ -148,6 +158,13 @@ expect_rejected("second hook call" "${probe_world_2}" "${mapmgr}")
 # 3. the async job no longer waited before the hook
 string(REPLACE "        job.wait();" "        /* job.wait(); */" probe_world_3 "${world}")
 expect_rejected("job wait removed" "${probe_world_3}" "${mapmgr}")
+
+# 3b. (OB-10) an unrelated EARLIER occurrence of an order anchor must not satisfy the check: a second 'sMapMgr.Update(diff);' before the hook
+# (as if copied into another function above) and a second 'job.wait();' are rejected by the uniqueness count
+string(REPLACE "    sMapMgr.Update(diff);" "    sMapMgr.Update(diff);\n    sMapMgr.Update(diff);" probe_world_3b "${world}")
+expect_rejected("second sMapMgr.Update(diff) anchor" "${probe_world_3b}" "${mapmgr}")
+string(REPLACE "        job.wait();" "        job.wait();\n        job.wait();" probe_world_3c "${world}")
+expect_rejected("second job.wait anchor" "${probe_world_3c}" "${mapmgr}")
 
 # 4. SwitchPlayersInstances before continents.wait()
 string(REPLACE "    SwitchPlayersInstances();" "    SwitchPlayersInstances_MOVED();" probe_map_tmp "${mapmgr}")

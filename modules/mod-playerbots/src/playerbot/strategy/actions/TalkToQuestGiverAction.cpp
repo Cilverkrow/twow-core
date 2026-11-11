@@ -19,22 +19,27 @@ bool TalkToQuestGiverAction::ProcessQuest(Player* requester, Quest const* quest,
     std::map<std::string, std::string> args;
     args["%quest"] = chat->formatQuest(quest);
 
+    // twow-repo#707: the two quest syncs below READ the requester's quest map (GetQuestStatus) and the first one WRITES it (CompleteQuest). A
+    // requester on another Map object (another region thread) is not touched: its sync is skipped for this event, the bot's own quest handling
+    // below runs as before. A requester that is the bot itself or on the bot's own Map object syncs as before.
+    Player* const syncPlayer = requester && (requester == bot || SameMapObject(bot, requester)) ? requester : nullptr;
+
     QuestStatus status = bot->GetQuestStatus(quest->GetQuestId());
     if (sPlayerbotAIConfig.syncQuestForPlayer)
     {
-        if (requester && (!GetBotAI(requester) || GetBotAI(requester)->IsRealPlayer()))
+        if (syncPlayer && (!GetBotAI(syncPlayer) || GetBotAI(syncPlayer)->IsRealPlayer()))
         {
-            QuestStatus masterStatus = requester->GetQuestStatus(quest->GetQuestId());
+            QuestStatus masterStatus = syncPlayer->GetQuestStatus(quest->GetQuestId());
             if (masterStatus == QUEST_STATUS_INCOMPLETE || masterStatus == QUEST_STATUS_FAILED)
             {
-                isCompleted |= CompleteQuest(requester, quest->GetQuestId());
+                isCompleted |= CompleteQuest(syncPlayer, quest->GetQuestId());
             }
         }
     }
 
     if (sPlayerbotAIConfig.syncQuestWithPlayer)
     {        
-        if (requester && requester->GetQuestStatus(quest->GetQuestId()) == QUEST_STATUS_COMPLETE && (status == QUEST_STATUS_INCOMPLETE || status == QUEST_STATUS_FAILED))
+        if (syncPlayer && syncPlayer->GetQuestStatus(quest->GetQuestId()) == QUEST_STATUS_COMPLETE && (status == QUEST_STATUS_INCOMPLETE || status == QUEST_STATUS_FAILED))
         {
             isCompleted |= CompleteQuest(bot, quest->GetQuestId());
             status = bot->GetQuestStatus(quest->GetQuestId());

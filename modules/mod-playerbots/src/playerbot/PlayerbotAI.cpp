@@ -3,6 +3,7 @@
 #include "playerbot/AiContextAugment.h"
 #include "playerbot/ParkPolicy.h"
 #include "playerbot/RosterSnapshotPolicy.h"
+#include "playerbot/OwnerContainerCommandPolicy.h"
 #include "playerbot/StartZonePolicy.h"
 #include "playerbot/QuestFailureClassPolicy.h"
 #include "playerbot/QuestGrindModePolicy.h"
@@ -3330,10 +3331,37 @@ void PlayerbotAI::HandleCommands()
                                                   : std::pair<ChatMsg, time_t>(ChatMsg(h.GetReplyChannel()), time(0) + 3);
         };
 
+        // twow-repo#563 part 4: a command whose action reads or writes the owner's containers (group, spell book, inventory; see
+        // OwnerContainerCommandPolicy.h) is not run for an owner on another Map object (another region thread): answered and counted instead.
+        // Every other command runs as before; an owner on the bot's own Map object is never restricted.
+        auto crossRegionRestricted = [this, directiveOwner](ChatCommandHolder& h) -> bool
+        {
+            ChatCommandKind const kind = h.GetKind();
+            if ((kind != ChatCommandKind::Chat && kind != ChatCommandKind::DoAction) || !directiveOwner || directiveOwner == bot || SameMapObject(bot, directiveOwner))
+                return false;
+
+            std::string text = h.GetCommand();
+            std::string const linked = ChatHelper::parseValue("command", text);
+            if (!linked.empty())
+                text = linked;
+            if (!ai::owner_cmd::IsContainerReadingCommand(text))
+                return false;
+
+            static std::atomic<uint32> restricted{0};
+            uint32 const n = restricted.fetch_add(1, std::memory_order_relaxed) + 1;
+            if (n == 1 || n % 100 == 0)
+                sLog.outBasic("[ChatCmd] cross-region command restricted bot=%u kind=%u count=%u", bot ? bot->GetGUIDLow() : 0, uint32(kind), n);
+            if (h.GetType() == CHAT_MSG_WHISPER)
+                TellPlayer(directiveOwner, "You are in another area; I can't do that from here. Come closer");
+            return true;
+        };
+
         // twow-repo#563: directives queued by HandleCommand run here, on the bot's thread, in queue order.
         if (holder.GetKind() != ChatCommandKind::Chat)
         {
             applyReplyChannel(holder);
+            if (crossRegionRestricted(holder))
+                continue;
             switch (holder.GetKind())
             {
                 case ChatCommandKind::Incoming:
@@ -3424,6 +3452,8 @@ void PlayerbotAI::HandleCommands()
         }
 
         applyReplyChannel(holder);
+        if (crossRegionRestricted(holder))
+            continue;
         std::string command = holder.GetCommand();
         Player* owner = directiveOwner;
         if (!helper.ParseChatCommand(command, owner) && holder.GetType() == CHAT_MSG_WHISPER)

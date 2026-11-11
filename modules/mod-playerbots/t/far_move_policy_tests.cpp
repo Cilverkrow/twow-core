@@ -156,6 +156,83 @@ int main()
             "cells from 0 at -MapHalf");
     }
 
+    // twow-repo#575 / #703 item 5 (LevelGuardPolicy.h, design szf/DESIGN-LEVELGUARD-FALSEALARM-20261110.md v2, OB-10 a4f2daef):
+    // ZWindow and SkipHarmless.
+    {
+        using namespace ai::level_guard;
+        Require(ClampZWindow(0) == 0 && ClampZWindow(5) == 5 && ClampZWindow(20) == 20 && ClampZWindow(100) == 100,
+            "ZWindow 0 and 5..100 kept");
+        Require(ClampZWindow(4) == 0 && ClampZWindow(101) == 0 && ClampZWindow(-1) == 0, "ZWindow 4 / 101 / -1 -> 0 (off)");
+        Require(ClampSkipHarmless(1) == 1 && ClampSkipHarmless(0) == 0 && ClampSkipHarmless(2) == 0 && ClampSkipHarmless(-1) == 0,
+            "SkipHarmless 1 kept, any other value 0");
+        Require(InZWindow(1000.0f, 0) && InZWindow(-1000.0f, 0), "window 0: no z test");
+        Require(InZWindow(20.0f, 20) && InZWindow(-20.0f, 20) && !InZWindow(20.5f, 20) && !InZWindow(-20.5f, 20), "abs(dz) <= window");
+
+        // events: GetGameEventId<Creature> > 0 = spawned only during the event; < 0 = a normal spawn the event removes; 0 = none
+        Require(EventOnly(3) && !EventOnly(-3) && !EventOnly(0), "only > 0 is an event spawn");
+        Require(!EventSpawnCounts(3, false) && EventSpawnCounts(3, true), "event > 0: counts only while active");
+        Require(EventSpawnCounts(-3, false) && EventSpawnCounts(-3, true), "event < 0: a normal spawn, always counts");
+        Require(EventSpawnCounts(0, false), "event 0: always counts");
+        Require(EventIdOfList(0, 10) == -9 && EventIdOfList(9, 10) == 0 && EventIdOfList(18, 10) == 9, "slot i = event i + 1 - S");
+
+        // 15218 Faire Cannon Trigger: flags_extra 2 (NO_AGGRO) with a hostile faction; INVISIBLE (0x80) = trigger
+        Require(Harmless(2) && Harmless(0x80) && Harmless(0x82) && !Harmless(0) && !Harmless(0x1) && !Harmless(0x40000),
+            "NO_AGGRO 0x2 or INVISIBLE 0x80");
+        struct Template { uint32_t flagsExtra; uint8_t mask; uint8_t level; };
+        Template const trigger15218{ 2u, uint8_t(MaskPlayer), 60 };
+        auto build = [&](bool skipHarmless)   // BuildGrid's harmless step on one spawn 18 yd from the point
+        {
+            Grid g;
+            if (!(skipHarmless && Harmless(trigger15218.flagsExtra)))
+            {
+                Spawn s; s.x = 118.0f; s.y = 100.0f; s.z = 50.0f; s.entry = 15218; s.levelMax = trigger15218.level;
+                s.hostileMask = trigger15218.mask;
+                g.Add(0, s);
+            }
+            return g;
+        };
+        auto never = [](int16_t) { return false; };
+        Require(build(false).Query(0, 100.0f, 100.0f, 50.0f, 50.0f, 5, 3, MaskAlliance, 0u, false, never).fired,
+            "15218 with SkipHarmless 0: in the grid, fires (the rule unchanged)");
+        Require(!build(true).Query(0, 100.0f, 100.0f, 50.0f, 50.0f, 5, 3, MaskAlliance, 0u, true, never).fired && build(true).Count() == 0,
+            "15218 with SkipHarmless 1: left out of the grid");
+
+        // the q380 geometry (SZM R3, Night Web's Hollow, travel point z 103): Rogue Arcanist 42 yd above, Graypaw Wolf 47 yd
+        // below, both within 50 yd in 2D; a mob on a 14 yd slope
+        auto spawnZ = [](float x, float y, float z, uint32_t entry, uint8_t level, int16_t event = 0)
+        {
+            Spawn s; s.x = x; s.y = y; s.z = z; s.entry = entry; s.levelMax = level; s.hostileMask = uint8_t(MaskPlayer); s.event = event;
+            return s;
+        };
+        Grid q;
+        q.Add(0, spawnZ(2030.0f, 1900.0f, 145.0f, 91763, 19));   // +42
+        q.Add(0, spawnZ(2000.0f, 1930.0f, 56.0f, 91989, 18));    // -47
+        auto always = [](int16_t) { return true; };
+        Hit h2d = q.Query(0, 2010.0f, 1910.0f, 50.0f, 3, 3, MaskHorde);
+        Hit h0 = q.Query(0, 2010.0f, 1910.0f, 103.0f, 50.0f, 3, 3, MaskHorde, 0u, false, always);
+        Require(h2d.fired && h0.fired && h0.entry == h2d.entry && h0.hostile == h2d.hostile && h0.hostile == 2 &&
+            std::fabs(h0.dist - h2d.dist) < 0.01f && h0.zFiltered == 0, "ZWindow 0 / SkipHarmless 0 = the 2D result exactly");
+        Require(std::fabs(h0.dz - 42.0f) < 0.01f, "dz = the chosen spawn's z minus the travel point's z");
+        Hit h20 = q.Query(0, 2010.0f, 1910.0f, 103.0f, 50.0f, 3, 3, MaskHorde, 20u, false, always);
+        Require(!h20.fired && h20.hostile == 0 && h20.zFiltered == 2, "ZWindow 20: both q380 spawns out (+42 / -47)");
+        q.Add(0, spawnZ(2020.0f, 1915.0f, 117.0f, 91761, 16));   // +14, a slope
+        h20 = q.Query(0, 2010.0f, 1910.0f, 103.0f, 50.0f, 3, 3, MaskHorde, 20u, false, always);
+        Require(h20.fired && h20.entry == 91761 && h20.zFiltered == 2 && std::fabs(h20.dz - 14.0f) < 0.01f,
+            "ZWindow 20: the 14 yd slope stays in");
+
+        // event spawns at query time (only with skipHarmless)
+        Grid ev;
+        ev.Add(0, spawnZ(10.0f, 0.0f, 0.0f, 701, 30, 7));    // event 7 only
+        ev.Add(0, spawnZ(0.0f, 10.0f, 0.0f, 702, 25, -7));   // removed during event 7 (a normal spawn)
+        auto active7 = [](int16_t id) { return id == 7; };
+        Hit e = ev.Query(0, 0.0f, 0.0f, 0.0f, 50.0f, 5, 3, MaskHorde, 0u, true, never);
+        Require(e.fired && e.entry == 702 && e.hostile == 1 && e.eventFiltered == 1, "event 7 inactive: its spawn out, the < 0 spawn in");
+        e = ev.Query(0, 0.0f, 0.0f, 0.0f, 50.0f, 5, 3, MaskHorde, 0u, true, active7);
+        Require(e.fired && e.entry == 701 && e.hostile == 2 && e.eventFiltered == 0, "event 7 active: its hostile spawn counts");
+        e = ev.Query(0, 0.0f, 0.0f, 0.0f, 50.0f, 5, 3, MaskHorde, 0u, false, never);
+        Require(e.fired && e.entry == 701 && e.hostile == 2 && e.eventFiltered == 0, "skipHarmless false: no event test");
+    }
+
     std::cout << "far_move_policy_tests passed\n";
     return 0;
 }

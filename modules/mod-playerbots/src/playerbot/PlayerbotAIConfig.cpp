@@ -54,6 +54,7 @@
 #include "playerbot/R01CohortPolicy.h"
 #include "playerbot/LosCachePolicy.h"   // twow-repo#602 (Rotation.LosCacheMs): the read's bounds
 #include "playerbot/RescueHubPolicy.h"   // twow-repo#575 RG-a (QuestRescue.HomeHubs): the mode clamp
+#include "playerbot/QuestRescueSlotPolicy.h"   // twow-repo#703 item 1 (QuestRescue.NoTargetFreeSlot): the mode clamp
 #include "playerbot/ResurrectDelayPolicy.h"   // twow-repo#575 H3 (Revive.DelayResurrectRequest): the mode clamp
 
 #include <iostream>
@@ -868,6 +869,13 @@ bool PlayerbotAIConfig::Initialize()
     grindCapLowLevelMargin = config.GetIntDefault("AiPlayerbot.GrindCap.LowLevelMargin", 2);
     questRescueIdleMinutes = config.GetIntDefault("AiPlayerbot.QuestRescue.IdleMinutes", 30);
     questRescueKeepRequestWhenFull = config.GetBoolDefault("AiPlayerbot.QuestRescue.KeepRequestWhenFull", false);
+    // twow-repo#703 item 1 (QuestRescue.NoTargetFreeSlot): 0 off, 1 on; any other value is off (logged).
+    questRescueNoTargetFreeSlot = config.GetIntDefault("AiPlayerbot.QuestRescue.NoTargetFreeSlot", 0);
+    if (!ai::rescue_slot::ModeValid(int32(questRescueNoTargetFreeSlot)))
+    {
+        sLog.outError("[QuestRescue] config key=NoTargetFreeSlot value=%d result=off (0 off, 1 on)", int32(questRescueNoTargetFreeSlot));
+        questRescueNoTargetFreeSlot = 0;
+    }
     questRescueHomeHubs = ai::rescue_hub::ClampMode(config.GetIntDefault("AiPlayerbot.QuestRescue.HomeHubs", 1));   // default 1 since the SZM adoption (10.11.2026), 0 = rollback
     grindAvoidMaxDeaths = config.GetIntDefault("AiPlayerbot.GrindAvoid.MaxDeaths", 0);
     grindAvoidWindowSeconds = std::max<uint32>(60, config.GetIntDefault("AiPlayerbot.GrindAvoid.WindowSeconds", 3600));
@@ -1240,6 +1248,17 @@ bool PlayerbotAIConfig::Initialize()
         rpgTurnInFirst = 0;
     rosterFarMoveLevelGuardMargin = ai::level_guard::ClampMargin(config.GetIntDefault("AiPlayerbot.RosterFarMove.LevelGuard.Margin", 3));
     rosterFarMoveLevelGuardRadius = ai::level_guard::ClampRadius(config.GetFloatDefault("AiPlayerbot.RosterFarMove.LevelGuard.Radius", 50.0f));
+    // twow-repo#575 / #703 item 5 (LevelGuardPolicy.h): ZWindow 0 off or 5..100 yd, SkipHarmless 0/1; any other value is 0 (logged).
+    rosterFarMoveLevelGuardZWindow = config.GetIntDefault("AiPlayerbot.RosterFarMove.LevelGuard.ZWindow", 0);
+    int32 const levelGuardZWindowRaw = int32(rosterFarMoveLevelGuardZWindow);
+    rosterFarMoveLevelGuardZWindow = ai::level_guard::ClampZWindow(levelGuardZWindowRaw);
+    if (int32(rosterFarMoveLevelGuardZWindow) != levelGuardZWindowRaw)
+        sLog.outError("[FarMoveGuard] config key=LevelGuard.ZWindow value=%d result=off (0 off, 5..100 yd)", levelGuardZWindowRaw);
+    rosterFarMoveLevelGuardSkipHarmless = config.GetIntDefault("AiPlayerbot.RosterFarMove.LevelGuard.SkipHarmless", 0);
+    int32 const levelGuardSkipHarmlessRaw = int32(rosterFarMoveLevelGuardSkipHarmless);
+    rosterFarMoveLevelGuardSkipHarmless = ai::level_guard::ClampSkipHarmless(levelGuardSkipHarmlessRaw);
+    if (int32(rosterFarMoveLevelGuardSkipHarmless) != levelGuardSkipHarmlessRaw)
+        sLog.outError("[FarMoveGuard] config key=LevelGuard.SkipHarmless value=%d result=off (0 off, 1 on)", levelGuardSkipHarmlessRaw);
     shortcutNearScope = ai::shortcut::ClampScope(config.GetIntDefault("AiPlayerbot.Shortcut.NearScope", 0));
     shortcutNearRadius = std::max(0.0f, config.GetFloatDefault("AiPlayerbot.Shortcut.NearRadius", 0.0f));
     shortcutTestWatcherGuids = ai::shortcut::ParseGuidList(config.GetStringDefault("AiPlayerbot.Shortcut.TestWatcherGuids", ""));
@@ -1267,7 +1286,7 @@ bool PlayerbotAIConfig::Initialize()
     pathTransportDeckProbe = config.GetBoolDefault("AiPlayerbot.Path.TransportDeckProbe", false);
     pathTransportWaitTimeoutMin = ai::transport_board::ClampWaitTimeoutMin(config.GetIntDefault("AiPlayerbot.Path.TransportWaitTimeoutMin", 15));
     pathTransportBoardFix = config.GetBoolDefault("AiPlayerbot.Path.TransportBoardFix", false);
-    pathTransportSameMapGuard = config.GetBoolDefault("AiPlayerbot.Path.TransportSameMapGuard", false);   // twow-repo#575 H4
+    pathTransportSameMapGuard = config.GetBoolDefault("AiPlayerbot.Path.TransportSameMapGuard", true);   // twow-repo#575 H4
     if (pathTransportBoardFix && transportTeleportType == 0)   // twow-repo#342 (S3b-1)
         sLog.outError("AiPlayerbot.Path.TransportBoardFix is built for TransportTeleportType 1 / 2; walking onto transports (0) is not supported");
     pathTaxiCancelForm = config.GetBoolDefault("AiPlayerbot.Path.TaxiCancelForm", false);
@@ -2135,6 +2154,7 @@ bool PlayerbotAIConfig::Initialize()
             {"ActivityTrace", Value(activityTrace)},
             {"ActivityTrace.IdleDetail", Value(activityTraceIdleDetail)},
             {"ActivityTrace.StuckDetail", Value(activityTraceStuckDetail)},
+            {"BotCheats", Value(botCheatMask)},
             {"BotGroups.AdHoc.HelpUntilDone", Value(botGroupsAdhocHelpUntilDone)},
             {"BotGroups.AdHoc.ScanBudgetUs", Value(botGroupsAdhocScanBudgetUs)},
             {"BotGroups.AdHoc.ScanSlices", Value(botGroupsAdhocScanSlices)},
@@ -2295,15 +2315,26 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestRelation.GameObjectChanceDrops", Value(questRelationGameObjectChanceDrops)},
             {"QuestRescue.HomeHubs", Value(questRescueHomeHubs)},
             {"QuestRescue.KeepRequestWhenFull", Value(questRescueKeepRequestWhenFull)},
+            {"QuestRescue.NoTargetFreeSlot", Value(questRescueNoTargetFreeSlot)},
             {"Rescue.RepopDeadOnly", Value(rescueRepopDeadOnly)},
             {"Revive.CorpseRunFirst", Value(reviveCorpseRunFirst)},
             {"Revive.CorpseRunFirst.MaxSeconds", Value(reviveCorpseRunFirstMaxSeconds)},
             {"Revive.DelayResurrectRequest", Value(reviveDelayResurrectRequest)},
             {"Revive.SpiritHealerFull", Value(reviveSpiritHealerFull)},
+            {"RndBotCheats", Value(rndBotCheatMask)},
+            {"RosterConsumables.Buy", Value(rosterConsumablesBuy)},
+            {"RosterConsumables.HealingPotionPct", Value(rosterConsumablesHealingPotionPct)},
+            {"RosterConsumables.KeepStacks", Value(rosterConsumablesKeepStacks)},
+            {"RosterConsumables.ManaPotionPct", Value(rosterConsumablesManaPotionPct)},
+            {"RosterConsumables.Trace", Value(rosterConsumablesTrace)},
+            {"RosterConsumables.TraceCooldownSeconds", Value(rosterConsumablesTraceCooldownSeconds)},
+            {"RosterConsumables.UseReal", Value(rosterConsumablesUseReal)},
             {"RosterFarMove.ArriveSafe", Value(rosterFarMoveArriveSafe)},
             {"RosterFarMove.LevelGuard", Value(rosterFarMoveLevelGuard)},
             {"RosterFarMove.LevelGuard.Margin", Value(rosterFarMoveLevelGuardMargin)},
             {"RosterFarMove.LevelGuard.Radius", Value(rosterFarMoveLevelGuardRadius)},
+            {"RosterFarMove.LevelGuard.SkipHarmless", Value(rosterFarMoveLevelGuardSkipHarmless)},
+            {"RosterFarMove.LevelGuard.ZWindow", Value(rosterFarMoveLevelGuardZWindow)},
             {"Rotation.CastLosGate", Value(rotationCastLosGate)},
             {"Rotation.CastStopFirst", Value(rotationCastStopFirst)},
             {"Rotation.DarkRuneGate", Value(rotationDarkRuneGate)},

@@ -126,6 +126,10 @@ class GameEventMgr
         bool IsEnabled(uint16 event_id);
         template<typename T>
         int16 GetGameEventId(uint32 guid_or_poolid);
+        // twow-repo#575 (playerbots LevelGuard.SkipHarmless): read-only view of the creature guid lists, slot i = event
+        // i + 1 - GetEventMap().size() as in GetGameEventId<Creature>; lets a caller build one guid -> event map instead of a
+        // linear scan per guid. Loaded once by LoadFromDB.
+        std::vector<std::vector<uint32>> const& GetCreatureGuidLists() const { return mGameEventCreatureGuids; }
 
         GameEventCreatureData const* GetCreatureUpdateDataForActiveEvent(uint32 lowguid) const;       
         HardcodedEventList mGameEventHardcodedList;
