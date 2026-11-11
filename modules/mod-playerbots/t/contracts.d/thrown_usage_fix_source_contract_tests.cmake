@@ -1,4 +1,5 @@
-# twow-repo#333 Berufe P1-s (CLI-BERUFE 26.10.2026, OB-00 go): AiPlayerbot.ThrownUsageFix, modes 0 / 1 / 2, default 0 (rollback),
+# twow-repo#333 Berufe P1-s (CLI-BERUFE 26.10.2026, OB-00 go): AiPlayerbot.ThrownUsageFix, modes 0 / 1 / 2, default 1 since the
+# P1-s-H acceptance unit (PASS 11.11.2026, OB-00 go), 0 = rollback,
 # ConfigEcho. A thrown weapon sits in the ranged slot, never in the ammo slot; the ammo rule of ItemUsageValue compared it
 # with PLAYER_AMMO_ID (always 0) and called every thrown weapon in the bags or at a vendor "equip" - bags full of Crude
 # Throwing Axes, never sold or destroyed, bought again, the same axe re-equipped 286 times (cr2-C, 5 rogues).
@@ -40,13 +41,13 @@ read_source("PlayerbotAIConfig.cpp" config_cpp)
 read_source("aiplayerbot.conf.dist.in" conf_dist)
 read_source("strategy/values/ItemUsageValue.cpp" usage)
 
-# Switch: a mode, default 0, unknown -> 0, documented, echoed.
-require_text("${config_h}" "uint32 thrownUsageFix = 0;" "default off, a mode")
-require_text("${config_cpp}" "thrownUsageFix = config.GetIntDefault(\"AiPlayerbot.ThrownUsageFix\", 0);" "config read")
-require_text("${config_cpp}" "if (thrownUsageFix > 2)\n        thrownUsageFix = 0;" "unknown mode is off")
+# Switch: a mode, default 1 (bug fix accepted), unknown -> 1, 0 = rollback, documented, echoed.
+require_text("${config_h}" "uint32 thrownUsageFix = 1;" "default on, a mode")
+require_text("${config_cpp}" "thrownUsageFix = config.GetIntDefault(\"AiPlayerbot.ThrownUsageFix\", 1);" "config read, default 1")
+require_text("${config_cpp}" "if (thrownUsageFix > 2)\n        thrownUsageFix = 1;" "unknown mode is on")
 require_text("${config_cpp}" "{\"ThrownUsageFix\", Value(thrownUsageFix)}," "ConfigEcho entry")
-require_text("${conf_dist}" "\nAiPlayerbot.ThrownUsageFix = 0\n" "documented, 0 by default")
-forbid_text("${conf_dist}" "\nAiPlayerbot.ThrownUsageFix = 1" "default 1 in the dist")
+require_text("${conf_dist}" "\nAiPlayerbot.ThrownUsageFix = 1\n" "documented, 1 by default")
+forbid_text("${conf_dist}" "\nAiPlayerbot.ThrownUsageFix = 0" "default 0 in the dist")
 forbid_text("${conf_dist}" "\nAiPlayerbot.ThrownUsageFix = 2" "default 2 in the dist")
 
 # Pure rules: a single thrown weapon leaves the ammo rule; a stacking one compares with the ranged slot.
