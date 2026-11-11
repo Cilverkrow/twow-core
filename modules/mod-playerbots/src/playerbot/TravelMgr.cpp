@@ -4,6 +4,7 @@
 #include "playerbot/strategy/actions/MovementActions.h"   // twow-repo#342 (S1): TraceTransportEdgeStallAbandon
 #include "playerbot/PathUnitlessBotPolicy.h"
 #include "playerbot/UnreachableTargetPolicy.h"
+#include "playerbot/UnreachableGiveUpPolicy.h"   // twow-repo#703 item 4 (Rotation.UnreachableGiveUp): MarkEvictsLive
 #include "playerbot/StartZonePolicy.h"
 #include <numeric>
 #include "playerbot/QuestAreaLevelPolicy.h"
@@ -2468,6 +2469,28 @@ bool TravelTarget::FallBackToInactiveCooldown()
     sLog.outBasic("[QuestLoop] state=inactive_reselect_fallback bot=%u level=%u quest=%u target_entry=%d cooldown_ms=%u",
         bot->GetGUIDLow(), bot->GetLevel(), objective->GetQuestId(), objective->GetEntry(), leftMs);
     return true;
+}
+
+// twow-repo#703 item 4 (AiPlayerbot.Rotation.UnreachableGiveUp): the current destination is a quest objective of this entry.
+uint32 TravelTarget::UnreachableCampQuest(int32 entry) const
+{
+    QuestObjectiveTravelDestination const* objective = dynamic_cast<QuestObjectiveTravelDestination const*>(tDestination);
+    return objective && entry && objective->GetEntry() == entry ? objective->GetQuestId() : 0;
+}
+
+// twow-repo#703 item 4: the camp of a target the bot gave up as unreachable is marked empty for a fixed duration (the same ring as
+// QuestLoop.InactiveReselect, honoured by the search and the refresh), and the target ends, so the router picks another one. No
+// inactiveReselectPending: the search after it must not fall back to a COOLDOWN at this camp.
+bool TravelTarget::MarkUnreachableCamp(uint32 quest, int32 entry, uint32 markMs)
+{
+    // A3 step 3 arbiter shadow: the end of the target is an execution outcome, like the inactive-reselect end in CheckStatus.
+    ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::Execution);
+    uint32 const nowMs = WorldTimer::getMSTime();
+    bool const evicted = ai::unreachable_giveup::MarkEvictsLive(emptyCamps, quest, entry, nowMs);
+    quest_loop::MarkEmptyCamp(emptyCamps, quest, entry, nowMs, markMs);
+    SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);
+    ai->GetAiObjectContext()->ClearValues("no active travel destinations");
+    return evicted;
 }
 
 bool TravelTarget::IsDestinationDeathSuppressed(TravelDestination const* destination) const

@@ -24,7 +24,7 @@ if(NOT DEFINED PB_MODULE_DIR)
 endif()
 
 set(TAG "a3s3 arbiter shadow")
-set(RATCHET_BASE 98)   # (SetTarget|SetStatus|SetNullTravelTarget)( in the module: 97 at release/9.x 55cd53f8, 98 with A3 step 3 T02-a (the probe in SupervisorEnforce.cpp: r1 on the live target and the local copy; pair a3s3_arbiter_enforce_source_contract_tests.cmake)
+set(RATCHET_BASE 99)   # (SetTarget|SetStatus|SetNullTravelTarget)( in the module: 97 at release/9.x 55cd53f8, 98 with A3 step 3 T02-a (the probe in SupervisorEnforce.cpp: r1 on the live target and the local copy; pair a3s3_arbiter_enforce_source_contract_tests.cmake), 99 with twow-repo#703 item 4 (TravelTarget::MarkUnreachableCamp ends the target, Execution scope in SCOPES; Rotation.UnreachableGiveUp, default 0)
 
 function(read_source path out_var)
   if(NOT EXISTS "${PB_SOURCE_DIR}/${path}")
@@ -351,6 +351,7 @@ set(SCOPES
   "group_world_cpp|bool RestoreTravel(PlayerbotAI* ai, SavedTravel const& s)|Select|${END_FN}"
   "move_cpp|bool MoveToTravelTargetAction::Execute(Event& event)|Execution|${END_FN}"
   "travel_cpp|void TravelTarget::CheckStatus()|Execution|${END_FN}"
+  "travel_cpp|bool TravelTarget::MarkUnreachableCamp(uint32 quest, int32 entry, uint32 markMs)|Execution|${END_FN}"
   "travel_cpp|void TravelTarget::OnDeathOnTurnInRoute()|Lifecycle|${END_FN}"
   "travel_cpp|void TravelTarget::OnDeathAtDestination()|Lifecycle|${END_FN}"
   "travel_cpp|void TravelMgr::Clear()|Manager|${END_FN}"
