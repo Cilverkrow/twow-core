@@ -4218,6 +4218,16 @@ AiPlayerbot.Rotation.ReachDropEngagement = 0
 # Own switch (an A/B tells it apart from ReachDropEngagement). Read when the strategies are built (a reload takes effect with the
 # next strategy reset). 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
 AiPlayerbot.Rotation.FollowUnstealth = 0
+# twow-repo#703 item 4 (endless fight on an unreachable target; A3-PLAN-ZIEL, owner standing approval 09.11.2026): hotfix 8.2 ignores
+# a target the bot comes no nearer to for 300 s, then the bot picks the same mob again (ARB N1 bot 798: 12x [Unreachable] on one
+# entry, about 260 min in combat, freed only by the rescue teleport). With the key a roster bot without a real player master, with
+# no group or not its leader, counts the [Unreachable] results per target guid (4 guids per bot); the 3rd on one guid within
+# 30 min gives that target up: attack / pull / old target, selection and swing are dropped, the ignore lasts 1800 s, and when the
+# entry is the current quest objective's, that camp (quest, entry) is marked empty for 1800 s (at most once an hour per camp) and
+# the travel target ends, so the router picks another. One [UnreachableGiveUp] bot= guid= entry= quest= count= ignore_s=
+# mark_s= mark=set|none|skip_1h evicted= reason=unreachable_k line per give-up.
+# Cohort mode: 0 = off, as before (default until its A/B); 1 = all bots; 2 = cohort B (odd guid); 3 = cohort A; other = 0.
+AiPlayerbot.Rotation.UnreachableGiveUp = 0
 
 # twow-repo#602 ROT-01 3c (priest Farathil loop, OB-00 24.10.2026, BEHAVIOUR CHANGE, enable only after A/B + owner go): "low mana"
 # pushes "dark rune" (alternative "mana potion") on every evaluation, in the combat and the reaction engine. Without a rune in
