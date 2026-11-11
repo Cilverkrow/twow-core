@@ -3,6 +3,7 @@
 #include "playerbot/GroupManagerPolicy.h"
 #include "playerbot/ManagerInboxPolicy.h"
 #include "playerbot/GroupDirectivePolicy.h"   // T30-1: the registry and the state machine (pure)
+#include "playerbot/GroupGatherShadow.h"      // T33-0: the meeting shadow (pure, measurement only)
 
 #include <array>
 #include <cstdint>
@@ -45,6 +46,10 @@ private:
     // T30-1 (design 2.2): after the drain - op outcomes, acks, gap rule, deadlines, end rules, forming, the op budget. Returns
     // at once while Types is 0 and the registry is empty (the default: no op, no directive, no line).
     void RunDirectives(std::map<std::uint32_t, Player*> const& bots, std::uint32_t nowMs, std::uint32_t nowSec);
+    // T33-0 (design T33 v1.1 7, measurement only): after the directive pass, the meeting shadow of every manager QUEST group
+    // (GroupGatherShadow.h). It reads the registry and the tables and writes only its lines. Gather 0 (the default): it
+    // forgets the place table and the shadow and returns (no table, no line).
+    void RunGather(std::uint32_t nowMs);
 
     std::uint64_t passes_ = 0;
     std::vector<manager_inbox::Event> inboxBuf_;   // reused each pass
@@ -64,6 +69,10 @@ private:
     std::vector<Ack> acks_;          // T30-1: DirectiveAck events of this pass
     std::vector<group_ops::ManagerOutcome> outcomes_;   // T30-1: manager op outcomes of this pass
     Engine engine_;
+    PlaceTable places_;                // T33-0: guid low -> latest GatherPlace (only while Gather != 0)
+    std::uint64_t mgrMs_ = 0;          // T33-0 (2.5): the one manager clock (AdvanceClock, before DrainInbox)
+    std::uint32_t clockLastMs_ = 0;    // its own anchor (DrainInbox moves lastPassMs_ first)
+    GatherShadow gather_;              // T33-0: the meeting shadow
 };
 
 WorldThreadManager& WorldManager();
