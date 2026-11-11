@@ -25,7 +25,8 @@ Item* ItemForSpellValue::Calculate()
 
     Item* itemForSpell = NULL;
     Player* trader = bot->GetTrader();
-    if (trader)
+    // HARM-RACE guard pair: the trade data of another player is read only on this bot's own Map object (region thread rule, #697).
+    if (trader && SameMapObject(bot, trader))
     {
         itemForSpell = trader->GetTradeData()->GetItem(TRADE_SLOT_NONTRADED);
         if (itemForSpell && itemForSpell->IsFitToSpellRequirements(spellInfo))
@@ -33,10 +34,10 @@ Item* ItemForSpellValue::Calculate()
     }
 
     Player* master = ai->GetMaster();
-    if (master)
+    if (master && SameMapObject(bot, master))
     {
         trader = master->GetTrader();
-        if (trader)
+        if (trader && SameMapObject(bot, trader))
         {
             itemForSpell = trader->GetTradeData()->GetItem(TRADE_SLOT_NONTRADED);
             if (itemForSpell && itemForSpell->IsFitToSpellRequirements(spellInfo))

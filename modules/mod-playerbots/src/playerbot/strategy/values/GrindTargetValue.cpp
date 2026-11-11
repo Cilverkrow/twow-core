@@ -76,7 +76,7 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
     Group* group = bot->GetGroup();
     Player* master = GetMaster();
 
-    if (master && (master == bot || master->GetMapId() != bot->GetMapId() || master->IsBeingTeleported() || !GetBotAI(master)))
+    if (master && (master == bot || !SameMapObject(bot, master) || master->IsBeingTeleported() || !GetBotAI(master)))
         master = nullptr;
 
     // TEMP-DEBUG(grind-target): the existing "debug grind" strategy only reaches a
