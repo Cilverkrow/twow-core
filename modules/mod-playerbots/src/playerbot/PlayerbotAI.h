@@ -45,6 +45,7 @@
 #include "playerbot/DeathSeriesPolicy.h"
 #include "playerbot/TankPathDiagPolicy.h"
 #include "playerbot/UnreachablePolicy.h"
+#include "playerbot/UnreachableGiveUpPolicy.h"   // twow-repo#703 item 4 (Rotation.UnreachableGiveUp)
 #include "playerbot/GroupAiRefresh.h"   // twow-repo#627 S7 StagedOps: RequestQuestForce
 #include "playerbot/GroupBuffPolicy.h"
 class Player;
@@ -53,6 +54,7 @@ class ChatHandler;
 class Channel;
 namespace ai::supervisor { class Supervisor; }   // A3 step 3 (AiPlayerbot.Supervisor): PlayerbotAI.cpp holds the full type
 namespace ai::questbook { class QuestBook; }   // A3 step 2 (AiPlayerbot.QuestBook): PlayerbotAI.cpp holds the full type
+namespace ai::reach_drop { struct Held; }   // twow-repo#703 item 4: ClearEngagement's result, PlayerbotAI.cpp holds the full type
 
 using namespace ai;
 
@@ -1104,6 +1106,10 @@ protected:
     ai::unreachable::Approach reachApproach;
     ai::unreachable::IgnoreList unreachableTargets;
     uint32 lastUnreachableLog = 0;
+    // twow-repo#703 item 4 (AiPlayerbot.Rotation.UnreachableGiveUp): [Unreachable] results per target guid and the 1 h guard of
+    // the quest camp marks (bot thread; never touched with the key at 0).
+    ai::unreachable_giveup::Ring unreachableGiveUp;
+    ai::unreachable_giveup::MarkGuard unreachableMarkGuard;
     uint32 lastValueCountTime = 0;
     uint32 lastValueNamesTime = 0;
     mutable std::mutex valueNamesMutex;
@@ -1210,6 +1216,12 @@ public:
     // twow-repo#630 follow-up (Rotation.ReachDropEngagement): after that drop a bot with a real player as master lets go of the
     // target entirely (attack/pull/old target, selection, swing), so its combat ends and follow resumes (ReachDropPolicy.h).
     void DropUnreachableEngagement(Unit* target);
+    // twow-repo#703 item 4 (Rotation.UnreachableGiveUp): the drop steps of DropUnreachableEngagement without its gate; returns
+    // what was held. Also used by UnreachableGiveUp for a roster bot on its own.
+    ai::reach_drop::Held ClearEngagement(Unit* target);
+    // twow-repo#703 item 4: one [Unreachable] result of CheckReachProgress counted; at K on one guid the target is given up
+    // (UnreachableGiveUpPolicy.h). Called only with the key on.
+    void UnreachableGiveUp(Unit* target, uint32 now);
     bool IsUnreachableTarget(ObjectGuid guid) const { return unreachableTargets.Ignored(guid.GetRawValue(), uint32(time(nullptr))); }
     // A3 step 5 (CombatRule.ProgressGuard): the CombatLoop event a break left for the supervisor (switch on for the bot), taken once.
     // The interface for the CombatGuard frame (Supervisor.CombatGuard, CLI-Projekt); call it on the bot's thread.
