@@ -645,6 +645,7 @@ public:
     uint32 buffStrangerCooldownSeconds = 900;
     bool lootHoldTravelWhileLootable = false;  // twow-repo#575 H1 (bug fix; code default 0 until its acceptance unit, then the flip pair): move to rpg / travel target and the rpg-target heal stand back while the loot target is open (LootHoldPolicy.h), 0 = as before
     uint32 lootHoldTravelWhileLootableMaxSeconds = 60;  // twow-repo#575 H1 (OB-10 review): seconds a loot target may hold the bot at most (10..600); then that loot target holds no more ([LootHold] result=expired)
+    uint32 lootMoveGiveUp = 0;  // twow-repo#703 item 3: cohort mode (0 off, 1 all, 2 cohort B, 3 cohort A; other -> 0): a roster bot on its own gives up a loot target it comes no nearer to for 30 s of trying (LootGiveUpPolicy.h)
     uint32 lootRoleWeights = 0;       // twow-repo#308 LOOT-ROLE-01: 1 = weight scale from the premade path from L1, quest reward by gain; 2 = and the owner stat table v2
     bool lootFeralFixedSpec = true;   // twow-repo#308 (owner 26.09.): bear/cat scale by the premade path, not a coin per check
     // OB-00 08.11.2026 (bug fix: code default 1, 0 = rollback): "loot chance" of a game object reads its loot template; the old
@@ -752,6 +753,7 @@ public:
     uint32 rotationReachPlayerMaster = 0;  // twow-repo#630 GRP-REACH-01: the reach progress check (hotfix 8.2) also for a bot with a real player as master, own target only, 30 s ignore; 0 off, 1 all, 2 cohort B (odd guid)
     uint32 rotationReachDropEngagement = 0;  // twow-repo#630 follow-up (owner repro 25.10.): that drop also clears attack/pull/old target, selection and swing (combat ends, follow resumes; ReachDropPolicy.h); 0 off, 1 all, 2 cohort B
     uint32 rotationFollowUnstealth = 0;  // twow-repo#630 follow-up: a rogue following a real player out of combat, dungeons and BGs drops stealth while the master moves or it catches up, above follow (ReachDropPolicy.h); 0 off, 1 all, 2 cohort B
+    uint32 rotationUnreachableGiveUp = 0;  // twow-repo#703 item 4: cohort mode (0 off, 1 all, 2 cohort B, 3 cohort A; other -> 0): a roster bot on its own (no group or not its leader) gives up a target after 3 [Unreachable] on its guid within 30 min - engagement dropped, 1800 s ignore, quest camp marked 1800 s (UnreachableGiveUpPolicy.h)
     bool perfTravelRequestGate = false;  // twow-repo#541 (audit A18): travel request triggers skip their condition while the travel target is prepared or active (0 = off)
     bool perfPartyBuffKnownSpellGate = false;  // twow-repo#541 (audit A22): five party buff/cure triggers skip their party scan while the bot knows no rank of the action's spell (0 = off)
     bool perfLazyEngineInit = false;  // twow-repo#541 (audit A21): a strategy change rebuilds an engine that is not running (idle combat/non-combat, dead) only when it is activated (0 = off)
@@ -885,6 +887,7 @@ public:
     uint32 questRescueIdleMinutes = 30;
     bool questRescueKeepRequestWhenFull = false;  // twow-repo#587: a pending rescue request stays with the bot while the global limit is used up
     uint32 questRescueNoTargetFreeSlot = 0;  // twow-repo#703 item 1: 1 = the rescue targets before the global limiter, a no_target takes no slot (QuestRescueSlotPolicy.h), 0 = as before
+    uint32 questRescueHomeHubsL5OwnHub = 0;  // twow-repo#703 item 2: the L5-10 own-hub rows of the HomeHubs table (cohort modes, 0 = off = today's table)
     uint32 questRescueHomeHubs = 1;  // twow-repo#575 RG-a: the quest rescue's anchor table (own start-zone hub < L5, next zone L5-10; cohort modes); 1 = default (SZM adoption 10.11.2026), 0 = rollback
     uint32 grindAvoidMaxDeaths = 0;       // 0 = off
     uint32 grindAvoidWindowSeconds = 3600;

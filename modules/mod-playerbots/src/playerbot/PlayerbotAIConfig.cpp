@@ -517,6 +517,12 @@ bool PlayerbotAIConfig::Initialize()
     buffStrangerCooldownSeconds = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.Buff.StrangerCooldownSeconds", 900)));
     lootHoldTravelWhileLootable = config.GetBoolDefault("AiPlayerbot.Loot.HoldTravelWhileLootable", false);   // twow-repo#575 H1
     lootHoldTravelWhileLootableMaxSeconds = ai::loot_hold::ClampMaxSeconds(config.GetIntDefault("AiPlayerbot.Loot.HoldTravelWhileLootable.MaxSeconds", int(ai::loot_hold::DefaultMaxSeconds)));   // twow-repo#575 H1
+    lootMoveGiveUp = config.GetIntDefault("AiPlayerbot.Loot.MoveGiveUp", 0);   // twow-repo#703 item 3
+    if (lootMoveGiveUp > 3)
+    {
+        sLog.outError("[LootGiveUp] config key=Loot.MoveGiveUp value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", lootMoveGiveUp);
+        lootMoveGiveUp = 0;
+    }
     lootRoleWeights = std::min<uint32>(2, uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.Loot.RoleWeights", 0))));
     lootFeralFixedSpec = config.GetBoolDefault("AiPlayerbot.Loot.FeralFixedSpec", true);
     // OB-00 08.11.2026 (bug fix: code default 1, 0 = rollback, an unknown value = 1): "loot chance" of a game object
@@ -701,6 +707,12 @@ bool PlayerbotAIConfig::Initialize()
     rotationFollowUnstealth = config.GetIntDefault("AiPlayerbot.Rotation.FollowUnstealth", 0);   // twow-repo#630 follow-up
     if (rotationFollowUnstealth > 2)
         rotationFollowUnstealth = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
+    rotationUnreachableGiveUp = config.GetIntDefault("AiPlayerbot.Rotation.UnreachableGiveUp", 0);   // twow-repo#703 item 4
+    if (rotationUnreachableGiveUp > 3)
+    {
+        sLog.outError("[UnreachableGiveUp] config key=Rotation.UnreachableGiveUp value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", rotationUnreachableGiveUp);
+        rotationUnreachableGiveUp = 0;
+    }
     rotationDarkRuneGate = config.GetIntDefault("AiPlayerbot.Rotation.DarkRuneGate", 0);   // twow-repo#602 ROT-01 3c
     if (rotationDarkRuneGate > 2)
         rotationDarkRuneGate = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
@@ -877,6 +889,13 @@ bool PlayerbotAIConfig::Initialize()
         questRescueNoTargetFreeSlot = 0;
     }
     questRescueHomeHubs = ai::rescue_hub::ClampMode(config.GetIntDefault("AiPlayerbot.QuestRescue.HomeHubs", 1));   // default 1 since the SZM adoption (10.11.2026), 0 = rollback
+    // twow-repo#703 item 2 (design szf/DESIGN-703-2-VALLEY-L5-20261111.md): the L5-10 own-hub rows, only where HomeHubs applies.
+    questRescueHomeHubsL5OwnHub = config.GetIntDefault("AiPlayerbot.QuestRescue.HomeHubs.L5OwnHub", 0);
+    if (questRescueHomeHubsL5OwnHub > 3)
+    {
+        sLog.outError("[RescueHub] config key=HomeHubs.L5OwnHub value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", questRescueHomeHubsL5OwnHub);
+        questRescueHomeHubsL5OwnHub = 0;
+    }
     grindAvoidMaxDeaths = config.GetIntDefault("AiPlayerbot.GrindAvoid.MaxDeaths", 0);
     grindAvoidWindowSeconds = std::max<uint32>(60, config.GetIntDefault("AiPlayerbot.GrindAvoid.WindowSeconds", 3600));
     grindAvoidSeconds = std::max<uint32>(60, config.GetIntDefault("AiPlayerbot.GrindAvoid.AvoidSeconds", 3600));
@@ -2222,6 +2241,7 @@ bool PlayerbotAIConfig::Initialize()
             {"LogInGroupOnly", Value(logInGroupOnly)},
             {"Loot.HoldTravelWhileLootable", Value(lootHoldTravelWhileLootable)},
             {"Loot.HoldTravelWhileLootable.MaxSeconds", Value(lootHoldTravelWhileLootableMaxSeconds)},
+            {"Loot.MoveGiveUp", Value(lootMoveGiveUp)},
             {"Loot.RoleWeights", Value(lootRoleWeights)},
             {"LootChance.GameObjectEntryFix", Value(lootChanceGameObjectEntryFix)},
             {"Path.IslandGuard", Value(pathIslandGuard)},
@@ -2314,6 +2334,7 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestLoop.TurnInWorkDeathNotRoute", Value(questLoopTurnInWorkDeathNotRoute)},
             {"QuestRelation.GameObjectChanceDrops", Value(questRelationGameObjectChanceDrops)},
             {"QuestRescue.HomeHubs", Value(questRescueHomeHubs)},
+            {"QuestRescue.HomeHubs.L5OwnHub", Value(questRescueHomeHubsL5OwnHub)},
             {"QuestRescue.KeepRequestWhenFull", Value(questRescueKeepRequestWhenFull)},
             {"QuestRescue.NoTargetFreeSlot", Value(questRescueNoTargetFreeSlot)},
             {"Rescue.RepopDeadOnly", Value(rescueRepopDeadOnly)},
@@ -2367,6 +2388,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Rotation.SpecFromPath", Value(rotationSpecFromPath)},
             {"Rotation.TankKitFromLevel", Value(rotationTankKitFromLevel)},
             {"Rotation.TankRoguePoison", Value(rotationTankRoguePoison)},
+            {"Rotation.UnreachableGiveUp", Value(rotationUnreachableGiveUp)},
             {"Rpg.TurnInFirst", Value(rpgTurnInFirst)},
             {"Supervisor", Value(supervisor)},
             {"Supervisor.Arbiter", Value(supervisorArbiter)},

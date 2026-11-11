@@ -1376,6 +1376,21 @@ add_test(NAME loot_hold_policy
   COMMAND loot_hold_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#703 item 3 (A3-PLAN-ZIEL, default 0 until its A/B): AiPlayerbot.Loot.MoveGiveUp, move-to-loot loop give-up
+# (LootGiveUpPolicy.h); source contract in t/contracts.d.
+add_executable(loot_giveup_policy_tests
+  "${PB_MODULE_DIR}/t/loot_giveup_policy_tests.cpp")
+
+target_include_directories(loot_giveup_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(loot_giveup_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME loot_giveup_policy
+  COMMAND loot_giveup_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # twow-repo#575 H3: Revive.DelayResurrectRequest mode (guid bit 1, orthogonal to the cohort parity).
 add_executable(resurrect_delay_policy_tests
   "${PB_MODULE_DIR}/t/resurrect_delay_policy_tests.cpp")
@@ -1549,6 +1564,21 @@ add_test(NAME unreachable_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/unreachable_source_contract_tests.cmake")
+
+# twow-repo#703 item 4 (A3-PLAN-ZIEL, default 0 until its A/B): AiPlayerbot.Rotation.UnreachableGiveUp, the give-up of a target
+# that stays unreachable (UnreachableGiveUpPolicy.h); source contract in t/contracts.d.
+add_executable(unreachable_giveup_policy_tests
+  "${PB_MODULE_DIR}/t/unreachable_giveup_policy_tests.cpp")
+
+target_include_directories(unreachable_giveup_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(unreachable_giveup_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME unreachable_giveup_policy
+  COMMAND unreachable_giveup_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
 # twow-repo#630 follow-up: the drop under a real player clears the whole engagement, a following rogue drops stealth.
 add_executable(reach_drop_policy_tests

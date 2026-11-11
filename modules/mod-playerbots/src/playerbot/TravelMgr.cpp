@@ -4,6 +4,7 @@
 #include "playerbot/strategy/actions/MovementActions.h"   // twow-repo#342 (S1): TraceTransportEdgeStallAbandon
 #include "playerbot/PathUnitlessBotPolicy.h"
 #include "playerbot/UnreachableTargetPolicy.h"
+#include "playerbot/UnreachableGiveUpPolicy.h"   // twow-repo#703 item 4 (Rotation.UnreachableGiveUp): MarkEvictsLive
 #include "playerbot/StartZonePolicy.h"
 #include <numeric>
 #include "playerbot/QuestAreaLevelPolicy.h"
@@ -2197,7 +2198,8 @@ bool ai::zone_keep::GroupLeaveDue(Player* bot, PlayerbotAI* botAI, Player* leade
             if (Player* member = ref->getSource())
                 if (member != bot)
                 {
-                    PlayerbotAI* const memberAi = GetBotAI(member);
+                    // twow-repo#710: a member on another Map object (region thread) is not read (its AI); unknown = fail closed (never leave).
+                    PlayerbotAI* const memberAi = GetBotAIOnMapOf(bot, member);
                     realPlayerMember = !memberAi || memberAi->IsRealPlayer();
                 }
     if (!ai::zone_keep::LeaveAllowed(realPlayerMember))
@@ -2470,6 +2472,28 @@ bool TravelTarget::FallBackToInactiveCooldown()
     return true;
 }
 
+// twow-repo#703 item 4 (AiPlayerbot.Rotation.UnreachableGiveUp): the current destination is a quest objective of this entry.
+uint32 TravelTarget::UnreachableCampQuest(int32 entry) const
+{
+    QuestObjectiveTravelDestination const* objective = dynamic_cast<QuestObjectiveTravelDestination const*>(tDestination);
+    return objective && entry && objective->GetEntry() == entry ? objective->GetQuestId() : 0;
+}
+
+// twow-repo#703 item 4: the camp of a target the bot gave up as unreachable is marked empty for a fixed duration (the same ring as
+// QuestLoop.InactiveReselect, honoured by the search and the refresh), and the target ends, so the router picks another one. No
+// inactiveReselectPending: the search after it must not fall back to a COOLDOWN at this camp.
+bool TravelTarget::MarkUnreachableCamp(uint32 quest, int32 entry, uint32 markMs)
+{
+    // A3 step 3 arbiter shadow: the end of the target is an execution outcome, like the inactive-reselect end in CheckStatus.
+    ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::Execution);
+    uint32 const nowMs = WorldTimer::getMSTime();
+    bool const evicted = ai::unreachable_giveup::MarkEvictsLive(emptyCamps, quest, entry, nowMs);
+    quest_loop::MarkEmptyCamp(emptyCamps, quest, entry, nowMs, markMs);
+    SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);
+    ai->GetAiObjectContext()->ClearValues("no active travel destinations");
+    return evicted;
+}
+
 bool TravelTarget::IsDestinationDeathSuppressed(TravelDestination const* destination) const
 {
     auto const it = destinationDeaths.find(destination);
@@ -2664,7 +2688,7 @@ bool TravelTarget::IsDestinationActive()
     if (groupMember)
     {
         Player* member = groupMember.GetPlayer();
-        if (!ai->IsSafe(member)) //unknown
+        if (!ai->IsSafe(member) || !SameMapObject(bot, member)) //unknown (twow-repo#710: another Map object = another region thread, not read)
             return true;
         else
             player = member;
@@ -2684,7 +2708,7 @@ bool TravelTarget::IsConditionsActive(bool clear)
     if (groupMember)
     {
         Player* member = groupMember.GetPlayer();
-        if (!ai->IsSafe(member)) //unknown
+        if (!ai->IsSafe(member) || !SameMapObject(bot, member)) //unknown (twow-repo#710: another Map object = another region thread, not read)
             return true;
         else
             player = member;
@@ -2898,7 +2922,7 @@ void TravelTarget::CheckStatus()
     if (groupMember)
     {
         Player* member = groupMember.GetPlayer();
-        if (!member || (ai->IsSafe(member) && member->GetGroup() != bot->GetGroup()))
+        if (!member || (ai->IsSafe(member) && SameMapObject(bot, member) && member->GetGroup() != bot->GetGroup()))   // twow-repo#710: member on another Map object: its group is not read
         {
             ai->TellDebug(ai->GetMaster(), "Travel target expired because it was from a player that is no longer in the group.", "debug travel");
             SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);
