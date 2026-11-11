@@ -236,6 +236,15 @@ AiPlayerbot.Loot.HoldTravelWhileLootable = 0
 # would otherwise hold the bot without end. After the limit that loot target holds no more until the bot takes another
 # one; one [LootHold] bot= ... held_s= result=expired line each time.
 AiPlayerbot.Loot.HoldTravelWhileLootable.MaxSeconds = 60
+# twow-repo#703 item 3 (move-to-loot loop; A3-PLAN-ZIEL, owner standing approval 09.11.2026): "move to loot" follows the
+# bot's loot target without an attempt count, so a target the path finder cannot reach ("mmap pts=1, keep last") held bots
+# for hours (ARB N1: 219-262 min, moved=0.0). With the key a roster bot without a real player master gives the loot target up
+# when it came no nearer (>= 1 yd better than its best distance) for 30 s of continuous trying with >= 5 tries (a gap > 5 s
+# between two tries starts again): the loot target is reset and the object stays out of the bot's loot list for 600 s
+# (every loot kind: corpse, herb, ore, chest; at most 16 objects per bot). One [LootGiveUp] bot= guid= entry= dist_start=
+# dist_best= tries= waited_s= mode= line per give-up; [LootGiveUpMin] mode= loot_giveup= loot_blocked= once a minute.
+# Cohort mode: 0 = off, as before (default until its A/B); 1 = all bots; 2 = cohort B (odd guid); 3 = cohort A; other = 0.
+AiPlayerbot.Loot.MoveGiveUp = 0
 # OB-00 08.11.2026 (BUG FIX: code default 1, 0 = rollback): the "loot chance" value of a game object. The drop map keeps a
 # game object entry negated; the value put that negative entry into the game object guid as it was, the entry ran into the
 # high guid bits, the guid was no game object guid and every game object had loot chance 0. With 1 it reads the game object's
