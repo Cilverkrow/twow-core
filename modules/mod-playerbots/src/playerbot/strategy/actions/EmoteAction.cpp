@@ -859,7 +859,8 @@ bool TalkAction::Execute(Event& event)
         if (player && GetBotAI(player))
         {
             // twow-repo#563 (X3c): the other bot may update on another region thread - let it set the value itself.
-            if (sPlayerbotAIConfig.x3cInboxWrites)
+            // HARM-RACE guard pair: another bot on another Map object (region thread) is never written directly, whatever the X3c switch says.
+            if (sPlayerbotAIConfig.x3cInboxWrites || !SameMapObject(bot, player))
             {
                 ObjectGuid const talker = bot->GetObjectGuid();
                 PlayerbotAI::QueueContextWriteTo(player, [talker](AiObjectContext* other)
