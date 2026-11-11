@@ -205,7 +205,7 @@ public:
     std::vector<ai::ammo_stock::Tier> hunterAmmoTiers;
     bool hunterAmmoFillQuiver = false;
     uint32 thrownMaxCount = 0;
-    uint32 thrownUsageFix = 0;  // twow-repo#333 P1-s: a thrown weapon is judged against the ranged slot (modes 0/1/2)
+    uint32 thrownUsageFix = 1;  // twow-repo#333 P1-s: a thrown weapon is judged against the ranged slot (modes 0/1/2; 1 since P1-s-H PASS)
     float randomBotMaxLevelChance;
     float randomBotRaceVariantChance;
     float randomBotRpgChance;
