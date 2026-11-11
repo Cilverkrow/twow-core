@@ -360,7 +360,7 @@ namespace ai
                 if (member == bot)
                     continue;
 
-                if (!member->IsInWorld() || member->GetMapId() != bot->GetMapId())
+                if (!member->IsInWorld() || !SameMapObject(bot, member))   // HARM-RACE guard pair: own Map object, not only the map id
                     continue;
 
                 if (!bot->IsWithinDistInMap(member, 100.0f, false))

@@ -2,8 +2,12 @@ cmake_policy(VERSION 3.16)
 # twow-repo#707 (HARM-RACE, OB-00 go 10.11.2026; design note Y:\tw\evidence\ws-00\563p4\design-707-share-quest.md; same class as #697 / #563 part 4):
 # Continents are split into regions; every region is its own Map object (same map id, own instance id) updated on its own pool thread. A bot
 # that reads the quest map, quest log, AiObjectContext, trade data or group of ANOTHER player/bot from its own thread races with that thread
-# when the other one stands on another Map object. ai->IsSafe(player) and GetMapId() compare only map id (and instance id): a neighbour in the
-# next region passes them. Every site below tests SameMapObject(bot, other) BEFORE the first read.
+# when the other one stands on another Map object. GetMapId() compares the map id only: a neighbour in the next region passes it.
+# CORRECTION 11.11.2026 (OB-10 confirmed): ai->IsSafe(player) compares map id AND instance id, and every continent region Map has its own
+# instance id, so IsSafe is already false for a neighbour in steady state; for the IsSafe-guarded sites below the SameMapObject test is
+# defence in depth (the explicit thread rule), for the GetMapId()-only sites it closes a real gap. A region switch runs on the world thread
+# after continents.wait(), so there is no transition window for bot threads.
+# Every site below tests SameMapObject(bot, other) BEFORE the first read.
 #
 # Neighbour table (OB-00: each named, changed or deliberately left):
 #   CHANGED   AutoShareQuestAction::Execute    (ShareQuestAction.cpp)       member loop: quest map / log / PAI_VALUE / packet post

@@ -15,7 +15,11 @@ cmake_policy(VERSION 3.16)
 #   (f) the probe runs only under AiPlayerbot.Supervisor.ArbiterProbe (default 0, echoed, documented);
 #   (g) ~Supervisor and Supervisor.h/.cpp hold no gate call (the destructor runs on any thread);
 #   (h) ValidArbiter accepts 0, 1 and 2 only; the console takes enforce;
-#   (i) negative probes: each pin must fail on a mutated copy.
+#   (i) negative probes: each pin must fail on a mutated copy;
+#   (j) A3 step 3 T02-GROUP (BotGroups.Manager.Types > 0, default 0): the no-supervisor branch of AdmitTargetWrite counts a write
+#       that bypasses the gate (GateOffThread, one call, first statement the arbiter != 2 return); the snapshot / filter helpers
+#       start from EnforcingSupervisor; travel code never reads GetSupervisor; SupervisorGroup.cpp adds one live write (the
+#       point) and two closers; SetOwner(Lane::Group, once in the module.
 # Pure rules: t/supervisor_policy_tests.cpp (TestArbiterLanes). Every check_* returns "" when it holds, else the reason; the
 # negative probes at the end reuse them on mutated text.
 if(NOT DEFINED PB_SOURCE_DIR)
@@ -194,7 +198,7 @@ function(check_gate travel_cpp enforce_cpp enforce_h all_sources out)
     return()
   endif()
   # Every public function starts from EnforcingSupervisor (an early allow at the defaults).
-  foreach(fn "bool AdmitTargetWrite(PlayerbotAI* ai, TravelTarget* target, bool nullDest, char const* site)\n{\n    Supervisor* const supervisor = EnforcingSupervisor(ai);\n    if (!supervisor || !target || !target->IsLive())\n        return true;"
+  foreach(fn "bool AdmitTargetWrite(PlayerbotAI* ai, TravelTarget* target, bool nullDest, char const* site)\n{\n    Supervisor* const supervisor = EnforcingSupervisor(ai);\n    if (!supervisor)\n        return GateOffThread(ai, target, nullDest);\n    if (!target || !target->IsLive())\n        return true;"
       "bool WouldAdmitTargetWrite(PlayerbotAI* ai, TravelTarget* target, bool nullDest)\n{\n    Supervisor* const supervisor = EnforcingSupervisor(ai);\n    if (!supervisor || !target || !target->IsLive())\n        return true;"
       "bool LaneFree(PlayerbotAI* ai, Lane lane, char const* site)\n{\n    Supervisor* const supervisor = EnforcingSupervisor(ai);\n    if (!supervisor)\n        return true;")
     string(FIND "${enforce_cpp}" "${fn}" at)
@@ -203,7 +207,45 @@ function(check_gate travel_cpp enforce_cpp enforce_h all_sources out)
       return()
     endif()
   endforeach()
+  # A3 step 3 T02-GROUP (AiPlayerbot.Supervisor.Arbiter = 2, BotGroups.Manager.Types > 0; default 0): GateOffThread is the
+  # counter for a write that bypasses the gate because no enforcing supervisor is on this thread. It is called once, in
+  # AdmitTargetWrite's no-supervisor branch (after the `!supervisor` test, never before EnforcingSupervisor), never in the
+  # WouldAdmit/LaneFree gates; its body reads no supervisor (it runs on any thread) and starts with the arbiter value test.
+  region("${enforce_cpp}" "bool AdmitTargetWrite(PlayerbotAI* ai, TravelTarget* target, bool nullDest, char const* site)\n{" "\n}\n" admit_fn)
+  region("${enforce_cpp}" "bool WouldAdmitTargetWrite(PlayerbotAI* ai, TravelTarget* target, bool nullDest)\n{" "\n}\n" would_fn)
+  region("${enforce_cpp}" "bool LaneFree(PlayerbotAI* ai, Lane lane, char const* site)\n{" "\n}\n" lane_fn)
+  region("${enforce_cpp}" "bool GateOffThread(PlayerbotAI* ai, TravelTarget* target, bool nullDest)\n{" "\n}\n" gateoff_fn)
+  count_text("${admit_fn}" "GateOffThread(" n_a)
+  count_text("${would_fn}" "GateOffThread(" n_w)
+  count_text("${lane_fn}" "GateOffThread(" n_l)
+  if(gateoff_fn STREQUAL "" OR NOT n_a EQUAL 1 OR NOT n_w EQUAL 0 OR NOT n_l EQUAL 0)
+    set(${out} "SupervisorEnforce.cpp: GateOffThread( must be defined and called once, in AdmitTargetWrite only (found ${n_a} there, ${n_w} in WouldAdmitTargetWrite, ${n_l} in LaneFree)" PARENT_SCOPE)
+    return()
+  endif()
+  string(FIND "${gateoff_fn}" "GetSupervisor" at)
+  string(FIND "${gateoff_fn}" "{\n    if (ArbiterValue(sPlayerbotAIConfig.supervisorArbiter) != 2)\n        return true;\n" at3)
+  if(NOT at EQUAL -1 OR at3 EQUAL -1)
+    set(${out} "SupervisorEnforce.cpp: GateOffThread reads the supervisor or does not start with the arbiter != 2 early return" PARENT_SCOPE)
+    return()
+  endif()
+  # The two region entry points read the supervisor snapshot only through EnforcingSupervisor (own thread proven, enforce on).
+  foreach(fn "std::uint32_t GroupGoalSnapshot(PlayerbotAI* ai)\n{\n    Supervisor* const supervisor = EnforcingSupervisor(ai);\n"
+      "bool GroupCopyFree(PlayerbotAI* ai)\n{\n    Supervisor* const supervisor = EnforcingSupervisor(ai);\n    if (!supervisor)\n        return true;\n")
+    string(FIND "${enforce_cpp}" "${fn}" at)
+    if(at EQUAL -1)
+      set(${out} "SupervisorEnforce.cpp: GroupGoalSnapshot / GroupCopyFree do not start from EnforcingSupervisor(ai)" PARENT_SCOPE)
+      return()
+    endif()
+  endforeach()
+  # The group lane owner is set in one place only (SupervisorGroup.cpp AdoptGroupOwner); ProbeTick keeps its assignment.
+  count_regex("${all_sources}" "SetOwner\\(Lane::Group," n)
+  if(NOT n EQUAL 1)
+    set(${out} "SetOwner(Lane::Group, appears ${n} times in the module (1 expected: Supervisor::AdoptGroupOwner)" PARENT_SCOPE)
+    return()
+  endif()
   foreach(sig "bool AdmitTargetWrite(PlayerbotAI* ai, TravelTarget* target, bool nullDest, char const* site);"
+      "bool GateOffThread(PlayerbotAI* ai, TravelTarget* target, bool nullDest);" "std::uint32_t GroupGoalSnapshot(PlayerbotAI* ai);"
+      "bool GroupCopyFree(PlayerbotAI* ai);" "bool BandHeldByGroup(PlayerbotAI* ai);"
       "bool WouldAdmitTargetWrite(PlayerbotAI* ai, TravelTarget* target, bool nullDest);" "bool LaneFree(PlayerbotAI* ai, Lane lane, char const* site);")
     string(FIND "${enforce_h}" "${sig}" at)
     if(at EQUAL -1)
@@ -254,7 +296,7 @@ endfunction()
 set(CALL_CENSUS
   "QuestBand.cpp=4" "QuestGroupWorld.cpp=2" "strategy/actions/ChooseTravelTargetAction.cpp=8" "strategy/actions/ChooseTravelTargetAction.h=1"
   "strategy/actions/GoAction.cpp=1" "strategy/actions/WorldBuffTravelActions.cpp=1" "strategy/tests/CommandSetup.cpp=1"
-  "TravelMgr.cpp=3" "TravelMgr.h=3" "SupervisorEnforce.cpp=3"
+  "TravelMgr.cpp=3" "TravelMgr.h=3" "SupervisorEnforce.cpp=3" "SupervisorGroup.cpp=1"
   "strategy/actions/MovementActions.cpp=2" "strategy/generic/PullStrategy.cpp=5" "strategy/generic/PullStrategy.h=1")
 
 # The live-target sites, each with its text, how often, and that it evaluates the result. Local targets (a candidate or a copy
@@ -431,7 +473,7 @@ set(CLOSER_CENSUS
   "PlayerbotAI.cpp=2" "QuestBand.cpp=1" "RandomPlayerbotMgr.cpp=2" "strategy/actions/ChooseTravelTargetAction.cpp=4"
   "strategy/actions/DebugAction.cpp=1" "strategy/actions/FollowActions.cpp=1" "strategy/actions/GuildCreateActions.cpp=2"
   "strategy/actions/MoveToTravelTargetAction.cpp=1" "strategy/actions/ReleaseSpiritAction.h=1"
-  "strategy/actions/WorldBuffTravelActions.cpp=3" "strategy/actions/ZoneEscapeActions.cpp=1"
+  "strategy/actions/WorldBuffTravelActions.cpp=3" "strategy/actions/ZoneEscapeActions.cpp=1" "SupervisorGroup.cpp=2"
   "strategy/triggers/StationCraftTrigger.cpp=1" "strategy/values/TravelValues.cpp=1")
 
 function(check_closers census out)
@@ -588,6 +630,27 @@ function(check_unit unit_test out)
   set(${out} "" PARENT_SCOPE)
 endfunction()
 
+# ---- (j) T02-GROUP: who may read the supervisor, and the one group point write ---------------------------------------------------
+# Travel code reads the group goal only through the snapshot / filter helpers of SupervisorEnforce.cpp, never ai->GetSupervisor().
+# The group handler's one live write (the point at gather flag 1) evaluates its result, like every live site.
+read_source("SupervisorGroup.cpp" group_cpp)
+function(check_group_regions choose_cpp band_cpp travel_cpp group_cpp out)
+  foreach(var choose_cpp band_cpp travel_cpp)
+    count_regex("${${var}}" "GetSupervisor" n)
+    if(NOT n EQUAL 0)
+      set(${out} "${var}: GetSupervisor appears ${n} times (0 expected: travel code uses GroupGoalSnapshot, GroupCopyFree, BandHeldByGroup)" PARENT_SCOPE)
+      return()
+    endif()
+  endforeach()
+  count_regex("${group_cpp}" "(^|[^A-Za-z0-9_])SetTarget\\(" n_all)
+  count_regex("${group_cpp}" "(if \\(!|[a-z] = )[A-Za-z_]*(->|\\.)SetTarget\\(" n_eval)
+  if(NOT n_all EQUAL 1 OR NOT n_eval EQUAL 1)
+    set(${out} "SupervisorGroup.cpp: SetTarget( appears ${n_all} times and ${n_eval} of them evaluated (1 and 1 expected: the point write)" PARENT_SCOPE)
+    return()
+  endif()
+  set(${out} "" PARENT_SCOPE)
+endfunction()
+
 # ---- run on the real sources ---------------------------------------------------------------------------------------------------
 function(fail_if r)
   if(NOT r STREQUAL "")
@@ -612,6 +675,8 @@ fail_if("${r}")
 check_values("${policy}" "${config_cpp}" r)
 fail_if("${r}")
 check_unit("${unit_test}" r)
+fail_if("${r}")
+check_group_regions("${choose_cpp}" "${band_cpp}" "${travel_cpp}" "${group_cpp}" r)
 fail_if("${r}")
 
 # ---- negative probes: each mutation must be caught -----------------------------------------------------------------------------
@@ -769,8 +834,54 @@ string(REPLACE "            {\"Supervisor.ArbiterProbe\", Value(supervisorArbite
 check_probe("${enforce_cpp}" "${sup_cpp}" "${sup_h}" "${config_h}" "${m}" "${conf_dist}" "${all_sources}" r)
 expect_reason("${r}" "missing" "the probe key not echoed")
 
+# (j) T02-GROUP: the gate-off counter, the snapshot entry points, the one group owner write, the one point write, the census.
+set(ADMIT_HEAD_NEW "bool AdmitTargetWrite(PlayerbotAI* ai, TravelTarget* target, bool nullDest, char const* site)\n{\n    Supervisor* const supervisor = EnforcingSupervisor(ai);\n    if (!supervisor)\n        return GateOffThread(ai, target, nullDest);\n    if (!target || !target->IsLive())\n        return true;")
+string(REPLACE "${ADMIT_HEAD_NEW}" "bool AdmitTargetWrite(PlayerbotAI* ai, TravelTarget* target, bool nullDest, char const* site)\n{\n    Supervisor* const supervisor = EnforcingSupervisor(ai);\n    if (!supervisor || !target || !target->IsLive())\n        return true;" m "${enforce_cpp}")
+check_gate("${travel_cpp}" "${m}" "${enforce_h}" "${all_sources}" r)
+expect_reason("${r}" "does not allow at once" "the old AdmitTargetWrite head without GateOffThread")
+
+string(REPLACE "${ADMIT_HEAD_NEW}" "bool AdmitTargetWrite(PlayerbotAI* ai, TravelTarget* target, bool nullDest, char const* site)\n{\n    GateOffThread(ai, target, nullDest);\n    Supervisor* const supervisor = EnforcingSupervisor(ai);\n    if (!supervisor)\n        return true;\n    if (!target || !target->IsLive())\n        return true;" m "${enforce_cpp}")
+check_gate("${travel_cpp}" "${m}" "${enforce_h}" "${all_sources}" r)
+expect_reason("${r}" "does not allow at once" "GateOffThread before EnforcingSupervisor")
+
+string(REPLACE "bool LaneFree(PlayerbotAI* ai, Lane lane, char const* site)\n{\n    Supervisor* const supervisor = EnforcingSupervisor(ai);\n    if (!supervisor)\n        return true;" "bool LaneFree(PlayerbotAI* ai, Lane lane, char const* site)\n{\n    Supervisor* const supervisor = EnforcingSupervisor(ai);\n    if (!supervisor)\n        return true;\n    GateOffThread(ai, nullptr, false);" m "${enforce_cpp}")
+check_gate("${travel_cpp}" "${m}" "${enforce_h}" "${all_sources}" r)
+expect_reason("${r}" "GateOffThread( must be defined and called once" "GateOffThread called from LaneFree")
+
+string(REPLACE "bool GateOffThread(PlayerbotAI* ai, TravelTarget* target, bool nullDest)\n{\n" "bool GateOffThread(PlayerbotAI* ai, TravelTarget* target, bool nullDest)\n{\n    int GetSupervisorFlag = 0;\n" m "${enforce_cpp}")
+check_gate("${travel_cpp}" "${m}" "${enforce_h}" "${all_sources}" r)
+expect_reason("${r}" "GateOffThread reads the supervisor" "a supervisor read in GateOffThread")
+
+string(REPLACE "    if (ArbiterValue(sPlayerbotAIConfig.supervisorArbiter) != 2)\n        return true;\n" "" m "${enforce_cpp}")
+check_gate("${travel_cpp}" "${m}" "${enforce_h}" "${all_sources}" r)
+expect_reason("${r}" "GateOffThread reads the supervisor or does not start" "GateOffThread without the arbiter != 2 early return")
+
+string(REPLACE "std::uint32_t GroupGoalSnapshot(PlayerbotAI* ai)\n{\n    Supervisor* const supervisor = EnforcingSupervisor(ai);\n" "std::uint32_t GroupGoalSnapshot(PlayerbotAI* ai)\n{\n    Supervisor* const supervisor = nullptr;\n" m "${enforce_cpp}")
+check_gate("${travel_cpp}" "${m}" "${enforce_h}" "${all_sources}" r)
+expect_reason("${r}" "do not start from EnforcingSupervisor" "the snapshot without EnforcingSupervisor")
+
+check_gate("${travel_cpp}" "${enforce_cpp}" "${enforce_h}" "${all_sources}\n    SetOwner(Lane::Group, 1);" r)
+expect_reason("${r}" "SetOwner(Lane::Group, appears" "a second group owner write")
+
+check_group_regions("${choose_cpp}\n    ai->GetSupervisor();" "${band_cpp}" "${travel_cpp}" "${group_cpp}" r)
+expect_reason("${r}" "choose_cpp: GetSupervisor" "the supervisor read in the travel target action")
+check_group_regions("${choose_cpp}" "${band_cpp}\n    ai->GetSupervisor();" "${travel_cpp}" "${group_cpp}" r)
+expect_reason("${r}" "band_cpp: GetSupervisor" "the supervisor read in QuestBand.cpp")
+check_group_regions("${choose_cpp}" "${band_cpp}" "${travel_cpp}\n    ai->GetSupervisor();" "${group_cpp}" r)
+expect_reason("${r}" "travel_cpp: GetSupervisor" "the supervisor read in TravelMgr.cpp")
+check_group_regions("${choose_cpp}" "${band_cpp}" "${travel_cpp}" "${group_cpp}\n    target->SetTarget(dest, pos);" r)
+expect_reason("${r}" "SetTarget( appears" "a second group write")
+string(REGEX REPLACE "(if \\(!|[a-z] = )([A-Za-z_]*(->|\\.)SetTarget\\()" "\\2" m "${group_cpp}")
+check_group_regions("${choose_cpp}" "${band_cpp}" "${travel_cpp}" "${m}" r)
+expect_reason("${r}" "evaluated" "the point write result thrown away")
+
+check_writers("${call_census};SupervisorGroup.cpp=2" "" "" r)
+expect_reason("${r}" "call census changed" "a second SetTarget call in SupervisorGroup.cpp")
+check_closers("${closer_census};SupervisorGroup.cpp=1" r)
+expect_reason("${r}" "closers outside TravelMgr.cpp changed" "a third closer in SupervisorGroup.cpp")
+
 # (g) a gate call in the destructor or in the supervisor files.
-string(REPLACE "    ShadowDrop(shadow_);\n}" "    ShadowDrop(shadow_);\n    LaneFree(ai_, Lane::Questbook, \"x\");\n}" m "${sup_cpp}")
+string(REPLACE "    ShadowDrop(shadow_);\n    UnregisterMail(mailGuid_, mailToken_);\n}" "    ShadowDrop(shadow_);\n    UnregisterMail(mailGuid_, mailToken_);\n    LaneFree(ai_, Lane::Questbook, \"x\");\n}" m "${sup_cpp}")
 check_destructor("${m}" "${sup_h}" r)
 expect_reason("${r}" "~Supervisor calls" "a gate call in ~Supervisor")
 
