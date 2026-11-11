@@ -68,13 +68,17 @@ void DropGone(Table& table, std::map<std::uint32_t, Player*> const& bots)
 }
 }
 
-// A3 step 6: the inbox drain (T30-0), then the directive pass (T30-1, design 2.2; a no-op while Types is 0 and nothing is held).
+// A3 step 6: the inbox drain (T30-0), then the directive pass (T30-1, design 2.2; a no-op while Types is 0 and nothing is held),
+// then the meeting shadow (T33-0; a no-op while Gather is 0). The manager clock moves first (T33 2.5): every T33 time of this
+// pass is on it, and a GatherPlace drained in this pass counts before any shadow deadline.
 void WorldThreadManager::Update(std::map<std::uint32_t, Player*> const& bots, std::uint32_t now)
 {
     ++passes_;
     std::uint32_t const nowMs = WorldTimer::getMSTime();
+    mgrMs_ = AdvanceClock(mgrMs_, clockLastMs_, nowMs, sPlayerbotAIConfig.randomBotUpdateInterval);
     DrainInbox(bots, nowMs);
     RunDirectives(bots, nowMs, now);
+    RunGather(nowMs);
 }
 
 void WorldThreadManager::RunDirectives(std::map<std::uint32_t, Player*> const& bots, std::uint32_t nowMs, std::uint32_t nowSec)
@@ -131,6 +135,37 @@ void WorldThreadManager::RunDirectives(std::map<std::uint32_t, Player*> const& b
         std::chrono::steady_clock::now() - start).count()));
 }
 
+void WorldThreadManager::RunGather(std::uint32_t nowMs)
+{
+    // The loader keeps Gather 0 while Types is 0 (EffectiveGather).
+    std::uint32_t const gather = sPlayerbotAIConfig.botGroupsManagerGather;
+    if (!gather)
+    {
+        if (!places_.empty())
+            places_.clear();
+        gather_.Off();
+        return;
+    }
+    // After an off gap the table dates from before the off time, like status_ and edges_ (this pass stored nothing).
+    if (resumedPass_)
+        places_.clear();
+    ShadowInput in;
+    in.nowMs = nowMs;
+    in.mgrMs = mgrMs_;
+    in.resumed = resumedPass_;
+    in.gather = gather;
+    in.rendezvousMinutes = sPlayerbotAIConfig.questGroupsRendezvousMinutes;
+    in.rules.radius = kGatherYards;   // F7 (a): S7's 2D radius, no z (kZUnknown), the instance only on instanceable maps
+    in.rules.zBand = kZUnknown;
+    in.rules.deadCounts = true;       // F12 (a): S7 checks no alive
+    in.rules.maxAgeMs = PlaceMaxAgeMs(sPlayerbotAIConfig.botGroupsManagerStatusSeconds, sPlayerbotAIConfig.randomBotUpdateInterval);
+    in.status = &status_;
+    in.places = &places_;
+    in.swept = &engine_.Swept();   // groups this directive pass ended and swept: their meetings still get a verdict
+    WorldIo io;
+    gather_.Pass(engine_.Groups(), in, [&io](char const* line) { io.Line(line); });
+}
+
 void WorldThreadManager::StoreEvent(manager_inbox::Event const& event, std::uint32_t nowMs)
 {
     switch (event.kind)
@@ -146,6 +181,12 @@ void WorldThreadManager::StoreEvent(manager_inbox::Event const& event, std::uint
         case manager_inbox::Kind::DirectiveAck:
             // T30-1: the supervisor's answer to a directive (3.4); the engine applies it in this pass (step 3).
             acks_.push_back(AckOf(event));
+            break;
+        case manager_inbox::Kind::GatherPlace:
+            // T33-0: the bot's own place for the meeting shadow; kept only while Gather is on (no table when 0).
+            if (sPlayerbotAIConfig.botGroupsManagerGather)
+                gather_.StorePlace(places_, status_, event, nowMs,
+                    PlaceMaxAgeMs(sPlayerbotAIConfig.botGroupsManagerStatusSeconds, sPlayerbotAIConfig.randomBotUpdateInterval));
             break;
         case manager_inbox::Kind::GroupWish:
             wishes_[event.botLow] = manager_inbox::WishSnapshotOf(event, nowMs);
@@ -211,6 +252,7 @@ void WorldThreadManager::DrainInbox(std::map<std::uint32_t, Player*> const& bots
     DropGone(status_, bots);
     DropGone(edges_, bots);
     DropGone(wishes_, bots);
+    DropGone(places_, bots);
 
     manager_inbox::Counters const totals = manager_inbox::Read();
     manager_inbox::MinuteLine line;

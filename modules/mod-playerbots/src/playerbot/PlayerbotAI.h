@@ -1498,6 +1498,9 @@ protected:
     ai::manager_inbox::EdgeFacts managerEdgeLast;   // T30-0: the group edge last compared (a change posts it)
     bool managerEdgeKnown = false;                  // T30-0: false until the first comparison (the first one always posts)
     bool managerPosStuck = false;                   // T30-1: NoteManagerLeaderStuck; cleared once the bot leads no manager QUEST group
+    uint32 managerPlaceMap = 0;                     // T33-0: the map of the place last compared (a change posts it)
+    uint32 managerPlaceInstance = 0;                // T33-0: its raw instance id
+    bool managerPlaceKnown = false;                 // T33-0: false until the first comparison while Gather applies
     // A3 step 3 (ADR-0041, AiPlayerbot.Supervisor, default 0): nullptr while the switch does not apply to this bot.
     std::unique_ptr<ai::supervisor::Supervisor> supervisor_;
     // A3 step 2 (ADR-0041, AiPlayerbot.QuestBook, default 0): nullptr while neither the switch nor the shadow applies to this bot.

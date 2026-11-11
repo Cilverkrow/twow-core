@@ -1450,6 +1450,24 @@ AiPlayerbot.BotGroups.Manager.StatusSeconds = 0
 # the config echo and the console line show the arbiter): the manager owns no bot, the legacy paths are open again and its
 # open groups end with switch_off.
 AiPlayerbot.BotGroups.Manager.Types = 0
+# A3 step 6 T33-0 (design T33 v1.1, owner decisions F1-F17 = (a)): MEASUREMENT ONLY, default 0, no behaviour change. The
+# meeting shadow of the manager's QUEST groups ("Gather" = meeting up; not the gather strategy or GatherTravelDestination).
+# With a value != 0 a bot of the Manager's cohort that is in a group also posts its own place (map, instance id, x/y/z) with
+# every status and at once on a map or instance change; for every manager QUEST group the manager judges the meeting the T33
+# way (every member but the leader within 30 yd 2D of the leader's last place, same map, no z, the instance only on
+# instanceable maps) next to the T30 rule, and runs a virtual deadline (QuestGroups.RendezvousMinutes from formed) on its own
+# clock. Nothing moves, no directive changes, no group forms or ends differently. Lines: "[GroupMgr] event=phase group=
+# phase=rendezvous|goal|turnin ms= gather=0|1" per phase of a manager QUEST group, "[GroupMgr] event=shadow_end group=
+# gather=0|1 result=gathered|expired|t30_cut|closed ms= arrived=n/m" once per measured meeting (expired = the virtual
+# deadline passed; t30_cut = T30's wall-clock rendezvous_timeout came first), both under their own 300 lines per minute, and
+# once a minute "[GroupMgr] minute3 gather= region_mismatch= z_out= place_jump_same= place_jump_other= gather_resume=
+# shadow_arrived= shadow_disagree= shadow_leg_expired= places= open= shadow_gathered= shadow_compared= shadow_t33_first=
+# shadow_t30_first= shadow_t30_cut= dead_at_point= shadow_lines_dropped=" (increments; gather, places = fresh places, open =
+# stands; shadow_disagree / shadow_compared count manager passes, shadow_t33_first / shadow_t30_first meetings).
+# 0 = off (default), 1 = all, 2 = cohort B, 3 = cohort A by the group leader's guid (in T33-0 the cohort only labels the arm,
+# gather= in event=phase). Needs Manager.Types > 0 (else it acts like 0, one error line); any other value acts like 0 (one
+# error line).
+AiPlayerbot.BotGroups.Manager.Gather = 0
 # L1 (owner 07.11.2026, owner-ordered behaviour change): a bot resets its raid lockouts ("reset raids", which drops every bind
 # except the one of its current map, PERM included) only when a real player invites it. An invite by another bot or by a
 # bot-only world-thread group manager (ad-hoc, quest groups) keeps the bot's PERM raid binds; an accept run by the group op
