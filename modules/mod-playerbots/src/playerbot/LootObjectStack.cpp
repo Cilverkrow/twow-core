@@ -380,6 +380,10 @@ bool LootObject::IsLootPossible(Player* bot)
 
 bool LootObjectStack::Add(ObjectGuid guid)
 {
+    // twow-repo#703 item 3 (AiPlayerbot.Loot.MoveGiveUp): an object this bot gave up on stays out until its exclusion ends.
+    // The list is filled only by GiveUp, so with the key 0 it is empty and Add is as before.
+    if (giveUp.Size() && giveUp.Blocks(guid.GetRawValue(), int64(time(nullptr))))
+        return false;
     if (!availableLoot.insert(guid).second)
         return false;
 
@@ -391,6 +395,23 @@ bool LootObjectStack::Add(ObjectGuid guid)
         Remove(ordered[i].guid);
 
     return true;
+}
+
+// twow-repo#703 item 3 (AiPlayerbot.Loot.MoveGiveUp): called only by MoveToLootAction. The object leaves the loot list and stays
+// out for loot_giveup::ExcludeSeconds (every loot kind; independent of the gathering miss list of T28b).
+void LootObjectStack::GiveUp(ObjectGuid guid, int64 now)
+{
+    loot_giveup::Counters& counters = loot_giveup::SharedCounters();
+    counters.held.fetch_add(giveUp.Add(guid.GetRawValue(), now + loot_giveup::ExcludeSeconds, now), std::memory_order_relaxed);
+    counters.giveUps.fetch_add(1, std::memory_order_relaxed);
+    Remove(guid);
+}
+
+LootObjectStack::~LootObjectStack()
+{
+    // twow-repo#703 item 3: a bot that leaves takes its held entries out of the loot_blocked gauge.
+    if (giveUp.Size())
+        loot_giveup::SharedCounters().held.fetch_sub(int64(giveUp.Size()), std::memory_order_relaxed);
 }
 
 void LootObjectStack::Remove(ObjectGuid guid)
@@ -407,6 +428,18 @@ void LootObjectStack::Clear()
 
 bool LootObjectStack::CanLoot(float maxDistance)
 {
+    // twow-repo#703 item 3 (AiPlayerbot.Loot.MoveGiveUp): the "has available loot" check of every bot - expired give-ups leave
+    // here (the loot_blocked gauge) and the minute line is due here. Key 0: nothing.
+    if (sPlayerbotAIConfig.lootMoveGiveUp)
+    {
+        int64 const now = int64(time(nullptr));
+        loot_giveup::Counters& counters = loot_giveup::SharedCounters();
+        if (giveUp.Size())
+            counters.held.fetch_add(giveUp.Purge(now), std::memory_order_relaxed);
+        if (counters.LogDue(uint64(now)))
+            sLog.outBasic("[LootGiveUpMin] mode=%u loot_giveup=%u loot_blocked=%u", sPlayerbotAIConfig.lootMoveGiveUp,
+                counters.TakeGiveUps(), counters.Held());
+    }
     std::vector<LootObject> ordered = OrderByDistance(maxDistance);
     return !ordered.empty();
 }

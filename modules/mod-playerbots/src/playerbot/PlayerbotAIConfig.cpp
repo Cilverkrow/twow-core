@@ -516,6 +516,12 @@ bool PlayerbotAIConfig::Initialize()
     buffStrangerCooldownSeconds = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.Buff.StrangerCooldownSeconds", 900)));
     lootHoldTravelWhileLootable = config.GetBoolDefault("AiPlayerbot.Loot.HoldTravelWhileLootable", false);   // twow-repo#575 H1
     lootHoldTravelWhileLootableMaxSeconds = ai::loot_hold::ClampMaxSeconds(config.GetIntDefault("AiPlayerbot.Loot.HoldTravelWhileLootable.MaxSeconds", int(ai::loot_hold::DefaultMaxSeconds)));   // twow-repo#575 H1
+    lootMoveGiveUp = config.GetIntDefault("AiPlayerbot.Loot.MoveGiveUp", 0);   // twow-repo#703 item 3
+    if (lootMoveGiveUp > 3)
+    {
+        sLog.outError("[LootGiveUp] config key=Loot.MoveGiveUp value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", lootMoveGiveUp);
+        lootMoveGiveUp = 0;
+    }
     lootRoleWeights = std::min<uint32>(2, uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.Loot.RoleWeights", 0))));
     lootFeralFixedSpec = config.GetBoolDefault("AiPlayerbot.Loot.FeralFixedSpec", true);
     // OB-00 08.11.2026 (bug fix: code default 1, 0 = rollback, an unknown value = 1): "loot chance" of a game object
@@ -2213,6 +2219,7 @@ bool PlayerbotAIConfig::Initialize()
             {"LogInGroupOnly", Value(logInGroupOnly)},
             {"Loot.HoldTravelWhileLootable", Value(lootHoldTravelWhileLootable)},
             {"Loot.HoldTravelWhileLootable.MaxSeconds", Value(lootHoldTravelWhileLootableMaxSeconds)},
+            {"Loot.MoveGiveUp", Value(lootMoveGiveUp)},
             {"Loot.RoleWeights", Value(lootRoleWeights)},
             {"LootChance.GameObjectEntryFix", Value(lootChanceGameObjectEntryFix)},
             {"Path.IslandGuard", Value(pathIslandGuard)},
