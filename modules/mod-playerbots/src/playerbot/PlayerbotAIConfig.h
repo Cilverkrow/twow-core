@@ -943,6 +943,10 @@ public:
     // A3 step 6 T30-1 (design T30 v1.1 5.1): the group types the manager forms and holds for the bots of its cohort (bit 1
     // ADHOC, bit 2 QUEST; 0 = none, default). Needs StatusSeconds > 0 (else 0 + error line, F9); other bits are masked.
     uint32 botGroupsManagerTypes = 0;
+    // A3 step 6 T33-0 (design T33 v1.1 5.1, measurement only): the meeting shadow - members in a group post their place
+    // (GatherPlace) and the manager judges every manager QUEST group's meeting next to the T30 rule. 0 = off (default),
+    // 1/2/3 = on (the cohort labels the arm). Needs Types != 0 (else 0 + error line); another value = 0 + error line.
+    uint32 botGroupsManagerGather = 0;
     // L1 (owner 07.11.2026, owner-ordered: code default 1, 0 = rollback, any other value = 1): a bot resets its raid lockouts
     // ("reset raids" in the accept tail) only on a real player's invite, and keeps out of another copy of a raid it is
     // perm-bound to (LockoutPolicy.h, LockoutGuard.cpp). 0 = the old behaviour: reset raids on every accepted invite.

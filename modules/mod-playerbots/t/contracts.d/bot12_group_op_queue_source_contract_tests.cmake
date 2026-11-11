@@ -547,11 +547,12 @@ function(check_oq_load cpp out)
 endfunction()
 check_oq_load("${config_cpp}" r)
 fail_if("${r}")
+# The sorted [ConfigEcho] run of the BotGroups keys (T33-0 adds BotGroups.Manager.Gather in its sorted place).
 foreach(needle
     "botGroupsOpQueueOpsPerTick = ai::group_ops::ClampOpsPerTick(config.GetIntDefault(\"AiPlayerbot.BotGroups.OpQueueOpsPerTick\", 1));"
     "botGroupsOpQueueMaxDepth = ai::group_ops::ClampMaxDepth(config.GetIntDefault(\"AiPlayerbot.BotGroups.OpQueueMaxDepth\", 2048));"
     "botGroupsOpQueueAlertAgeSeconds = ai::group_ops::ClampAlertAgeSeconds(config.GetIntDefault(\"AiPlayerbot.BotGroups.OpQueueAlertAgeSeconds\", 60));"
-    "            {\"BotGroups.LeaderOtherMapSeconds\", Value(botGroupsLeaderOtherMapSeconds)},\n            {\"BotGroups.Manager\", Value(botGroupsManager)},\n            {\"BotGroups.Manager.StatusSeconds\", Value(botGroupsManagerStatusSeconds)},\n            {\"BotGroups.Manager.Types\", Value(botGroupsManagerTypes)},\n            {\"BotGroups.OpQueue\", Value(botGroupsOpQueue)},\n            {\"BotGroups.OpQueueAlertAgeSeconds\", Value(botGroupsOpQueueAlertAgeSeconds)},\n            {\"BotGroups.OpQueueMaxDepth\", Value(botGroupsOpQueueMaxDepth)},\n            {\"BotGroups.OpQueueOpsPerTick\", Value(botGroupsOpQueueOpsPerTick)},\n            {\"BotGroups.ResetRaidsRealInviterOnly\", Value(botGroupsResetRaidsRealInviterOnly)},\n            {\"BotGroups.WorldThreadDefer\"")
+    "            {\"BotGroups.LeaderOtherMapSeconds\", Value(botGroupsLeaderOtherMapSeconds)},\n            {\"BotGroups.Manager\", Value(botGroupsManager)},\n            {\"BotGroups.Manager.Gather\", Value(botGroupsManagerGather)},\n            {\"BotGroups.Manager.StatusSeconds\", Value(botGroupsManagerStatusSeconds)},\n            {\"BotGroups.Manager.Types\", Value(botGroupsManagerTypes)},\n            {\"BotGroups.OpQueue\", Value(botGroupsOpQueue)},\n            {\"BotGroups.OpQueueAlertAgeSeconds\", Value(botGroupsOpQueueAlertAgeSeconds)},\n            {\"BotGroups.OpQueueMaxDepth\", Value(botGroupsOpQueueMaxDepth)},\n            {\"BotGroups.OpQueueOpsPerTick\", Value(botGroupsOpQueueOpsPerTick)},\n            {\"BotGroups.ResetRaidsRealInviterOnly\", Value(botGroupsResetRaidsRealInviterOnly)},\n            {\"BotGroups.WorldThreadDefer\"")
   require_text("${config_cpp}" "${needle}" "config")
 endforeach()
 foreach(needle "uint32 botGroupsOpQueue = 1;" "uint32 botGroupsOpQueueOpsPerTick = 1;" "uint32 botGroupsOpQueueMaxDepth = 2048;"
