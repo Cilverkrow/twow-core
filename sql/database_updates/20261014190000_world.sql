@@ -1,7 +1,8 @@
 -- twow-repo#579 (QUEST-NPC-SPAWN-01), main train 10, batch 1: Turtle custom quest givers that have a
 -- creature_template and quests but no spawn anywhere (no creature row, no script or spell summon, no pool).
--- Positions: map coordinates from the pfQuest-turtle database (MIT, (c) Eric Mauser) and OctoWoW (AoWoW),
--- converted with the server's WorldMapArea.dbc; z = height of the nearest existing spawn (<= 23 yd away),
+-- Positions cross-checked against pfQuest-turtle (MIT, (c) Eric Mauser/Shagu) and OctoWoW map pins (2D map
+-- percentages only), converted with the server's WorldMapArea.dbc; final positions verified in game (owner GM check,
+-- test realm, 11.11.2026); z = height of the nearest existing spawn (<= 23 yd away),
 -- orientation = facing that spawn. Only NPCs whose position is unambiguous are spawned here; the doubtful
 -- ones (Fangorn, Ralwen Ivon, Nizzle, the Thorn Gorge battlemasters, NPCs without any known location) stay
 -- out and are listed in #579. Every spawn was checked in game by the owner on the test realm (11.11.2026).
