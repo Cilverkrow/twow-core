@@ -1331,6 +1331,68 @@ void TestSwitchOffExits()
         "switch off without the supervisor: exit_skipped for both");
 }
 
+std::string LastLine(FakeIo const& io, char const* needle);
+
+std::size_t CountMinute2(FakeIo const& io)
+{
+    return io.CountLines("[GroupMgr] minute2 ");
+}
+
+// T30-1e (CLI-Projekt, R9 P5): the pass in which the registry empties with Types 0 prints minute and minute2 once with the
+// increments so far (RunDirectives returns early from the next pass on); a later start counts its first minute afresh.
+void TestFinalFlush()
+{
+    Engine e;
+    World w;
+    FakeIo io;
+    Rules r = AdhocRules();
+    std::uint32_t t = FormAdhocPair(e, w, r, io, 1000);
+    t += 1000;
+    Refresh(w, t);
+    w.acks.push_back(AckFor(1, SeqOf(io, 1, Verb::Enter), mi::kAckApplied));
+    w.acks.push_back(AckFor(2, SeqOf(io, 2, Verb::Enter), mi::kAckApplied));
+    Run(e, w, r, io, t);
+    t = Tick(e, w, r, io, t, t + 70000);   // one regular minute pair printed, the next minute running
+    std::size_t const before = CountMinute2(io);
+    Require(before == 1, "one regular minute2 line so far");
+    r.types = 0;
+    t += 1000;
+    Refresh(w, t);
+    Run(e, w, r, io, t);
+    Require(e.TotalLeave(EndReason::SwitchOff) == 2 && io.leaves.size() == 1 && e.HasGroups() && CountMinute2(io) == before,
+        "switch off: the registry still holds the group, no early line");
+    t += 1000;
+    Refresh(w, t);
+    w.outcomes.push_back(Outcome(io.leaves[0].bot, 0, go::OpKind::Leave, go::ManagerOpResult::Executed));
+    w.acks.push_back(AckFor(1, SeqOf(io, 1, Verb::Exit), mi::kAckApplied));
+    w.acks.push_back(AckFor(2, SeqOf(io, 2, Verb::Exit), mi::kAckApplied));
+    Run(e, w, r, io, t);
+    Require(e.HasGroups() && CountMinute2(io) == before, "one leave still open: no line yet");
+    t += 1000;
+    Refresh(w, t);
+    w.outcomes.push_back(Outcome(io.leaves[1].bot, 0, go::OpKind::Leave, go::ManagerOpResult::Executed));
+    SetEdge(w, 1, t);
+    SetEdge(w, 2, t);
+    std::size_t const lines = io.lines.size();
+    Run(e, w, r, io, t);
+    Require(!e.HasGroups(), "the registry is empty after this pass");
+    Require(CountMinute2(io) == before + 1 && io.CountLines("[GroupMgr] minute types=0 ") == 1,
+        "the emptying pass prints minute and minute2 once, mid-minute");
+    std::string const flushed = LastLine(io, "[GroupMgr] minute2 ");
+    Require(flushed.find(" leave_switch_off=2") != std::string::npos && flushed.find(" self_left=0") != std::string::npos,
+        "the flushed minute2 holds the switch_off leaves of the minute");
+    Require(LastLine(io, "[GroupMgr] minute types=0 ").find(" left=2") != std::string::npos && io.lines.size() > lines,
+        "the flushed minute line holds both left");
+    // The game stops calling the pass now (no Types, nothing held). A later start: its first minute counts from its own first
+    // pass, not from the flushed minute.
+    r.types = kTypeAdhoc;
+    t = Tick(e, w, r, io, t, t + 60000);
+    Require(CountMinute2(io) == before + 1, "a new start: no line before its first full minute");
+    t = Tick(e, w, r, io, t, t + 1000);
+    Require(CountMinute2(io) == before + 2, "a new start: its first minute line after 60 s");
+    // With Types on the registry keeps its bot entries, so the flush cannot fire; the contract pins its "!r.types" anyway.
+}
+
 // The T02-GROUP read: IsManaged(guid, serial) is true only for a live member of the group with these low 16 bits; another
 // serial, serial 0, a bot not held, an ending member and an empty registry answer false (IsManaged(guid) stays true while held).
 void TestManagedSerialView()
@@ -1912,6 +1974,7 @@ int main()
     TestSerialLow16();
     TestAckStale();
     TestSwitchOffExits();
+    TestFinalFlush();
     TestManagedSerialView();
     TestLeftReasons();
     TestAckWord();
