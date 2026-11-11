@@ -767,7 +767,63 @@ bool PlayerbotAI::CheckReachProgress(Unit* target, float distance)
             bot->GetGUIDLow(), bot->GetLevel(), target->GetEntry(), distance, ai::unreachable::WindowSeconds,
             bot->GetMapId(), bot->GetZoneId(), playerMaster ? "player" : "bot", ignoreSeconds, ai::cohort::Letter(bot->GetGUIDLow()));
     }
+    // twow-repo#703 item 4 (AiPlayerbot.Rotation.UnreachableGiveUp): every [Unreachable] result counts per guid; the key first, so
+    // mode 0 keeps no state. The 300 s ignore above stays until K.
+    if (sPlayerbotAIConfig.rotationUnreachableGiveUp)
+        UnreachableGiveUp(target, now);
     return true;
+}
+
+// twow-repo#703 item 4 (AiPlayerbot.Rotation.UnreachableGiveUp, design v2 85574eca, OB-10 OK 11.11.2026): a roster bot on its own
+// (no group or not its leader) that hit [Unreachable] K times on one guid within the window gives that target up - the whole
+// engagement goes (ClearEngagement), the ignore lasts LongIgnoreSeconds, and the camp of the current quest objective of that entry
+// is marked empty for MarkSeconds (at most once per MarkGuardSeconds per (quest, entry)), so the router picks another target.
+void PlayerbotAI::UnreachableGiveUp(Unit* target, uint32 now)
+{
+    namespace ug = ai::unreachable_giveup;
+    Group* const group = bot->GetGroup();
+    if (!ug::Active(sPlayerbotAIConfig.rotationUnreachableGiveUp, ai::cohort::Applies(sPlayerbotAIConfig.rotationUnreachableGiveUp, bot->GetGUIDLow()),
+            ug::Counts(sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()), HasRealPlayerMaster(), group != nullptr,
+                group && group->GetLeaderGuid() == bot->GetObjectGuid())))
+        return;
+
+    uint64 const guid = target->GetObjectGuid().GetRawValue();
+    uint32 const count = unreachableGiveUp.Note(guid, now);
+    if (count < ug::K)
+        return;
+
+    // 1. The engagement drop, also for this roster bot; the long ignore replaces the 300 s one.
+    unreachableTargets.Add(guid, now, ug::LongIgnoreSeconds);
+    if (aiObjectContext->GetValue<Unit*>("current target")->Get() == target)
+        aiObjectContext->GetValue<Unit*>("current target")->Set(nullptr);
+    ClearEngagement(target);
+
+    // 2. The quest camp: only the current quest objective of this entry, a fixed duration, the 1 h guard.
+    int32 const entry = int32(target->GetEntry());
+    uint32 quest = 0;
+    uint32 markSeconds = 0;
+    bool evicted = false;
+    char const* mark = "none";
+    TravelTarget* travel = aiObjectContext->GetValue<TravelTarget*>("travel target")->Get();
+    if (uint32 const objectiveQuest = travel ? travel->UnreachableCampQuest(entry) : 0)
+    {
+        quest = objectiveQuest;
+        if (unreachableMarkGuard.Allows(objectiveQuest, entry, now))
+        {
+            evicted = travel->MarkUnreachableCamp(objectiveQuest, entry, ug::MarkSeconds * 1000u);
+            unreachableMarkGuard.Note(objectiveQuest, entry, now);
+            markSeconds = ug::MarkSeconds;
+            mark = "set";
+        }
+        else
+            mark = "skip_1h";
+    }
+
+    // 3. One line per give-up (rare: K results of 20 s windows with 300 s ignores between them).
+    sLog.outBasic("[UnreachableGiveUp] bot=%u guid=%u entry=%u quest=%u count=%u ignore_s=%u mark_s=%u mark=%s evicted=%u"
+        " reason=unreachable_k cohort=%c",
+        bot->GetGUIDLow(), target->GetObjectGuid().GetCounter(), target->GetEntry(), quest, count, ug::LongIgnoreSeconds, markSeconds,
+        mark, evicted ? 1u : 0u, ai::cohort::Letter(bot->GetGUIDLow()));
 }
 
 // twow-repo#630 follow-up (AiPlayerbot.Rotation.ReachDropEngagement): the caller dropped only "current target"; every other
@@ -778,6 +834,20 @@ void PlayerbotAI::DropUnreachableEngagement(Unit* target)
     if (!target || !HasRealPlayerMaster() || !ai::cohort::Applies(sPlayerbotAIConfig.rotationReachDropEngagement, bot->GetGUIDLow()))
         return;
 
+    ai::reach_drop::Held const held = ClearEngagement(target);
+    if (!held.Any())
+        return;
+
+    // Every such drop (player groups only, rare): a watch can count them (the [Unreachable] line has a 5 min budget per bot).
+    sLog.outBasic("[ReachDrop] bot=%u target_entry=%u attack=%u pull=%u old=%u selection=%u victim=%u cohort=%c",
+        bot->GetGUIDLow(), target->GetEntry(), held.attackTarget ? 1u : 0u, held.pullTarget ? 1u : 0u, held.oldTarget ? 1u : 0u,
+        held.selection ? 1u : 0u, held.victim ? 1u : 0u, ai::cohort::Letter(bot->GetGUIDLow()));
+}
+
+// The drop steps of DropUnreachableEngagement (twow-repo#630 follow-up), without its gate; twow-repo#703 item 4
+// (Rotation.UnreachableGiveUp) uses them for a roster bot on its own. Returns what still named the target.
+ai::reach_drop::Held PlayerbotAI::ClearEngagement(Unit* target)
+{
     ObjectGuid const guid = target->GetObjectGuid();
     ai::reach_drop::Held held;
     Value<ObjectGuid>* attackTarget = aiObjectContext->GetValue<ObjectGuid>("attack target");
@@ -803,7 +873,7 @@ void PlayerbotAI::DropUnreachableEngagement(Unit* target)
     if (held.victim)
         bot->AttackStop();
     if (!held.Any())
-        return;
+        return held;
 
     // The cached attacker values see the change at once (as OnCombatStarted does for a new target).
     if (sPlayerbotAIConfig.perfAttackersSingleList)
@@ -811,11 +881,7 @@ void PlayerbotAI::DropUnreachableEngagement(Unit* target)
     else
         aiObjectContext->GetValue<std::list<ObjectGuid>>("attackers", 1)->Reset();
     aiObjectContext->GetValue<bool>("has attackers")->Reset();
-
-    // Every such drop (player groups only, rare): a watch can count them (the [Unreachable] line has a 5 min budget per bot).
-    sLog.outBasic("[ReachDrop] bot=%u target_entry=%u attack=%u pull=%u old=%u selection=%u victim=%u cohort=%c",
-        bot->GetGUIDLow(), target->GetEntry(), held.attackTarget ? 1u : 0u, held.pullTarget ? 1u : 0u, held.oldTarget ? 1u : 0u,
-        held.selection ? 1u : 0u, held.victim ? 1u : 0u, ai::cohort::Letter(bot->GetGUIDLow()));
+    return held;
 }
 
 void PlayerbotAI::ReportIdle(uint32 idleSeconds)

@@ -699,6 +699,12 @@ bool PlayerbotAIConfig::Initialize()
     rotationFollowUnstealth = config.GetIntDefault("AiPlayerbot.Rotation.FollowUnstealth", 0);   // twow-repo#630 follow-up
     if (rotationFollowUnstealth > 2)
         rotationFollowUnstealth = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
+    rotationUnreachableGiveUp = config.GetIntDefault("AiPlayerbot.Rotation.UnreachableGiveUp", 0);   // twow-repo#703 item 4
+    if (rotationUnreachableGiveUp > 3)
+    {
+        sLog.outError("[UnreachableGiveUp] config key=Rotation.UnreachableGiveUp value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", rotationUnreachableGiveUp);
+        rotationUnreachableGiveUp = 0;
+    }
     rotationDarkRuneGate = config.GetIntDefault("AiPlayerbot.Rotation.DarkRuneGate", 0);   // twow-repo#602 ROT-01 3c
     if (rotationDarkRuneGate > 2)
         rotationDarkRuneGate = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
@@ -2342,6 +2348,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Rotation.SpecFromPath", Value(rotationSpecFromPath)},
             {"Rotation.TankKitFromLevel", Value(rotationTankKitFromLevel)},
             {"Rotation.TankRoguePoison", Value(rotationTankRoguePoison)},
+            {"Rotation.UnreachableGiveUp", Value(rotationUnreachableGiveUp)},
             {"Rpg.TurnInFirst", Value(rpgTurnInFirst)},
             {"Supervisor", Value(supervisor)},
             {"Supervisor.Arbiter", Value(supervisorArbiter)},
