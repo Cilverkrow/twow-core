@@ -1256,6 +1256,12 @@ AiPlayerbot.QuestRescue.KeepRequestWhenFull = 0
 # not move hearthstones set before.
 # Cohort mode: 0 = off (rollback), 1 = all bots (default), 2 = cohort B (odd guid), 3 = cohort A (even guid); other values act like 0.
 AiPlayerbot.QuestRescue.HomeHubs = 1
+# twow-repo#703 item 1 (BUG FIX, CLI-PATH 11.11.2026; default 0 until its acceptance unit): a quest rescue took a global limiter
+# slot (5 per 10 min) before it computed its targets, so a rescue with no target (e.g. owner rule R1: no rescue inside the start
+# zone) used a slot and moved nothing. 1 = the targets first: an empty list takes no slot ([QuestRescue] state=no_target slot=0;
+# a pending band rescue is consumed, the 2 h per-bot rescue cooldown as before), a non-empty one asks the limiter as before.
+# Logs [QuestRescueMin] notarget_noslot= rung_mismatch= once per minute. 0 = as before (default); other values act like 0.
+AiPlayerbot.QuestRescue.NoTargetFreeSlot = 0
 # A creature entry that killed the bot GrindAvoid.MaxDeaths times within
 # WindowSeconds is skipped as a grind target for AvoidSeconds. 0 = off.
 AiPlayerbot.GrindAvoid.MaxDeaths = 0
@@ -2088,6 +2094,16 @@ AiPlayerbot.RosterFarMove.ArriveSafe = 0
 AiPlayerbot.RosterFarMove.LevelGuard = 0
 AiPlayerbot.RosterFarMove.LevelGuard.Margin = 3
 AiPlayerbot.RosterFarMove.LevelGuard.Radius = 50
+# twow-repo#575 / #703 item 5 (CLI-PATH 10.11.2026): two sub-keys against LevelGuard false alarms; both 0 = the rule above
+# unchanged, and without LevelGuard they do nothing.
+# ZWindow: a spawn counts only if its z is within ZWindow yd of the travel point's z (not the bot's). 0 = off (2D, default),
+# 5..100 yd; any other value is 0 (logged). The skip line gets dz=, [FarMove] gets guard_zfiltered (ZWindow on).
+# SkipHarmless: 1 = spawns whose template never attacks (flags_extra NO_AGGRO 0x2) or is a trigger (INVISIBLE 0x80) are left
+# out of the grid; a spawn that exists only during a game event counts only while that event is active (a normal spawn that
+# an event removes for a while always counts). The grid line gets skipped_harmless= event_spawns= ms=, [FarMove] gets
+# guard_eventfiltered (SkipHarmless on). 0 = off (default).
+AiPlayerbot.RosterFarMove.LevelGuard.SkipHarmless = 0
+AiPlayerbot.RosterFarMove.LevelGuard.ZWindow = 0
 # twow-repo#601 A3 step 1 (owner 04.11.2026 via OB-00, A3-BOT-LOGIK.md 1.3): the RPG sequencing of upstream mangosbot - the generic
 # "rpg" action picks ONE sub-action by a weighted random draw (relevance - 1) x 1000, RpgActionMultiplier then gives every other RPG
 # action x0.1, and after each RPG action a 10 % (30 % in a group or with a real master) "rpg cancel" leaves the target - made a
@@ -2235,8 +2251,8 @@ AiPlayerbot.Path.TransportBoardFix = 0
 # still waits as before ("different map"), with no candidate vessel: no boarding is possible there either way. A dock on
 # the bot's map is scanned on the bot's own map instance (the old scan took the first instance of that map, under the
 # region layout any region). The [TransportWait] trace keeps counting the wait (cand=0 on a cross-map wait).
-# 0 = as before (default until the acceptance unit; then 1 by default, 0 = rollback).
-AiPlayerbot.Path.TransportSameMapGuard = 0
+# 1 = the guard (default since its acceptance unit passed: H1+H4 u1, 10.11.2026, OB-10 OK); 0 = as before (rollback).
+AiPlayerbot.Path.TransportSameMapGuard = 1
 # twow-repo#575 (PATH-01 b, flight A/B 18.10.2026): a res=failed [TaxiUse] line names the refusal: reason=logout|combat|
 # disable_move|unknown_node|mounted|shapeshift|casting|no_path|money|other (first core check that holds; trace only).
 # twow-repo#575 (PATH-01 b, BUG FIX, profile 1 after the A/B): with a flight master the core refuses a flight in a
@@ -4520,6 +4536,10 @@ AiPlayerbot.PerfMonEnabled = 0
 #         attackspeed     (very fast attackspeed)
 #         breath          (underwater breathing)
 #         quest           (quests complete instantly)
+# [ConfigEcho] (T24, OB-00 10.11.2026; log only) proves both keys as the parsed bit mask in decimal, the sum of the bits of
+# the names it understood (unknown names are dropped): taxi 1, gold 2, health 4, mana 8, power 16, item 32, cooldown 64,
+# repair 128, movespeed 256, attackspeed 512, breath 1024, glyph 2048, quest 4096. Item cheat on = bit 32 set;
+# "repair,breath" = 1152, "repair,breath,item" = 1184, nothing = 0.
 # Cheats for alts
 AiPlayerbot.BotCheats = repair,breath
 # Cheats for randombots

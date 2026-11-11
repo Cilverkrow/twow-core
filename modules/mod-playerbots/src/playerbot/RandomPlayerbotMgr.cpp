@@ -39,7 +39,9 @@
 #include "playerbot/AiFactory.h"
 #include "playerbot/StartZonePolicy.h"
 #include "playerbot/ZoneKeepPolicy.h"   // twow-repo#601 owner rule R1 (StartZoneMinLevel rescue gate)
+#include "playerbot/LevelGuardPolicy.h" // twow-repo#575 LevelGuard.SkipHarmless: RefreshActiveEvents
 #include "playerbot/RescueHubPolicy.h"   // twow-repo#575 RG-a (QuestRescue.HomeHubs): the anchor table
+#include "playerbot/QuestRescueSlotPolicy.h"   // twow-repo#703 item 1 (QuestRescue.NoTargetFreeSlot): targets before the limiter
 #include "playerbot/CohortPolicy.h"     // twow-repo#601 owner rule R1 (StartZoneMinLevel.Cohort)
 #include "PlayerbotCommandServer.h"
 #include "MemoryMonitor.h"
@@ -2161,6 +2163,8 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     ReportStaleTarget();    // A3-HARM-UPSTREAM H6 (T40): [StaleTarget] once per minute (AiPlayerbot.Rotation.ReleaseStaleTarget / .Shadow)
     ai::stale_objective::ReportMinute();   // A3-GERUEST-L60 8.4 lever 3: [StaleObjectiveMin] once per minute (StaleObjectiveFilter on)
     ai::zone_keep::ReportObjectiveWindowMinute();   // twow-repo#575 SZF-Q: objective_window lines + [ZoneKeepMin] (ObjectiveWindow on)
+    if (sPlayerbotAIConfig.rosterFarMoveLevelGuardSkipHarmless)
+        ai::level_guard::RefreshActiveEvents();   // twow-repo#575 LevelGuard.SkipHarmless: active-event snapshot (world thread)
     ReportTankKit();        // twow-repo#602: [TankKit] once per minute (AiPlayerbot.Rotation.TankKitFromLevel)
     ReportParkSleep();    // twow-repo#541: core switches + cell source lines once per minute (AiPlayerbot.Park.CellSourceStats)
     ReportCombatIdle();   // twow-repo#541 (audit A17): [CombatIdle] once per minute (AiPlayerbot.Perf.CombatIdleYield)
@@ -7839,6 +7843,15 @@ void RandomPlayerbotMgr::ProcessQuestRescues()
         return;
     lastQuestRescueScan = now;
 
+    // twow-repo#703 item 1: the minute line, only with the key (world thread, once per minute; the counts of the passes before).
+    if (ai::rescue_slot::TargetsFirst(sPlayerbotAIConfig.questRescueNoTargetFreeSlot))
+    {
+        ai::rescue_slot::Counters& slotCounters = ai::rescue_slot::SharedCounters();
+        if (slotCounters.LogDue(uint64(now)))
+            sLog.outBasic("[QuestRescueMin] notarget_noslot=%u rung_mismatch=%u",
+                slotCounters.noTargetNoSlot.exchange(0, std::memory_order_relaxed), slotCounters.rungMismatch.exchange(0, std::memory_order_relaxed));
+    }
+
     for (auto const& [guid, bot] : GetAllBots())
     {
         PlayerbotAI* ai = bot ? GetBotAI(bot) : nullptr;
@@ -7852,6 +7865,28 @@ void RandomPlayerbotMgr::ProcessQuestRescues()
         if (!ai || !ai->TakeQuestRescueRequest() || IsParkedBot(guid))
             continue;
 
+        // twow-repo#703 item 1 (AiPlayerbot.QuestRescue.NoTargetFreeSlot, default 0): with the key the targets come before the global
+        // limiter. The band rung is only peeked here and taken after a granted slot (a refused rescue loses nothing). An empty list
+        // takes no slot: the band rescue is consumed (its drop line as before, no requeue, no limiter call), the no_target line
+        // says slot=0 and the 2 h per-bot cooldown starts as before. Off: nothing here runs - the order below is the old one.
+        bool const targetsFirst = ai::rescue_slot::TargetsFirst(sPlayerbotAIConfig.questRescueNoTargetFreeSlot);
+        uint32 peekedRung = 0;
+        std::vector<WorldLocation> earlyTargets;
+        if (targetsFirst)
+        {
+            peekedRung = ai->PeekBandRescueRung(now);
+            earlyTargets = peekedRung ? ai::quest_band::HubRescueTargets(bot, peekedRung - 1) : QuestRescueTargets(bot);
+            if (!ai::rescue_slot::NeedsSlot(earlyTargets.empty()))
+            {
+                ai->TakeBandRescueRung(now);
+                sLog.outBasic("[QuestRescue] state=no_target slot=0 bot=%u level=%u race=%u zone=%u",
+                    bot->GetGUIDLow(), bot->GetLevel(), uint32(bot->getRace()), bot->GetZoneId());
+                ai::rescue_slot::SharedCounters().noTargetNoSlot.fetch_add(1, std::memory_order_relaxed);
+                ai->OnQuestRescued(now);
+                continue;
+            }
+        }
+
         // The bot asks again next minute while it stays stuck.
         if (!questRescueLimiter.TryAcquire(now))
         {
@@ -7864,7 +7899,12 @@ void RandomPlayerbotMgr::ProcessQuestRescues()
         }
 
         uint32 const bandRung = ai->TakeBandRescueRung(now);   // twow-repo#601 S5a: a band rescue (rung + 1), 0 = a plain rescue
-        std::vector<WorldLocation> const targets = bandRung ? ai::quest_band::HubRescueTargets(bot, bandRung - 1) : QuestRescueTargets(bot);
+        // twow-repo#703 item 1: the list from before the limiter, unless the taken rung is not the peeked one (counted, computed again).
+        bool const reuseEarly = ai::rescue_slot::ReuseEarlyTargets(targetsFirst, bandRung, peekedRung);
+        if (targetsFirst && !reuseEarly)
+            ai::rescue_slot::SharedCounters().rungMismatch.fetch_add(1, std::memory_order_relaxed);
+        std::vector<WorldLocation> const targets = reuseEarly ? std::move(earlyTargets) :
+            bandRung ? ai::quest_band::HubRescueTargets(bot, bandRung - 1) : QuestRescueTargets(bot);
         if (targets.empty())
         {
             sLog.outBasic("[QuestRescue] state=no_target bot=%u level=%u race=%u zone=%u",
