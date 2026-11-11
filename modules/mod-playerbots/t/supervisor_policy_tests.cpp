@@ -400,9 +400,9 @@ void TestArbiter()
     for (std::size_t i = 0; i < kWriterIds; ++i)
         full.family[i] = 4294967295u;
     char wide[kArbiterMinBuf];
-    std::size_t const wn = FormatArbiterMin(wide, sizeof(wide), 'B', full);
-    Require(wn == 643 && wn == std::strlen(wide) && wn + 1 < sizeof(wide), "the longest minute line (643) fits 768, not cut");
-    Require(std::string(wide).find(" gate_off_bot=4294967295") == wn - std::strlen(" gate_off_bot=4294967295"),
+    std::size_t const minN = FormatArbiterMin(wide, sizeof(wide), 'B', full);
+    Require(minN == 643 && minN == std::strlen(wide) && minN + 1 < sizeof(wide), "the longest minute line (643) fits 768, not cut");
+    Require(std::string(wide).find(" gate_off_bot=4294967295") == minN - std::strlen(" gate_off_bot=4294967295"),
         "the longest minute line ends with the last field");
 
     // Buffers: cut and terminated, a zero buffer writes nothing, no line break survives.
