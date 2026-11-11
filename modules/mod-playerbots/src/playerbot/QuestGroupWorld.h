@@ -59,6 +59,18 @@ struct SavedTravel
     bool valid = false;
 };
 
+// --- bot thread, also used by the T02-GROUP handler (A3 step 3, AiPlayerbot.Supervisor.Arbiter = 2, BotGroups.Manager.Types > 0;
+// default 0; SupervisorGroup.cpp) ---------------------------------------------------------------------------------------------
+// The quest log of the bot: progress counter (objectives, +1000 complete, +1000 rewarded), complete or rewarded, rewarded.
+std::uint32_t Counter(Player* bot, std::uint32_t questId);
+bool Complete(Player* bot, std::uint32_t questId);
+bool TurnedIn(Player* bot, std::uint32_t questId);
+// Follow the leader: master = leader and the follower set posted (group_ai_refresh::Follower); intact = that master and the set
+// applied or still pending; the turn-in set posted (group_ai_refresh::TurnIn). The sets are applied by ApplyRoleSet.
+void MakeFollower(PlayerbotAI* ai, Player* leader);
+bool FollowerIntact(PlayerbotAI* ai, Player* leader);
+void MakeTurnIn(PlayerbotAI* ai);
+
 class WorldThreadManager
 {
 public:

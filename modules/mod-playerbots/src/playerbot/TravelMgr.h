@@ -91,6 +91,10 @@ namespace ai
 		// bot thread (PlayerbotAI::QuestBandGiverFilter: switch first, then the scope and a usable ladder row for the bot's band);
 		// read by QuestRelationTravelDestination::IsPossible / IsActive only as values. false / 0 for every other bot.
 		bool HasBandGiverFilter() const { return bandGiverFilter; }
+		// A3 step 3 T02-GROUP (AiPlayerbot.Supervisor.Arbiter = 2, BotGroups.Manager.Types > 0; default 0): the group goal c, a
+		// snapshot taken in the constructor on the bot's own thread (ai::supervisor::GroupGoalSnapshot); read by the quest IsPossible
+		// checks only as a value. 0 outside GROUP, on a foreign thread and in the default constructor: no filter.
+		std::uint32_t GetGroupGoalQuest() const { return groupGoalQuest; }
 		// twow-repo#333 P1-v (AiPlayerbot.Travel.RpgAreaLevelFromSpawn): the area level of an RPG target from its spawn nearest to the
 		// bot (RpgAreaLevelPolicy.h), set in the constructor on the bot thread; false for every bot with the switch off.
 		bool UsesRpgAreaFromSpawn() const { return rpgAreaFromSpawn; }
@@ -147,6 +151,7 @@ namespace ai
 		uint32 gapWindowLow = 0;    // twow-repo#601 S2 R3: 0 / 0 for every bot but the GrindMode 1 population
 		uint32 gapWindowHigh = 0;
 		bool bandGiverFilter = false;    // twow-repo#601 S5a: false for every bot but an in-scope BandLadder bot with a usable row
+		std::uint32_t groupGoalQuest = 0;   // A3 step 3 T02-GROUP: the group goal c (0 = no group goal)
 		bool rpgAreaFromSpawn = false;   // twow-repo#333 P1-v: Travel.RpgAreaLevelFromSpawn applies to this bot
 		bool giverAnyQuest = false;     // twow-repo#601 lever (iv): QuestFirstProgression.GiverFetchAnyQuest applies to this bot
 		uint32 bandGreyLevel = 0;

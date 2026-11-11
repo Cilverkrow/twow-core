@@ -3,7 +3,8 @@ cmake_policy(VERSION 3.16)
 # T30; owner standing approval 09.11.2026, plan A3-PLAN-ZIEL). The supervisor's mailbox, declared in the scaffold, is defined in
 # SupervisorMail.cpp. No new switch: only a supervisor drains (AiPlayerbot.Supervisor, default 0), and nothing posts yet. This
 # contract pins:
-#   (a) the definitions: Post, Drain, Forget and MailWaiting only in SupervisorMail.cpp, one file-local mutex, three lock sites;
+#   (a) the definitions: Post, Drain, Forget, MailWaiting, RegisterMail and UnregisterMail (T02-GROUP: the ring opens only for a
+#       registered bot, the unregister compares the token) only in SupervisorMail.cpp, one file-local mutex, five lock sites;
 #   (b) the fast paths: Drain and TakeMail return on one atomic load while no mail waits, Forget while no ring is open;
 #   (c) the call sites: Drain only in Supervisor::TakeMail (called only from the tick), Forget only in ~PlayerbotAI, no Post
 #       caller in this pair (T30 posts the first GroupDirective); nobody outside the namespace drains or posts;
@@ -12,8 +13,9 @@ cmake_policy(VERSION 3.16)
 #   (f) Event carries the target id c right after b;
 #   (g) the line: own tag [SupervisorMail], one format, written outside the lock and never for a silent stretch;
 #   (h) the unit test is registered;
-#   (i) the answer to the manager (manager_inbox::PostDirectiveAck, CLI-GRP's pair #968/#969) is not called here: whichever of the
-#       two pairs merges second wires exactly one call in TakeMail and changes this check and theirs.
+#   (i) the answer to the manager (manager_inbox::PostDirectiveAck) is not called in Supervisor.cpp or SupervisorMail.cpp: T02-GROUP
+#       calls it once from SupervisorGroup.cpp (a3s3_supervisor_group_source_contract_tests.cmake); TakeMail ends with
+#       HandleMail(mail, n), which writes nothing.
 # Pure rules: t/supervisor_mail_policy_tests.cpp. Every check_* returns "" when it holds, else the reason; the negative probes at
 # the end reuse them on mutated text.
 if(NOT DEFINED PB_SOURCE_DIR)
@@ -117,12 +119,15 @@ set(DEF_DRAIN "std::size_t Drain(std::uint32_t guidLow, Event* out, std::size_t 
 set(DEF_FORGET "void Forget(std::uint32_t guidLow)\n{")
 set(DEF_WAITING "bool MailWaiting()\n{")
 set(TAKE_DEF "void Supervisor::TakeMail()\n{")
-set(TAKE_DRAIN "    Drain(bot->GetGUIDLow(), mail, kMailSlots);\n}")
+set(TAKE_DRAIN "    std::size_t const n = Drain(bot->GetGUIDLow(), mail, kMailSlots);\n    HandleMail(mail, n);\n}")
+set(DEF_REGISTER "std::uint32_t RegisterMail(std::uint32_t guidLow)\n{")
+set(DEF_UNREGISTER "void UnregisterMail(std::uint32_t guidLow, std::uint32_t token)\n{")
+set(OPEN_ALLOWED "MailOpenAllowed(g_registered.count(guidLow) != 0, guidLow, g_mail.size())")
 set(FORGET_CALL "    if (bot)\n        ai::supervisor::Forget(bot->GetGUIDLow());\n")
 
 # ---- (a) + (b) the definitions and their fast paths --------------------------------------------------------------------------
 function(check_defs mail_cpp all_sources out)
-  foreach(def "${DEF_POST}" "${DEF_DRAIN}" "${DEF_FORGET}" "${DEF_WAITING}")
+  foreach(def "${DEF_POST}" "${DEF_DRAIN}" "${DEF_FORGET}" "${DEF_WAITING}" "${DEF_REGISTER}" "${DEF_UNREGISTER}")
     count_text("${mail_cpp}" "${def}" n)
     count_text("${all_sources}" "${def}" m)
     if(NOT n EQUAL 1 OR NOT m EQUAL 1)
@@ -136,8 +141,27 @@ function(check_defs mail_cpp all_sources out)
     return()
   endif()
   count_text("${mail_cpp}" "std::lock_guard<std::mutex> lock(g_mailMutex);" n)
-  if(NOT n EQUAL 3)
-    set(${out} "SupervisorMail.cpp: g_mailMutex taken ${n} times (3 expected: Post, Drain, Forget)" PARENT_SCOPE)
+  if(NOT n EQUAL 5)
+    set(${out} "SupervisorMail.cpp: g_mailMutex taken ${n} times (5 expected: Post, Drain, Forget, RegisterMail, UnregisterMail)" PARENT_SCOPE)
+    return()
+  endif()
+  # T02-GROUP: the registration pair writes no line and rolls no minute; Unregister compares the token (a late old instance
+  # must not drop the new one's registration).
+  region("${mail_cpp}" "${DEF_REGISTER}" "\n}\n" reg_body)
+  region("${mail_cpp}" "${DEF_UNREGISTER}" "\n}\n" unreg_body)
+  foreach(body "${reg_body}" "${unreg_body}")
+    foreach(word "RollLocked(" "EmitMailMinute(" "sLog")
+      string(FIND "${body}" "${word}" at)
+      if(NOT at EQUAL -1)
+        set(${out} "SupervisorMail.cpp: RegisterMail/UnregisterMail must not use ${word}" PARENT_SCOPE)
+        return()
+      endif()
+    endforeach()
+  endforeach()
+  count_text("${unreg_body}" "token" ntok)   # the parameter in the signature, then the comparison
+  string(FIND "${unreg_body}" "g_registered" gr)
+  if(ntok LESS 2 OR gr EQUAL -1)
+    set(${out} "SupervisorMail.cpp: UnregisterMail does not compare the stored token" PARENT_SCOPE)
     return()
   endif()
   region("${mail_cpp}" "${DEF_DRAIN}" "\n}\n" drain)
@@ -160,7 +184,7 @@ function(check_defs mail_cpp all_sources out)
   # A full ring refuses the new event (counted); no overwrite of old mail, no wait.
   region("${mail_cpp}" "${DEF_POST}" "\n}\n" post)
   foreach(needle "        if (it != g_mail.end() && MailPush(it->second, event))" "        else\n            ++g_total.dropped;"
-      "g_mail.size() < kMailMaxRings")
+      "${OPEN_ALLOWED}" "++g_total.unreg")
     string(FIND "${post}" "${needle}" at)
     if(at EQUAL -1)
       set(${out} "SupervisorMail.cpp: Post lacks ${needle}" PARENT_SCOPE)
@@ -251,8 +275,10 @@ function(check_pure mail_policy out)
       return()
     endif()
   endforeach()
+  # Code only: the comments cite the key names (AiPlayerbot.* contains "Player").
+  string(REGEX REPLACE "//[^\n]*" "" mail_code "${mail_policy}")
   foreach(word "sPlayerbotAIConfig" "sLog" "mutex" "atomic" "Player" "WorldTimer")
-    string(FIND "${mail_policy}" "${word}" at)
+    string(FIND "${mail_code}" "${word}" at)
     if(NOT at EQUAL -1)
       set(${out} "SupervisorMailPolicy.h: not pure: ${word}" PARENT_SCOPE)
       return()
@@ -296,6 +322,19 @@ function(check_line mail_policy mail_cpp all_sources out)
     set(${out} "SupervisorMailPolicy.h: the [SupervisorMail] line format changed" PARENT_SCOPE)
     return()
   endif()
+  # T02-GROUP: the appended fields are their own literal (the tag literal above keeps its closing quote); the tag itself stays
+  # once in the module, so this contract and the unit tests (outside PB) do not repeat it.
+  string(FIND "${mail_policy}" "\" unreg=%llu regs=%u oldest_s=%u\"" at)
+  if(at EQUAL -1)
+    set(${out} "SupervisorMailPolicy.h: the appended mailbox fields unreg/regs/oldest_s are missing" PARENT_SCOPE)
+    return()
+  endif()
+  region("${mail_cpp}" "MailMinuteOut RollLocked()\n{" "\n}\n" roll)
+  string(FIND "${roll}" "MailGaugeDue(" at)
+  if(at EQUAL -1)
+    set(${out} "SupervisorMail.cpp: RollLocked lacks the gauge rule MailGaugeDue(" PARENT_SCOPE)
+    return()
+  endif()
   count_regex("${mail_cpp}" "sLog\\.out[A-Za-z]+\\(" n)
   if(NOT n EQUAL 1)
     set(${out} "SupervisorMail.cpp: ${n} log calls (1 expected: EmitMailMinute)" PARENT_SCOPE)
@@ -303,7 +342,7 @@ function(check_line mail_policy mail_cpp all_sources out)
   endif()
   foreach(needle
       "void EmitMailMinute(MailMinuteOut const& minute)\n{\n    if (!minute.due)\n        return;"
-      "    out.due = !MailSilent(out.delta);"
+      "    out.due = MailGaugeDue(out.delta, "
       "    out.delta = MailDelta(g_total, g_logged);\n    g_logged = g_total;")
     string(FIND "${mail_cpp}" "${needle}" at)
     if(at EQUAL -1)
@@ -343,7 +382,7 @@ endfunction()
 function(check_ack sup_cpp mail_cpp out)
   string(FIND "${sup_cpp}\n${mail_cpp}" "PostDirectiveAck(" at)
   if(NOT at EQUAL -1)
-    set(${out} "the mailbox pair calls PostDirectiveAck (the pair that merges second wires it and changes this check)" PARENT_SCOPE)
+    set(${out} "the mailbox files call PostDirectiveAck (T02-GROUP posts it from SupervisorGroup.cpp only)" PARENT_SCOPE)
     return()
   endif()
   set(${out} "" PARENT_SCOPE)
@@ -382,6 +421,24 @@ expect_reason("Forget locks without a ring" "${r}" "Forget does not start")
 string(REPLACE "        else\n            ++g_total.dropped;" "" m "${mail_cpp}")
 check_defs("${m}" "${all_sources}" r)
 expect_reason("a refused post not counted" "${r}" "Post lacks")
+# T02-GROUP: the ring opens only for a registered bot; the unregistered drop is counted; the token compare; no line from the
+# registration pair; a sixth lock.
+string(REPLACE "${OPEN_ALLOWED}" "guidLow != 0 && g_mail.size() < kMailMaxRings" m "${mail_cpp}")
+check_defs("${m}" "${all_sources}" r)
+expect_reason("a ring opens for an unregistered bot" "${r}" "Post lacks")
+string(REPLACE "++g_total.unreg" "++g_total.lost" m "${mail_cpp}")
+check_defs("${m}" "${all_sources}" r)
+expect_reason("the unregistered drop not counted" "${r}" "Post lacks")
+string(REPLACE "token" "tok" m "${mail_cpp}")
+string(REPLACE "${DEF_UNREGISTER}" "void UnregisterMail(std::uint32_t guidLow, std::uint32_t tok)\n{" m "${m}")
+check_defs("${m}" "${all_sources}" r)
+expect_reason("UnregisterMail without the token compare" "${r}" "the mailbox definition|does not compare the stored token")
+string(REPLACE "${DEF_REGISTER}" "${DEF_REGISTER}\n    EmitMailMinute(RollLocked());" m "${mail_cpp}")
+check_defs("${m}" "${all_sources}" r)
+expect_reason("RegisterMail writes a line" "${r}" "must not use")
+string(REPLACE "std::lock_guard<std::mutex> lock(g_mailMutex);" "std::lock_guard<std::mutex> lock(g_mailMutex);\n    std::lock_guard<std::mutex> lock(g_mailMutex);" m "${mail_cpp}")
+check_defs("${m}" "${all_sources}" r)
+expect_reason("more lock sites" "${r}" "g_mailMutex taken")
 
 # (c) a Post caller, a second Forget, Forget gone from the destructor, a second drain, the shadow draining.
 check_calls("${sup_cpp}" "${shadow_cpp}" "${ai_cpp}" "${all_sources}\n    ai::supervisor::Post(guid, ev);" r)
@@ -439,15 +496,22 @@ check_line("${mail_policy}" "${m}" "${all_sources}" r)
 expect_reason("the line under the lock" "${r}" "after the lock scope")
 check_line("${mail_policy}" "${mail_cpp}" "${all_sources}\n// [SupervisorMail]" r)
 expect_reason("the tag used elsewhere" "${r}" "appears")
+# T02-GROUP: the appended fields, the gauge rule in the roll.
+string(REPLACE "\" unreg=%llu regs=%u oldest_s=%u\"" "\" unreg=%llu\"" m "${mail_policy}")
+check_line("${m}" "${mail_cpp}" "${all_sources}" r)
+expect_reason("the appended mailbox fields gone" "${r}" "unreg/regs/oldest_s")
+string(REPLACE "MailGaugeDue(" "MailSilentNot(" m "${mail_cpp}")
+check_line("${mail_policy}" "${m}" "${all_sources}" r)
+expect_reason("the gauge rule removed" "${r}" "MailGaugeDue")
 
 # (h) the unit test not registered.
 string(REPLACE "add_test(NAME supervisor_mail_policy\n" "add_test(NAME other\n" m "${tests_cmake}")
 check_unit("${m}" "${unit_test}" r)
 expect_reason("the unit test not registered" "${r}" "tests.cmake: missing")
 
-# (i) the ack wired in this pair.
-string(REPLACE "${TAKE_DRAIN}" "    Drain(bot->GetGUIDLow(), mail, kMailSlots);\n    ai::manager_inbox::PostDirectiveAck(1, 2, 1, 0);\n}" m "${sup_cpp}")
+# (i) the ack wired in Supervisor.cpp (it belongs in SupervisorGroup.cpp).
+string(REPLACE "${TAKE_DRAIN}" "    std::size_t const n = Drain(bot->GetGUIDLow(), mail, kMailSlots);\n    ai::manager_inbox::PostDirectiveAck(1, 2, 1, 0);\n}" m "${sup_cpp}")
 check_ack("${m}" "${mail_cpp}" r)
-expect_reason("the ack wired here" "${r}" "calls PostDirectiveAck")
+expect_reason("the ack wired here" "${r}" "files call PostDirectiveAck")
 
 message(STATUS "${TAG}: OK")
