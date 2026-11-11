@@ -24,7 +24,7 @@ if(NOT DEFINED PB_MODULE_DIR)
 endif()
 
 set(TAG "a3s3 arbiter shadow")
-set(RATCHET_BASE 98)   # (SetTarget|SetStatus|SetNullTravelTarget)( in the module: 97 at release/9.x 55cd53f8, 98 with A3 step 3 T02-a (the probe in SupervisorEnforce.cpp: r1 on the live target and the local copy; pair a3s3_arbiter_enforce_source_contract_tests.cmake)
+set(RATCHET_BASE 101)   # (SetTarget|SetStatus|SetNullTravelTarget)( in the module: 97 at release/9.x 55cd53f8, 98 with A3 step 3 T02-a (the probe in SupervisorEnforce.cpp: r1 on the live target and the local copy; pair a3s3_arbiter_enforce_source_contract_tests.cmake), 101 with A3 step 3 T02-GROUP (SupervisorGroup.cpp: one SetTarget( for the gather point and two SetStatus( in CloseLive; pair a3s3_supervisor_group_source_contract_tests.cmake)
 
 function(read_source path out_var)
   if(NOT EXISTS "${PB_SOURCE_DIR}/${path}")
@@ -50,6 +50,7 @@ read_source("aiplayerbot.conf.dist.in" conf_dist)
 read_source("strategy/actions/ChooseTravelTargetAction.cpp" choose_cpp)
 read_source("QuestBand.cpp" band_cpp)
 read_source("QuestGroupWorld.cpp" group_world_cpp)
+read_source("SupervisorGroup.cpp" sup_group_cpp)
 read_source("strategy/actions/MoveToTravelTargetAction.cpp" move_cpp)
 read_source("strategy/values/TravelValues.cpp" travel_values_cpp)
 read_source("strategy/actions/ReleaseSpiritAction.h" release_h)
@@ -373,6 +374,45 @@ set(SCOPES
   "debug_cpp|bool DebugAction::HandleStuck(Event& event, Player* requester, const std::string& text)|Command|${END_FN}"
   "setup_cpp|TestResult CommandSetupSetDestination::Execute(|Test|${END_FN}")
 
+# A3 step 3 T02-GROUP: SupervisorGroup.cpp writes the live target in two places (CloseLive's closers and the gather point).
+# Every top-level function of that file that holds a SetTarget( or SetStatus( call starts with the Group writer scope as its
+# head line (the line right after the opening brace), and no writer call comes before it. The file is cut at its top-level
+# closing braces, so a new writing function needs the head line too.
+set(GROUP_SCOPE_HEAD "\n{\n    ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::Group);\n")
+function(check_group_scopes text out)
+  # Walk the text function by function (a loop, not a list: "[" and ";" in C++ text would split a list wrongly).
+  set(rest "${text}")
+  set(writers 0)
+  while(NOT rest STREQUAL "")
+    string(FIND "${rest}" "\n}\n" cut)
+    if(cut EQUAL -1)
+      set(chunk "${rest}")
+      set(rest "")
+    else()
+      math(EXPR cut "${cut} + 3")
+      string(SUBSTRING "${rest}" 0 ${cut} chunk)
+      string(SUBSTRING "${rest}" ${cut} -1 rest)
+    endif()
+    string(REGEX MATCH "(^|[^A-Za-z0-9_])(SetTarget|SetStatus)\\(" hit "${chunk}")
+    if(hit STREQUAL "")
+      continue()
+    endif()
+    math(EXPR writers "${writers} + 1")
+    string(FIND "${chunk}" "${GROUP_SCOPE_HEAD}" head_at)
+    string(REGEX MATCH "[^\n]*(SetTarget|SetStatus)\\(" first_writer "${chunk}")
+    string(FIND "${chunk}" "${first_writer}" writer_at)
+    if(head_at EQUAL -1 OR NOT head_at LESS writer_at)
+      set(${out} "SupervisorGroup.cpp: a function holding ${hit} does not start with 'ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::Group);' as its head line" PARENT_SCOPE)
+      return()
+    endif()
+  endwhile()
+  if(NOT writers EQUAL 2)
+    set(${out} "SupervisorGroup.cpp: ${writers} writing function(s) (2 expected: CloseLive and the point write)" PARENT_SCOPE)
+    return()
+  endif()
+  set(${out} "" PARENT_SCOPE)
+endfunction()
+
 set(WRITER_TOKENS "SetStatus(" "SetTarget(" "SetNullTravelTarget(" "setNewTarget(" "CopyTarget(" "Reset(")
 
 # The file texts come from the caller's scope by name (${${var}}); a negative probe swaps one of them: probe_var names the
@@ -518,10 +558,11 @@ function(check_switch config_h config_cpp conf_dist ai_cpp policy all_sources ou
   endif()
   # A3 step 3 T02-a: the probe key (supervisorArbiterProbe) is a different member; it is pinned by the enforce contract.
   # CLI-GRP T30-1c (agreed with CLI-Projekt 10.11.): the group manager reads the switch through ArbiterValue in LiveTypesNow
-  # (GroupManager.cpp; pinned by a3s6_t30_directives check_t30_1c), so 2.
+  # (GroupManager.cpp; pinned by a3s6_t30_directives check_t30_1c), so 2. A3 step 3 T02-GROUP adds the gate-off counter
+  # GateOffThread (SupervisorEnforce.cpp, first statement ArbiterValue(...) != 2; pinned by the enforce contract), so 3.
   count_regex("${all_sources}" "sPlayerbotAIConfig\\.supervisorArbiter[^A-Za-z0-9_]" n)
-  if(NOT n EQUAL 2)
-    set(${out} "the arbiter switch is read in ${n} places (2 expected: the gate, the group manager)" PARENT_SCOPE)
+  if(NOT n EQUAL 3)
+    set(${out} "the arbiter switch is read in ${n} places (3 expected: the gate, the group manager, GateOffThread)" PARENT_SCOPE)
     return()
   endif()
   set(${out} "" PARENT_SCOPE)
@@ -574,6 +615,10 @@ if(NOT r STREQUAL "")
   message(FATAL_ERROR "${TAG}: ${r}")
 endif()
 check_scopes("" "" r)
+if(NOT r STREQUAL "")
+  message(FATAL_ERROR "${TAG}: ${r}")
+endif()
+check_group_scopes("${sup_group_cpp}" r)
 if(NOT r STREQUAL "")
   message(FATAL_ERROR "${TAG}: ${r}")
 endif()
@@ -715,6 +760,30 @@ expect_caught("${r}" "a scope on the whole of UpdateAI")
 
 check_new_target_callers("${all_sources}\n    setNewTarget(requester, &other, travelTarget);" r)
 expect_caught("${r}" "a new setNewTarget caller")
+
+# T02-GROUP: the Group scope as the head line of CloseLive and of the point write; a third writing function.
+string(REPLACE "{\n    ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::Group);\n" "{\n" m "${sup_group_cpp}")
+check_group_scopes("${m}" r)
+expect_caught("${r}" "the Group scope removed from every writing function")
+
+set(GROUP_SCOPE_LINE "{\n    ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::Group);\n")
+string(FIND "${sup_group_cpp}" "${GROUP_SCOPE_LINE}" first_scope)
+string(LENGTH "${GROUP_SCOPE_LINE}" scope_len)
+math(EXPR after_scope "${first_scope} + ${scope_len}")
+string(SUBSTRING "${sup_group_cpp}" 0 ${first_scope} m_head)
+string(SUBSTRING "${sup_group_cpp}" ${after_scope} -1 m_tail)
+check_group_scopes("${m_head}{\n${m_tail}" r)
+expect_caught("${r}" "the Group scope removed from the first writing function only")
+
+string(REPLACE "ai::supervisor::WriterId::Group);\n" "ai::supervisor::WriterId::Select);\n" m "${sup_group_cpp}")
+check_group_scopes("${m}" r)
+expect_caught("${r}" "a wrong family on the Group writers")
+
+check_group_scopes("${sup_group_cpp}\nvoid Supervisor::ExtraWrite()\n{\n    target->SetStatus(TravelStatus::TRAVEL_STATUS_NONE);\n}\n" r)
+expect_caught("${r}" "a third writing function without the scope")
+
+check_ratchet("${all_sources}\n    target->SetTarget(dest, pos);\n    target->SetTarget(dest, pos);\n    target->SetTarget(dest, pos);\n    target->SetTarget(dest, pos);" r)
+expect_caught("${r}" "four more writers above the T02-GROUP base")
 
 string(REPLACE "    ai::supervisor::ThreadTag const threadTag(ai::supervisor::ThreadKind::Bot, this);\n" "" m "${ai_cpp}")
 check_tags("${m}" "${scripts_cpp}" "${rnd_cpp}" "${all_sources}" r)

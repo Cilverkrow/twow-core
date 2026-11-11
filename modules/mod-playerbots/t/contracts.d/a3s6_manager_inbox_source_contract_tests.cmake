@@ -16,7 +16,8 @@ cmake_policy(VERSION 3.16)
 #       silent minute (StatusSeconds 0, no ack); a stale window/table after an off gap is started over;
 #   (h) the unit test is registered;
 #   (i) DirectiveAck (addendum 09.11., agreed with CLI-Projekt): appended to Kind, PostDirectiveAck posts it through the inbox's
-#       own Post, counted as ack=<inc>; no caller in this pair. Post sites = the status hook + PostDirectiveAck.
+#       own Post, counted as ack=<inc>; one caller (T02-GROUP SupervisorGroup.cpp SendAck, SendLeft for the left post). Post sites
+#       = the status hook + PostDirectiveAck + PostDirectiveLeft.
 # T30-0 (design T30 v1.1, Fakten + Op-Weg) extends this pair, measurement only: GroupEdge appended to Kind; the status hook's
 # PostManagerStatus posts Status (flags + objective key), GroupEdge (on a change, compared each engine pass, and with every
 # status) and GroupWish (with the status) - three Post sites, all in PostManagerStatus behind the same gate; the manager keeps the
@@ -482,14 +483,14 @@ function(check_ack policy inbox_h inbox_cpp all_sources out)
       return()
     endif()
   endforeach()
-  # No caller in this pair: the declaration and the definition are the only two mentions in the module.
+  # The declaration, the definition and the one T02-GROUP caller are the only mentions in the module.
   count_text("${all_sources}" "PostDirectiveAck(" n)
-  if(NOT n EQUAL 2)
-    set(${out} "PostDirectiveAck( appears ${n} times in the module (2 expected: declaration and definition, no caller yet)" PARENT_SCOPE)
+  if(NOT n EQUAL 3)
+    set(${out} "PostDirectiveAck( appears ${n} times in the module (3 expected: declaration, definition, the T02-GROUP caller SendAck)" PARENT_SCOPE)
     return()
   endif()
   # T30-1b (G2, agreed with CLI-Projekt 10.11.): PostDirectiveLeft packs state kAckLeft (b0-7) and the held serial (b16-31),
-  # seq 0; declared, defined, no caller yet (T02-GROUP wires it).
+  # seq 0; declared, defined, one caller (T02-GROUP SendLeft).
   string(FIND "${inbox_h}" "bool PostDirectiveLeft(std::uint32_t guidLow, std::uint16_t serial, std::uint8_t reason);" at)
   if(at EQUAL -1)
     set(${out} "ManagerInbox.h: PostDirectiveLeft is not declared as agreed" PARENT_SCOPE)
@@ -510,8 +511,8 @@ function(check_ack policy inbox_h inbox_cpp all_sources out)
     endif()
   endforeach()
   count_text("${all_sources}" "PostDirectiveLeft(" n)
-  if(NOT n EQUAL 2)
-    set(${out} "PostDirectiveLeft( appears ${n} times in the module (2 expected: declaration and definition, no caller yet)" PARENT_SCOPE)
+  if(NOT n EQUAL 3)
+    set(${out} "PostDirectiveLeft( appears ${n} times in the module (3 expected: declaration, definition, the T02-GROUP caller SendLeft)" PARENT_SCOPE)
     return()
   endif()
   # The unqualified Post( inside the namespace: exactly two calls (PostDirectiveAck, PostDirectiveLeft), next to the
@@ -693,14 +694,21 @@ expect_reason("MinuteLineDue always true" "${r}" "ManagerInboxPolicy.h: missing"
 string(REPLACE "std::array<std::uint64_t, manager_inbox::kKindBuckets>" "std::array<std::uint64_t, manager_inbox::kKinds>" m "${mgr_h}")
 check_minute("${policy}" "${inbox_h}" "${inbox_cpp}" "${m}" "${mgr_cpp}" "${all_sources}" r)
 expect_reason("kind totals without the other bucket" "${r}" "not sized kKindBuckets")
-# (i) a caller of PostDirectiveAck, a second unqualified Post(, the ack built as another kind, the namespace opened elsewhere.
+# (i) the one T02-GROUP caller removed or a second one, a second unqualified Post(, the ack built as another kind, the
+# namespace opened elsewhere.
+string(REGEX REPLACE "manager_inbox::PostDirectiveAck\\(" "manager_inbox::PostDirectiveAckGone(" m "${all_sources}")
+check_ack("${policy}" "${inbox_h}" "${inbox_cpp}" "${m}" r)
+expect_reason("PostDirectiveAck caller removed" "${r}" "PostDirectiveAck\\( appears 2 times")
 check_ack("${policy}" "${inbox_h}" "${inbox_cpp}" "${all_sources}\n    ai::manager_inbox::PostDirectiveAck(1, 2, 3, 0);" r)
-expect_reason("PostDirectiveAck called" "${r}" "no caller yet")
+expect_reason("a second PostDirectiveAck caller" "${r}" "PostDirectiveAck\\( appears 4 times")
 check_ack("${policy}" "${inbox_h}" "${inbox_cpp}\nbool Y() { return Post(Event{}); }" "${all_sources}" r)
 expect_reason("a third unqualified Post(" "${r}" "3 unqualified Post")
 # T30-1b: PostDirectiveLeft called, its serial not packed, its seq not 0.
+string(REGEX REPLACE "manager_inbox::PostDirectiveLeft\\(" "manager_inbox::PostDirectiveLeftGone(" m "${all_sources}")
+check_ack("${policy}" "${inbox_h}" "${inbox_cpp}" "${m}" r)
+expect_reason("PostDirectiveLeft caller removed" "${r}" "PostDirectiveLeft\\( appears 2 times")
 check_ack("${policy}" "${inbox_h}" "${inbox_cpp}" "${all_sources}\n    ai::manager_inbox::PostDirectiveLeft(1, 2, 26);" r)
-expect_reason("PostDirectiveLeft called" "${r}" "PostDirectiveLeft\\( appears 3 times")
+expect_reason("a second PostDirectiveLeft caller" "${r}" "PostDirectiveLeft\\( appears 4 times")
 string(REPLACE " | (std::uint32_t(serial) << 16);" ";" m "${inbox_cpp}")
 check_ack("${policy}" "${inbox_h}" "${m}" "${all_sources}" r)
 expect_reason("the left serial not packed" "${r}" "PostDirectiveLeft: missing")
