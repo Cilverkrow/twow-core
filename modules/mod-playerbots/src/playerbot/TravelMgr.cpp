@@ -2935,7 +2935,12 @@ void TravelTarget::CheckStatus()
     if (groupMember)
     {
         Player* member = groupMember.GetPlayer();
-        if (!member || (ai->IsSafe(member) && SameMapObject(bot, member) && member->GetGroup() != bot->GetGroup()))   // twow-repo#710: member on another Map object: its group is not read
+        // twow-repo#710 (E3, OB-10 design): the membership test is the BOT's own - its Group list, read everywhere on this thread - with the
+        // guid stored in the copy (groupMember is an ObjectGuid): the member's own group pointer is never read, so there is no foreign read at all
+        // and a copy of a member who left the group expires at once, also while that member stands in another region or on another map.
+        // (A bot with no group at all holds no group copy either; the old test kept such a copy while the member was group-less, too.)
+        Group* const botGroup = bot->GetGroup();
+        if (!member || !botGroup || !botGroup->IsMember(groupMember))
         {
             ai->TellDebug(ai->GetMaster(), "Travel target expired because it was from a player that is no longer in the group.", "debug travel");
             SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);
