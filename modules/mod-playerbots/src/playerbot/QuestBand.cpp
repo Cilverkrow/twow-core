@@ -830,6 +830,12 @@ uint32 PlayerbotAI::TakeBandRescueRung(uint32 now)
     return rungPlusOne;
 }
 
+uint32 PlayerbotAI::PeekBandRescueRung(uint32 now) const
+{
+    bool dropped = false;
+    return ai::quest_band::UnpackRescue(bandRescue.load(std::memory_order_relaxed), now, dropped);
+}
+
 void PlayerbotAI::NoteBand(uint8 event, bool cohortB)
 {
     if (event < ai::quest_band::EventCount)
