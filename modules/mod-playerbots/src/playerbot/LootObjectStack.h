@@ -1,6 +1,7 @@
 #pragma once
 #include "playerbot.h"
 #include "playerbot/GatheringPacePolicy.h"   // twow-repo#333 T28b (AiPlayerbot.Gathering.PaceReach)
+#include "playerbot/LootGiveUpPolicy.h"   // twow-repo#703 item 3 (AiPlayerbot.Loot.MoveGiveUp)
 
 class PlayerbotAI;
 
@@ -52,6 +53,7 @@ namespace ai
     {
     public:
         LootObjectStack(Player* bot) : bot(bot) {}
+        ~LootObjectStack();
 
     public:
         bool Add(ObjectGuid guid);
@@ -64,6 +66,12 @@ namespace ai
         std::vector<LootObject> OrderByDistance(float maxDistance = 0);
         // twow-repo#333 T28b: the far-pick state of this bot (GatheringPacePolicy.h); read and written on the bot's own thread.
         gathering_pace::State& Pace() { return pace; }
+        // twow-repo#703 item 3 (AiPlayerbot.Loot.MoveGiveUp, LootGiveUpPolicy.h): the approach state of "move to loot" and the
+        // give-up. GiveUp is called only by MoveToLootAction (the key on): the object leaves the list and Add refuses it for
+        // loot_giveup::ExcludeSeconds; Add is the only insert, so no loot list reader (has available loot, LootAction, the
+        // travel / rpg pauses) offers it. Both read and written on the bot's own thread.
+        loot_giveup::Try& MoveTry() { return moveTry; }
+        void GiveUp(ObjectGuid guid, int64 now);
 
     private:
         bool PaceFarOk(PlayerbotAI* ai, LootObject& lootObject, uint32 now);
@@ -71,6 +79,8 @@ namespace ai
         Player* bot;
         LootTargetList availableLoot;
         gathering_pace::State pace;
+        loot_giveup::BlockList giveUp;   // twow-repo#703 item 3: filled only by GiveUp, so empty with the key 0
+        loot_giveup::Try moveTry;
     };
 
     // twow-repo#333 T28b (AiPlayerbot.Gathering.PaceReach, GatheringPacePolicy.h). The callers test the key first.
