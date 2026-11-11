@@ -29,6 +29,11 @@ cmake_policy(VERSION 3.16)
 #       word) handled before the seq match, only with seq 0 and the serial of the bot's current group; the end reasons
 #       bot_left_done/lost/off appended before Count; the ack reason names 21-27; osc (kOscSec 900) and self_left at the end
 #       of minute2 (the minute line's loop stops at lines_dropped), skip_unknown_30m last on minute2; the dist text;
+#   (h8) T30-1d (OB-10 review of R9, B4; CLI-Projekt 11.11.): a QUEST follower on another map than its leader - the counters
+#       appended after left_stale, the minute2 tail (max, open and open age last), the base accrued for acked followers only,
+#       an episode opened / closed only on fresh snapshots of both in QuestRules and counted only once confirmed (else
+#       follow_other_map_short), closed as end=ended in EndMember and MarkLeft (so switch_off and disarm close it), end=gone in
+#       ForgetGone, end=resume at the last pass before a gap, the write census, kOtherMapLongMs 600000, the line, the dist text;
 #   (i) the unit tests registered and run.
 # Pure rules: t/group_directive_policy_tests.cpp, t/group_manager_policy_tests.cpp, t/adhoc_group_policy_tests.cpp. Every
 # check_* reads the source texts from the variables below and returns "" when it holds, else the reason; the negative probes
@@ -735,7 +740,7 @@ function(check_t30_1b out)
   string(FIND "${m2}" "\" leave_%s=%llu\"" leave)
   string(FIND "${m2}" "    for (std::size_t i = kCountsMinuteLoop; i < kCountsMinute2Loop && n > 0" cnt)
   string(FIND "${m2}" "\" skip_unknown_30m=%llu\", (unsigned long long)m.skipUnknown30m);\n" skip)
-  string(FIND "${m2}" "    for (std::size_t i = kCountsMinute2Loop; i < kCounts && n > 0 && std::size_t(n) < size; ++i)\n        n += std::snprintf(buf + n, size - std::size_t(n), \" %s=%llu\", CntName(Cnt(i)), (unsigned long long)m.c[i]);\n    return n;" last)
+  string(FIND "${m2}" "    for (std::size_t i = kCountsMinute2Loop; i < kCounts && n > 0 && std::size_t(n) < size; ++i)\n        n += std::snprintf(buf + n, size - std::size_t(n), \" %s=%llu\", CntName(Cnt(i)), (unsigned long long)m.c[i]);\n" last)
   if(leave EQUAL -1 OR cnt EQUAL -1 OR skip EQUAL -1 OR last EQUAL -1 OR NOT leave LESS cnt OR NOT cnt LESS skip OR NOT skip LESS last)
     set(${out} "t30-1b: minute2 does not end with osc, self_left, skip_unknown_30m and then the T30-1c counters" PARENT_SCOPE)
     return()
@@ -750,7 +755,7 @@ function(check_t30_1c out)
       "gm_policy|    return arbiter == kManagerArbiter ? EffectiveTypes(types, statusSeconds) : 0u;"
       "mgr_cpp|#include \"playerbot/SupervisorShadow.h\""
       "mgr_cpp|${LIVE_NOW}"
-      "dpol|    SelfLeft,\n    // T30-1c (OB-10 note on #992): appended after skip_unknown_30m, at the very end of minute2 (kCountsMinute2Loop).\n    LeftStale,\n    Count,\n};"
+      "dpol|    SelfLeft,\n    // T30-1c (OB-10 note on #992): appended after skip_unknown_30m, at the very end of minute2 (kCountsMinute2Loop).\n    LeftStale,\n"
       "dpol|        case Cnt::LeftStale: return \"left_stale\";"
       "dpol|constexpr std::size_t kCountsMinute2Loop = std::size_t(Cnt::SelfLeft) + 1;"
       "gm_test|    TestLiveTypes();"
@@ -776,6 +781,91 @@ function(check_t30_1c out)
   count_text("${mgr_cpp}" "LiveTypesNow()" n)
   if(NOT n EQUAL 3)
     set(${out} "t30-1c: LiveTypesNow() appears ${n} times in GroupManager.cpp (3 expected: definition, RunDirectives, OwnsBot)" PARENT_SCOPE)
+    return()
+  endif()
+  set(${out} "" PARENT_SCOPE)
+endfunction()
+
+# ---- (h8) T30-1d: a QUEST follower on another map than its leader (follow_other_map) ---------------------------------------------
+set(OM_ENUM "    LeftStale,\n    // T30-1d (OB-10 review of R9, B4): a QUEST follower on another map than its leader, appended after left_stale.\n    FollowOtherMap,\n    FollowOtherMap600,\n    FollowOtherMapMs,\n    FollowQuestMs,\n    FollowOtherMapShort,\n    Count,\n};")
+set(OM_TAIL "(unsigned long long)m.c[i]);\n    if (n > 0 && std::size_t(n) < size)\n        n += std::snprintf(buf + n, size - std::size_t(n), \" follow_other_map_max_ms=%llu follow_other_map_open=%llu\"\n            \" follow_other_map_open_max_ms=%llu\", (unsigned long long)m.otherMapMaxMs, (unsigned long long)m.otherMapOpen,\n            (unsigned long long)m.otherMapOpenMaxMs);\n    return n;\n}")
+set(OM_BASE "            if (m.state == MemberState::Acked && m.low != g.leaderLow)\n                Count(Cnt::FollowQuestMs, passDeltaMs_);\n            if (m.state != MemberState::Acked || m.silent || m.bgWait)\n                continue;")
+set(OM_CALL "            TrackProgress(g, m, k);\n            // T30-1d: an episode opens or closes only on fresh snapshots of the follower and its leader (no old map after a\n            // teleport); without them it stays as it is.\n            if (m.low != g.leaderLow && ls && Fresh(ls->receivedMs) && Fresh(s->receivedMs))\n                OtherMapEpisode(g, m, ls->mapId != s->mapId, ls->receivedMs, s->receivedMs, io);")
+set(OM_EPISODE "        if (otherMap && !m.otherMapSinceMs)\n        {\n            m.otherMapSinceMs = manager_inbox::PostStamp(now_);\n            m.otherMapConfirmed = false;\n        }\n        else if (otherMap && !m.otherMapConfirmed && !After(m.otherMapSinceMs, leaderRcvMs) && !After(m.otherMapSinceMs, memberRcvMs))\n            m.otherMapConfirmed = true;\n        else if (!otherMap && m.otherMapSinceMs)\n            CloseOtherMap(g, m, \"back\", \"-\", now_, &io);")
+set(OM_CLOSE "        if (!m.otherMapSinceMs)\n            return;\n        std::uint32_t const ms = After(atMs, m.otherMapSinceMs) ? atMs - m.otherMapSinceMs : 0u;\n        bool const confirmed = m.otherMapConfirmed;\n        m.otherMapSinceMs = 0;\n        m.otherMapConfirmed = false;\n        if (!confirmed)\n        {\n            Count(Cnt::FollowOtherMapShort);\n            return;\n        }\n        Count(Cnt::FollowOtherMap);\n        Count(Cnt::FollowOtherMapMs, ms);\n        if (ms >= kOtherMapLongMs)\n            Count(Cnt::FollowOtherMap600);\n        minute_.otherMapMaxMs = std::max<std::uint64_t>(minute_.otherMapMaxMs, ms);\n        if (io)\n            OtherMapLine(*io, g.serial, m.low, ms, end, reason);\n        else\n            goneEpisodes_.push_back(GoneEpisode{ g.serial, m.low, ms });")
+set(OM_OPEN "                    if (m.otherMapSinceMs)\n                    {\n                        ++minute_.otherMapOpen;\n                        minute_.otherMapOpenMaxMs = std::max<std::uint64_t>(minute_.otherMapOpenMaxMs,\n                            After(now_, m.otherMapSinceMs) ? now_ - m.otherMapSinceMs : 0u);\n                    }")
+set(OM_GONE_LINES "        for (GoneEpisode const& ge : goneEpisodes_)          // T30-1d: the episodes ForgetGone closed before this pass\n            OtherMapLine(io, ge.serial, ge.low, ge.ms, \"gone\", \"-\");\n        goneEpisodes_.clear();")
+function(check_t30_1d out)
+  foreach(pair "dpol|constexpr std::uint32_t kOtherMapLongMs = 600000;"
+      "dpol|${OM_ENUM}"
+      "dpol|        case Cnt::FollowOtherMap: return \"follow_other_map\";"
+      "dpol|        case Cnt::FollowOtherMap600: return \"follow_other_map_600\";"
+      "dpol|        case Cnt::FollowOtherMapMs: return \"follow_other_map_ms\";"
+      "dpol|        case Cnt::FollowQuestMs: return \"follow_quest_ms\";"
+      "dpol|        case Cnt::FollowOtherMapShort: return \"follow_other_map_short\";"
+      "dpol|    std::uint32_t otherMapSinceMs = 0;"
+      "dpol|    bool otherMapConfirmed = false;"
+      "dpol|        passDeltaMs_ = passed_ ? now_ - lastPassMs_ : 0u;"
+      "dpol|${OM_GONE_LINES}"
+      "dpol|${OM_EPISODE}"
+      "dpol|${OM_CLOSE}"
+      "dpol|\"[GroupMgr] event=other_map group=%u bot=%u ms=%u end=%s reason=%s\", serial, low, ms, end,\n            reason);\n        Emit(io, line);"
+      "dpol|${OM_OPEN}"
+      "conf_dist|\"[GroupMgr] event=other_map group= bot= ms= end= reason=\""
+      "conf_dist|follow_other_map_short= (episodes closed before they"
+      "conf_dist|follow_other_map_open_max_ms= (the oldest open one's age), levels."
+      "unit_test|    TestFollowOtherMap();")
+    string(FIND "${pair}" "|" bar)
+    string(SUBSTRING "${pair}" 0 ${bar} var)
+    math(EXPR bar "${bar} + 1")
+    string(SUBSTRING "${pair}" ${bar} -1 needle)
+    string(FIND "${${var}}" "${needle}" at)
+    if(at EQUAL -1)
+      set(${out} "t30-1d: ${var} missing ${needle}" PARENT_SCOPE)
+      return()
+    endif()
+  endforeach()
+  # minute2 ends with the T30-1d levels (max, open, open age), after the counter loop (left_stale, then the T30-1d counters).
+  region("${dpol}" "inline int FormatMinute2(" "\n}\n" m2)
+  string(FIND "${m2}" "${OM_TAIL}" tail)
+  if(tail EQUAL -1)
+    set(${out} "t30-1d: minute2 does not end with follow_other_map_max_ms, follow_other_map_open and follow_other_map_open_max_ms" PARENT_SCOPE)
+    return()
+  endif()
+  # QuestRules: the base before the acked filter (silent and bg_wait followers count), the one episode call after it.
+  region("${dpol}" "    void QuestRules(ManagedGroup& g, PassInput const& in, Rules const& r, Io& io)" "        f.members = members;" qr)
+  string(FIND "${qr}" "${OM_BASE}" base)
+  string(FIND "${qr}" "${OM_CALL}" call)
+  if(base EQUAL -1 OR call EQUAL -1 OR NOT base LESS call)
+    set(${out} "t30-1d: QuestRules does not accrue the base and then open/close on fresh snapshots" PARENT_SCOPE)
+    return()
+  endif()
+  # The census: one episode call, one base count, the open and close writes only in OtherMapEpisode / CloseOtherMap, and the
+  # closes: back (OtherMapEpisode), ended (EndMember, MarkLeft), gone (ForgetGone), resume (GapRule).
+  foreach(pair "OtherMapEpisode(@2" "Count(Cnt::FollowQuestMs@1" "m.otherMapSinceMs = @2" "m.otherMapConfirmed = @3"
+      "CloseOtherMap(@6" "CloseOtherMap(g, m, \"ended\", @2" "goneEpisodes_.push_back(@1")
+    string(FIND "${pair}" "@" at)
+    string(SUBSTRING "${pair}" 0 ${at} needle)
+    math(EXPR at "${at} + 1")
+    string(SUBSTRING "${pair}" ${at} -1 want)
+    count_text("${dpol}" "${needle}" n)
+    if(NOT n EQUAL want)
+      set(${out} "t30-1d: ${needle} appears ${n} times (${want} expected)" PARENT_SCOPE)
+      return()
+    endif()
+  endforeach()
+  # Every end closes the episode first: EndMember (its reason), MarkLeft (the member's reason), ForgetGone (gone, the line at
+  # the next pass), the resume (at the last pass before the gap).
+  region("${dpol}" "    void EndMember(ManagedGroup& g, Member& m, EndReason why, Io& io, bool mayBeGrouped)" "        m.reason = why;" em)
+  string(FIND "${em}" "            return;\n        CloseOtherMap(g, m, \"ended\", EndReasonName(why), now_, &io);\n        m.reason = why;" emc)
+  region("${dpol}" "    void MarkLeft(ManagedGroup& g, Member& m, Io& io)" "        m.state = MemberState::Left;" ml)
+  string(FIND "${ml}" "            return;\n        CloseOtherMap(g, m, \"ended\", EndReasonName(m.reason), now_, &io);\n        m.state = MemberState::Left;" mlc)
+  region("${dpol}" "    void ForgetGone(Present const& present)" "                    m.state = MemberState::Left;" fg)
+  string(FIND "${fg}" "                    CloseOtherMap(entry.second, m, \"gone\", \"-\", now_, nullptr);" fgc)
+  region("${dpol}" "        if (in.resumed)\n        {" "                    m.lastProgressSec = nowSec_;" rs)
+  string(FIND "${rs}" "                    CloseOtherMap(g, m, \"resume\", \"-\", lastPassMs_, &io);" rsc)
+  if(emc EQUAL -1 OR mlc EQUAL -1 OR fgc EQUAL -1 OR rsc EQUAL -1)
+    set(${out} "t30-1d: EndMember, MarkLeft, ForgetGone or the resume does not close the episode" PARENT_SCOPE)
     return()
   endif()
   set(${out} "" PARENT_SCOPE)
@@ -853,6 +943,8 @@ function(run_check check out)
     check_t30_1b(r)
   elseif(check STREQUAL "check_t30_1c")
     check_t30_1c(r)
+  elseif(check STREQUAL "check_t30_1d")
+    check_t30_1d(r)
   elseif(check STREQUAL "check_unit")
     check_unit(r)
   else()
@@ -863,7 +955,7 @@ endfunction()
 
 # ---- the real sources ----------------------------------------------------------------------------------------------------------
 foreach(check check_switch check_noop check_post check_ops check_pure check_gates check_mirrors check_order check_minute check_cohort
-    check_resume_drain check_wish check_serial check_view check_t30_1b check_t30_1c check_unit)
+    check_resume_drain check_wish check_serial check_view check_t30_1b check_t30_1c check_t30_1d check_unit)
   run_check(${check} r)
   fail_if("${r}")
 endforeach()
@@ -1049,6 +1141,45 @@ probe(mgr_cpp "    return Owns(sPlayerbotAIConfig.botGroupsManager, LiveTypesNow
 probe(dpol "        {\n            Count(Cnt::LeftStale);\n            return;\n        }\n        Count(Cnt::SelfLeft);" "        {\n            Count(Cnt::AckStale);\n            return;\n        }\n        Count(Cnt::SelfLeft);"
   check_t30_1b "t30-1b: dpol missing" "a stale left ack counted as ack_stale again")
 probe(gm_test "    TestLiveTypes();\n" "" check_t30_1c "t30-1c: gm_test missing" "the live-types test not run")
+# (h8) T30-1d: follow_other_map.
+probe(dpol " && ls && Fresh(ls->receivedMs) && Fresh(s->receivedMs))\n                OtherMapEpisode(" " && ls)\n                OtherMapEpisode("
+  check_t30_1d "t30-1d: QuestRules does not accrue" "an episode opened on stale snapshots")
+probe(dpol " && Fresh(s->receivedMs))\n                OtherMapEpisode(" ")\n                OtherMapEpisode(" check_t30_1d "t30-1d: QuestRules does not accrue" "the follower's snapshot not checked")
+probe(dpol "            if (m.state == MemberState::Acked && m.low != g.leaderLow)\n                Count(Cnt::FollowQuestMs"
+  "            if (m.state == MemberState::Acked)\n                Count(Cnt::FollowQuestMs" check_t30_1d "t30-1d: QuestRules does not accrue" "the leader counted in the base")
+probe(dpol "${OM_BASE}" "            if (m.state != MemberState::Acked || m.silent || m.bgWait)\n                continue;\n            if (m.state == MemberState::Acked && m.low != g.leaderLow)\n                Count(Cnt::FollowQuestMs, passDeltaMs_);"
+  check_t30_1d "t30-1d: QuestRules does not accrue" "silent and bg_wait followers left out of the base")
+probe(dpol "            return;\n        CloseOtherMap(g, m, \"ended\", EndReasonName(why), now_, &io);\n        m.reason = why;" "            return;\n        m.reason = why;"
+  check_t30_1d "t30-1d: CloseOtherMap\\( appears 5 times" "switch_off leaves the episode open (EndMember)")
+probe(dpol "            return;\n        CloseOtherMap(g, m, \"ended\", EndReasonName(m.reason), now_, &io);\n        m.state = MemberState::Left;" "            return;\n        m.state = MemberState::Left;"
+  check_t30_1d "t30-1d: CloseOtherMap\\( appears 5 times" "MarkLeft leaves the episode open")
+probe(dpol "                    CloseOtherMap(entry.second, m, \"gone\", \"-\", now_, nullptr);   // T30-1d" "                    // T30-1d"
+  check_t30_1d "t30-1d: CloseOtherMap\\( appears 5 times" "a logout drops the open episode (ForgetGone)")
+probe(dpol "                    CloseOtherMap(g, m, \"resume\", \"-\", lastPassMs_, &io);\n" ""
+  check_t30_1d "t30-1d: CloseOtherMap\\( appears 5 times" "the resume keeps the open episode (the gap counted)")
+probe(dpol "                    CloseOtherMap(g, m, \"resume\", \"-\", lastPassMs_, &io);" "                    CloseOtherMap(g, m, \"resume\", \"-\", now_, &io);"
+  check_t30_1d "t30-1d: EndMember, MarkLeft, ForgetGone or the resume" "the resume close counts the gap")
+probe(dpol "        else if (otherMap && !m.otherMapConfirmed && !After(m.otherMapSinceMs, leaderRcvMs) && !After(m.otherMapSinceMs, memberRcvMs))\n            m.otherMapConfirmed = true;\n"
+  "" check_t30_1d "t30-1d: dpol missing" "an episode never confirmed")
+probe(dpol " && !After(m.otherMapSinceMs, leaderRcvMs) && !After(m.otherMapSinceMs, memberRcvMs))" ")" check_t30_1d "t30-1d: dpol missing"
+  "confirmed on the snapshots that opened it (joint map change counts)")
+probe(dpol "        if (!confirmed)\n        {\n            Count(Cnt::FollowOtherMapShort);\n            return;\n        }\n" "" check_t30_1d "t30-1d: dpol missing"
+  "unconfirmed episodes counted")
+probe(dpol "constexpr std::uint32_t kOtherMapLongMs = 600000;" "constexpr std::uint32_t kOtherMapLongMs = 300000;" check_t30_1d "t30-1d: dpol missing" "follow_other_map_600 on 5 minutes")
+probe(dpol "        if (ms >= kOtherMapLongMs)\n" "        if (ms > kOtherMapLongMs)\n" check_t30_1d "t30-1d: dpol missing" "an episode of exactly 600 s not counted")
+probe(dpol "    FollowOtherMap,\n    FollowOtherMap600,\n" "    FollowOtherMap600,\n    FollowOtherMap,\n" check_t30_1d "t30-1d: dpol missing" "the minute2 counters reordered")
+probe(dpol "    LeftStale,\n    // T30-1d" "    // T30-1d" check_t30_1d "t30-1d: dpol missing" "the T30-1d counters not after left_stale")
+probe(dpol "                        ++minute_.otherMapOpen;\n" "" check_t30_1d "t30-1d: dpol missing" "the open level never set")
+probe(dpol " (unsigned long long)m.otherMapMaxMs, (unsigned long long)m.otherMapOpen,\n" " (unsigned long long)m.otherMapOpen, (unsigned long long)m.otherMapMaxMs,\n"
+  check_t30_1d "t30-1d: minute2 does not end" "max and open swapped")
+probe(dpol "        passDeltaMs_ = passed_ ? now_ - lastPassMs_ : 0u;" "        passDeltaMs_ = 1000u;" check_t30_1d "t30-1d: dpol missing" "the base on a fixed pass length")
+probe(dpol "        else if (!otherMap && m.otherMapSinceMs)\n            CloseOtherMap(g, m, \"back\", \"-\", now_, &io);" "" check_t30_1d "t30-1d: dpol missing" "an episode never closes as back")
+probe(dpol "            OtherMapLine(io, ge.serial, ge.low, ge.ms, \"gone\", \"-\");\n" "" check_t30_1d "t30-1d: dpol missing" "the gone lines never written")
+probe(dpol "                    m.leaderOtherMapSince = 0;\n" "                    m.leaderOtherMapSince = 0;\n                    m.otherMapSinceMs = 0;\n" check_t30_1d
+  "t30-1d: m.otherMapSinceMs = +appears 3 times" "an extra reset of the episode clock")
+probe(conf_dist "follow_other_map_open_max_ms= (the oldest open one's age), levels." "follow_other_map_open_max_ms= (an increment)." check_t30_1d
+  "t30-1d: conf_dist missing" "the dist text calls the levels increments")
+probe(unit_test "    TestFollowOtherMap();\n" "" check_t30_1d "t30-1d: unit_test missing" "the T30-1d test not run")
 # (i) the unit tests.
 probe(tests_cmake "add_test(NAME group_directive_policy\n" "add_test(NAME other\n" check_unit "unit: tests.cmake missing" "the unit test not registered")
 probe(unit_test "    TestTypesZero();\n" "" check_unit "unit: t/group_directive_policy_tests.cpp does not run" "the Types 0 test not run")

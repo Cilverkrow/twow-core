@@ -1446,6 +1446,15 @@ AiPlayerbot.BotGroups.Manager.StatusSeconds = 0
 # not as too_small or switch_off; an increment), self_left= (an increment) and skip_unknown_30m= (a level, not an increment: the bots the manager skipped as
 # skip_unknown without a break for 30 minutes or more at the line), then left_stale= (T30-1c, an increment: left acks that did
 # not match).
+# T30-1d (measurement only): a QUEST follower whose fresh status shows another map than its leader's fresh status opens an
+# other-map episode; it counts once a later pass still shows two maps on snapshots of both received after the open (else a
+# joint map change would count). It closes when both are on one map again (end=back), when the member ends (end=ended with
+# its end reason, switch_off too), when it leaves the bot map (end=gone) or at a resume (end=resume, at the last pass before
+# the gap): "[GroupMgr] event=other_map group= bot= ms= end= reason=". minute2 then ends with follow_other_map= (counted
+# episodes closed), follow_other_map_600= (of them 10 minutes or longer), follow_other_map_ms= (their ms), follow_quest_ms=
+# (ms of the acked QUEST followers, leaders not included: the base), follow_other_map_short= (episodes closed before they
+# counted, no line), all increments, then follow_other_map_max_ms= (the longest episode closed in the minute),
+# follow_other_map_open= (open episodes at the line) and follow_other_map_open_max_ms= (the oldest open one's age), levels.
 # T30-1c: the manager acts only while the arbiter enforces, i.e. AiPlayerbot.Supervisor.Arbiter = 2 or the console
 # "rndbot arbiter enforce" (the T02-GROUP handler refuses Enter and Update below 2). Below 2, Types acts like 0 (no own line;
 # the config echo and the console line show the arbiter): the manager owns no bot, the legacy paths are open again and its
