@@ -812,39 +812,55 @@ void TestArrivedAtAnchor()
 
 void TestShadowAnchor()
 {
-    // T33-0b: ADHOC anchor counters in the shadow, no event line.
+    // T33-0b: ADHOC anchor counters in the shadow, no event line. The counts differ at the minute line (formed 4, arrived 3,
+    // all 1, never 2, open 1), so a swapped field or a crossed delta shows.
     Bench b;
     b.groups[4] = AdhocGroup(4, 21, 22);
+    for (std::uint32_t low : {29u, 30u, 31u})
+    {
+        Member x;
+        x.low = low;
+        x.state = low == 30u ? MemberState::Joined : MemberState::Acked;   // 30: invited, no Enter acked yet
+        b.groups[4].m.push_back(x);
+    }
     b.groups[5] = AdhocGroup(5, 23, 24);
+    b.groups[8] = AdhocGroup(8, 35, 36);
+    b.groups[9] = AdhocGroup(9, 33, 34);
     b.Pass(1000, 1);
     Require(b.shadow.Anchors().at(4).tracked && !b.shadow.Anchors().at(4).formed && b.shadow.Totals().adhocFormed == 0,
         "forming: tracked, not counted");
-    Form(b.groups[4]);
-    Form(b.groups[5]);
+    for (std::uint32_t s : {4u, 5u, 8u, 9u})
+        Form(b.groups[s]);
     b.Fresh(21, 0.0f, 2000);
     b.Fresh(22, 50.0f, 2000);
+    b.Fresh(29, 60.0f, 2000);
+    b.Fresh(31, 70.0f, 2000);
     b.Fresh(24, 80.0f, 2000);
     b.Pass(2000, 1001);
-    Require(b.shadow.Totals().adhocFormed == 2 && b.shadow.Totals().adhocArrived == 0 && b.shadow.Anchors().at(4).open,
-        "formed: both counted, nobody at the anchor yet");
+    Require(b.shadow.Totals().adhocFormed == 4 && b.shadow.Totals().adhocArrived == 0 && b.shadow.Anchors().at(4).open,
+        "formed: all four counted, nobody at the anchor yet");
     b.Fresh(22, 10.0f, 3000);
+    b.Fresh(29, 5.0f, 3000);
+    b.Fresh(31, 0.0f, 3000);
     b.Pass(3000, 2001);
     b.Fresh(22, 12.0f, 4000);
     b.Pass(4000, 3001);
-    Require(b.shadow.Totals().adhocArrived == 1 && b.shadow.Totals().adhocAll == 1 && !b.shadow.Anchors().at(4).open,
-        "at the anchor: once per member, the group once");
+    Require(b.shadow.Totals().adhocArrived == 3 && b.shadow.Totals().adhocAll == 1 && !b.shadow.Anchors().at(4).open,
+        "at the anchor: once per acked member, the group once; the invited member 30 (no place) is not judged");
     b.groups[5].state = GroupState::Ending;
     b.Fresh(24, 0.0f, 5000);
     b.Pass(5000, 4001);
-    Require(b.shadow.Totals().adhocArrived == 1, "an ending group is not judged any more");
+    Require(b.shadow.Totals().adhocArrived == 3, "an ending group is not judged any more");
     b.groups.erase(4);
     b.groups.erase(5);
+    b.groups.erase(8);
     b.Pass(6000, 5001);
-    Require(b.shadow.Totals().adhocNever == 1 && b.shadow.Anchors().empty(), "gone: the never-at-anchor group counted");
+    Require(b.shadow.Totals().adhocNever == 2 && b.shadow.Anchors().size() == 1 && b.shadow.Anchors().at(9).open,
+        "gone: the two never-at-anchor groups counted, group 9 still open");
     Require(b.lines.empty(), "no event line before the minute");
     b.Pass(61000, 60001);
-    Require(b.Count(" shadow_lines_dropped=0 adhoc_formed=2 adhoc_arrived=1 adhoc_all=1 adhoc_never=1 adhoc_open=0") == 1,
-        "minute3: the T33-0b fields last");
+    Require(b.Count(" shadow_lines_dropped=0 adhoc_formed=4 adhoc_arrived=3 adhoc_all=1 adhoc_never=2 adhoc_open=1") == 1,
+        "minute3: the T33-0b fields last, each from its own count");
 
     // A late ADHOC group (first seen active) is never counted; Off forgets the anchors.
     ManagedGroup late = AdhocGroup(6, 25, 26);
@@ -852,9 +868,9 @@ void TestShadowAnchor()
     b.groups[6] = late;
     b.groups[7] = AdhocGroup(7, 27, 28);
     b.Pass(62000, 61001);
-    Require(!b.shadow.Anchors().at(6).tracked && b.shadow.Totals().adhocFormed == 2, "late ADHOC group: not counted");
+    Require(!b.shadow.Anchors().at(6).tracked && b.shadow.Totals().adhocFormed == 4, "late ADHOC group: not counted");
     b.Pass(122000, 121001);
-    Require(b.Count(" adhoc_open=0") == 2, "a forming group is not open");
+    Require(b.Count(" adhoc_open=1") == 2 && b.Count(" adhoc_formed=0 ") == 1, "a forming or late group is not open; increments");
     b.shadow.Off();
     Require(b.shadow.Anchors().empty() && b.shadow.Totals().adhocFormed == 0, "Off forgets anchors and counts");
 }
