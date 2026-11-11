@@ -24,6 +24,10 @@ cmake_policy(VERSION 3.16)
 # latest status, edge and wish per bot and appends edge/wish/key_overflow increments and table/shadow stands to its line.
 # The T30-0 specifics (facts read from the bot only, op path without caller, Run* bodies unchanged) are pinned by
 # a3s6_t30_facts_source_contract_tests.cmake.
+# T33-0 (design T33 v1.1, Fakten + Schatten) extends it again, measurement only: GatherPlace appended to Kind; PostManagerStatus
+# posts it (a fourth Post site, behind the same gate and AiPlayerbot.BotGroups.Manager.Gather, default 0) with every status and on
+# a map/instance change; the edge post keeps its condition (due or changed); the manager pass gains its clock (before the drain)
+# and the meeting shadow (after the directive pass). The T33-0 specifics are pinned by a3s6_t33_gather_facts_source_contract_tests.cmake.
 # Pure rules: t/manager_inbox_policy_tests.cpp. Every check_* returns "" when it holds, else the reason; the negative probes at
 # the end reuse them on mutated text.
 if(NOT DEFINED PB_SOURCE_DIR)
@@ -126,7 +130,8 @@ endforeach()
 
 # ---- (a) the switch ----------------------------------------------------------------------------------------------------------
 set(READ_LINE "    botGroupsManagerStatusSeconds = uint32(config.GetIntDefault(\"AiPlayerbot.BotGroups.Manager.StatusSeconds\", 0));\n    if (botGroupsManagerStatusSeconds > ai::manager_inbox::kStatusSecondsMax)\n    {\n        uint32 const clamped = ai::manager_inbox::ClampStatusSeconds(int32(botGroupsManagerStatusSeconds));\n        sLog.outError(\"[GroupMgr] config key=Manager.StatusSeconds value=%d result=%u (0 off, 1..%u s)\",")
-set(ECHO "            {\"BotGroups.Manager\", Value(botGroupsManager)},\n            {\"BotGroups.Manager.StatusSeconds\", Value(botGroupsManagerStatusSeconds)},\n")
+# T33-0: the sorted echo puts BotGroups.Manager.Gather between the two.
+set(ECHO "            {\"BotGroups.Manager\", Value(botGroupsManager)},\n            {\"BotGroups.Manager.Gather\", Value(botGroupsManagerGather)},\n            {\"BotGroups.Manager.StatusSeconds\", Value(botGroupsManagerStatusSeconds)},\n")
 
 function(check_switch config_h config_cpp conf_dist policy out)
   string(FIND "${config_h}" "    uint32 botGroupsManagerStatusSeconds = 0;" at)
@@ -223,12 +228,13 @@ function(check_hook ai_cpp ai_h all_sources out)
   foreach(needle
       "    if (!bot->IsInWorld())\n        return;"
       "    bool const due = ai::manager_inbox::StatusDue(managerStatusLastMs, nowMs, sPlayerbotAIConfig.botGroupsManagerStatusSeconds * 1000);"
-      "    if (!due && !edgeChanged)\n        return;\n    if (!InQuestBookScope())\n        return;"
+      "    if (!due && !edgeChanged && !placeChanged)\n        return;\n    if (!InQuestBookScope())\n        return;"
       "    if (due)\n    {\n        managerStatusLastMs = ai::manager_inbox::PostStamp(nowMs);"
       "        event.kind = ai::manager_inbox::Kind::Status;"
       "        event.role = 0;"
       "        ai::manager_inbox::Post(event);\n    }"
-      "    ai::manager_inbox::Post(ai::manager_inbox::MakeEdge(bot->GetGUIDLow(), edge, x, y));\n    if (!due)\n        return;"
+      "    if (gather && (due || placeChanged))\n        ai::manager_inbox::Post(ai::group_mgr::MakeGatherPlace(bot->GetGUIDLow(), place));"
+      "    if (due || edgeChanged)\n        ai::manager_inbox::Post(ai::manager_inbox::MakeEdge(bot->GetGUIDLow(), edge, x, y));\n    if (!due)\n        return;"
       "        ai::manager_inbox::Post(ai::manager_inbox::MakeWish(bot->GetGUIDLow(), managerStatusSeq, wish));\n}")
     string(FIND "${body}" "${needle}" at)
     if(at EQUAL -1)
@@ -251,8 +257,8 @@ function(check_hook ai_cpp ai_h all_sources out)
   endif()
   count_text("${all_sources}" "manager_inbox::Post(" n)
   count_text("${body}" "manager_inbox::Post(" nb)
-  if(NOT n EQUAL 3 OR NOT nb EQUAL 3)
-    set(${out} "manager_inbox::Post( called ${n} times in the module, ${nb} in PostManagerStatus (3 expected there: status, edge, wish)" PARENT_SCOPE)
+  if(NOT n EQUAL 4 OR NOT nb EQUAL 4)
+    set(${out} "manager_inbox::Post( called ${n} times in the module, ${nb} in PostManagerStatus (4 expected there: status, place, edge, wish)" PARENT_SCOPE)
     return()
   endif()
   foreach(needle "    uint32 managerStatusLastMs = 0;" "    uint32 managerStatusSeq = 0;" "    void PostManagerStatus();")
@@ -288,7 +294,7 @@ function(check_drain mgr_cpp inbox_cpp inbox_h policy all_sources out)
     return()
   endif()
   foreach(needle
-      "void WorldThreadManager::Update(std::map<std::uint32_t, Player*> const& bots, std::uint32_t now)\n{\n    ++passes_;\n    std::uint32_t const nowMs = WorldTimer::getMSTime();\n    DrainInbox(bots, nowMs);\n    RunDirectives(bots, nowMs, now);\n}"
+      "void WorldThreadManager::Update(std::map<std::uint32_t, Player*> const& bots, std::uint32_t now)\n{\n    ++passes_;\n    std::uint32_t const nowMs = WorldTimer::getMSTime();\n    mgrMs_ = AdvanceClock(mgrMs_, clockLastMs_, nowMs, sPlayerbotAIConfig.randomBotUpdateInterval);\n    DrainInbox(bots, nowMs);\n    RunDirectives(bots, nowMs, now);\n    RunGather(nowMs);\n}"
       "    bool const resumed = minuteStarted_ && manager_inbox::ResumedAfterGap(lastPassMs_, nowMs);\n    lastPassMs_ = nowMs;\n    if (resumed)\n    {\n        minuteStarted_ = false;\n        status_.clear();\n        edges_.clear();\n        wishes_.clear();\n    }"
       "        if (!resumed)\n            StoreEvent(event, nowMs);"
       "        case manager_inbox::Kind::Status:\n            status_[event.botLow] = manager_inbox::SnapshotOf(event, nowMs);"
@@ -373,8 +379,8 @@ function(check_pure policy out)
       "static_assert(sizeof(Event) == 32,"
       "static_assert(std::is_trivially_copyable<Event>::value,"
       "static_assert(std::is_standard_layout<Event>::value,"
-      "enum class Kind : std::uint8_t\n{\n    QueueRequest,\n    DungeonWish,\n    GroupWish,\n    Status,\n    RepopEdge,\n    ReviveEdge,\n    RunEnded,\n    QueueLeave,\n    DirectiveAck,\n    GroupEdge,\n};"
-      "constexpr std::size_t kKinds = std::size_t(Kind::GroupEdge) + 1;"
+      "enum class Kind : std::uint8_t\n{\n    QueueRequest,\n    DungeonWish,\n    GroupWish,\n    Status,\n    RepopEdge,\n    ReviveEdge,\n    RunEnded,\n    QueueLeave,\n    DirectiveAck,\n    GroupEdge,\n    GatherPlace,\n};"
+      "constexpr std::size_t kKinds = std::size_t(Kind::GatherPlace) + 1;"
       "constexpr std::size_t kKindBuckets = kKinds + 1;"
       "    return i < kKinds ? i : kKinds;"
       "constexpr std::size_t Capacity = 4096;"

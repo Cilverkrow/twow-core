@@ -531,6 +531,14 @@ struct ManagedGroup
     std::uint32_t sizeMax = 0;
 };
 
+// T33-0 (the meeting shadow, measurement only): a group Sweep erased in this pass and why it ended. The shadow reads the list
+// after the pass, so a meeting T30 ended and swept in the same pass still gets its verdict. Cleared at the start of every pass.
+struct SweptGroup
+{
+    std::uint32_t serial = 0;
+    EndReason why = EndReason::None;
+};
+
 // One entry per bot the manager holds: a member, an Exit still open, an exit block, or a group it could not confirm leaving.
 // IsManaged = an entry exists; the legacy writers stay closed for it (Blocks, M1).
 struct BotEntry
@@ -912,6 +920,7 @@ public:
         staleMs_ = manager_inbox::StaleMs(r.statusSeconds);
         wishMs_ = WishFreshMs(r.statusSeconds);
         ++passNo_;
+        swept_.clear();
         retryCooldownSec_ = r.retryCooldownMinutes * 60;
         Count(Cnt::Passes);
         ApplyOutcomes(in, io);
@@ -968,6 +977,8 @@ public:
 
     // Tests and the minute line.
     std::unordered_map<std::uint32_t, ManagedGroup> const& Groups() const { return groups_; }
+    // T33-0: the groups the last pass swept (the meeting shadow, read only).
+    std::vector<SweptGroup> const& Swept() const { return swept_; }
     std::unordered_map<std::uint32_t, BotEntry> const& Bots() const { return bots_; }
     MinuteCounts const& Minute() const { return minute_; }
     std::uint64_t Total(Cnt c) const { return total_[std::size_t(c)]; }
@@ -2469,6 +2480,7 @@ private:
             }
             Count(Cnt::Dissolved);
             pendingDissolved_.push_back(g);
+            swept_.push_back(SweptGroup{g.serial, g.endReason});
             it = groups_.erase(it);
         }
         for (auto it = bots_.begin(); it != bots_.end();)
@@ -2626,6 +2638,7 @@ private:
     };
     std::unordered_map<std::uint32_t, SkipSince> skipUnknown_;
     std::vector<ManagedGroup> pendingDissolved_;
+    std::vector<SweptGroup> swept_;   // T33-0: this pass's swept groups (Swept)
     adhoc_group::PairCooldownStore pairCooldown_;
     quest_groups::QueueStore questQueue_;
     std::atomic<bool> queueUsed_{ false };

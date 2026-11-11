@@ -1,6 +1,7 @@
 #pragma once
 
 #include "playerbot/ManagerInboxPolicy.h"
+#include "playerbot/GroupGatherPolicy.h"   // T33-0: PlaceFacts
 
 class Player;
 class PlayerbotAI;
@@ -20,4 +21,7 @@ manager_inbox::KeyFacts ReadKey(Player* bot);
 manager_inbox::EdgeFacts ReadEdge(Player* bot);
 // The interim GroupWish (F3 (a)): the S7 scan predicates for this bot alone; false = no wish (grouped, busy, nothing waits).
 bool ReadWish(Player* bot, PlayerbotAI* ai, manager_inbox::WishFacts& out);
+// T33-0 (design T33 v1.1 3.2, measurement only): the bot's own place - map, raw instance id, instanceable, x/y/z. The serial
+// stays 0 (no directive record on the bot before the T02-GROUP handler).
+group_mgr::PlaceFacts ReadPlace(Player* bot);
 }
