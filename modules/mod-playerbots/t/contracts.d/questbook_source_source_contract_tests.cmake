@@ -57,6 +57,9 @@ endfunction()
 # ---- the switch ----------------------------------------------------------------------------------------------------------
 set(ECHO "            {\"QuestBook.Exclude.count\", Value(uint32(questBookExclude.size()))},
             {\"QuestBook.KillSeconds\", Value(questBookKillSeconds)},
+            {\"QuestBook.NeedPerObjective\", Value(questBookNeedPerObjective)},
+            {\"QuestBook.NeedPerObjective.ItemUse\", Value(questBookNeedPerObjectiveItemUse)},
+            {\"QuestBook.NeedPerObjective.Log\", Value(questBookNeedPerObjectiveLog)},
             {\"QuestBook.Shadow\", Value(questBookShadow)},
             {\"QuestBook.SingleSpawnMargin\", Value(questBookSingleSpawnMargin)},
             {\"QuestBook.SourceChoice\", Value(questBookSourceChoice)},

@@ -16,6 +16,8 @@
 #include "playerbot/GrindPickPolicy.h"
 #include "playerbot/QuestGrindModePolicy.h"
 #include "playerbot/QuestSearchPolicy.h"   // twow-repo#614: GreyByLevel
+#include "playerbot/QuestNeedPolicy.h"   // A3 step 2 H5: [QuestNeed] picks (QuestBook.NeedPerObjective.Log)
+#include "playerbot/strategy/values/SharedValueContext.h"   // A3 step 2 H5: the item drop list (GAI_VALUE2)
 #include "Formulas.h"
 #include <algorithm>
 
@@ -124,7 +126,63 @@ bool ai::AttackAnythingAction::Execute(Event& event)
         gapGrey = creature && ai::quest_search::GreyByLevel(creature->GetLevel(), MaNGOS::XP::GetGrayLevel(bot->GetLevel()));   // #614: by level, not XP::Gain
     }
 
+    // A3 step 2 H5 (AiPlayerbot.QuestBook.NeedPerObjective.Log, default 0; measurement only, both cohorts): a pick whose source is
+    // the quest need (the live "needed quest entries" set) counts in [QuestNeed] picks_quest; picks_stale when its entry serves no open
+    // objective of an incomplete quest but a complete one (kill: ReqCreatureOrGOId, item: the item's drop list; a direct check,
+    // independent of the live set). Read before the attack, like [GrindPick]; counted only when the attack starts on that target
+    // (as [GrindPick]: a failed attempt that is retried counts once, at its engagement). Off: one config read.
+    ai::quest_need::BotState* needLog = nullptr;
+    Unit* needTarget = nullptr;
+    bool needPick = false;
+    bool needStale = false;
+    if (sPlayerbotAIConfig.questBookNeedPerObjectiveLog)
+    {
+        needTarget = GetTarget();
+        needLog = needTarget && needTarget->GetEntry() ? ai->QuestNeedState() : nullptr;
+        if (needLog)
+        {
+            uint32 const entry = needTarget->GetEntry();
+            std::list<ObjectGuid> const attackers = AI_VALUE(std::list<ObjectGuid>, "possible attack targets");
+            bool const attacker = std::find(attackers.begin(), attackers.end(), needTarget->GetObjectGuid()) != attackers.end();
+            // the live set itself (one binary search, as the gap check above; no value per creature, contract grind_gap_window)
+            std::vector<int32> const& neededSet = AI_VALUE(std::vector<int32>, "needed quest entries");
+            bool const neededForQuest = std::binary_search(neededSet.begin(), neededSet.end(), int32(entry));
+            if (ai::grind_pick::EngagedSource(attacker, needTarget->GetVictim() == bot, neededForQuest) == ai::grind_pick::Source::Quest)
+            {
+                needPick = true;
+                bool servesOpen = false;
+                bool servesDone = false;
+                for (auto& questStatus : bot->getQuestStatusMap())
+                {
+                    if (questStatus.second.m_status != QUEST_STATUS_INCOMPLETE)
+                        continue;
+                    Quest const* quest = sObjectMgr.GetQuestTemplate(questStatus.first);
+                    if (!quest || !quest->IsActive())
+                        continue;
+                    for (uint32 objective = 0; objective < QUEST_OBJECTIVES_COUNT; ++objective)
+                    {
+                        if (quest->ReqCreatureOrGOId[objective] > 0 && uint32(quest->ReqCreatureOrGOId[objective]) == entry)
+                            (questStatus.second.m_creatureOrGOcount[objective] < quest->ReqCreatureOrGOCount[objective] ? servesOpen : servesDone) = true;
+                        if (quest->ReqItemId[objective] && quest->ReqItemCount[objective])
+                        {
+                            std::list<int32> const dropList = GAI_VALUE2(std::list<int32>, "item drop list", quest->ReqItemId[objective]);
+                            if (std::find(dropList.begin(), dropList.end(), int32(entry)) != dropList.end())
+                                (questStatus.second.m_itemcount[objective] < quest->ReqItemCount[objective] ? servesOpen : servesDone) = true;
+                        }
+                    }
+                }
+                needStale = ai::quest_need::StalePick(servesOpen, servesDone);
+            }
+        }
+    }
+
     bool result = AttackAction::Execute(event);
+    if (needLog && needPick && result && GetTarget() == needTarget)
+    {
+        needLog->stats.picksQuest++;
+        if (needStale)
+            needLog->stats.picksStale++;
+    }
     if (result)
     {
         Unit* grindTarget = GetTarget();

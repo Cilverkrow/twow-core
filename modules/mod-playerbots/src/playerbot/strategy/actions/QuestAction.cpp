@@ -287,6 +287,10 @@ bool QuestUpdateAddKillAction::Execute(Event& event)
     // A3 step 2 (AiPlayerbot.QuestBook, default 0): the kill credit is the quest's progress in the book (credit_seq).
     if (ai::questbook::QuestBook* book = ai->ActiveQuestBook())
         book->OnCredit(questId);
+    // A3 step 2 H5 (AiPlayerbot.QuestBook.NeedPerObjective, default 0): with part (a) the need set is read fresh; with .Log / .ItemUse the
+    // quest item uses waiting for this entry (raw: game objects with the high bit) are credited. Off: config reads only.
+    ai->QuestNeedOnCredit(questId);
+    ai->QuestNeedOnKillCredit(entry);
 
     Player* requester = event.getOwner() ? event.getOwner() : GetMaster();
 
@@ -359,6 +363,8 @@ bool QuestUpdateAddItemAction::Execute(Event& event)
             // A3 step 2 (AiPlayerbot.QuestBook, default 0): the item credit is the quest's progress in the book (credit_seq).
             if (ai::questbook::QuestBook* book = ai->ActiveQuestBook())
                 book->OnCredit(pair.first->GetQuestId());
+            // A3 step 2 H5 (QuestBook.NeedPerObjective, default 0): with part (a) the need set is read fresh, as at a kill credit.
+            ai->QuestNeedOnCredit(pair.first->GetQuestId());
             placeholders["%quest_link"] = chat->formatQuest(pair.first);
             uint32 requiredItemsCount = pair.second;
             placeholders["%quest_obj_required"] = std::to_string(requiredItemsCount);

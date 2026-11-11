@@ -1685,6 +1685,19 @@ AiPlayerbot.QuestBook.SingleSpawnMargin = 1.5
 AiPlayerbot.QuestBook.Bundle = 0
 # The area that counts as one bundle, in yards (2D), 30..300, default 100.
 AiPlayerbot.QuestBook.BundleRadius = 100
+# A3 step 2 H5 (A3-HARM-UPSTREAM H5, OB-00 09.11./10.11.2026; default 0 = unchanged; A/B per PREREG-H5): (a) the quest need set
+# ("need for quest": grind picks, the GrindMode 2 attack gate and grind trips) holds only the entries of the OPEN objectives of a
+# quest, not those of every objective once any one is open; it is refreshed at each kill / item credit. (b) With ItemUse = 1 a
+# quest item is used on a target only when an open objective links them (the quest takes the item's spell on that target, or
+# the item is the quest's source item and the target an open objective), never by chance; 2 uses without a credit on one target
+# refuse that target for 10 min, 6 misses of one item in 10 min refuse the item for 10 min. Both parts act only for a roster bot
+# on its own at level >= 10 (below: the old behaviour). 0 = off (default, rollback), 1 = all, 2 = cohort B (odd low guid), 3 =
+# cohort A (even low guid); any other value acts like 0. ItemUse 0/1 acts only where NeedPerObjective applies.
+AiPlayerbot.QuestBook.NeedPerObjective = 0
+AiPlayerbot.QuestBook.NeedPerObjective.ItemUse = 0
+# Measurement only, no behaviour: one `[QuestNeed]` and one `[QuestItemUse]` line per roster bot on its own and clock hour (and at
+# logout), in both cohorts. 0 = off (default), 1 = on.
+AiPlayerbot.QuestBook.NeedPerObjective.Log = 0
 
 # #627 S7 help groups (owner 18.10./23.10.2026): roster bots holding the same elite
 # quest (Type 1; with SuggestedPlayers = 1 also SuggestedPlayers >= 2; never
