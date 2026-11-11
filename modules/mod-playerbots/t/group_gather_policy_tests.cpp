@@ -624,15 +624,18 @@ void TestShadowScope()
     ManagedGroup late = QuestGroup(1, 91, 92);
     Form(late);
     b.groups[1] = late;
-    // ADHOC: no shadow in T33-0.
+    // ADHOC: no meeting, only the T33-0b anchor counters (no line).
     ManagedGroup adhoc = QuestGroup(2, 93, 94);
     adhoc.type = GroupType::Adhoc;
     b.groups[2] = adhoc;
     b.Pass(1000, 1);
     Form(b.groups[2]);
     b.Pass(2000, 1001);
-    Require(b.lines.empty() && b.shadow.Totals().arrived == 0, "a late group and ADHOC: no line, no count");
-    Require(b.shadow.Meetings().count(2) == 0 && !b.shadow.Meetings().at(1).tracked, "ADHOC not kept, the late group untracked");
+    Require(b.lines.empty() && b.shadow.Totals().arrived == 0, "a late group and ADHOC: no line, no QUEST count");
+    Require(b.shadow.Meetings().count(2) == 0 && !b.shadow.Meetings().at(1).tracked, "ADHOC no meeting, the late group untracked");
+    Require(b.shadow.Anchors().at(2).formed && b.shadow.Anchors().at(2).open && b.shadow.Totals().adhocFormed == 1 &&
+        b.shadow.Totals().adhocArrived == 0, "ADHOC: anchor count from formed, nobody posted a place");
+    Require(b.shadow.Anchors().count(1) == 0, "a QUEST group gets no anchor count");
 
     // A group that ends while forming never formed: no line.
     Bench f;
@@ -741,6 +744,120 @@ void TestShadowEnd()
     t.shadow.StorePlace(t.places, t.status, MakeGatherPlace(14, PlaceAt(0, 1200.0f, 0.0f, 0).place), 41000, t.in.rules.maxAgeMs);
     Require(t.shadow.Totals().jumpSame == 1, "on foot at both places: a far place is a jump");
 }
+
+ManagedGroup AdhocGroup(std::uint32_t serial, std::uint32_t leader, std::uint32_t follower)
+{
+    ManagedGroup g = QuestGroup(serial, leader, follower);
+    g.type = GroupType::Adhoc;
+    g.mapId = 0;
+    g.anchorX = 0.0f;
+    g.anchorY = 0.0f;
+    return g;
+}
+
+void TestArrivedAtAnchor()
+{
+    // T33-0b: the pure anchor rule (F2 (a)): 2D radius around the formation anchor, the leader not judged, no z.
+    std::unordered_map<std::uint32_t, mi::StatusSnapshot> status;
+    PlaceTable places;
+    GatherRules const r = LiveRules(12000);
+    std::vector<MemberVerdict> m(3);
+    m[0].low = 11;
+    m[1].low = 12;
+    m[2].low = 13;
+    status[12] = StatusAt(1000);
+    status[13] = StatusAt(1000);
+    places[12] = PlaceAt(0, 20.0f, 0.0f, 1000, 400.0f);   // z far off: no z test
+    places[13] = PlaceAt(0, 40.0f, 0.0f, 1000);
+    GroupVerdict v = ArrivedAtAnchor(0, 0.0f, 0.0f, 11, m, status, places, 1000, r);
+    Require(v.pointKnown && v.judged == 2 && v.arrived == 1 && !v.gathered && !m[0].judged && m[1].arrived && !m[2].arrived,
+        "anchor: 20 yd in (z ignored), 40 yd out, the leader not judged and without a place of its own");
+    places[13] = PlaceAt(0, 25.0f, 5.0f, 1000);
+    status[13] = StatusAt(1000, false);
+    v = ArrivedAtAnchor(0, 0.0f, 0.0f, 11, m, status, places, 1000, r);
+    Require(v.gathered && m[2].dead, "every judged member at the anchor; a dead one counts as there (F12 (a))");
+    v = ArrivedAtAnchor(0, 0.0f, 0.0f, 11, m, status, places, 1000 + 12001, r);
+    Require(v.arrived == 0 && !v.gathered, "stale places: nobody at the anchor");
+    v = ArrivedAtAnchor(1, 0.0f, 0.0f, 11, m, status, places, 1000, r);
+    Require(v.arrived == 0, "another map than the anchor's: not there");
+
+    // Continent regions: the instance counts as 0 when the map is not instanceable.
+    places[12] = PlaceAt(0, 5.0f, 0.0f, 1000, 0.0f, 3, false);
+    places[13] = PlaceAt(0, 5.0f, 0.0f, 1000, 0.0f, 4, false);
+    v = ArrivedAtAnchor(0, 0.0f, 0.0f, 11, m, status, places, 1000, r);
+    Require(v.gathered, "two continent regions at the anchor: both there");
+
+    // An instanceable anchor map: the point takes the leader's instance from its fresh place there; without it nobody counts.
+    places[12] = PlaceAt(5, 5.0f, 0.0f, 1000, 0.0f, 7, true);
+    places[13] = PlaceAt(5, 5.0f, 0.0f, 1000, 0.0f, 8, true);
+    v = ArrivedAtAnchor(5, 0.0f, 0.0f, 11, m, status, places, 1000, r);
+    Require(v.pointKnown && v.arrived == 0, "instanceable map without the leader's place: nobody there");
+    places[11] = PlaceAt(5, 60.0f, 0.0f, 1000, 0.0f, 7, true);
+    v = ArrivedAtAnchor(5, 0.0f, 0.0f, 11, m, status, places, 1000, r);
+    Require(v.arrived == 1 && m[1].arrived && !m[2].arrived, "the leader's instance 7: only the member in instance 7");
+    places[11] = PlaceAt(5, 60.0f, 0.0f, std::uint32_t(1000u - 12001u), 0.0f, 7, true);   // 12001 ms old (wraps)
+    v = ArrivedAtAnchor(5, 0.0f, 0.0f, 11, m, status, places, 1000, r);
+    Require(v.arrived == 0, "a stale leader place gives no instance");
+    GatherPoint const p = AnchorPointFor(5, 1.0f, 2.0f, &places[11], 30.0f);
+    Require(p.mapId == 5 && p.instanceId == 7 && p.x == 1.0f && p.y == 2.0f && p.zBand == kZUnknown && p.deadlineMs == 0 &&
+        p.leg == Leg::SameMap, "AnchorPointFor: the anchor, the leader's instance, no z, no deadline");
+    Require(AnchorPointFor(6, 0.0f, 0.0f, &places[11], 30.0f).instanceId == 0, "the leader on another map: instance 0");
+
+    // Only the leader: nothing judged, never gathered.
+    std::vector<MemberVerdict> solo(1);
+    solo[0].low = 11;
+    v = ArrivedAtAnchor(0, 0.0f, 0.0f, 11, solo, status, places, 1000, r);
+    Require(v.judged == 0 && !v.gathered, "no judged member: not all at the anchor");
+}
+
+void TestShadowAnchor()
+{
+    // T33-0b: ADHOC anchor counters in the shadow, no event line.
+    Bench b;
+    b.groups[4] = AdhocGroup(4, 21, 22);
+    b.groups[5] = AdhocGroup(5, 23, 24);
+    b.Pass(1000, 1);
+    Require(b.shadow.Anchors().at(4).tracked && !b.shadow.Anchors().at(4).formed && b.shadow.Totals().adhocFormed == 0,
+        "forming: tracked, not counted");
+    Form(b.groups[4]);
+    Form(b.groups[5]);
+    b.Fresh(21, 0.0f, 2000);
+    b.Fresh(22, 50.0f, 2000);
+    b.Fresh(24, 80.0f, 2000);
+    b.Pass(2000, 1001);
+    Require(b.shadow.Totals().adhocFormed == 2 && b.shadow.Totals().adhocArrived == 0 && b.shadow.Anchors().at(4).open,
+        "formed: both counted, nobody at the anchor yet");
+    b.Fresh(22, 10.0f, 3000);
+    b.Pass(3000, 2001);
+    b.Fresh(22, 12.0f, 4000);
+    b.Pass(4000, 3001);
+    Require(b.shadow.Totals().adhocArrived == 1 && b.shadow.Totals().adhocAll == 1 && !b.shadow.Anchors().at(4).open,
+        "at the anchor: once per member, the group once");
+    b.groups[5].state = GroupState::Ending;
+    b.Fresh(24, 0.0f, 5000);
+    b.Pass(5000, 4001);
+    Require(b.shadow.Totals().adhocArrived == 1, "an ending group is not judged any more");
+    b.groups.erase(4);
+    b.groups.erase(5);
+    b.Pass(6000, 5001);
+    Require(b.shadow.Totals().adhocNever == 1 && b.shadow.Anchors().empty(), "gone: the never-at-anchor group counted");
+    Require(b.lines.empty(), "no event line before the minute");
+    b.Pass(61000, 60001);
+    Require(b.Count(" shadow_lines_dropped=0 adhoc_formed=2 adhoc_arrived=1 adhoc_all=1 adhoc_never=1 adhoc_open=0") == 1,
+        "minute3: the T33-0b fields last");
+
+    // A late ADHOC group (first seen active) is never counted; Off forgets the anchors.
+    ManagedGroup late = AdhocGroup(6, 25, 26);
+    Form(late);
+    b.groups[6] = late;
+    b.groups[7] = AdhocGroup(7, 27, 28);
+    b.Pass(62000, 61001);
+    Require(!b.shadow.Anchors().at(6).tracked && b.shadow.Totals().adhocFormed == 2, "late ADHOC group: not counted");
+    b.Pass(122000, 121001);
+    Require(b.Count(" adhoc_open=0") == 2, "a forming group is not open");
+    b.shadow.Off();
+    Require(b.shadow.Anchors().empty() && b.shadow.Totals().adhocFormed == 0, "Off forgets anchors and counts");
+}
 }
 
 int main()
@@ -760,6 +877,8 @@ int main()
     TestShadowSecondSlack();
     TestShadowSwept();
     TestPlaceJumpStale();
+    TestArrivedAtAnchor();
+    TestShadowAnchor();
     std::cout << "group_gather_policy_tests: OK\n";
     return 0;
 }

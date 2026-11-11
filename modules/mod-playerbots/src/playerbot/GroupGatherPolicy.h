@@ -247,6 +247,60 @@ GroupVerdict ArrivedForGroup(std::uint32_t leaderLow, std::vector<MemberVerdict>
     return v;
 }
 
+// T33-0b (F2 (a), design 2.1): a manager ADHOC group has no meeting point; the shadow only counts who is at its formation anchor
+// (ManagedGroup mapId/anchorX/anchorY = the leader's Status at creation). Every member but the leader is judged (S7: bot !=
+// leader), 2D within the radius, no z (the anchor has none). The anchor carries no instance id: on a map that is not
+// instanceable the instance counts as 0 (PlaceOf); on an instanceable map the point takes the leader's instance from its
+// fresh GatherPlace on the anchor map, so without that place nobody there counts as arrived. Never a directive or a deadline.
+inline GatherPoint AnchorPointFor(std::uint32_t mapId, float x, float y, PlaceSnapshot const* leader, float radius)
+{
+    GatherPoint g;
+    g.mapId = mapId;
+    g.instanceId = leader && leader->place.mapId == mapId && leader->place.instanceable ? leader->place.instanceId : 0u;
+    g.x = x;
+    g.y = y;
+    g.z = 0.0f;
+    g.radius = radius;
+    g.zBand = kZUnknown;
+    g.deadlineMs = 0;
+    g.leg = Leg::SameMap;
+    return g;
+}
+
+template <typename StatusMap, typename PlaceMap>
+GroupVerdict ArrivedAtAnchor(std::uint32_t mapId, float x, float y, std::uint32_t leaderLow, std::vector<MemberVerdict>& members,
+    StatusMap const& status, PlaceMap const& places, std::uint32_t nowMs, GatherRules const& r)
+{
+    GroupVerdict v;
+    v.pointKnown = true;   // the anchor is fixed at creation
+    auto const lp = places.find(leaderLow);
+    PlaceSnapshot const* leader =
+        lp != places.end() && manager_inbox::Fresh(lp->second.receivedMs, nowMs, r.maxAgeMs) ? &lp->second : nullptr;
+    GatherPoint const point = AnchorPointFor(mapId, x, y, leader, r.radius);
+    for (MemberVerdict& m : members)
+    {
+        m.judged = m.low != leaderLow;
+        m.arrived = false;
+        m.zOut = false;
+        m.regionMismatch = false;
+        m.dead = false;
+        if (!m.judged)
+            continue;
+        ++v.judged;
+        auto const s = status.find(m.low);
+        auto const p = places.find(m.low);
+        Place const place = PlaceOf(s == status.end() ? nullptr : &s->second, p == places.end() ? nullptr : &p->second, nowMs,
+            r.maxAgeMs, r.deadCounts);
+        m.arrived = Arrived(place, point);
+        if (!m.arrived)
+            continue;
+        ++v.arrived;
+        m.dead = !manager_inbox::UnpackFlags(s->second.flags).alive;
+    }
+    v.gathered = v.judged > 0 && v.arrived == v.judged;
+    return v;
+}
+
 // ---- the manager's one clock (2.5) ------------------------------------------------------------------------------------------
 // mgrMs grows by the time between two passes (unsigned 32-bit difference); a gap longer than 2 x max(interval, 1000) ms (a
 // world hitch, or the manager was off) adds only one interval, like the T30 gap rule. Its own anchor lastMs (0 = not started;
