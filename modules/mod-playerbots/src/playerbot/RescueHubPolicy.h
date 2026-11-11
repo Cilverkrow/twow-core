@@ -80,17 +80,77 @@ constexpr std::array<Row, 11> Table{{
 
 constexpr std::uint32_t HighElfRace = 10;   // = ai::start_zone::HighElfRace (StartZonePolicy.h)
 
+// twow-repo#703 item 2 (AiPlayerbot.QuestRescue.HomeHubs.L5OwnHub, design szf/DESIGN-703-2-VALLEY-L5-20261111.md d9a6539c, OB-10
+// review 49953b8c): the races whose faction has another start point on their continent had no L5-10 row, so every stalled L5-10
+// bot fell through to the legacy targets - another race's start valley (ARB N1: 41 of 41 L5+ teleports), and the band ladder sent
+// it back within 1-2 s. These rows keep it at its own start-zone hub up to L10 (the same anchors as the L1-4 rows). They are seen
+// only with the sub-key (l5OwnHub), so without it the lookup is the table above, row for row.
+constexpr std::array<Row, 6> L5OwnHubTable{{
+    { 1, 5, 10, Step::OwnHub, OwnHubMinDistance, { 295, 0 } },    // human: Goldshire
+    { 3, 5, 10, Step::OwnHub, OwnHubMinDistance, { 1247, 0 } },   // dwarf: Kharanos
+    { 7, 5, 10, Step::OwnHub, OwnHubMinDistance, { 1247, 0 } },   // gnome: Kharanos
+    { 2, 5, 10, Step::OwnHub, OwnHubMinDistance, { 6928, 0 } },   // orc: Razor Hill
+    { 8, 5, 10, Step::OwnHub, OwnHubMinDistance, { 6928, 0 } },   // troll: Razor Hill
+    { 6, 5, 10, Step::OwnHub, OwnHubMinDistance, { 6747, 0 } },   // tauren: Bloodhoof Village
+}};
+
 // The row for a bot, or nullptr (= legacy). Goblins have no row: their island rules (CustomRaceStartZones) decide. The high-elf row
 // needs CustomRaceStartZones (customStarts): without it high elves live at the proxy start Northshire and avoid the Thalassian
-// Highlands, so the legacy targets apply (SZM adoption review 10.11.2026).
-inline Row const* RowFor(std::uint32_t race, std::uint32_t level, bool customStarts)
+// Highlands, so the legacy targets apply (SZM adoption review 10.11.2026). l5OwnHub (#703 item 2) adds the L5-10 own-hub rows; the
+// main table is searched first, so night elf / undead keep their next_zone rows.
+inline Row const* RowFor(std::uint32_t race, std::uint32_t level, bool customStarts, bool l5OwnHub = false)
 {
     if (race == HighElfRace && !customStarts)
         return nullptr;
     for (Row const& row : Table)
         if (row.race == race && level >= row.minLevel && level <= row.maxLevel)
             return &row;
+    if (l5OwnHub)
+        for (Row const& row : L5OwnHubTable)
+            if (row.race == race && level >= row.minLevel && level <= row.maxLevel)
+                return &row;
     return nullptr;
+}
+
+// True for a row of the L5-10 own-hub table (#703 item 2).
+inline bool IsL5OwnHubRow(Row const* row)
+{
+    for (Row const& r : L5OwnHubTable)
+        if (row == &r)
+            return true;
+    return false;
+}
+
+// What the table answers for a row (#703 item 2, OB-10 review point 1). spawns = the anchor spawns of the row, farSpawns = those beyond
+// its minimum distance. A far spawn: hub. No spawn at all: fallback (the legacy targets). Spawns, but all within the minimum
+// distance: the bot already stands at its hub. For an L5-10 own-hub row that is at_hub (no target: the rescue ends as no_target and
+// does not fall through to another race's start valley); for every other row it stays today's fallback (a separate finding, not
+// changed here).
+enum class Outcome : std::uint8_t
+{
+    Hub = 0,
+    AtHub,
+    Fallback
+};
+
+inline Outcome Decide(Row const* row, std::size_t spawns, std::size_t farSpawns)
+{
+    if (farSpawns > 0)
+        return Outcome::Hub;
+    if (spawns > 0 && IsL5OwnHubRow(row))
+        return Outcome::AtHub;
+    return Outcome::Fallback;
+}
+
+inline char const* OutcomeName(Outcome o)
+{
+    switch (o)
+    {
+        case Outcome::Hub: return "hub";
+        case Outcome::AtHub: return "at_hub";
+        case Outcome::Fallback: return "fallback";
+        default: return "unknown";
+    }
 }
 
 // A next_zone row leaves the start zone: while R1 (StartZoneMinLevel) gates the level for the bot, R1 decides instead.
@@ -105,6 +165,7 @@ struct Counters
     std::array<std::atomic<std::uint32_t>, std::size_t(Step::Count)> hub{};   // targets found, per step
     std::atomic<std::uint32_t> fallback{0};                                 // a row matched, no spawn left: legacy follows
     std::atomic<std::uint32_t> gated{0};                                    // a next_zone row held back by R1
+    std::atomic<std::uint32_t> atHub{0};                                    // #703 item 2: an L5-10 own-hub row, the bot at its hub
     std::atomic<std::uint64_t> lastLogSeconds{0};
 
     void Hub(Step step)

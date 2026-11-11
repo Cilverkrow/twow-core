@@ -41,6 +41,7 @@
 #include "playerbot/ZoneKeepPolicy.h"   // twow-repo#601 owner rule R1 (StartZoneMinLevel rescue gate)
 #include "playerbot/LevelGuardPolicy.h" // twow-repo#575 LevelGuard.SkipHarmless: RefreshActiveEvents
 #include "playerbot/RescueHubPolicy.h"   // twow-repo#575 RG-a (QuestRescue.HomeHubs): the anchor table
+#include "playerbot/QuestRescueSlotPolicy.h"   // twow-repo#703 item 1 (QuestRescue.NoTargetFreeSlot): targets before the limiter
 #include "playerbot/CohortPolicy.h"     // twow-repo#601 owner rule R1 (StartZoneMinLevel.Cohort)
 #include "PlayerbotCommandServer.h"
 #include "MemoryMonitor.h"
@@ -7673,18 +7674,23 @@ std::vector<WorldLocation> RandomPlayerbotMgr::QuestRescueTargets(Player* bot)
     // twow-repo#575 RG-a (AiPlayerbot.QuestRescue.HomeHubs, OB-00 08.11.2026): the anchor table first (RescueHubPolicy.h). own_hub = the
     // race's start-zone hub below L5 (also for R1-gated bots inside their start zone, which got no target), next_zone = night elf /
     // undead L5-10 to the next zone on the home continent unless R1 gates the level. No row or no spawn left: the legacy targets.
+    // twow-repo#703 item 2 (HomeHubs.L5OwnHub, default 0): the L5-10 own-hub rows; a bot that already stands at that hub gets no
+    // target (at_hub) instead of the legacy targets (another race's start valley).
     if (startZoneRules && ai::cohort::Applies(sPlayerbotAIConfig.questRescueHomeHubs, bot->GetGUIDLow()))
     {
         namespace rh = ai::rescue_hub;
         rh::Counters& counters = rh::SharedCounters();
         bool const startZoneGated = ai::zone_keep::StartZoneGated(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevel, level) &&
             ai::cohort::Applies(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevelCohort, bot->GetGUIDLow());
-        rh::Row const* const row = rh::RowFor(bot->getRace(), level, sPlayerbotAIConfig.customRaceStartZones);
+        bool const l5OwnHub = ai::cohort::Applies(sPlayerbotAIConfig.questRescueHomeHubsL5OwnHub, bot->GetGUIDLow());
+        rh::Row const* const row = rh::RowFor(bot->getRace(), level, sPlayerbotAIConfig.customRaceStartZones, l5OwnHub);
+        bool atHub = false;
         if (row && !rh::Usable(row, startZoneGated))
             counters.gated.fetch_add(1, std::memory_order_relaxed);
         else if (row)
         {
             std::string anchors;
+            size_t anchorSpawns = 0;
             for (uint32 entry : row->entries)
             {
                 if (!entry)
@@ -7699,24 +7705,31 @@ std::vector<WorldLocation> RandomPlayerbotMgr::QuestRescueTargets(Player* bot)
                     cached = questRescueAnchors.emplace(entry, spawns).first;
                 }
                 for (WorldLocation const& spawn : cached->second)
+                {
+                    ++anchorSpawns;
                     if (botPos.distance(WorldPosition(spawn)) > row->minDistance)
                         targets.push_back(spawn);
+                }
             }
-            bool const hub = !targets.empty();
-            if (hub)
+            rh::Outcome const outcome = rh::Decide(row, anchorSpawns, targets.size());
+            if (outcome == rh::Outcome::Hub)
                 counters.Hub(row->step);
+            else if (outcome == rh::Outcome::AtHub)
+                counters.atHub.fetch_add(1, std::memory_order_relaxed);
             else
                 counters.fallback.fetch_add(1, std::memory_order_relaxed);
+            atHub = outcome == rh::Outcome::AtHub;
             sLog.outBasic("[RescueHub] bot=%u race=%u level=%u map=%u zone=%u step=%s anchors=%s targets=%u result=%s", bot->GetGUIDLow(),
                 uint32(bot->getRace()), level, bot->GetMapId(), bot->GetZoneId(), rh::StepName(row->step), anchors.c_str(),
-                uint32(targets.size()), hub ? "hub" : "fallback");
+                uint32(targets.size()), rh::OutcomeName(outcome));
         }
         uint64 const nowSeconds = uint64(time(nullptr));
         if (counters.LogDue(nowSeconds))
-            sLog.outBasic("[RescueHubMin] own_hub=%u next_zone=%u fallback=%u gated=%u", counters.TakeHub(rh::Step::OwnHub),
+            sLog.outBasic("[RescueHubMin] own_hub=%u next_zone=%u fallback=%u gated=%u at_hub=%u", counters.TakeHub(rh::Step::OwnHub),
                 counters.TakeHub(rh::Step::NextZone), counters.fallback.exchange(0, std::memory_order_relaxed),
-                counters.gated.exchange(0, std::memory_order_relaxed));
-        if (!targets.empty())
+                counters.gated.exchange(0, std::memory_order_relaxed), counters.atHub.exchange(0, std::memory_order_relaxed));
+        // at_hub (#703 item 2): no target, the rescue ends as no_target (only an L5-10 own-hub row, only with L5OwnHub).
+        if (!targets.empty() || atHub)
             return targets;
     }
 
@@ -7842,6 +7855,15 @@ void RandomPlayerbotMgr::ProcessQuestRescues()
         return;
     lastQuestRescueScan = now;
 
+    // twow-repo#703 item 1: the minute line, only with the key (world thread, once per minute; the counts of the passes before).
+    if (ai::rescue_slot::TargetsFirst(sPlayerbotAIConfig.questRescueNoTargetFreeSlot))
+    {
+        ai::rescue_slot::Counters& slotCounters = ai::rescue_slot::SharedCounters();
+        if (slotCounters.LogDue(uint64(now)))
+            sLog.outBasic("[QuestRescueMin] notarget_noslot=%u rung_mismatch=%u",
+                slotCounters.noTargetNoSlot.exchange(0, std::memory_order_relaxed), slotCounters.rungMismatch.exchange(0, std::memory_order_relaxed));
+    }
+
     for (auto const& [guid, bot] : GetAllBots())
     {
         PlayerbotAI* ai = bot ? GetBotAI(bot) : nullptr;
@@ -7855,6 +7877,28 @@ void RandomPlayerbotMgr::ProcessQuestRescues()
         if (!ai || !ai->TakeQuestRescueRequest() || IsParkedBot(guid))
             continue;
 
+        // twow-repo#703 item 1 (AiPlayerbot.QuestRescue.NoTargetFreeSlot, default 0): with the key the targets come before the global
+        // limiter. The band rung is only peeked here and taken after a granted slot (a refused rescue loses nothing). An empty list
+        // takes no slot: the band rescue is consumed (its drop line as before, no requeue, no limiter call), the no_target line
+        // says slot=0 and the 2 h per-bot cooldown starts as before. Off: nothing here runs - the order below is the old one.
+        bool const targetsFirst = ai::rescue_slot::TargetsFirst(sPlayerbotAIConfig.questRescueNoTargetFreeSlot);
+        uint32 peekedRung = 0;
+        std::vector<WorldLocation> earlyTargets;
+        if (targetsFirst)
+        {
+            peekedRung = ai->PeekBandRescueRung(now);
+            earlyTargets = peekedRung ? ai::quest_band::HubRescueTargets(bot, peekedRung - 1) : QuestRescueTargets(bot);
+            if (!ai::rescue_slot::NeedsSlot(earlyTargets.empty()))
+            {
+                ai->TakeBandRescueRung(now);
+                sLog.outBasic("[QuestRescue] state=no_target slot=0 bot=%u level=%u race=%u zone=%u",
+                    bot->GetGUIDLow(), bot->GetLevel(), uint32(bot->getRace()), bot->GetZoneId());
+                ai::rescue_slot::SharedCounters().noTargetNoSlot.fetch_add(1, std::memory_order_relaxed);
+                ai->OnQuestRescued(now);
+                continue;
+            }
+        }
+
         // The bot asks again next minute while it stays stuck.
         if (!questRescueLimiter.TryAcquire(now))
         {
@@ -7867,7 +7911,12 @@ void RandomPlayerbotMgr::ProcessQuestRescues()
         }
 
         uint32 const bandRung = ai->TakeBandRescueRung(now);   // twow-repo#601 S5a: a band rescue (rung + 1), 0 = a plain rescue
-        std::vector<WorldLocation> const targets = bandRung ? ai::quest_band::HubRescueTargets(bot, bandRung - 1) : QuestRescueTargets(bot);
+        // twow-repo#703 item 1: the list from before the limiter, unless the taken rung is not the peeked one (counted, computed again).
+        bool const reuseEarly = ai::rescue_slot::ReuseEarlyTargets(targetsFirst, bandRung, peekedRung);
+        if (targetsFirst && !reuseEarly)
+            ai::rescue_slot::SharedCounters().rungMismatch.fetch_add(1, std::memory_order_relaxed);
+        std::vector<WorldLocation> const targets = reuseEarly ? std::move(earlyTargets) :
+            bandRung ? ai::quest_band::HubRescueTargets(bot, bandRung - 1) : QuestRescueTargets(bot);
         if (targets.empty())
         {
             sLog.outBasic("[QuestRescue] state=no_target bot=%u level=%u race=%u zone=%u",

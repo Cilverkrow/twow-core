@@ -28,6 +28,7 @@
 #include "playerbot/RandomPlayerbotMgr.h"
 #include "playerbot/ShortcutPolicy.h"   // twow-repo#595 P4 S0: [Shortcut] counters
 #include "playerbot/BotUpdateTrace.h"   // twow-repo#541 (L0): NowUs/SinceUs for the path sub-phase trace
+#include "playerbot/strategy/triggers/ProfessionUseTriggers.h"   // twow-repo#703 item 3: IsRosterBotOnItsOwn (Loot.MoveGiveUp)
 #include "playerbot/PathReusePolicy.h"   // twow-repo#541 (L1): Perf.PartialPathReuse
 #include "playerbot/RouteTimePolicy.h"   // twow-repo#592 (PATH-02): Perf.RouteTimeTrace
 #include "playerbot/TransportEdgePolicy.h"   // twow-repo#342 (S1): Path.TransportEdgeTrace
@@ -1279,7 +1280,7 @@ bool MovementAction::UseTransport(PlayerbotAI* ai, uint32 entry, WorldPosition d
 
     std::string transportName;
 
-    // twow-repo#575 H4 (AiPlayerbot.Path.TransportSameMapGuard; default 0 until its acceptance unit): no scan of another map's
+    // twow-repo#575 H4 (AiPlayerbot.Path.TransportSameMapGuard; default 1 since its acceptance unit, 10.11.2026): no scan of another map's
     // vessels from this map's update thread. A dock on another map id waits as before; a dock on the bot's map id is scanned on
     // the bot's own map instance (bot->GetMap(); the legacy scan took the first instance of that id, under the region layout
     // any region). TransportSameMapPolicy.h. 0 = the scan as before.
@@ -4780,6 +4781,31 @@ bool RunAwayAction::Execute(Event& event)
     return Flee(AI_VALUE(Unit*, "master target"));
 }
 
+namespace
+{
+// twow-repo#703 item 3 (AiPlayerbot.Loot.MoveGiveUp, LootGiveUpPolicy.h): one try of a roster bot on its own at its loot target.
+// No progress (>= 1 yd nearer than its best) for 30 s of continuous trying with >= 5 tries: the loot target is reset, the
+// object leaves the bot's loot list for 600 s (LootObjectStack::GiveUp), one [LootGiveUp] line; returns true then.
+bool LootMoveGiveUp(PlayerbotAI* ai, Player* bot, LootObject const& loot, WorldObject* wo)
+{
+    if (!ai::cohort::Applies(sPlayerbotAIConfig.lootMoveGiveUp, bot->GetGUIDLow()) || !IsRosterBotOnItsOwn(ai))
+        return false;
+    namespace lg = ai::loot_giveup;
+    LootObjectStack* stack = ai->GetAiObjectContext()->GetValue<LootObjectStack*>("available loot")->Get();
+    lg::Try& state = stack->MoveTry();
+    int64 const now = int64(time(nullptr));
+    if (lg::Next(state, loot.guid.GetRawValue(), bot->GetDistance(wo), now) != lg::Step::GiveUp)
+        return false;
+    sLog.outBasic("[LootGiveUp] bot=%u guid=%llu entry=%u dist_start=%.1f dist_best=%.1f tries=%u waited_s=%lld mode=%u",
+        bot->GetGUIDLow(), (unsigned long long)loot.guid.GetRawValue(), wo->GetEntry(), state.distStart, state.distBest,
+        state.tries, (long long)(now - state.begun), sPlayerbotAIConfig.lootMoveGiveUp);
+    ai->GetAiObjectContext()->GetValue<LootObject>("loot target")->Set(LootObject());
+    stack->GiveUp(loot.guid, now);
+    state = lg::Try();
+    return true;
+}
+}
+
 bool MoveToLootAction::Execute(Event& event)
 {
     LootObject loot = AI_VALUE(LootObject, "loot target");
@@ -4810,6 +4836,11 @@ bool MoveToLootAction::Execute(Event& event)
     }
 
     WorldObject *wo = loot.GetWorldObject(bot);
+
+    // twow-repo#703 item 3 (AiPlayerbot.Loot.MoveGiveUp): after the hold / abort checks above, before the move - a loot target
+    // the bot comes no nearer to is given up (no endless move-to-loot loop). Key 0 (default): no state, as before.
+    if (sPlayerbotAIConfig.lootMoveGiveUp && wo && LootMoveGiveUp(ai, bot, loot, wo))
+        return false;
 
     if (ai->HasStrategy("debug move", BotState::BOT_STATE_NON_COMBAT) || ai->HasStrategy("debug loot", BotState::BOT_STATE_NON_COMBAT))
     {
