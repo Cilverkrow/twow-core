@@ -206,13 +206,28 @@ function(check_noop out)
       "        bool const any = !bots.empty();"
       "    std::atomic<bool> any_{ false };"
       "        return queueUsed_.load(std::memory_order_acquire) ? questQueue_.QueuedAge(low, questId, nowSec) : 0u;"
-      "        if (r.types || HasGroups())")
+      "        if (r.types || HasGroups() || finalFlush)"
+      # T30-1e (R9 P5): the one extra print is the pass that empties the registry with Types 0 (nothing held = no line).
+      "        bool const finalFlush = !r.types && heldAtPassStart_ && !HasGroups();\n        if (!finalFlush && in.nowMs - minuteStartMs_ < 60000)\n            return;"
+      "        heldAtPassStart_ = HasGroups();"
+      "        minute_ = MinuteCounts();\n        if (finalFlush)\n            minuteStarted_ = false;")
     string(FIND "${dpol}" "${needle}" at)
     if(at EQUAL -1)
       set(${out} "no-op: GroupDirectivePolicy.h fast path missing ${needle}" PARENT_SCOPE)
       return()
     endif()
   endforeach()
+  count_text("${dpol}" "        heldAtPassStart_ = " n)
+  if(NOT n EQUAL 1)
+    set(${out} "no-op: heldAtPassStart_ is set ${n} times (1 expected: the start of Pass)" PARENT_SCOPE)
+    return()
+  endif()
+  region("${dpol}" "    void Pass(PassInput const& in, Rules const& r, Io& io)" "        ApplyOutcomes(in, io);" pass)
+  string(FIND "${pass}" "        heldAtPassStart_ = HasGroups();" at)
+  if(at EQUAL -1)
+    set(${out} "no-op: heldAtPassStart_ is not taken before the pass changes the registry" PARENT_SCOPE)
+    return()
+  endif()
   foreach(needle
       "bool OwnsBot(std::uint32_t guidLow)\n{\n    // T30-1c: below arbiter 2 the manager owns no bot (Types acts like 0), so the legacy paths stay open for the cohort.\n    return Owns(sPlayerbotAIConfig.botGroupsManager, LiveTypesNow(), guidLow);\n}"
       "bool IsManaged(std::uint32_t guidLow)\n{\n    ViewEntry v;\n    return WorldManager().Directives().View().Find(guidLow, v);\n}"
@@ -796,7 +811,7 @@ function(check_unit out)
       "    TestQuestAttempts();" "    TestWishLeftover();" "    TestMinuteLine();" "    TestWrap();" "    TestFormingNoAttempt();" "    TestQuestViewKey();"
       "    TestLeaveEdgeLag();" "    TestGapSameMs();" "    TestGapStaleAnchor();" "    TestExitNoSupervisor();" "    TestEndWhileJoinQueued();"
       "    TestCohort();" "    TestSilentMember();" "    TestRealPlayerLeaving();" "    TestSerialAcrossOffOn();" "    TestSerialLow16();"
-      "    TestAckStale();" "    TestSwitchOffExits();" "    TestManagedSerialView();" "    TestLeftReasons();" "    TestAckWord();"
+      "    TestAckStale();" "    TestSwitchOffExits();" "    TestFinalFlush();" "    TestManagedSerialView();" "    TestLeftReasons();" "    TestAckWord();"
       "    TestSelfLeft();" "    TestLeftAckStale();" "    TestOsc();" "    TestLeftQuest();" "    TestSkipUnknownLong();")
     string(FIND "${unit_test}" "${needle}" at)
     if(at EQUAL -1)
@@ -899,7 +914,15 @@ probe(rpm "        if (sPlayerbotAIConfig.botGroupsManager || ai::group_mgr::Wor
 probe(dpol "        if (!Any())\n            return false;\n        std::lock_guard<std::mutex> lock(mutex_);\n        auto const it = bots_.find(low);"
   "        std::lock_guard<std::mutex> lock(mutex_);\n        auto const it = bots_.find(low);" check_noop "no-op: GroupDirectivePolicy.h fast path" "a lock on every gate read")
 probe(mgr_cpp "    return OwnsBot(guidLow) || IsManaged(guidLow);" "    return IsManaged(guidLow);" check_noop "no-op: GroupManager.cpp read view" "Blocks without OwnsBot")
-probe(dpol "        if (r.types || HasGroups())" "        if (true)" check_noop "no-op: GroupDirectivePolicy.h fast path" "the minute line with Types 0")
+probe(dpol "        if (r.types || HasGroups() || finalFlush)" "        if (true)" check_noop "no-op: GroupDirectivePolicy.h fast path" "the minute line with Types 0")
+# T30-1e (R9 P5): the final flush only in the pass that empties the registry with Types 0, and once.
+probe(dpol "        bool const finalFlush = !r.types && heldAtPassStart_ && !HasGroups();" "        bool const finalFlush = !r.types && !HasGroups();"
+  check_noop "no-op: GroupDirectivePolicy.h fast path" "a minute line on every idle pass with Types 0")
+probe(dpol "        bool const finalFlush = !r.types && heldAtPassStart_ && !HasGroups();" "        bool const finalFlush = heldAtPassStart_ && !HasGroups();"
+  check_noop "no-op: GroupDirectivePolicy.h fast path" "the flush with Types on")
+probe(dpol "        heldAtPassStart_ = HasGroups();   // T30-1e" "        // T30-1e" check_noop "no-op: GroupDirectivePolicy.h fast path missing +heldAtPassStart_" "the flag never taken")
+probe(dpol "        if (finalFlush)\n            minuteStarted_ = false;" "" check_noop "no-op: GroupDirectivePolicy.h fast path" "a restart counts its first minute from the flush")
+probe(unit_test "    TestFinalFlush();\n" "" check_unit "unit: t/group_directive_policy_tests.cpp does not run" "the final flush test not run")
 probe(ops_cpp "    if (op.reason & kJoinManager)\n    {\n        if (group->GetMembersCount() == 2)" "    if (true)\n    {\n        if (group->GetMembersCount() == 2)" check_noop "no-op: RunJoin" "every join takes the manager branch")
 # (c) the post.
 probe(mgr_cpp "        if (sPlayerbotAIConfig.supervisor && ai::supervisor::Applies(sPlayerbotAIConfig.supervisor, low))\n            return ai::supervisor::Post(" "            return ai::supervisor::Post(" check_post "post: supervisor::Post" "the post without the R10 gate")
