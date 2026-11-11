@@ -53,6 +53,7 @@
 #include "playerbot/R01CohortPolicy.h"
 #include "playerbot/LosCachePolicy.h"   // twow-repo#602 (Rotation.LosCacheMs): the read's bounds
 #include "playerbot/RescueHubPolicy.h"   // twow-repo#575 RG-a (QuestRescue.HomeHubs): the mode clamp
+#include "playerbot/QuestRescueSlotPolicy.h"   // twow-repo#703 item 1 (QuestRescue.NoTargetFreeSlot): the mode clamp
 #include "playerbot/ResurrectDelayPolicy.h"   // twow-repo#575 H3 (Revive.DelayResurrectRequest): the mode clamp
 
 #include <iostream>
@@ -867,6 +868,13 @@ bool PlayerbotAIConfig::Initialize()
     grindCapLowLevelMargin = config.GetIntDefault("AiPlayerbot.GrindCap.LowLevelMargin", 2);
     questRescueIdleMinutes = config.GetIntDefault("AiPlayerbot.QuestRescue.IdleMinutes", 30);
     questRescueKeepRequestWhenFull = config.GetBoolDefault("AiPlayerbot.QuestRescue.KeepRequestWhenFull", false);
+    // twow-repo#703 item 1 (QuestRescue.NoTargetFreeSlot): 0 off, 1 on; any other value is off (logged).
+    questRescueNoTargetFreeSlot = config.GetIntDefault("AiPlayerbot.QuestRescue.NoTargetFreeSlot", 0);
+    if (!ai::rescue_slot::ModeValid(int32(questRescueNoTargetFreeSlot)))
+    {
+        sLog.outError("[QuestRescue] config key=NoTargetFreeSlot value=%d result=off (0 off, 1 on)", int32(questRescueNoTargetFreeSlot));
+        questRescueNoTargetFreeSlot = 0;
+    }
     questRescueHomeHubs = ai::rescue_hub::ClampMode(config.GetIntDefault("AiPlayerbot.QuestRescue.HomeHubs", 1));   // default 1 since the SZM adoption (10.11.2026), 0 = rollback
     // twow-repo#703 item 2 (design szf/DESIGN-703-2-VALLEY-L5-20261111.md): the L5-10 own-hub rows, only where HomeHubs applies.
     questRescueHomeHubsL5OwnHub = config.GetIntDefault("AiPlayerbot.QuestRescue.HomeHubs.L5OwnHub", 0);
@@ -1270,7 +1278,7 @@ bool PlayerbotAIConfig::Initialize()
     pathTransportDeckProbe = config.GetBoolDefault("AiPlayerbot.Path.TransportDeckProbe", false);
     pathTransportWaitTimeoutMin = ai::transport_board::ClampWaitTimeoutMin(config.GetIntDefault("AiPlayerbot.Path.TransportWaitTimeoutMin", 15));
     pathTransportBoardFix = config.GetBoolDefault("AiPlayerbot.Path.TransportBoardFix", false);
-    pathTransportSameMapGuard = config.GetBoolDefault("AiPlayerbot.Path.TransportSameMapGuard", false);   // twow-repo#575 H4
+    pathTransportSameMapGuard = config.GetBoolDefault("AiPlayerbot.Path.TransportSameMapGuard", true);   // twow-repo#575 H4
     if (pathTransportBoardFix && transportTeleportType == 0)   // twow-repo#342 (S3b-1)
         sLog.outError("AiPlayerbot.Path.TransportBoardFix is built for TransportTeleportType 1 / 2; walking onto transports (0) is not supported");
     pathTaxiCancelForm = config.GetBoolDefault("AiPlayerbot.Path.TaxiCancelForm", false);
@@ -2299,6 +2307,7 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestRescue.HomeHubs", Value(questRescueHomeHubs)},
             {"QuestRescue.HomeHubs.L5OwnHub", Value(questRescueHomeHubsL5OwnHub)},
             {"QuestRescue.KeepRequestWhenFull", Value(questRescueKeepRequestWhenFull)},
+            {"QuestRescue.NoTargetFreeSlot", Value(questRescueNoTargetFreeSlot)},
             {"Rescue.RepopDeadOnly", Value(rescueRepopDeadOnly)},
             {"Revive.CorpseRunFirst", Value(reviveCorpseRunFirst)},
             {"Revive.CorpseRunFirst.MaxSeconds", Value(reviveCorpseRunFirstMaxSeconds)},
