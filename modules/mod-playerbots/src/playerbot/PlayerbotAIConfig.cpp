@@ -296,9 +296,9 @@ bool PlayerbotAIConfig::Initialize()
     hunterAmmoTiers = ai::ammo_stock::ParseTiers(config.GetStringDefault("AiPlayerbot.HunterAmmoTiers", ""));
     hunterAmmoFillQuiver = config.GetBoolDefault("AiPlayerbot.HunterAmmoFillQuiver", false);
     thrownMaxCount = (uint32)config.GetIntDefault("AiPlayerbot.ThrownMaxCount", 0);
-    thrownUsageFix = config.GetIntDefault("AiPlayerbot.ThrownUsageFix", 0);
+    thrownUsageFix = config.GetIntDefault("AiPlayerbot.ThrownUsageFix", 1);
     if (thrownUsageFix > 2)
-        thrownUsageFix = 0;
+        thrownUsageFix = 1;
     randomBotRpgChance = config.GetFloatDefault("AiPlayerbot.RandomBotRpgChance", 0.35f);
     usePotionChance = config.GetFloatDefault("AiPlayerbot.UsePotionChance", 1.0f);
     attackEmoteChance = config.GetFloatDefault("AiPlayerbot.AttackEmoteChance", 0.0f);
