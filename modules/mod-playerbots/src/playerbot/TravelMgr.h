@@ -620,6 +620,11 @@ namespace ai
         bool TakeInactiveReselectPending() { bool const pending = inactiveReselectPending; inactiveReselectPending = false; return pending; }
         bool IsInactiveReselectPending() const { return inactiveReselectPending; }   // twow-repo#601 IdleDetail (read only)
         bool FallBackToInactiveCooldown();
+        // twow-repo#703 item 4 (Rotation.UnreachableGiveUp): the quest of the current quest objective destination when its entry is
+        // this one (0 = none), and the empty-camp mark of that camp for a fixed duration; the target ends so the router reselects.
+        // MarkUnreachableCamp returns whether the mark pushed out another camp's live mark (evicted=).
+        uint32 UnreachableCampQuest(int32 entry) const;
+        bool MarkUnreachableCamp(uint32 quest, int32 entry, uint32 markMs);
         // #307 zone escape: the destination that led into a zone clearly above
         // the bot's level is skipped like a death-suppressed one.
         void SuppressCurrentDestination(uint32 durationMs);
