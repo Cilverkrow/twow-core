@@ -174,7 +174,9 @@ Unit* PartyMemberValue::FindPartyMember(FindPlayerPredicate &predicate, bool ign
 
 bool PartyMemberValue::Check(Unit* player)
 {
-    return player && player != bot && player->GetMapId() == bot->GetMapId() &&
+    // HARM-RACE guard pair: the common candidate filter of the heal/buff member values (auras, health, class are read behind it): the same Map
+    // object, not only the same map id (a continent region is its own Map object and thread, #697).
+    return player && player != bot && player->FindMap() && player->FindMap() == bot->FindMap() &&
         bot->IsWithinDistInMap(player, sPlayerbotAIConfig.sightDistance, false);
 }
 

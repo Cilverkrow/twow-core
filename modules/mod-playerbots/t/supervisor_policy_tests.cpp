@@ -360,7 +360,8 @@ void TestArbiter()
     Require(mn == min.size(), "minute line length");
     Require(min == "[ArbiterMin] cohort=B bundles=4 lines=3 dropped=1 unknown=1 offthread_writes=2 cross_writes=4 gaps=1 closes_open=1 "
         "expire_cooldown=1 sel=1 req=0 exe=2 life=0 mgr=0 grp=0 cmd=0 brain=0 test=0 grp_t02=0 errand=0 deny=0 deny_probe=0 "
-        "held_request=0 held_errand=0 probe_pass=0 probe_fail=0 probe_shadow=0 depth_overflow=0", "minute line");
+        "held_request=0 held_errand=0 probe_pass=0 probe_fail=0 probe_shadow=0 depth_overflow=0 gate_off_world=0 gate_off_none=0 "
+        "gate_off_bot=0", "minute line");
     ArbiterMinute e;
     e.family[std::size_t(WriterId::Group)] = 11;
     e.family[std::size_t(WriterId::Errand)] = 12;
@@ -377,6 +378,32 @@ void TestArbiter()
     Require(emin.find(" grp_t02=11 errand=12 deny=1 deny_probe=2 held_request=3 held_errand=4 probe_pass=5 probe_fail=6 "
         "probe_shadow=7 depth_overflow=8") != std::string::npos, "minute line enforcement fields");
     Require(emin.size() < 512, "minute line fits the 512 byte log buffer");
+    // T02-GROUP gate_offthread: three fields appended at the end, after depth_overflow.
+    e.gateOffWorld = 21;
+    e.gateOffNone = 22;
+    e.gateOffBot = 23;
+    FormatArbiterMin(buf, sizeof(buf), 'A', e);
+    std::string const gmin(buf);
+    std::string const gtail = " depth_overflow=8 gate_off_world=21 gate_off_none=22 gate_off_bot=23";
+    Require(gmin.size() > gtail.size() && gmin.compare(gmin.size() - gtail.size(), gtail.size(), gtail) == 0,
+        "the gate_off fields end the minute line");
+    Require(gmin.find("[ArbiterMin] cohort=A bundles=0 lines=0 dropped=0 unknown=0 offthread_writes=0 cross_writes=0 gaps=0 ") == 0,
+        "the prefix is unchanged");
+    // Every field at its maximum fits the 768 byte buffer of EmitMinute (31 fields of 4294967295: 643 characters).
+    ArbiterMinute full;
+    std::uint32_t* const fields[] = {&full.bundles, &full.lines, &full.dropped, &full.unknown, &full.offthreadWrites,
+        &full.crossWrites, &full.gaps, &full.closesOpen, &full.expireCooldown, &full.deny, &full.denyProbe, &full.heldRequest,
+        &full.heldErrand, &full.probePass, &full.probeFail, &full.probeShadow, &full.depthOverflow, &full.gateOffWorld,
+        &full.gateOffNone, &full.gateOffBot};
+    for (std::uint32_t* p : fields)
+        *p = 4294967295u;
+    for (std::size_t i = 0; i < kWriterIds; ++i)
+        full.family[i] = 4294967295u;
+    char wide[kArbiterMinBuf];
+    std::size_t const minN = FormatArbiterMin(wide, sizeof(wide), 'B', full);
+    Require(minN == 643 && minN == std::strlen(wide) && minN + 1 < sizeof(wide), "the longest minute line (643) fits 768, not cut");
+    Require(std::string(wide).find(" gate_off_bot=4294967295") == minN - std::strlen(" gate_off_bot=4294967295"),
+        "the longest minute line ends with the last field");
 
     // Buffers: cut and terminated, a zero buffer writes nothing, no line break survives.
     char small[16];
@@ -505,6 +532,64 @@ void TestArbiterLanes()
     Require(probes == 100, "one bot in 50 is a probe bot");
 }
 
+// A3 step 3 T02-GROUP (AiPlayerbot.Supervisor.Arbiter = 2, BotGroups.Manager.Types > 0; default 0): the [ArbiterGrp] minute
+// line (design A3-S3-T02-ENTWURF.md v0.4.3 7.11 with the recheck of 11.11.: 50 fields).
+void TestArbiterGrp()
+{
+    char const* const want[] = {"dir_enter", "dir_update", "dir_exit", "dir_bad", "superseded", "enter_ok", "enter_ref",
+        "update_ok", "update_ref", "exit_ok", "exit_stale", "bad_ref", "ack_drop_enter", "ack_drop_exit", "left", "left_drop",
+        "left_cancel", "r_deny", "r16", "r19", "r20", "r21", "r22", "r23", "r24", "r25", "orphan", "goal_done", "goal_lost",
+        "rescue_in", "rescue_group", "rescue_back", "leader_far", "follow_make", "follow_turnin", "point_reapply", "held_group_copy",
+        "goal_close", "prep_cancel", "close_burst", "close_warn", "band_held", "goal_adopt_enter", "goal_adopt_write", "cross_keep",
+        "owner_q", "owner_g", "nonquest", "follow_self", "handler_off"};
+    Require(sizeof(want) / sizeof(want[0]) == kGrpFields && kGrpFields == 50, "50 group fields");
+    for (std::size_t i = 0; i < kGrpFields; ++i)
+        Require(std::string(GrpFieldName(GrpField(i))) == want[i], "field names in enum order");
+    Require(std::string(GrpFieldName(GrpField::Count)) == "unknown", "no name past the last field");
+    Require(std::size_t(GrpField::DirEnter) == 0 && std::size_t(GrpField::Nonquest) == 47 && std::size_t(GrpField::HandlerOff) == 49,
+        "fixed positions");
+
+    ArbiterGrpMinute g;
+    Require(GrpSilent(g), "a zero minute is silent");
+    char buf[kArbiterGrpBuf];
+    std::size_t n = FormatArbiterGrp(buf, sizeof(buf), 'A', g);
+    std::string line(buf);
+    Require(n == line.size() && line.find("[ArbiterGrp] cohort=A dir_enter=0 dir_update=0 ") == 0, "the tag, the cohort, then fields");
+
+    // Each field set to its own index + 1: the text names the fields in enum order with their values.
+    for (std::size_t i = 0; i < kGrpFields; ++i)
+        g.v[i] = std::uint32_t(i + 1);
+    Require(!GrpSilent(g), "a counted minute is not silent");
+    n = FormatArbiterGrp(buf, sizeof(buf), 'B', g);
+    line = buf;
+    std::string expect = "[ArbiterGrp] cohort=B";
+    for (std::size_t i = 0; i < kGrpFields; ++i)
+        expect += " " + std::string(want[i]) + "=" + std::to_string(i + 1);
+    Require(line == expect && n == expect.size(), "every field in enum order");
+    ArbiterGrpMinute one;
+    one.v[std::size_t(GrpField::HandlerOff)] = 1;
+    Require(!GrpSilent(one), "the last field alone is not silent");
+
+    // Every field at 4294967295: 1061 characters, not cut in kArbiterGrpBuf.
+    for (std::size_t i = 0; i < kGrpFields; ++i)
+        g.v[i] = 4294967295u;
+    n = FormatArbiterGrp(buf, sizeof(buf), 'B', g);
+    Require(n == 1061 && n == std::strlen(buf) && n + 1 < sizeof(buf), "the longest group line (1061) fits, not cut");
+    Require(std::string(buf).find(" handler_off=4294967295") == n - std::strlen(" handler_off=4294967295"), "ends with the last field");
+
+    // A short buffer cuts and terminates; a zero buffer writes nothing; the line is one line.
+    char small[40];
+    n = FormatArbiterGrp(small, sizeof(small), 'A', g);
+    Require(n == sizeof(small) - 1 && std::strlen(small) == n, "a short buffer is cut, terminated");
+    Require(FormatArbiterGrp(small, 0, 'A', g) == 0, "a zero buffer writes nothing");
+    n = FormatArbiterGrp(buf, sizeof(buf), '\n', g);
+    Require(std::string(buf).find('\n') == std::string::npos && n == 1061, "no line break survives");
+
+    // The [ArbiterMin] sum carries the group minute and the gate fields, all 0 by default.
+    ArbiterMinute m;
+    Require(GrpSilent(m.grp) && m.gateOffWorld == 0 && m.gateOffNone == 0 && m.gateOffBot == 0, "new minute fields start at 0");
+}
+
 int main()
 {
     TestSwitch();
@@ -520,6 +605,7 @@ int main()
     TestFormatters();
     TestArbiter();
     TestArbiterLanes();
+    TestArbiterGrp();
     std::cout << "supervisor_policy_tests: OK\n";
     return 0;
 }

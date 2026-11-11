@@ -34,7 +34,7 @@ bool ShouldPullTrigger::IsActive()
     for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
     {
         Player* member = ref->getSource();
-        if (!member || !member->IsInWorld() || member->GetMapId() != bot->GetMapId())
+        if (!member || !member->IsInWorld() || !SameMapObject(bot, member))   // HARM-RACE guard pair: own Map object, not only the map id
             continue;
 
         // Never pull on top of a fight that is still running, and never onto a

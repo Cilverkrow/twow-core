@@ -83,6 +83,10 @@ std::uint32_t OpenObjectives(Player* bot, std::uint32_t questId, bool* dropOnly 
     return open;
 }
 
+}   // namespace - StagedOps: FindQuestDest/ForceQuestTravel have external linkage (declared in QuestGroupWorld.h, run on the bot thread)
+
+// A3 step 3 T02-GROUP (AiPlayerbot.Supervisor.Arbiter = 2, BotGroups.Manager.Types > 0; default 0): Counter, Complete and
+// TurnedIn have external linkage (declared in QuestGroupWorld.h); the group handler reads the goal end with them. Bodies unchanged.
 std::uint32_t Counter(Player* bot, std::uint32_t questId)
 {
     QuestStatusData const* st = bot->GetQuestStatusData(questId);
@@ -105,8 +109,6 @@ bool TurnedIn(Player* bot, std::uint32_t questId)
     QuestStatusData const* st = bot->GetQuestStatusData(questId);
     return st && st->m_rewarded;
 }
-
-}   // namespace - StagedOps: FindQuestDest/ForceQuestTravel have external linkage (declared in QuestGroupWorld.h, run on the bot thread)
 
 // The nearest destination of the quest for one objective (objIdx 0..3) or its taker (-1). GetDestinations, not
 // GetPartitions (that one waits for a worker thread). onlyPossible = false: an elite objective is the whole point.
@@ -270,6 +272,11 @@ std::string const FollowerSet = "-wander,+follow,-travel,-tfish,-rpg,-grind,-att
 // Turn-in phase: every member goes to the taker on its own forced target (a follower does not turn in on its own).
 std::string const TurnInSet = "-follow,+travel,-group,-adhoc group";
 
+}   // namespace
+
+// A3 step 3 T02-GROUP (AiPlayerbot.Supervisor.Arbiter = 2, BotGroups.Manager.Types > 0; default 0): MakeFollower, FollowerIntact
+// and MakeTurnIn have external linkage (declared in QuestGroupWorld.h, bot thread): the group handler follows the leader with
+// them (SupervisorGroup.cpp FollowCheck). Bodies unchanged; FollowerSet and TurnInSet stay internal (anonymous namespace above).
 void MakeFollower(PlayerbotAI* ai, Player* leader)
 {
     if (ai->GetMaster() != leader)
@@ -289,6 +296,9 @@ void MakeTurnIn(PlayerbotAI* ai)
 {
     ai->RequestGroupAi(group_ai_refresh::TurnIn);
 }
+
+namespace
+{
 
 // The invite path of the core with the leader as inviter (the inviter becomes leader and master of the invitee), then
 // the invitee's own accept action - both on the world thread.

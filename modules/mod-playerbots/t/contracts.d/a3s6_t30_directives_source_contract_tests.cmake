@@ -9,7 +9,8 @@ cmake_policy(VERSION 3.16)
 #       the read view answers from one atomic without a lock while it is empty, Blocks = OwnsBot || IsManaged, the minute
 #       line only with a type on or a held group, RunJoin's manager branch only for manager joins;
 #   (c) the one directive post: exactly one ai::supervisor::Post( in the module, in GroupManager.cpp, behind the R10 gate
-#       (supervisor on and Applies), a false return counted as dir_dropped / directive_dropped; PostDirectiveAck has no caller;
+#       (supervisor on and Applies), a false return counted as dir_dropped / directive_dropped; PostDirectiveAck has one caller
+#       (T02-GROUP SupervisorGroup.cpp SendAck; declaration, definition, caller = 3);
 #   (d) the manager's ops: QueueManagerJoin / QueueManagerLeave / TakeManagerOutcomes called only from GroupManager.cpp; the
 #       manager reads map keys only (no Player* dereference); the engine header and the view header are pure;
 #   (e) the gates G1-G12 (design 4; G9 = no gate by F15 (a)) in their places, with a census of every Blocks / IsManaged call;
@@ -22,7 +23,8 @@ cmake_policy(VERSION 3.16)
 #       the engine is never re-made), the seq never 0, the serial's low 16 bits never 0 nor those of a group still held; an
 #       ack matches only its own directive, any other is ack_stale and nothing else;
 #   (h5) the T02-GROUP read IsManaged(guid, serial): a live member under that wire serial, the atomic fast path, no log, no
-#       allocation, the lock only for the lookup (both IsManaged overloads); no caller in this pair; kOrphanGraceMs;
+#       allocation, the lock only for the lookup (both IsManaged overloads); one caller of the two-argument overload (T02-GROUP
+#       ManagedNow, 3 mentions: declaration, definition, caller); kOrphanGraceMs;
 #   (h6) T30-1b (agreed with CLI-Projekt, OB-00 10.11.): ack state 4 "left" (kAckLeft, the serial in b16-31 of the state
 #       word) handled before the seq match, only with seq 0 and the serial of the bot's current group; the end reasons
 #       bot_left_done/lost/off appended before Count; the ack reason names 21-27; osc (kOscSec 900) and self_left at the end
@@ -253,10 +255,10 @@ function(check_post out)
       return()
     endif()
   endforeach()
-  # PostDirectiveAck gets no caller in T30-1 (declaration and definition only).
+  # PostDirectiveAck: declaration, definition and the one T02-GROUP caller (SupervisorGroup.cpp SendAck).
   count_text("${code}" "PostDirectiveAck(" n_ack)
-  if(NOT n_ack EQUAL 2)
-    set(${out} "post: PostDirectiveAck( appears ${n_ack} times (2 expected: declaration and definition, no caller in T30-1)" PARENT_SCOPE)
+  if(NOT n_ack EQUAL 3)
+    set(${out} "post: PostDirectiveAck( appears ${n_ack} times (3 expected: declaration, definition, the T02-GROUP caller SendAck)" PARENT_SCOPE)
     return()
   endif()
   set(${out} "" PARENT_SCOPE)
@@ -360,9 +362,9 @@ set(G12M "            if (ai::group_mgr::IsManaged(member->GetGUIDLow()))\n     
 set(GATES G1 G2 G3 G4 G4P G5 G6 G7 G8 G8Q G10 G10L G11 G12 G12M)
 # The census: every Blocks / IsManaged call in the module (code only). A new or a dropped caller changes the count: add it to
 # the gate list above (design 4) or explain it here. Blocks: G1, G2, G3, G4, G5, G6, G7, G8, G10 x2 = 10. IsManaged: the
-# status hook, G11, G12 x2 = 4.
+# status hook, G11, G12 x2, and T02-GROUP's ManagedNow (SupervisorGroup.cpp, the two-argument read: serial) = 5.
 set(N_BLOCKS 10)
-set(N_MANAGED 4)
+set(N_MANAGED 5)
 
 function(check_gates out)
   foreach(g IN LISTS GATES)
@@ -630,12 +632,42 @@ function(check_view out)
       return()
     endif()
   endforeach()
-  # No caller of the two-argument overload in this pair (CLI-Projekt's T02-GROUP pair adds it): declaration + definition.
+  # The two-argument overload: declaration, definition and the one T02-GROUP caller (SupervisorGroup.cpp ManagedNow).
   strip_comments("${all_sources}${extra}" code)
   string(REGEX MATCHALL "IsManaged\\(([^(),]|\\([^()]*\\))*," calls "${code}")
   list(LENGTH calls n)
-  if(NOT n EQUAL 2)
-    set(${out} "view: IsManaged(guid, serial) appears ${n} times (2 expected: declaration and definition, no caller)" PARENT_SCOPE)
+  if(NOT n EQUAL 3)
+    set(${out} "view: IsManaged(guid, serial) appears ${n} times (3 expected: declaration, definition, the T02-GROUP caller ManagedNow)" PARENT_SCOPE)
+    return()
+  endif()
+  set(${out} "" PARENT_SCOPE)
+endfunction()
+
+# ---- (h5b) T02-GROUP (Q8 (a)): the gather bits b13-15 of the directive word -------------------------------------------------------
+# DirectiveBits carries gatherKind (b13-14) and gatherFlag (b15), each named once in the struct; Pack and Unpack touch them only
+# outside Exit (an Exit keeps its reason in b9-15); b9-12 stay 0 (T34).
+function(check_gather_bits policy out)
+  region("${policy}" "struct DirectiveBits\n{" "\n};\n" bits)
+  count_text("${bits}" "gatherKind" nk)
+  count_text("${bits}" "gatherFlag" nf)
+  if(bits STREQUAL "" OR NOT nk EQUAL 1 OR NOT nf EQUAL 1)
+    set(${out} "gather: DirectiveBits names gatherKind ${nk} times and gatherFlag ${nf} times (1 and 1 expected)" PARENT_SCOPE)
+    return()
+  endif()
+  region("${policy}" "inline std::uint32_t PackDirective(DirectiveBits const& d)\n{" "\n}\n" pack)
+  region("${policy}" "inline DirectiveBits UnpackDirective(std::uint32_t b)\n{" "\n}\n" unpack)
+  foreach(b pack unpack)
+    count_text("${${b}}" "d.verb != Verb::Exit" nx)
+    count_text("${${b}}" "gatherKind" nk)
+    count_text("${${b}}" "gatherFlag" nf)
+    if(${b} STREQUAL "" OR NOT nx EQUAL 1 OR nk LESS 1 OR nf LESS 1)
+      set(${out} "gather: ${b} does not touch the gather bits exactly behind d.verb != Verb::Exit" PARENT_SCOPE)
+      return()
+    endif()
+  endforeach()
+  string(FIND "${pack}" "(reason << 9)" at)
+  if(at EQUAL -1)
+    set(${out} "gather: PackDirective lost the Exit reason in b9-15" PARENT_SCOPE)
     return()
   endif()
   set(${out} "" PARENT_SCOPE)
@@ -876,8 +908,14 @@ check_post(r)
 expect_reason("a second directive post" "${r}" "post: supervisor::Post\\( called 2 times")
 set(extra "\n    ai::manager_inbox::PostDirectiveAck(low, 1, 2, 0);")
 check_post(r)
-expect_reason("a caller of PostDirectiveAck" "${r}" "post: PostDirectiveAck")
+expect_reason("a second caller of PostDirectiveAck" "${r}" "post: PostDirectiveAck\\( appears 4 times")
 set(extra "")
+string(REGEX REPLACE "manager_inbox::PostDirectiveAck\\(" "manager_inbox::PostDirectiveAckGone(" gone_sources "${all_sources}")
+set(all_saved "${all_sources}")
+set(all_sources "${gone_sources}")
+check_post(r)
+expect_reason("the T02-GROUP caller of PostDirectiveAck removed" "${r}" "post: PostDirectiveAck\\( appears 2 times")
+set(all_sources "${all_saved}")
 probe(dpol "Cnt::DirDropped" "Cnt::DirSent" check_post "post: GroupDirectivePolicy.h" "a dropped post not counted")
 # (d) the ops and the pure headers.
 set(extra "\n    ai::group_ops::QueueManagerJoin(1, 2, 0, ai::group_mgr::GroupType::Adhoc, 0, 0);")
@@ -949,8 +987,32 @@ probe(dpol "                if (m.state != MemberState::Leaving)\n              
 probe(gm_policy "constexpr std::uint32_t kOrphanGraceMs = 60000;" "constexpr std::uint32_t kOrphanGraceMs = 10000;" check_view "view: gm_policy missing" "a shorter orphan grace")
 set(extra "\n    if (!ai::group_mgr::IsManaged(bot->GetGUIDLow(), serial)) LeaveGroupMode();")
 check_view(r)
-expect_reason("a caller of IsManaged(guid, serial) in this pair" "${r}" "view: IsManaged\\(guid, serial\\) appears 3 times")
+expect_reason("a second caller of IsManaged(guid, serial)" "${r}" "view: IsManaged\\(guid, serial\\) appears 4 times")
 set(extra "")
+set(all_sources "${all_saved}")
+string(REGEX REPLACE "group_mgr::IsManaged\\(([^(),]|\\([^()]*\\))*," "group_mgr::IsManagedGone(x," gone_sources "${all_sources}")
+set(all_sources "${gone_sources}")
+check_view(r)
+expect_reason("the T02-GROUP caller of IsManaged(guid, serial) removed" "${r}" "view: IsManaged\\(guid, serial\\) appears 2 times")
+set(all_sources "${all_saved}")
+# (h5b) the gather bits.
+check_gather_bits("${dpol}" r)
+fail_if("${r}")
+string(REPLACE "    std::uint8_t gatherKind = 0;" "    std::uint8_t gatherKind = 0;\n    std::uint8_t gatherKind2 = 0;" m "${dpol}")
+check_gather_bits("${m}" r)
+expect_reason("a second gatherKind in DirectiveBits" "${r}" "gather: DirectiveBits names")
+string(REPLACE "    bool gatherFlag = false;" "" m "${dpol}")
+check_gather_bits("${m}" r)
+expect_reason("gatherFlag gone from DirectiveBits" "${r}" "gather: DirectiveBits names")
+string(REPLACE "d.verb != Verb::Exit ? ((std::uint32_t(d.gatherKind)" "true ? ((std::uint32_t(d.gatherKind)" m "${dpol}")
+check_gather_bits("${m}" r)
+expect_reason("Pack writes the gather bits for an Exit too" "${r}" "gather: pack does not touch")
+string(REPLACE "    if (d.verb != Verb::Exit)\n    {\n        d.gatherKind" "    if (true)\n    {\n        d.gatherKind" m "${dpol}")
+check_gather_bits("${m}" r)
+expect_reason("Unpack reads the gather bits for an Exit too" "${r}" "gather: unpack does not touch")
+string(REPLACE "(reason << 9) | gather" "gather" m "${dpol}")
+check_gather_bits("${m}" r)
+expect_reason("the Exit reason dropped from Pack" "${r}" "lost the Exit reason")
 # (h6) T30-1b.
 probe(inbox_h "constexpr std::uint8_t kAckLeft = 4;" "constexpr std::uint8_t kAckLeft = 5;" check_t30_1b "t30-1b: inbox_h missing" "ack state left not 4")
 probe(dpol "    a.serial = std::uint16_t(e.mapOrDungeon >> 16);" "    a.serial = 0;" check_t30_1b "t30-1b: dpol missing" "AckOf without the serial word")

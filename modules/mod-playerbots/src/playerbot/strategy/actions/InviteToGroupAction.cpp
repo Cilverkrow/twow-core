@@ -188,15 +188,16 @@ namespace ai
             return allowedClassNr;
         }
 
-        Player* groupMaster = sObjectMgr.GetPlayer(group->GetLeaderGuid());
-
+        // HARM-RACE guard pair: the subject of the thread rule is the ASKER (the player whose thread runs this, first argument of IsSafe), not the
+        // group leader: the old form passed the leader as the first argument, compared two possibly foreign objects and dereferenced a null
+        // leader (offline). A member is read only when it stands on the asker's own Map object.
         Group::MemberSlotList const& groupSlot = group->GetMemberSlots();
         for (Group::member_citerator itr = groupSlot.begin(); itr != groupSlot.end(); itr++)
         {
             // Only add group member targets that are alive and near the player
             Player* player = sObjectMgr.GetPlayer(itr->guid);
 
-            if (!PlayerbotAI::IsSafe(groupMaster, player))
+            if (!player || !PlayerbotAI::IsSafe(asker, player) || (player != asker && !SameMapObject(asker, player)))
                 continue;
 
             BotRoles role = PlayerbotAI::IsTankFor(asker, player, false) ? BOT_ROLE_TANK : PlayerbotAI::IsHealFor(asker, player, false) ? BOT_ROLE_HEALER : BOT_ROLE_DPS;
