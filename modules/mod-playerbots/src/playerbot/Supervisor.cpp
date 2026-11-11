@@ -19,21 +19,27 @@ Supervisor::Supervisor(PlayerbotAI* ai) : ai_(ai)
 {
 }
 
-// Without Release (the bot's AI is torn down): the shadow state is dropped without a line and without touching the bot.
+// Without Release (the bot's AI is torn down): the shadow state is dropped without a line and without touching the bot. A3 step 3
+// T02-GROUP: the mailbox registration of this instance goes too (the mailbox lock only; the logout thread may run this, so a held
+// group is never left here - the manager ends it without a supervisor).
 Supervisor::~Supervisor()
 {
     ShadowDrop(shadow_);
+    UnregisterMail(mailGuid_, mailToken_);
 }
 
 // Behaviour pair 1 (AiPlayerbot.Supervisor.Arbiter): the arbiter shadow closes the bundle of the engine pass before
 // (SupervisorShadow.cpp); it only watches. arbiter comes from the gate in PlayerbotAI::UpdateAI (ArbiterValue). A3 step 3 T02-a
 // (AiPlayerbot.Supervisor.Arbiter = 2, default 0): below 2 and without an edge the rest is one compare and, at 1, the probe's
-// early returns (no write, no line).
+// early returns (no write, no line). A3 step 3 T02-GROUP (BotGroups.Manager.Types > 0, default 0): GroupTick runs after the
+// shadow hand-over (its writes fall into this pass's bundle) and before the enforcement edges (a switch away from 2 leaves a
+// held group before the disarming edge); without a group it is the registration once, then a few compares.
 void Supervisor::Tick(std::uint32_t nowMs, std::uint32_t arbiter)
 {
     ++ticks_;
     TakeMail();
     ShadowTick(ai_, shadow_, arbiter >= 1);
+    GroupTick(nowMs, arbiter);
     bool const enforce = arbiter == 2;
     if (enforce != enforce_)
     {
@@ -47,9 +53,9 @@ void Supervisor::Tick(std::uint32_t nowMs, std::uint32_t arbiter)
         ProbeTick(nowMs, arbiter);
 }
 
-// Mailbox pair (SupervisorMail.cpp): no mail anywhere = one atomic load. The drained events are counted by the mailbox; GROUP mode
-// and the travel-target write (T02/T30) and the answer to the manager (PostDirectiveAck, wired by whichever of this pair and the
-// manager inbox pair merges second) come in their own pairs.
+// Mailbox pair (SupervisorMail.cpp): no mail anywhere = one atomic load. The drained events are counted by the mailbox. A3 step 3
+// T02-GROUP: HandleMail (SupervisorGroup.cpp) keeps the newest group directive and writes nothing; GroupTick answers it in the
+// same tick (the one ack through the manager inbox).
 void Supervisor::TakeMail()
 {
     if (!MailWaiting())
@@ -58,13 +64,16 @@ void Supervisor::TakeMail()
     if (!bot)
         return;
     Event mail[kMailSlots];
-    Drain(bot->GetGUIDLow(), mail, kMailSlots);
+    std::size_t const n = Drain(bot->GetGUIDLow(), mail, kMailSlots);
+    HandleMail(mail, n);
 }
 
 // The supervisor owns nothing of the bot, so there is nothing to hand back; the arbiter shadow closes its open bundle. A3 step 3
-// T02-a: the lane owner and the enforcement state go with it; the mode stays (the instance is dropped right after).
+// T02-a: the lane owner and the enforcement state go with it; the mode stays (the instance is dropped right after). T02-GROUP:
+// a held group is left first (GroupRelease; nothing without one, and no left report: the manager ends it without a supervisor).
 void Supervisor::Release()
 {
+    GroupRelease();
     ShadowRelease(ai_, shadow_);
     owner_ = Lane::None;
     enforce_ = false;

@@ -125,8 +125,19 @@ WriterId CurrentWriterId();
 // any ownership).
 bool OnOwnThread(PlayerbotAI const* ai);
 
+// A3 step 3 T02-GROUP (gate_offthread, design 7.12): the tag of the calling thread (Bot = some bot's map update, World, None).
+ThreadKind CurrentThreadKind();
+
 // The enforcement counters of the [ArbiterMin] minute (SupervisorPolicy.h ArbiterMinute), per cohort, under the shadow's mutex.
 // Counted only while a shadow minute runs (enforcement implies the shadow, 2 >= 1).
+// A3 step 3 T02-GROUP (AiPlayerbot.Supervisor.Arbiter = 2, BotGroups.Manager.Types > 0; default 0): the three gate_off_* fields
+// of [ArbiterMin], then the [ArbiterGrp] block - one value per SupervisorPolicy.h GrpField, same names, same order (from DirEnter
+// to HandlerOff; SupervisorShadow.cpp asserts every value against its GrpField). The final list, in print order:
+//   dir_enter dir_update dir_exit dir_bad superseded enter_ok enter_ref update_ok update_ref exit_ok exit_stale bad_ref
+//   ack_drop_enter ack_drop_exit left left_drop left_cancel r_deny r16 r19 r20 r21 r22 r23 r24 r25 orphan goal_done goal_lost
+//   rescue_in rescue_group rescue_back leader_far follow_make follow_turnin point_reapply held_group_copy goal_close prep_cancel
+//   close_burst close_warn band_held goal_adopt_enter goal_adopt_write cross_keep owner_q owner_g nonquest follow_self
+//   handler_off
 enum class EnforceCount : std::uint8_t
 {
     Deny,
@@ -136,7 +147,65 @@ enum class EnforceCount : std::uint8_t
     ProbePass,
     ProbeFail,
     ProbeShadow,
+    // T02-GROUP gate_offthread (design 7.12): [ArbiterMin] gate_off_world / gate_off_none / gate_off_bot.
+    GateOffWorld,
+    GateOffNone,
+    GateOffBot,
+    // T02-GROUP [ArbiterGrp] (design 7.11), GrpField order.
+    DirEnter,
+    DirUpdate,
+    DirExit,
+    DirBad,
+    Superseded,
+    EnterOk,
+    EnterRef,
+    UpdateOk,
+    UpdateRef,
+    ExitOk,
+    ExitStale,
+    BadRef,
+    AckDropEnter,
+    AckDropExit,
+    Left,
+    LeftDrop,
+    LeftCancel,
+    RDeny,
+    R16,
+    R19,
+    R20,
+    R21,
+    R22,
+    R23,
+    R24,
+    R25,
+    Orphan,
+    GoalDone,
+    GoalLost,
+    RescueIn,
+    RescueGroup,
+    RescueBack,
+    LeaderFar,
+    FollowMake,
+    FollowTurnin,
+    PointReapply,
+    HeldGroupCopy,
+    GoalClose,
+    PrepCancel,
+    CloseBurst,
+    CloseWarn,
+    BandHeld,
+    GoalAdoptEnter,
+    GoalAdoptWrite,
+    CrossKeep,
+    OwnerQ,
+    OwnerG,
+    Nonquest,
+    FollowSelf,
+    HandlerOff,
 };
+constexpr EnforceCount kGrpFirst = EnforceCount::DirEnter;
+static_assert(std::size_t(EnforceCount::HandlerOff) - std::size_t(kGrpFirst) + 1 == kGrpFields,
+    "the [ArbiterGrp] block of EnforceCount spans every GrpField");
 void CountEnforce(std::uint32_t guidLow, EnforceCount what);
 
 // One enforcement line (ev=deny, ev=probe, ev=mode) from the shared budget of 300 lines per minute; a refused line counts as

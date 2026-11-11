@@ -319,6 +319,53 @@ void TestDirectiveBits()
     Require(ev.source == std::uint8_t(sv::Requester::GroupMgr) && ev.source == 2, "source = Requester::GroupMgr (2)");
 }
 
+// A3 step 3 T02-GROUP (Q8 (a); AiPlayerbot.Supervisor.Arbiter = 2, BotGroups.Manager.Types > 0; default 0): b13-14 gatherKind and
+// b15 gatherFlag travel with every verb but Exit; b9-12 stay 0 (T34); an Exit keeps its end reason in b9-15 and reads no gather
+// bits. Every verb 0-15 x gatherKind 0-3 x gatherFlag.
+void TestGatherBits()
+{
+    for (std::uint32_t v = 0; v < 16; ++v)
+        for (std::uint32_t kind = 0; kind < 4; ++kind)
+            for (std::uint32_t flag = 0; flag < 2; ++flag)
+            {
+                DirectiveBits d;
+                d.verb = Verb(v);
+                d.type = GroupType::Quest;
+                d.objective = 2;
+                d.reason = EndReason::NoProgress;
+                d.serial = 0xA5C3;
+                d.gatherKind = std::uint8_t(kind);
+                d.gatherFlag = flag != 0;
+                std::uint32_t const b = PackDirective(d);
+                DirectiveBits const u = UnpackDirective(b);
+                Require(u.verb == Verb(v) && u.type == GroupType::Quest && u.objective == 2 && u.serial == 0xA5C3,
+                    "verb, type, objective and serial round trip with the gather bits");
+                if (Verb(v) == Verb::Exit)
+                {
+                    Require(((b >> 9) & 0x7Fu) == std::uint32_t(EndReason::NoProgress), "Exit: b9-15 is the end reason");
+                    Require(u.reason == EndReason::NoProgress && u.gatherKind == 0 && !u.gatherFlag, "Exit: the reason, no gather bits");
+                }
+                else
+                {
+                    Require(((b >> 9) & 0xFu) == 0, "b9-12 stay 0 (T34)");
+                    Require(((b >> 13) & 0x3u) == kind && ((b >> 15) & 0x1u) == flag, "b13-14 gatherKind, b15 gatherFlag");
+                    Require(u.gatherKind == kind && u.gatherFlag == (flag != 0) && u.reason == EndReason::None,
+                        "the gather bits round trip, no end reason");
+                }
+            }
+    DirectiveBits w;
+    w.verb = Verb::Enter;
+    w.gatherKind = 0xFF;
+    std::uint32_t const wb = PackDirective(w);
+    Require(((wb >> 13) & 0x3u) == 3 && ((wb >> 15) & 0x1u) == 0 && ((wb >> 9) & 0xFu) == 0, "gatherKind is masked to b13-14");
+    DirectiveBits x;
+    x.verb = Verb::Exit;
+    x.gatherKind = 3;
+    x.gatherFlag = true;
+    Require(((PackDirective(x) >> 9) & 0x7Fu) == 0, "an Exit packs no gather bits (reason None)");
+    Require(UnpackDirective(PackDirective(x)).gatherKind == 0 && !UnpackDirective(PackDirective(x)).gatherFlag, "nor reads them");
+}
+
 void TestReasons()
 {
     Require(std::string(EndReasonName(EndReason::ForeignGroup)) == "foreign_group" &&
@@ -1613,6 +1660,7 @@ void TestSkipUnknownLong()
 int main()
 {
     TestDirectiveBits();
+    TestGatherBits();
     TestReasons();
     TestCandidate();
     TestTypesZero();

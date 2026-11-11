@@ -15,6 +15,9 @@ cmake_policy(VERSION 3.16)
 # this check on purpose: Tick takes shadowOn from the gate and hands the pass to the shadow, Release lets the shadow close its
 # bundle, ~Supervisor drops the shadow state (no line, no bot access); the shadow itself lives in SupervisorShadow.*, pinned by a3s3_arbiter_shadow_source_contract_tests.cmake. The word
 # ban below still holds for Supervisor.h/.cpp: no writer, no config read, no log call there.
+# A3 step 3 T02-GROUP (AiPlayerbot.Supervisor.Arbiter = 2, BotGroups.Manager.Types > 0; default 0) changed it on purpose: Tick
+# calls GroupTick after the shadow hand-over, Release calls GroupRelease first, ~Supervisor also unregisters the mailbox entry;
+# the group handler lives in SupervisorGroup.cpp (a3s3_supervisor_group_source_contract_tests.cmake).
 # Prepared ratchet (NOT armed here): the count of direct travel-target writer calls (SetTarget|SetStatus|SetNullTravelTarget)
 # in the module is printed; the writer-deletion pairs (step 8) arm it at "<= the count of their base".
 # Pure rules: t/supervisor_policy_tests.cpp, t/planner_policy_tests.cpp. Every check_* returns "" when it holds, else the
@@ -198,19 +201,21 @@ function(check_no_behaviour sup_h sup_cpp all_sources out)
   # stays; below 2 and without an edge the rest is the enforcement edge compare and the probe call (its first statement is the
   # ArbiterProbe key check, pinned by a3s3_arbiter_enforce_source_contract_tests.cmake). The enforcement writes live in
   # ArmEnforce / DisarmEnforce / ProbeTick, not in the tick.
-  string(FIND "${sup_cpp}" "void Supervisor::Tick(std::uint32_t nowMs, std::uint32_t arbiter)\n{\n    ++ticks_;\n    TakeMail();\n    ShadowTick(ai_, shadow_, arbiter >= 1);\n    bool const enforce = arbiter == 2;\n    if (enforce != enforce_)\n    {\n        enforce_ = enforce;\n        if (enforce)\n            ArmEnforce();\n        else\n            DisarmEnforce(arbiter);\n    }\n    if (arbiter >= 1)\n        ProbeTick(nowMs, arbiter);\n}" at)
+  string(FIND "${sup_cpp}" "void Supervisor::Tick(std::uint32_t nowMs, std::uint32_t arbiter)\n{\n    ++ticks_;\n    TakeMail();\n    ShadowTick(ai_, shadow_, arbiter >= 1);\n    GroupTick(nowMs, arbiter);\n    bool const enforce = arbiter == 2;\n    if (enforce != enforce_)\n    {\n        enforce_ = enforce;\n        if (enforce)\n            ArmEnforce();\n        else\n            DisarmEnforce(arbiter);\n    }\n    if (arbiter >= 1)\n        ProbeTick(nowMs, arbiter);\n}" at)
   if(at EQUAL -1)
-    set(${out} "Supervisor.cpp: the tick is not the counter, the mail take, the shadow hand-over, the enforcement edges and the probe call" PARENT_SCOPE)
+    set(${out} "Supervisor.cpp: the tick is not the counter, the mail take, the shadow hand-over, GroupTick, the enforcement edges and the probe call" PARENT_SCOPE)
     return()
   endif()
-  string(FIND "${sup_cpp}" "void Supervisor::Release()\n{\n    ShadowRelease(ai_, shadow_);\n    owner_ = Lane::None;\n    enforce_ = false;\n}" at)
+  # A3 step 3 T02-GROUP: Release leaves a held group first (GroupRelease does nothing without one); ~Supervisor also drops the
+  # bot's mailbox registration (mailbox lock only, never LeaveGroupMode: the logout thread may run the destructor).
+  string(FIND "${sup_cpp}" "void Supervisor::Release()\n{\n    GroupRelease();\n    ShadowRelease(ai_, shadow_);\n    owner_ = Lane::None;\n    enforce_ = false;\n}" at)
   if(at EQUAL -1)
     set(${out} "Supervisor.cpp: the release does more than close the shadow's bundle and drop the lane owner and the enforcement state" PARENT_SCOPE)
     return()
   endif()
-  string(FIND "${sup_cpp}" "Supervisor::~Supervisor()\n{\n    ShadowDrop(shadow_);\n}" at)
+  string(FIND "${sup_cpp}" "Supervisor::~Supervisor()\n{\n    ShadowDrop(shadow_);\n    UnregisterMail(mailGuid_, mailToken_);\n}" at)
   if(at EQUAL -1)
-    set(${out} "Supervisor.cpp: ~Supervisor is not defined out of line (dropping only the shadow state)" PARENT_SCOPE)
+    set(${out} "Supervisor.cpp: ~Supervisor is not defined out of line (dropping the shadow state and the mailbox registration)" PARENT_SCOPE)
     return()
   endif()
   string(FIND "${sup_h}" "    ~Supervisor();" at)
@@ -360,9 +365,25 @@ string(REPLACE "    ++ticks_;\n" "    ticks_ += 2;\n" m "${sup_cpp}")
 check_no_behaviour("${sup_h}" "${m}" "${all_sources}" r)
 expect_caught("${r}" "the tick is not the bare counter")
 
-string(REPLACE "Supervisor::~Supervisor()\n{\n    ShadowDrop(shadow_);\n}" "" m "${sup_cpp}")
+string(REPLACE "Supervisor::~Supervisor()\n{\n    ShadowDrop(shadow_);\n    UnregisterMail(mailGuid_, mailToken_);\n}" "" m "${sup_cpp}")
 check_no_behaviour("${sup_h}" "${m}" "${all_sources}" r)
 expect_caught("${r}" "no out-of-line destructor")
+
+string(REPLACE "    UnregisterMail(mailGuid_, mailToken_);\n" "" m "${sup_cpp}")
+check_no_behaviour("${sup_h}" "${m}" "${all_sources}" r)
+expect_caught("${r}" "the destructor without the mailbox unregister")
+
+string(REPLACE "    ShadowDrop(shadow_);\n    UnregisterMail(mailGuid_, mailToken_);\n" "    ShadowDrop(shadow_);\n    UnregisterMail(mailGuid_, mailToken_);\n    LeaveGroupMode(\"dtor\");\n" m "${sup_cpp}")
+check_no_behaviour("${sup_h}" "${m}" "${all_sources}" r)
+expect_caught("${r}" "the destructor leaving the group mode")
+
+string(REPLACE "    GroupTick(nowMs, arbiter);\n" "" m "${sup_cpp}")
+check_no_behaviour("${sup_h}" "${m}" "${all_sources}" r)
+expect_caught("${r}" "the tick without GroupTick")
+
+string(REPLACE "    GroupRelease();\n" "" m "${sup_cpp}")
+check_no_behaviour("${sup_h}" "${m}" "${all_sources}" r)
+expect_caught("${r}" "the release without GroupRelease")
 
 check_no_behaviour("${sup_h}" "${sup_cpp}\nvoid Supervisor::Other()\n{\n    Forget(1);\n}" "${all_sources}" r)
 expect_caught("${r}" "a mail forget in Supervisor.cpp")

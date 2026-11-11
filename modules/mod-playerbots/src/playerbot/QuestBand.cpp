@@ -1,5 +1,6 @@
 #include "playerbot/playerbot.h"
 #include "playerbot/SupervisorShadow.h"   // A3 step 3 arbiter shadow: writer scopes
+#include "playerbot/SupervisorEnforce.h"  // A3 step 3 T02-GROUP: the band rests in GROUP (default 0)
 #include "playerbot/QuestBand.h"
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/PlayerbotAI.h"
@@ -500,6 +501,10 @@ bool ChooseTravelTargetAction::TryBandStep(Player* requester, TravelTarget* trav
     // P3-a owns the fresh bots; a Z1b rescue asked for in this pass wins; a resumed choice is no empty search.
     if (!ai->InQuestBandScope() || freshBot || rescueRequested || chooseBudgetExceeded)
         return false;
+    // A3 step 3 T02-GROUP (AiPlayerbot.Supervisor.Arbiter = 2, BotGroups.Manager.Types > 0; default 0): the band rests while a
+    // group goal is set (band_held counted).
+    if (ai::supervisor::BandHeldByGroup(ai))
+        return false;
 
     namespace qb = ai::quest_band;
     uint32 const now = uint32(time(nullptr));
@@ -690,6 +695,10 @@ bool ChooseTravelTargetAction::StartBandWalk(Player* requester, TravelTarget* tr
     uint32 walkEnd)
 {
     ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::Select);
+    // A3 step 3 T02-GROUP (AiPlayerbot.Supervisor.Arbiter = 2, BotGroups.Manager.Types > 0; default 0): no band walk while a group
+    // goal is set (band_held counted).
+    if (ai::supervisor::BandHeldByGroup(ai))
+        return false;
     namespace qb = ai::quest_band;
     uint32 const now = uint32(time(nullptr));
     HubTravelDestination* hub = plan.rung >= 0 ? qb::GetHub(uint32(plan.rung)) : nullptr;

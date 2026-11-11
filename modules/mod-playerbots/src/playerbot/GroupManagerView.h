@@ -12,9 +12,10 @@ namespace ai::group_mgr
 bool OwnsBot(std::uint32_t guidLow);
 // The registry holds the bot: a member, an Exit still open, an exit block, or a group it could not confirm leaving.
 bool IsManaged(std::uint32_t guidLow);
-// The supervisor's GROUP handler (T02-GROUP; at most once per 10 s per bot, only while the bot is in GROUP): the registry holds
-// the bot as a live member of the group whose serial has these low 16 bits (the directive's b16-31). False for kOrphanGraceMs
-// (GroupManagerPolicy.h) = the bot leaves GROUP. Same fast path as above; no log, no allocation, the lock only for the lookup.
+// The supervisor's GROUP handler (T02-GROUP ManagedNow; at most once per 10 s per bot, in GROUP or in RESCUE with a held
+// group): the registry holds the bot as a live member of the group whose serial has these low 16 bits (the directive's b16-31).
+// False for kOrphanGraceMs (GroupManagerPolicy.h) = the bot leaves GROUP. Same fast path as above; no log, no allocation, the
+// lock only for the lookup.
 bool IsManaged(std::uint32_t guidLow, std::uint16_t serial);
 // The one gate of the legacy group writers (G1-G12): owned or held. False for every bot while Types is 0 and nothing is held.
 bool Blocks(std::uint32_t guidLow);

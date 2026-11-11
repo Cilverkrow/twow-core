@@ -83,10 +83,34 @@ void Denied(PlayerbotAI* ai, Supervisor const& supervisor, TravelTarget* target,
 }
 }
 
+// A3 step 3 T02-GROUP (AiPlayerbot.Supervisor.Arbiter = 2, BotGroups.Manager.Types > 0; default 0): gate_offthread, design §7.12.
+// Runs on any thread: the cohort comes from the key and the guid only, the supervisor is never read here. Count only, always true.
+bool GateOffThread(PlayerbotAI* ai, TravelTarget* target, bool nullDest)
+{
+    if (ArbiterValue(sPlayerbotAIConfig.supervisorArbiter) != 2)
+        return true;
+    if (!ai || !ai->GetBot() || OnOwnThread(ai))
+        return true;
+    if (!(target && target->IsLive()) || nullDest || LaneOfWriter(CurrentWriterId()).neutral)
+        return true;
+    std::uint32_t const guid = ai->GetBot()->GetGUIDLow();
+    if (!sPlayerbotAIConfig.supervisor || !Applies(sPlayerbotAIConfig.supervisor, guid))
+        return true;
+    switch (CurrentThreadKind())
+    {
+        case ThreadKind::World: CountEnforce(guid, EnforceCount::GateOffWorld); break;
+        case ThreadKind::None: CountEnforce(guid, EnforceCount::GateOffNone); break;
+        case ThreadKind::Bot: CountEnforce(guid, EnforceCount::GateOffBot); break;
+    }
+    return true;
+}
+
 bool AdmitTargetWrite(PlayerbotAI* ai, TravelTarget* target, bool nullDest, char const* site)
 {
     Supervisor* const supervisor = EnforcingSupervisor(ai);
-    if (!supervisor || !target || !target->IsLive())
+    if (!supervisor)
+        return GateOffThread(ai, target, nullDest);
+    if (!target || !target->IsLive())
         return true;
     WriterId const writer = CurrentWriterId();
     Lane const held = supervisor->HeldOwner(target);
@@ -108,6 +132,17 @@ void CommitTargetWrite(PlayerbotAI* ai, TravelTarget* target)
     if (!supervisor || !target || !target->IsLive())
         return;
     supervisor->CommitOwner(target->WriteGen());
+    // A3 step 3 T02-GROUP (AiPlayerbot.Supervisor.Arbiter = 2, BotGroups.Manager.Types > 0; default 0): the writer of this
+    // generation (the writer= field of the group's close lines) and, in GROUP, the quest book's write of a destination of the group
+    // goal c becomes a group target (goal_adopt_write, design §7.7). GroupGoalQuest is 0 outside GROUP.
+    supervisor->NoteWriter(CurrentWriterId(), target->WriteGen());
+    std::uint32_t const goal = supervisor->GroupGoalQuest();
+    if (!goal)
+        return;
+    WriterLane const writerLane = LaneOfWriter(CurrentWriterId());
+    auto const* quest = dynamic_cast<QuestTravelDestination const*>(target->GetDestination());
+    if (!writerLane.neutral && writerLane.lane == Lane::Questbook && quest && quest->GetQuestId() == goal)
+        supervisor->AdoptGroupOwner(target->WriteGen(), EnforceCount::GoalAdoptWrite);
 }
 
 bool WouldAdmitTargetWrite(PlayerbotAI* ai, TravelTarget* target, bool nullDest)
@@ -136,6 +171,33 @@ bool LaneFree(PlayerbotAI* ai, Lane lane, char const* site)
     else if (std::strcmp(where, "probe") != 0)
         CountEnforce(guid, EnforceCount::HeldErrand);
     return false;
+}
+
+// ---- A3 step 3 T02-GROUP (AiPlayerbot.Supervisor.Arbiter = 2, BotGroups.Manager.Types > 0; default 0) ---------------------
+// The travel side of the group handler (design §7.7, §7.8). Each reads the supervisor through EnforcingSupervisor only.
+std::uint32_t GroupGoalSnapshot(PlayerbotAI* ai)
+{
+    Supervisor* const supervisor = EnforcingSupervisor(ai);
+    return supervisor ? supervisor->GroupGoalQuest() : 0;
+}
+
+bool GroupCopyFree(PlayerbotAI* ai)
+{
+    Supervisor* const supervisor = EnforcingSupervisor(ai);
+    if (!supervisor)
+        return true;
+    if (supervisor->CurrentMode() != Mode::Group && !supervisor->SelfExitLocked())
+        return true;
+    CountEnforce(ai->GetBot()->GetGUIDLow(), EnforceCount::HeldGroupCopy);
+    return false;
+}
+
+bool BandHeldByGroup(PlayerbotAI* ai)
+{
+    if (GroupGoalSnapshot(ai) == 0)
+        return false;
+    CountEnforce(ai->GetBot()->GetGUIDLow(), EnforceCount::BandHeld);
+    return true;
 }
 
 // The probe (AiPlayerbot.Supervisor.ArbiterProbe = 1, default 0; design 10.1): on probe bots only (ArbiterLanePolicy.h
