@@ -1262,6 +1262,13 @@ AiPlayerbot.QuestRescue.HomeHubs = 1
 # a pending band rescue is consumed, the 2 h per-bot rescue cooldown as before), a non-empty one asks the limiter as before.
 # Logs [QuestRescueMin] notarget_noslot= rung_mismatch= once per minute. 0 = as before (default); other values act like 0.
 AiPlayerbot.QuestRescue.NoTargetFreeSlot = 0
+# twow-repo#703 item 2 (11.11.2026): L5-10 rows of the HomeHubs table for the races whose faction has another start point on their
+# continent: human (Goldshire), dwarf / gnome (Kharanos), orc / troll (Razor Hill), tauren (Bloodhoof Village). Without them a stalled
+# L5-10 bot of these races is rescued into another race's start valley (ARB N1: 41 of 41 L5+ teleports) and the band ladder sends it
+# back within seconds. A bot that already stands at its hub (all anchor spawns within 100 yd) gets no target (result=at_hub,
+# [RescueHubMin] at_hub=) instead of the legacy targets. Acts only where HomeHubs applies; night elf / undead keep their next-zone rows.
+# Cohort mode: 0 = off (default, today's table), 1 = all bots, 2 = cohort B (odd guid), 3 = cohort A (even guid); other values act like 0.
+AiPlayerbot.QuestRescue.HomeHubs.L5OwnHub = 0
 # A creature entry that killed the bot GrindAvoid.MaxDeaths times within
 # WindowSeconds is skipped as a grind target for AvoidSeconds. 0 = off.
 AiPlayerbot.GrindAvoid.MaxDeaths = 0
