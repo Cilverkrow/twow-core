@@ -1279,7 +1279,7 @@ bool MovementAction::UseTransport(PlayerbotAI* ai, uint32 entry, WorldPosition d
 
     std::string transportName;
 
-    // twow-repo#575 H4 (AiPlayerbot.Path.TransportSameMapGuard; default 0 until its acceptance unit): no scan of another map's
+    // twow-repo#575 H4 (AiPlayerbot.Path.TransportSameMapGuard; default 1 since its acceptance unit, 10.11.2026): no scan of another map's
     // vessels from this map's update thread. A dock on another map id waits as before; a dock on the bot's map id is scanned on
     // the bot's own map instance (bot->GetMap(); the legacy scan took the first instance of that id, under the region layout
     // any region). TransportSameMapPolicy.h. 0 = the scan as before.
