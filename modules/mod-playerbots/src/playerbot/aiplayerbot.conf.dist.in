@@ -1463,8 +1463,11 @@ AiPlayerbot.BotGroups.Manager.Types = 0
 # deadline passed; t30_cut = T30's wall-clock rendezvous_timeout came first), both under their own 300 lines per minute, and
 # once a minute "[GroupMgr] minute3 gather= region_mismatch= z_out= place_jump_same= place_jump_other= gather_resume=
 # shadow_arrived= shadow_disagree= shadow_leg_expired= places= open= shadow_gathered= shadow_compared= shadow_t33_first=
-# shadow_t30_first= shadow_t30_cut= dead_at_point= shadow_lines_dropped=" (increments; gather, places = fresh places, open =
-# stands; shadow_disagree / shadow_compared count manager passes, shadow_t33_first / shadow_t30_first meetings).
+# shadow_t30_first= shadow_t30_cut= dead_at_point= shadow_lines_dropped= adhoc_formed= adhoc_arrived= adhoc_all= adhoc_never=
+# adhoc_open=" (increments; gather, places = fresh places, open and adhoc_open = stands; shadow_disagree / shadow_compared
+# count manager passes, shadow_t33_first / shadow_t30_first meetings). Manager ADHOC groups get no meeting, only the adhoc_*
+# counters of who is within 30 yd 2D of the group's formation anchor (every member but the leader, no z, no deadline, no
+# line): adhoc_all = groups once all there, adhoc_never = groups gone without that.
 # 0 = off (default), 1 = all, 2 = cohort B, 3 = cohort A by the group leader's guid (in T33-0 the cohort only labels the arm,
 # gather= in event=phase). Needs Manager.Types > 0 (else it acts like 0, one error line); any other value acts like 0 (one
 # error line).
