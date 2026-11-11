@@ -480,6 +480,7 @@ A3_GRP_SAME(OwnerG);
 A3_GRP_SAME(Nonquest);
 A3_GRP_SAME(FollowSelf);
 A3_GRP_SAME(HandlerOff);
+A3_GRP_SAME(GatherKind3);
 #undef A3_GRP_SAME
 
 void CountEnforce(std::uint32_t guidLow, EnforceCount what)
