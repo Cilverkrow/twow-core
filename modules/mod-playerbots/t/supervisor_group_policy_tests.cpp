@@ -166,7 +166,13 @@ struct Bot
         std::size_t const newest = NewestDirective(mail, n, superseded);
         for (std::size_t i = 0; i < n; ++i)
             if (mail[i].kind == EventKind::GroupDirective)
-                Count(DirField(ClassifyVerb(gm::UnpackDirective(mail[i].b).verb)));
+            {
+                gm::DirectiveBits const d = gm::UnpackDirective(mail[i].b);
+                VerbClass const v = ClassifyVerb(d.verb);
+                Count(DirField(v));
+                if (GatherKindUndefined(v, d.gatherKind))
+                    Count(GrpField::GatherKind3);
+            }
         for (std::size_t i = 0; i < superseded; ++i)
             Count(GrpField::Superseded);
         if (newest < n)
@@ -604,6 +610,43 @@ void TestNewestDirective()
     b.TakeMailModel(four, 4);
     Require(b.N(GrpField::DirEnter) == 2 && b.N(GrpField::DirExit) == 2 && b.N(GrpField::Superseded) == 3, "HandleMail counts");
     Require(b.hasPendingDir && b.pendingDir.a == 4 && b.acks.empty() && b.mode == Mode::Quest, "HandleMail keeps the newest, writes nothing");
+    Require(b.N(GrpField::GatherKind3) == 0, "kind a directives: no gather_kind3");
+}
+
+// gather_kind3 (T33 design v1.3 Nachtrag 2): an Enter or Change of kind 3 (any flag) counts once in HandleMail, superseded or not;
+// it is applied (no ack 3) and moves as kind a. An Exit (packs no kind) and the defined kinds never count.
+void TestGatherKind3()
+{
+    Require(kGatherUndefined == 3 && GatherKindUndefined(VerbClass::Enter, 3) && GatherKindUndefined(VerbClass::Change, 3),
+        "kind 3 on Enter and Change");
+    for (std::uint8_t kind = 0; kind < 3; ++kind)
+        Require(!GatherKindUndefined(VerbClass::Enter, kind) && !GatherKindUndefined(VerbClass::Change, kind), "kinds a, b, c: no count");
+    Require(!GatherKindUndefined(VerbClass::Exit, 3) && !GatherKindUndefined(VerbClass::Bad, 3), "Exit and Bad: no count");
+
+    // the kind survives the drain: two Enters of kind 3 (flag 1 and flag 0, the first superseded) and an Exit built with kind 3
+    Event mail[3] = {Directive(1, gm::Verb::Enter, 7, 500, gm::GroupType::Quest, true, kGatherUndefined),
+        Directive(2, gm::Verb::Enter, 7, 500, gm::GroupType::Quest, false, kGatherUndefined),
+        Directive(3, gm::Verb::Exit, 7, 500, gm::GroupType::Quest, false, kGatherUndefined)};
+    Bot m;
+    m.TakeMailModel(mail, 3);
+    Require(m.N(GrpField::GatherKind3) == 2 && m.N(GrpField::DirEnter) == 2 && m.N(GrpField::DirExit) == 1 &&
+        m.N(GrpField::Superseded) == 2, "both kind 3 Enters count (one superseded), the Exit does not");
+
+    // an Enter of kind 3 with flag 1: applied 2/0, the member follows the leader as with kind a, counted once
+    Bot b;
+    b.coreLeader = 13;
+    b.Mail(Directive(1, gm::Verb::Enter, 7, 500, gm::GroupType::Quest, true, kGatherUndefined));
+    b.Tick(1000);
+    Require(b.acks.size() == 1 && IsAck(b.acks[0], mi::kAckApplied, kNone) && b.mode == Mode::Group && b.groupHeld &&
+        b.gatherKind == kGatherUndefined && b.role == 1 && b.roleByHandler && b.N(GrpField::GatherKind3) == 1 &&
+        b.N(GrpField::EnterOk) == 1, "Enter kind 3: 2/0, follows as kind a, gather_kind3 1");
+
+    // a Change of kind 3 in GROUP: applied 2/0 (no ack 3), still following, counted again
+    b.Mail(Directive(2, kChangeVerb, 7, 500, gm::GroupType::Quest, true, kGatherUndefined));
+    b.Tick(1100);
+    Require(b.acks.size() == 2 && IsAck(b.acks.back(), mi::kAckApplied, kNone) && b.mode == Mode::Group && b.role == 1 &&
+        b.N(GrpField::UpdateOk) == 1 && b.N(GrpField::UpdateRef) == 0 && b.N(GrpField::GatherKind3) == 2,
+        "Change kind 3: 2/0, follows, gather_kind3 2");
 }
 
 void TestEnterOrder()
@@ -818,7 +861,9 @@ void TestChooseMove()
     Require(ChooseMove(true, kGatherMeet, true) == MoveKind::PointGo && ChooseMove(true, kGatherMeet, false) == MoveKind::PointGo &&
         ChooseMove(true, kGatherMeet, true, true) == MoveKind::PointWait && ChooseMove(true, kGatherMeet, false, true) == MoveKind::PointGo,
         "kind c: all go to the point, the leader waits there");
-    Require(ChooseMove(true, 3, false) == MoveKind::Follow, "kind 3 (undefined): as kind a");
+    Require(ChooseMove(true, kGatherUndefined, false) == MoveKind::Follow && ChooseMove(true, kGatherUndefined, true) ==
+        MoveKind::LeaderTravel && ChooseMove(true, kGatherUndefined, true, true) == MoveKind::LeaderTravel,
+        "kind 3 (undefined): as kind a");
 }
 
 void TestFollowStep()
@@ -1418,6 +1463,7 @@ int main()
 {
     TestClassifyVerb();
     TestNewestDirective();
+    TestGatherKind3();
     TestEnterOrder();
     TestChangeExit();
     TestAckFields();

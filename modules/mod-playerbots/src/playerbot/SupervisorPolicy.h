@@ -806,7 +806,9 @@ inline std::size_t FormatExpireLine(char* buf, std::size_t n, ShadowLine const& 
 // shadow's EnforceCount has one value per field in the same order (SupervisorShadow.h). The 47 fields of the design plus the
 // recheck of 11.11.: goal_adopt split into goal_adopt_enter (the one adoption after an Enter or RESCUE -> GROUP) and
 // goal_adopt_write (CommitTargetWrite), follow_self (a follower without a reachable leader keeps its own target and searches the
-// group goal itself) and handler_off (a held group left because GroupHandlerOn is false; unreachable under Q4 (a)).
+// group goal itself) and handler_off (a held group left because GroupHandlerOn is false; unreachable under Q4 (a)). Then
+// gather_kind3 (T33 design v1.3 Nachtrag 2): a taken Enter or Change whose gather kind is 3, which is not defined and never packed
+// by the manager; it moves as kind a without an ack 3, and the counter shows a packing error.
 enum class GrpField : std::uint8_t
 {
     DirEnter = 0,
@@ -859,9 +861,10 @@ enum class GrpField : std::uint8_t
     Nonquest,
     FollowSelf,
     HandlerOff,
+    GatherKind3,
     Count
 };
-constexpr std::size_t kGrpFields = 50;
+constexpr std::size_t kGrpFields = 51;
 static_assert(kGrpFields == std::size_t(GrpField::Count), "kGrpFields counts every GrpField");
 
 // The printed name of each field (enum order).
@@ -872,7 +875,7 @@ inline char const* GrpFieldName(GrpField field)
         "left_cancel", "r_deny", "r16", "r19", "r20", "r21", "r22", "r23", "r24", "r25", "orphan", "goal_done", "goal_lost",
         "rescue_in", "rescue_group", "rescue_back", "leader_far", "follow_make", "follow_turnin", "point_reapply", "held_group_copy",
         "goal_close", "prep_cancel", "close_burst", "close_warn", "band_held", "goal_adopt_enter", "goal_adopt_write", "cross_keep",
-        "owner_q", "owner_g", "nonquest", "follow_self", "handler_off"};
+        "owner_q", "owner_g", "nonquest", "follow_self", "handler_off", "gather_kind3"};
     static_assert(sizeof(kNames) / sizeof(kNames[0]) == kGrpFields, "one name per GrpField");
     return std::size_t(field) < kGrpFields ? kNames[std::size_t(field)] : "unknown";
 }
@@ -892,7 +895,7 @@ inline bool GrpSilent(ArbiterGrpMinute const& g)
     return true;
 }
 
-// The buffers of the two minute lines: [ArbiterMin] with every field at 4294967295 needs 643 characters, [ArbiterGrp] 1061.
+// The buffers of the two minute lines: [ArbiterMin] with every field at 4294967295 needs 643 characters, [ArbiterGrp] 1085.
 constexpr std::size_t kArbiterMinBuf = 768;
 constexpr std::size_t kArbiterGrpBuf = 1280;
 

@@ -533,7 +533,7 @@ void TestArbiterLanes()
 }
 
 // A3 step 3 T02-GROUP (AiPlayerbot.Supervisor.Arbiter = 2, BotGroups.Manager.Types > 0; default 0): the [ArbiterGrp] minute
-// line (design A3-S3-T02-ENTWURF.md v0.4.3 7.11 with the recheck of 11.11.: 50 fields).
+// line (design A3-S3-T02-ENTWURF.md v0.4.3 7.11 with the recheck of 11.11. and gather_kind3: 51 fields).
 void TestArbiterGrp()
 {
     char const* const want[] = {"dir_enter", "dir_update", "dir_exit", "dir_bad", "superseded", "enter_ok", "enter_ref",
@@ -541,13 +541,13 @@ void TestArbiterGrp()
         "left_cancel", "r_deny", "r16", "r19", "r20", "r21", "r22", "r23", "r24", "r25", "orphan", "goal_done", "goal_lost",
         "rescue_in", "rescue_group", "rescue_back", "leader_far", "follow_make", "follow_turnin", "point_reapply", "held_group_copy",
         "goal_close", "prep_cancel", "close_burst", "close_warn", "band_held", "goal_adopt_enter", "goal_adopt_write", "cross_keep",
-        "owner_q", "owner_g", "nonquest", "follow_self", "handler_off"};
-    Require(sizeof(want) / sizeof(want[0]) == kGrpFields && kGrpFields == 50, "50 group fields");
+        "owner_q", "owner_g", "nonquest", "follow_self", "handler_off", "gather_kind3"};
+    Require(sizeof(want) / sizeof(want[0]) == kGrpFields && kGrpFields == 51, "51 group fields");
     for (std::size_t i = 0; i < kGrpFields; ++i)
         Require(std::string(GrpFieldName(GrpField(i))) == want[i], "field names in enum order");
     Require(std::string(GrpFieldName(GrpField::Count)) == "unknown", "no name past the last field");
-    Require(std::size_t(GrpField::DirEnter) == 0 && std::size_t(GrpField::Nonquest) == 47 && std::size_t(GrpField::HandlerOff) == 49,
-        "fixed positions");
+    Require(std::size_t(GrpField::DirEnter) == 0 && std::size_t(GrpField::Nonquest) == 47 && std::size_t(GrpField::HandlerOff) == 49 &&
+        std::size_t(GrpField::GatherKind3) == 50, "fixed positions");
 
     ArbiterGrpMinute g;
     Require(GrpSilent(g), "a zero minute is silent");
@@ -567,15 +567,15 @@ void TestArbiterGrp()
         expect += " " + std::string(want[i]) + "=" + std::to_string(i + 1);
     Require(line == expect && n == expect.size(), "every field in enum order");
     ArbiterGrpMinute one;
-    one.v[std::size_t(GrpField::HandlerOff)] = 1;
+    one.v[std::size_t(GrpField::GatherKind3)] = 1;
     Require(!GrpSilent(one), "the last field alone is not silent");
 
-    // Every field at 4294967295: 1061 characters, not cut in kArbiterGrpBuf.
+    // Every field at 4294967295: 1085 characters, not cut in kArbiterGrpBuf.
     for (std::size_t i = 0; i < kGrpFields; ++i)
         g.v[i] = 4294967295u;
     n = FormatArbiterGrp(buf, sizeof(buf), 'B', g);
-    Require(n == 1061 && n == std::strlen(buf) && n + 1 < sizeof(buf), "the longest group line (1061) fits, not cut");
-    Require(std::string(buf).find(" handler_off=4294967295") == n - std::strlen(" handler_off=4294967295"), "ends with the last field");
+    Require(n == 1085 && n == std::strlen(buf) && n + 1 < sizeof(buf), "the longest group line (1085) fits, not cut");
+    Require(std::string(buf).find(" gather_kind3=4294967295") == n - std::strlen(" gather_kind3=4294967295"), "ends with the last field");
 
     // A short buffer cuts and terminates; a zero buffer writes nothing; the line is one line.
     char small[40];
@@ -583,7 +583,7 @@ void TestArbiterGrp()
     Require(n == sizeof(small) - 1 && std::strlen(small) == n, "a short buffer is cut, terminated");
     Require(FormatArbiterGrp(small, 0, 'A', g) == 0, "a zero buffer writes nothing");
     n = FormatArbiterGrp(buf, sizeof(buf), '\n', g);
-    Require(std::string(buf).find('\n') == std::string::npos && n == 1061, "no line break survives");
+    Require(std::string(buf).find('\n') == std::string::npos && n == 1085, "no line break survives");
 
     // The [ArbiterMin] sum carries the group minute and the gate fields, all 0 by default.
     ArbiterMinute m;
