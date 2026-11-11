@@ -2197,7 +2197,8 @@ bool ai::zone_keep::GroupLeaveDue(Player* bot, PlayerbotAI* botAI, Player* leade
             if (Player* member = ref->getSource())
                 if (member != bot)
                 {
-                    PlayerbotAI* const memberAi = GetBotAI(member);
+                    // twow-repo#710: a member on another Map object (region thread) is not read (its AI); unknown = fail closed (never leave).
+                    PlayerbotAI* const memberAi = GetBotAIOnMapOf(bot, member);
                     realPlayerMember = !memberAi || memberAi->IsRealPlayer();
                 }
     if (!ai::zone_keep::LeaveAllowed(realPlayerMember))
@@ -2664,7 +2665,7 @@ bool TravelTarget::IsDestinationActive()
     if (groupMember)
     {
         Player* member = groupMember.GetPlayer();
-        if (!ai->IsSafe(member)) //unknown
+        if (!ai->IsSafe(member) || !SameMapObject(bot, member)) //unknown (twow-repo#710: another Map object = another region thread, not read)
             return true;
         else
             player = member;
@@ -2684,7 +2685,7 @@ bool TravelTarget::IsConditionsActive(bool clear)
     if (groupMember)
     {
         Player* member = groupMember.GetPlayer();
-        if (!ai->IsSafe(member)) //unknown
+        if (!ai->IsSafe(member) || !SameMapObject(bot, member)) //unknown (twow-repo#710: another Map object = another region thread, not read)
             return true;
         else
             player = member;
@@ -2898,7 +2899,7 @@ void TravelTarget::CheckStatus()
     if (groupMember)
     {
         Player* member = groupMember.GetPlayer();
-        if (!member || (ai->IsSafe(member) && member->GetGroup() != bot->GetGroup()))
+        if (!member || (ai->IsSafe(member) && SameMapObject(bot, member) && member->GetGroup() != bot->GetGroup()))   // twow-repo#710: member on another Map object: its group is not read
         {
             ai->TellDebug(ai->GetMaster(), "Travel target expired because it was from a player that is no longer in the group.", "debug travel");
             SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);
