@@ -33,9 +33,11 @@ namespace ai::supervisor
 {
 namespace
 {
-// Q4 (a), the switch point of the handler: true for every bot. Under Q4 (b)/(c) (owner's word only) the body becomes the cohort
-// rule on AiPlayerbot.Supervisor.GroupHandler; the T30 counterpart (CLI-GRP) must then end the groups the manager holds for a bot
-// the handler leaves (GroupTick step 3 leaves silently, counted handler_off; no left report, Q5 (a)).
+// Q4 (a), decided by the owner (10.11.2026, relayed by OB-00): the switch point of the handler, true for every bot; T02-GROUP
+// and T30 are one lever (Manager.Types at Arbiter 2) with one A/B. Kept as a function: a later cohort rule on
+// AiPlayerbot.Supervisor.GroupHandler (owner's word only) would replace the body, and the T30 counterpart (CLI-GRP) would then
+// have to end the groups the manager holds for a bot the handler leaves (GroupTick step 3 leaves silently, counted handler_off;
+// no left report, Q5 (a)).
 bool GroupHandlerOn(std::uint32_t guidLow)
 {
     (void)guidLow;

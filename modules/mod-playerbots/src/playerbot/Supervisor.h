@@ -23,8 +23,10 @@ class TravelTarget;
 // A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2, default 0; design A3-S3-T02-ENTWURF.md v0.3): the supervisor keeps the
 // lane that owns the live travel target (the gate in SupervisorEnforce.cpp admits or denies the writes on it), sets its mode
 // via SupervisorPolicy::Decide on the arming and disarming edges, and runs the probe (AiPlayerbot.Supervisor.ArbiterProbe).
-// The cadence floor and the group mode come in their own pairs, each behind this switch and each with its own A/B (ADR-0041
-// rules 1 and 3); legacy writers are deleted only after adoption.
+// The cadence floor comes in its own pair, behind this switch and with its own A/B (ADR-0041 rules 1 and 3). The group mode
+// (T02-GROUP, SupervisorGroup.cpp) and the group manager T30 are one lever with one A/B (AiPlayerbot.BotGroups.Manager.Types
+// at Arbiter 2): the owner's exception to rules 1 and 3 for Q4 (a) (10.11.2026, relayed by OB-00); the T30 A/B is the
+// T02-GROUP A/B. Legacy writers are deleted only after adoption.
 namespace ai::supervisor
 {
 // R5 target memory: where the bot was and why a target was closed (filled from the behaviour pairs on).
