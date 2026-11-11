@@ -1616,6 +1616,10 @@ void TestLeftQuest()
     }
 }
 
+// T30-1d: the minute2 tail after left_stale with every T30-1d field 0.
+#define kOtherMapTail0 " follow_other_map=0 follow_other_map_600=0 follow_other_map_ms=0 follow_quest_ms=0 follow_other_map_short=0" \
+    " follow_other_map_max_ms=0 follow_other_map_open=0 follow_other_map_open_max_ms=0"
+
 // OB-10 smoke note: skip_unknown_30m at the end of minute2 is a level - the bots skip_unknown without a break for >= 30 min.
 bool EndsWith(std::string const& s, char const* suffix)
 {
@@ -1643,17 +1647,234 @@ void TestSkipUnknownLong()
     Run(e, w, r, io, 1000);
     std::uint32_t t = Tick(e, w, r, io, 1000, 1000 + 1700000);
     Require(io.CountLines(" skip_unknown_30m=1") == 0 && io.CountLines(" skip_unknown_30m=0") > 0, "under 30 minutes: 0");
-    Require(EndsWith(LastLine(io, "[GroupMgr] minute2 "), " osc=0 self_left=0 skip_unknown_30m=0 left_stale=0"),
-        "minute2 ends with osc, self_left, skip_unknown_30m, left_stale");
+    Require(EndsWith(LastLine(io, "[GroupMgr] minute2 "), " osc=0 self_left=0 skip_unknown_30m=0 left_stale=0" kOtherMapTail0),
+        "minute2 ends with osc, self_left, skip_unknown_30m, left_stale, then the T30-1d fields");
     Require(LastLine(io, "[GroupMgr] minute types=").find(" osc=") == std::string::npos, "the minute line keeps its fields");
     t = Tick(e, w, r, io, t, 1000 + 1900000);
-    Require(EndsWith(LastLine(io, "[GroupMgr] minute2 "), " skip_unknown_30m=1 left_stale=0"), "skip_unknown for over 30 minutes: 1");
+    Require(EndsWith(LastLine(io, "[GroupMgr] minute2 "), " skip_unknown_30m=1 left_stale=0" kOtherMapTail0), "skip_unknown for over 30 minutes: 1");
     SetEdge(w, 3, t);   // out of the group: the run ends
     t = Tick(e, w, r, io, t, t + 61000);
-    Require(EndsWith(LastLine(io, "[GroupMgr] minute2 "), " skip_unknown_30m=0 left_stale=0"), "no longer skip_unknown: 0 again (a level)");
+    Require(EndsWith(LastLine(io, "[GroupMgr] minute2 "), " skip_unknown_30m=0 left_stale=0" kOtherMapTail0), "no longer skip_unknown: 0 again (a level)");
     SetEdge(w, 3, t, 60, 3, 2);   // back in: a new run starts from 0
     t = Tick(e, w, r, io, t, t + 61000);
-    Require(EndsWith(LastLine(io, "[GroupMgr] minute2 "), " skip_unknown_30m=0 left_stale=0"), "a new run counts from its own start");
+    Require(EndsWith(LastLine(io, "[GroupMgr] minute2 "), " skip_unknown_30m=0 left_stale=0" kOtherMapTail0), "a new run counts from its own start");
+}
+
+// T30-1d: a two-bot QUEST group (quest 300), both Enters applied at t0 + 2000. Returns that time; leader / follower out.
+std::uint32_t FormQuestPair(Engine& e, World& w, Rules const& r, FakeIo& io, std::uint32_t t0, std::uint32_t& leader,
+    std::uint32_t& follower)
+{
+    SetQuestPair(w, t0, -1);
+    Run(e, w, r, io, t0);
+    Require(io.joins.size() == 1, "T30-1d: a QUEST join for the wish");
+    leader = io.joins[0].inviter;
+    follower = io.joins[0].invitee;
+    Refresh(w, t0 + 1000);
+    w.outcomes.push_back(Outcome(follower, leader, go::OpKind::Join, go::ManagerOpResult::Executed));
+    SetEdge(w, follower, t0 + 1000, 88, leader, 2);
+    SetEdge(w, leader, t0 + 1000, 88, leader, 2);
+    Run(e, w, r, io, t0 + 1000);
+    Refresh(w, t0 + 2000);
+    w.acks.push_back(AckFor(1, SeqOf(io, 1, Verb::Enter), mi::kAckApplied));
+    w.acks.push_back(AckFor(2, SeqOf(io, 2, Verb::Enter), mi::kAckApplied));
+    Run(e, w, r, io, t0 + 2000);
+    Require(e.Total(Cnt::Formed) == 1, "T30-1d: the QUEST group formed");
+    return t0 + 2000;
+}
+
+Rules QuestOtherMapRules()
+{
+    Rules r;
+    r.mode = 1;
+    r.types = kTypeQuest;
+    r.statusSeconds = 10;
+    r.intervalMs = 1000;
+    r.timers.rendezvousMinutes = 60;   // the follower 100 yd away stays in Rendezvous for the whole test
+    return r;
+}
+
+// T30-1d (OB-10 review of R9, B4): a QUEST follower on another map than its leader. An episode opens and closes only on fresh
+// snapshots of both, closes as end=back or with the member (end=ended, switch_off too); minute2 counts it even without lines.
+void TestFollowOtherMap()
+{
+    {
+        Engine e;
+        World w;
+        FakeIo io;
+        Rules r = QuestOtherMapRules();
+        std::uint32_t leader = 0;
+        std::uint32_t follower = 0;
+        std::uint32_t t = FormQuestPair(e, w, r, io, 1000, leader, follower);
+        std::uint32_t const baseAt = t;
+        std::uint64_t const base0 = e.Total(Cnt::FollowQuestMs);
+        t = Tick(e, w, r, io, t, t + 10000);
+        Require(e.Total(Cnt::FollowOtherMap) == 0 && io.CountLines("event=other_map") == 0, "one map: no episode");
+        Require(e.Total(Cnt::FollowQuestMs) == base0 + 10000, "the base: the follower only, 1000 ms a pass");
+        w.status[follower].mapId = 2;
+        std::uint32_t const openAt = t + 1000;
+        t = Tick(e, w, r, io, t, openAt + 700000);
+        Require(e.Total(Cnt::FollowOtherMap) == 0, "an open episode is not counted before it closes");
+        Require(io.CountLines(" follow_other_map_open=1") > 0, "minute2 shows the open episode (a level)");
+        {
+            std::string const last = LastLine(io, "[GroupMgr] minute2 ");
+            std::size_t const at = last.find(" follow_other_map_open_max_ms=");
+            Require(at != std::string::npos && std::stoull(last.substr(at + 30)) >= 600000ull &&
+                std::stoull(last.substr(at + 30)) <= 700000ull, "minute2 shows the open episode's age (600-700 s here)");
+        }
+        w.status[follower].mapId = 1;
+        t = Tick(e, w, r, io, t, t + 1000);
+        std::uint32_t const ms = t - openAt;
+        Require(e.Total(Cnt::FollowOtherMap) == 1 && e.Total(Cnt::FollowOtherMap600) == 1 && e.Total(Cnt::FollowOtherMapMs) == ms &&
+            e.Total(Cnt::FollowOtherMapShort) == 0, "back on the leader's map: one episode, >= 600 s, its ms");
+        Require(io.CountLines("[GroupMgr] event=other_map group=") == 1 &&
+            io.CountLines((" ms=" + std::to_string(ms) + " end=back reason=-").c_str()) == 1, "one other_map line with its ms and end=back");
+        Require(e.Total(Cnt::FollowQuestMs) == base0 + (t - baseAt), "the base runs on through the episode");
+        t = Tick(e, w, r, io, t, t + 121000);
+        Require(EndsWith(LastLine(io, "[GroupMgr] minute2 "), " follow_other_map_max_ms=0 follow_other_map_open=0 follow_other_map_open_max_ms=0"),
+            "a later minute: no max, nothing open");
+        // A short episode, then switch_off (Types 0): the member ends and the episode closes as end=ended.
+        w.status[follower].mapId = 2;
+        t = Tick(e, w, r, io, t, t + 5000);
+        r.types = 0;
+        t = Tick(e, w, r, io, t, t + 1000);
+        Require(e.Total(Cnt::FollowOtherMap) == 2 && e.Total(Cnt::FollowOtherMap600) == 1 && io.CountLines(" end=ended reason=switch_off") == 1,
+            "switch_off closes the open episode (end=ended with its reason), short: not >= 600 s");
+        t = Tick(e, w, r, io, t, t + 61000);
+        Require(io.CountLines(" follow_other_map_open=1") > 0 && LastLine(io, "[GroupMgr] minute2 ").find(" follow_other_map_open=1") == std::string::npos,
+            "after switch_off nothing stays open");
+    }
+    {
+        // A stale leader snapshot opens nothing: the follower moves while the leader's status is old (the leader is silent, the
+        // group ends too_small before its rules run, and no other_map line is written). A stale snapshot is a silent member,
+        // so the Fresh check in QuestRules is a second line behind this; the contract pins it.
+        Engine e;
+        World w;
+        FakeIo io;
+        Rules const r = QuestOtherMapRules();
+        std::uint32_t leader = 0;
+        std::uint32_t follower = 0;
+        std::uint32_t t = FormQuestPair(e, w, r, io, 1000, leader, follower);
+        // The leader stops posting at t; the follower and the edges stay fresh. 30 s later the leader is still fresh.
+        for (int i = 0; i < 30; ++i)
+        {
+            t += 1000;
+            w.status[follower].receivedMs = t;
+            for (auto& ed : w.edges)
+                ed.second.receivedMs = t;
+            Run(e, w, r, io, t);
+        }
+        Require(e.TotalLeave(EndReason::LeaderLost) == 0 && e.Total(Cnt::FollowOtherMap) == 0, "the leader is fresh for 30 s");
+        // One second more: the leader's snapshot is stale in the pass the follower shows another map.
+        t += 1000;
+        w.status[follower].mapId = 2;
+        w.status[follower].receivedMs = t;
+        for (auto& ed : w.edges)
+            ed.second.receivedMs = t;
+        Run(e, w, r, io, t);
+        Require(e.TotalLeave(EndReason::TooSmall) >= 1, "the silent leader ends the group (too_small: it no longer counts)");
+        Require(e.Total(Cnt::FollowOtherMap) == 0 && io.CountLines("event=other_map") == 0, "stale leader: no episode opens or closes");
+    }
+    {
+        // ADHOC groups are not measured (they have their own LeaderOtherMap rule).
+        Engine e;
+        World w;
+        FakeIo io;
+        Rules const r = AdhocRules();
+        std::uint32_t t = FormAdhocPair(e, w, r, io, 1000);
+        w.acks.push_back(AckFor(1, SeqOf(io, 1, Verb::Enter), mi::kAckApplied));
+        w.acks.push_back(AckFor(2, SeqOf(io, 2, Verb::Enter), mi::kAckApplied));
+        t = Tick(e, w, r, io, t, t + 1000);
+        w.status[2].mapId = 2;
+        t = Tick(e, w, r, io, t, t + 90000);
+        Require(e.Total(Cnt::FollowOtherMap) == 0 && e.Total(Cnt::FollowQuestMs) == 0 && io.CountLines("event=other_map") == 0,
+            "ADHOC: no episode, no base");
+    }
+    {
+        // A joint map change: the follower's post shows the new map first, the leader's next one too (the group then ends
+        // leader_stuck). The episode never counted: follow_other_map_short, no line.
+        Engine e;
+        World w;
+        FakeIo io;
+        Rules const r = QuestOtherMapRules();
+        std::uint32_t leader = 0;
+        std::uint32_t follower = 0;
+        std::uint32_t t = FormQuestPair(e, w, r, io, 1000, leader, follower);
+        w.status[follower].mapId = 2;
+        t = Tick(e, w, r, io, t, t + 1000);
+        w.status[leader].mapId = 2;
+        t = Tick(e, w, r, io, t, t + 1000);
+        Require(e.Total(Cnt::FollowOtherMapShort) == 1 && e.Total(Cnt::FollowOtherMap) == 0 && io.CountLines("event=other_map") == 0,
+            "joint map change: one short episode, not counted, no line");
+        Require(e.TotalLeave(EndReason::LeaderStuck) >= 1, "the leader off the group's map ends it");
+    }
+    {
+        // The leader leaves the group's map: the episode opened in that pass ends with the group at once (short, no line).
+        Engine e;
+        World w;
+        FakeIo io;
+        Rules const r = QuestOtherMapRules();
+        std::uint32_t leader = 0;
+        std::uint32_t follower = 0;
+        std::uint32_t t = FormQuestPair(e, w, r, io, 1000, leader, follower);
+        w.status[leader].mapId = 2;
+        t = Tick(e, w, r, io, t, t + 1000);
+        Require(e.TotalLeave(EndReason::LeaderStuck) >= 1 && e.Total(Cnt::FollowOtherMapShort) == 1 && e.Total(Cnt::FollowOtherMap) == 0 &&
+            io.CountLines("event=other_map") == 0, "leader_stuck: no 0 ms episode");
+    }
+    {
+        // ForgetGone (logout, roster release): the open episode closes at the last pass (end=gone), its line at the next pass.
+        Engine e;
+        World w;
+        FakeIo io;
+        Rules const r = QuestOtherMapRules();
+        std::uint32_t leader = 0;
+        std::uint32_t follower = 0;
+        std::uint32_t t = FormQuestPair(e, w, r, io, 1000, leader, follower);
+        w.status[follower].mapId = 2;
+        std::uint32_t const openAt = t + 1000;
+        t = Tick(e, w, r, io, t, t + 5000);
+        e.ForgetGone([leader](std::uint32_t low) { return low == leader; });
+        Require(e.Total(Cnt::FollowOtherMap) == 1 && e.Total(Cnt::FollowOtherMapMs) == t - openAt, "gone: counted at the last pass");
+        Require(io.CountLines("event=other_map") == 0, "gone: no line before the next pass");
+        w.status.erase(follower);
+        t = Tick(e, w, r, io, t, t + 1000);
+        Require(io.CountLines((" ms=" + std::to_string(t - 1000 - openAt) + " end=gone reason=-").c_str()) == 1, "gone: the line at the next pass");
+    }
+    {
+        // A resume (> 120 s without a pass): the open episode ends at the last pass before the gap (the base skips the gap).
+        Engine e;
+        World w;
+        FakeIo io;
+        Rules const r = QuestOtherMapRules();
+        std::uint32_t leader = 0;
+        std::uint32_t follower = 0;
+        std::uint32_t t = FormQuestPair(e, w, r, io, 1000, leader, follower);
+        w.status[follower].mapId = 2;
+        std::uint32_t const openAt = t + 1000;
+        t = Tick(e, w, r, io, t, t + 5000);
+        std::uint64_t const base = e.Total(Cnt::FollowQuestMs);
+        Refresh(w, t + 200000);
+        Run(e, w, r, io, t + 200000, true);
+        Require(e.Total(Cnt::FollowOtherMap) == 1 && e.Total(Cnt::FollowOtherMapMs) == t - openAt &&
+            io.CountLines((" ms=" + std::to_string(t - openAt) + " end=resume reason=-").c_str()) == 1, "resume: closed at the last pass");
+        Require(e.Total(Cnt::FollowQuestMs) == base, "resume: the base skips the gap");
+    }
+    {
+        // The minute2 tail at the largest values stays far inside the buffer.
+        MinuteCounts m;
+        for (auto& v : m.c)
+            v = ~std::uint64_t(0);
+        for (auto& v : m.leave)
+            v = ~std::uint64_t(0);
+        m.skipUnknown30m = ~std::uint64_t(0);
+        m.otherMapMaxMs = ~std::uint64_t(0);
+        m.otherMapOpen = ~std::uint64_t(0);
+        m.otherMapOpenMaxMs = ~std::uint64_t(0);
+        char buf[2048];
+        int const n = FormatMinute2(buf, sizeof(buf), m);
+        Require(n > 0 && std::size_t(n) < sizeof(buf) && EndsWith(buf, " follow_other_map_open_max_ms=18446744073709551615"),
+            "minute2 at the largest values: complete, ends with follow_other_map_open_max_ms");
+    }
 }
 }
 
@@ -1699,6 +1920,7 @@ int main()
     TestOsc();
     TestLeftQuest();
     TestSkipUnknownLong();
+    TestFollowOtherMap();
     std::cout << "group_directive_policy_tests: OK\n";
     return 0;
 }
