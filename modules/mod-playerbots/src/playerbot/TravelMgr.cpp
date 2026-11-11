@@ -231,6 +231,11 @@ PlayerTravelInfo::PlayerTravelInfo(Player* player, bool gapGrind)
             if (!status.m_rewarded && status.m_status == QUEST_STATUS_INCOMPLETE)
                 objectiveWindowQuests.push_back(questId);
     }
+
+    // A3 step 3 T02-GROUP (AiPlayerbot.Supervisor.Arbiter = 2, BotGroups.Manager.Types > 0; default 0): the group goal c as a
+    // snapshot, read through the gate's own-thread check (0 for another member's info, outside GROUP and below arbiter 2). The
+    // async searches get it by value; the quest IsPossible checks keep only destinations of c while it is set.
+    groupGoalQuest = ai::supervisor::GroupGoalSnapshot(ai);
 }
 
 std::string EntryTravelDestination::GetShortName() const
@@ -294,7 +299,11 @@ bool QuestRelationTravelDestination::IsPossible(const PlayerTravelInfo& info) co
     if (!info.GetBoolValue2("has strategy", "rpg quest"))
         return refuse(ai::quest_search::GiverDropStrategy);
 
-    bool forceThisQuest = info.HasFocusQuest();
+    // A3 step 3 T02-GROUP (AiPlayerbot.Supervisor.Arbiter = 2, BotGroups.Manager.Types > 0; default 0): in GROUP only the group
+    // goal c; a plain refusal, no giver drop count. The focus relaxation then does not apply.
+    if (info.GetGroupGoalQuest() && GetQuestId() != info.GetGroupGoalQuest())
+        return false;
+    bool forceThisQuest = info.HasFocusQuest() && !info.GetGroupGoalQuest();
 
     if (forceThisQuest && !info.IsFocusQuest(GetQuestId()))
         return refuse(ai::quest_search::GiverDropFocus);
@@ -471,7 +480,11 @@ bool QuestObjectiveTravelDestination::IsPossible(const PlayerTravelInfo& info) c
     if (!info.GetBoolValue2("has strategy", "rpg quest"))
         return false;
 
-    bool forceThisQuest = info.HasFocusQuest();
+    // A3 step 3 T02-GROUP (AiPlayerbot.Supervisor.Arbiter = 2, BotGroups.Manager.Types > 0; default 0): in GROUP only the group
+    // goal c (no count). The focus relaxation then does not apply.
+    if (info.GetGroupGoalQuest() && GetQuestId() != info.GetGroupGoalQuest())
+        return false;
+    bool forceThisQuest = info.HasFocusQuest() && !info.GetGroupGoalQuest();
 
     if (forceThisQuest && !info.IsFocusQuest(GetQuestId()))
         return false;

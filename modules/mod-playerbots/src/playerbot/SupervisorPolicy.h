@@ -801,6 +801,101 @@ inline std::size_t FormatExpireLine(char* buf, std::size_t n, ShadowLine const& 
     return Sanitize(buf, w, n);
 }
 
+// ---- A3 step 3 T02-GROUP (AiPlayerbot.Supervisor.Arbiter = 2, BotGroups.Manager.Types > 0; default 0) ------------------------
+// The counters of the [ArbiterGrp] minute line, one per cohort (design A3-S3-T02-ENTWURF.md v0.4.3 7.11), in print order. The
+// shadow's EnforceCount has one value per field in the same order (SupervisorShadow.h). The 47 fields of the design plus the
+// recheck of 11.11.: goal_adopt split into goal_adopt_enter (the one adoption after an Enter or RESCUE -> GROUP) and
+// goal_adopt_write (CommitTargetWrite), follow_self (a follower without a reachable leader keeps its own target and searches the
+// group goal itself) and handler_off (a held group left because GroupHandlerOn is false; unreachable under Q4 (a)).
+enum class GrpField : std::uint8_t
+{
+    DirEnter = 0,
+    DirUpdate,
+    DirExit,
+    DirBad,
+    Superseded,
+    EnterOk,
+    EnterRef,
+    UpdateOk,
+    UpdateRef,
+    ExitOk,
+    ExitStale,
+    BadRef,
+    AckDropEnter,
+    AckDropExit,
+    Left,
+    LeftDrop,
+    LeftCancel,
+    RDeny,
+    R16,
+    R19,
+    R20,
+    R21,
+    R22,
+    R23,
+    R24,
+    R25,
+    Orphan,
+    GoalDone,
+    GoalLost,
+    RescueIn,
+    RescueGroup,
+    RescueBack,
+    LeaderFar,
+    FollowMake,
+    FollowTurnin,
+    PointReapply,
+    HeldGroupCopy,
+    GoalClose,
+    PrepCancel,
+    CloseBurst,
+    CloseWarn,
+    BandHeld,
+    GoalAdoptEnter,
+    GoalAdoptWrite,
+    CrossKeep,
+    OwnerQ,
+    OwnerG,
+    Nonquest,
+    FollowSelf,
+    HandlerOff,
+    Count
+};
+constexpr std::size_t kGrpFields = 50;
+static_assert(kGrpFields == std::size_t(GrpField::Count), "kGrpFields counts every GrpField");
+
+// The printed name of each field (enum order).
+inline char const* GrpFieldName(GrpField field)
+{
+    static char const* const kNames[] = {"dir_enter", "dir_update", "dir_exit", "dir_bad", "superseded", "enter_ok", "enter_ref",
+        "update_ok", "update_ref", "exit_ok", "exit_stale", "bad_ref", "ack_drop_enter", "ack_drop_exit", "left", "left_drop",
+        "left_cancel", "r_deny", "r16", "r19", "r20", "r21", "r22", "r23", "r24", "r25", "orphan", "goal_done", "goal_lost",
+        "rescue_in", "rescue_group", "rescue_back", "leader_far", "follow_make", "follow_turnin", "point_reapply", "held_group_copy",
+        "goal_close", "prep_cancel", "close_burst", "close_warn", "band_held", "goal_adopt_enter", "goal_adopt_write", "cross_keep",
+        "owner_q", "owner_g", "nonquest", "follow_self", "handler_off"};
+    static_assert(sizeof(kNames) / sizeof(kNames[0]) == kGrpFields, "one name per GrpField");
+    return std::size_t(field) < kGrpFields ? kNames[std::size_t(field)] : "unknown";
+}
+
+// Minute increments of one cohort, indexed by GrpField.
+struct ArbiterGrpMinute
+{
+    std::uint32_t v[kGrpFields] = {};
+};
+
+// A minute without any group counter writes no [ArbiterGrp] line.
+inline bool GrpSilent(ArbiterGrpMinute const& g)
+{
+    for (std::size_t i = 0; i < kGrpFields; ++i)
+        if (g.v[i] != 0)
+            return false;
+    return true;
+}
+
+// The buffers of the two minute lines: [ArbiterMin] with every field at 4294967295 needs 643 characters, [ArbiterGrp] 1061.
+constexpr std::size_t kArbiterMinBuf = 768;
+constexpr std::size_t kArbiterGrpBuf = 1280;
+
 // The minute sum of one cohort. offthread_writes: writes on a thread without tag (not the map update, not the world hook, not
 // the console handler); cross_writes: a bot's map thread wrote another bot's target. Neither reads the other bot's supervisor
 // (its lifetime belongs to that bot's thread); the next tagged write of that bot carries gap=1.
@@ -825,6 +920,12 @@ struct ArbiterMinute
     std::uint32_t probeShadow = 0;
     std::uint32_t depthOverflow = 0;
     std::uint32_t family[kWriterIds] = {};
+    // A3 step 3 T02-GROUP gate_offthread (design 7.12): target writes the gate could not check on a supervised bot, by the
+    // writing thread's tag (world, none, another bot's map thread); counted only at Arbiter 2.
+    std::uint32_t gateOffWorld = 0;
+    std::uint32_t gateOffNone = 0;
+    std::uint32_t gateOffBot = 0;
+    ArbiterGrpMinute grp;   // the [ArbiterGrp] line of the same minute
 };
 
 inline void CountBundle(ArbiterMinute& m, Bundle const& b)
@@ -850,12 +951,25 @@ inline std::size_t FormatArbiterMin(char* buf, std::size_t n, char cohort, Arbit
     int const w = std::snprintf(buf, n, "[ArbiterMin] cohort=%c bundles=%u lines=%u dropped=%u unknown=%u offthread_writes=%u "
         "cross_writes=%u gaps=%u closes_open=%u expire_cooldown=%u sel=%u req=%u exe=%u life=%u mgr=%u grp=%u cmd=%u brain=%u test=%u"
         " grp_t02=%u errand=%u deny=%u deny_probe=%u held_request=%u held_errand=%u probe_pass=%u probe_fail=%u probe_shadow=%u "
-        "depth_overflow=%u",
+        "depth_overflow=%u"
+        " gate_off_world=%u gate_off_none=%u gate_off_bot=%u",
         cohort, m.bundles, m.lines, m.dropped, m.unknown, m.offthreadWrites, m.crossWrites, m.gaps, m.closesOpen, m.expireCooldown,
         f(WriterId::Select), f(WriterId::Requester), f(WriterId::Execution), f(WriterId::Lifecycle), f(WriterId::Manager),
         f(WriterId::GroupFollow), f(WriterId::Command), f(WriterId::Brain), f(WriterId::Test), f(WriterId::Group),
         f(WriterId::Errand), m.deny, m.denyProbe, m.heldRequest, m.heldErrand, m.probePass, m.probeFail, m.probeShadow,
-        m.depthOverflow);
+        m.depthOverflow, m.gateOffWorld, m.gateOffNone, m.gateOffBot);
     return Sanitize(buf, w, n);
+}
+
+// T02-GROUP: "[ArbiterGrp] cohort=<c>" and then " name=<value>" for every GrpField in enum order (kArbiterGrpBuf fits all fields
+// at 4294967295). One line per cohort and minute, from the same minute as [ArbiterMin]; the caller skips a GrpSilent minute.
+inline std::size_t FormatArbiterGrp(char* buf, std::size_t n, char cohort, ArbiterGrpMinute const& g)
+{
+    if (n == 0)
+        return 0;
+    std::size_t len = Sanitize(buf, std::snprintf(buf, n, "[ArbiterGrp] cohort=%c", cohort), n);
+    for (std::size_t i = 0; i < kGrpFields && len + 1 < n; ++i)
+        len += Sanitize(buf + len, std::snprintf(buf + len, n - len, " %s=%u", GrpFieldName(GrpField(i)), g.v[i]), n - len);
+    return len;
 }
 }

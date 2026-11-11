@@ -1839,6 +1839,25 @@ add_test(NAME supervisor_mail_policy
   COMMAND supervisor_mail_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# A3 step 3 T02-GROUP (AiPlayerbot.Supervisor.Arbiter = 2, BotGroups.Manager.Types > 0; default 0): the pure rules of the bot side
+# of the group manager (SupervisorGroupPolicy.h; no game header). The game side is pinned by
+# t/contracts.d/a3s3_supervisor_group_source_contract_tests.cmake.
+add_executable(supervisor_group_policy_tests
+  "${PB_MODULE_DIR}/t/supervisor_group_policy_tests.cpp")
+
+target_include_directories(supervisor_group_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+# GroupDirectivePolicy.h (included for the directive bits) holds the read view's mutex (std::mutex).
+target_link_libraries(supervisor_group_policy_tests PRIVATE Threads::Threads)
+
+set_target_properties(supervisor_group_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME supervisor_group_policy
+  COMMAND supervisor_group_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # A3 step 2 quest book core QB-K (QuestBookPolicy.h, AiPlayerbot.QuestBook); source contract in t/contracts.d.
 add_executable(questbook_policy_tests
   "${PB_MODULE_DIR}/t/questbook_policy_tests.cpp")

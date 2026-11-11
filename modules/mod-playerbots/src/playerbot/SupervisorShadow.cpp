@@ -199,6 +199,8 @@ void Emit(Closed const& closed, std::uint32_t guid)
     sLog.outBasic("%s", buf);
 }
 
+// A3 step 3 T02-GROUP: [ArbiterMin] got the three gate_off_* fields (buffer 768), and right after it the [ArbiterGrp] line of the
+// same cohort and minute, silent while every group counter is 0.
 void EmitMinute(MinuteOut const& minute)
 {
     if (!minute.due)
@@ -207,9 +209,15 @@ void EmitMinute(MinuteOut const& minute)
     {
         if (!minute.active[i])
             continue;
-        char buf[512];
+        char buf[kArbiterMinBuf];
         FormatArbiterMin(buf, sizeof(buf), i ? 'B' : 'A', minute.sums[i]);
         sLog.outBasic("%s", buf);
+        if (!GrpSilent(minute.sums[i].grp))
+        {
+            char gbuf[kArbiterGrpBuf];
+            FormatArbiterGrp(gbuf, sizeof(gbuf), i ? 'B' : 'A', minute.sums[i].grp);
+            sLog.outBasic("%s", gbuf);
+        }
     }
 }
 }
@@ -413,6 +421,67 @@ bool OnOwnThread(PlayerbotAI const* ai)
     return ai && t_tag.kind == ThreadKind::Bot && t_tag.owner == ai;
 }
 
+ThreadKind CurrentThreadKind()
+{
+    return t_tag.kind;
+}
+
+// A3 step 3 T02-GROUP: every [ArbiterGrp] value of EnforceCount sits at its GrpField's offset from kGrpFirst (CountEnforce indexes
+// ArbiterGrpMinute::v by that offset), so a field added on one side only fails the build here.
+#define A3_GRP_SAME(name) static_assert(std::size_t(EnforceCount::name) - std::size_t(kGrpFirst) == std::size_t(GrpField::name), \
+    "EnforceCount::" #name " mirrors GrpField::" #name)
+A3_GRP_SAME(DirEnter);
+A3_GRP_SAME(DirUpdate);
+A3_GRP_SAME(DirExit);
+A3_GRP_SAME(DirBad);
+A3_GRP_SAME(Superseded);
+A3_GRP_SAME(EnterOk);
+A3_GRP_SAME(EnterRef);
+A3_GRP_SAME(UpdateOk);
+A3_GRP_SAME(UpdateRef);
+A3_GRP_SAME(ExitOk);
+A3_GRP_SAME(ExitStale);
+A3_GRP_SAME(BadRef);
+A3_GRP_SAME(AckDropEnter);
+A3_GRP_SAME(AckDropExit);
+A3_GRP_SAME(Left);
+A3_GRP_SAME(LeftDrop);
+A3_GRP_SAME(LeftCancel);
+A3_GRP_SAME(RDeny);
+A3_GRP_SAME(R16);
+A3_GRP_SAME(R19);
+A3_GRP_SAME(R20);
+A3_GRP_SAME(R21);
+A3_GRP_SAME(R22);
+A3_GRP_SAME(R23);
+A3_GRP_SAME(R24);
+A3_GRP_SAME(R25);
+A3_GRP_SAME(Orphan);
+A3_GRP_SAME(GoalDone);
+A3_GRP_SAME(GoalLost);
+A3_GRP_SAME(RescueIn);
+A3_GRP_SAME(RescueGroup);
+A3_GRP_SAME(RescueBack);
+A3_GRP_SAME(LeaderFar);
+A3_GRP_SAME(FollowMake);
+A3_GRP_SAME(FollowTurnin);
+A3_GRP_SAME(PointReapply);
+A3_GRP_SAME(HeldGroupCopy);
+A3_GRP_SAME(GoalClose);
+A3_GRP_SAME(PrepCancel);
+A3_GRP_SAME(CloseBurst);
+A3_GRP_SAME(CloseWarn);
+A3_GRP_SAME(BandHeld);
+A3_GRP_SAME(GoalAdoptEnter);
+A3_GRP_SAME(GoalAdoptWrite);
+A3_GRP_SAME(CrossKeep);
+A3_GRP_SAME(OwnerQ);
+A3_GRP_SAME(OwnerG);
+A3_GRP_SAME(Nonquest);
+A3_GRP_SAME(FollowSelf);
+A3_GRP_SAME(HandlerOff);
+#undef A3_GRP_SAME
+
 void CountEnforce(std::uint32_t guidLow, EnforceCount what)
 {
     if (!g_armed.load(std::memory_order_relaxed))
@@ -422,6 +491,13 @@ void CountEnforce(std::uint32_t guidLow, EnforceCount what)
     if (g_on == 0)
         return;
     ArbiterMinute& m = g_min[cohortIdx];
+    if (what >= kGrpFirst)
+    {
+        std::size_t const field = std::size_t(what) - std::size_t(kGrpFirst);
+        if (field < kGrpFields)
+            ++m.grp.v[field];
+        return;
+    }
     switch (what)
     {
         case EnforceCount::Deny: ++m.deny; break;
@@ -431,6 +507,10 @@ void CountEnforce(std::uint32_t guidLow, EnforceCount what)
         case EnforceCount::ProbePass: ++m.probePass; break;
         case EnforceCount::ProbeFail: ++m.probeFail; break;
         case EnforceCount::ProbeShadow: ++m.probeShadow; break;
+        case EnforceCount::GateOffWorld: ++m.gateOffWorld; break;
+        case EnforceCount::GateOffNone: ++m.gateOffNone; break;
+        case EnforceCount::GateOffBot: ++m.gateOffBot; break;
+        default: break;   // the [ArbiterGrp] block, handled above
     }
 }
 

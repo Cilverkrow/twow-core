@@ -212,10 +212,11 @@ inline bool CountsAsOsc(bool acked, std::uint32_t ackSec, std::uint32_t nowSec, 
 // ---- the directive (design 3.3, agreed with CLI-Projekt 9b R3 / T33-R8) ----------------------------------------------------
 // supervisor::Event: kind GroupDirective, a = seq (manager-wide, never 0), b = the bits below, c = the quest id, mapId/x/y = the
 // forming map and the anchor (the leader's snapshot; no gather point, T33), z = 0, source = Requester::GroupMgr.
-// b: b0-3 verb, b4-5 group type, b6-8 objective + 1 (0 = none), b9-15 end reason (Exit only; T33 reads b13-15 of Enter/Update,
-// always 0 here), b16-31 the group serial (low 16 bits).
-// Enter/Update b9-15 (G4, agreed with CLI-Projekt 10.11.): b9-12 reserved for T34 (the leg), b13-14 the T33 gather kind, b15 the
-// T33 gather flag - all 0 today. Exit keeps b9-15 as the end reason.
+// b: b0-3 verb, b4-5 group type, b6-8 objective + 1 (0 = none), b9-15 end reason (Exit only; Enter/Update carry b13-15 below),
+// b16-31 the group serial (low 16 bits).
+// Enter/Update b9-15 (G4, agreed with CLI-Projekt 10.11.): b9-12 reserved for T34 (the leg), b13-14 gatherKind (the T33 gather
+// kind), b15 gatherFlag (the T33 gather flag), read by T02-GROUP (Q8 (a)); the manager sends b9-15 as 0 until T33-0. Exit keeps
+// b9-15 as the end reason.
 enum class Verb : std::uint8_t
 {
     None = 0,
@@ -243,13 +244,17 @@ struct DirectiveBits
     std::int8_t objective = -1;     // 0..6, -1 = none
     EndReason reason = EndReason::None;
     std::uint16_t serial = 0;
+    std::uint8_t gatherKind = 0;   // b13-14, Enter/Update (T33)
+    bool gatherFlag = false;   // b15, Enter/Update (T33)
 };
 
 inline std::uint32_t PackDirective(DirectiveBits const& d)
 {
     std::uint32_t const objective = d.objective >= 0 && d.objective <= 6 ? std::uint32_t(d.objective + 1) : 0u;
     std::uint32_t const reason = d.verb == Verb::Exit ? (std::uint32_t(d.reason) & 0x7Fu) : 0u;
-    return (std::uint32_t(d.verb) & 0xFu) | ((std::uint32_t(d.type) & 0x3u) << 4) | (objective << 6) | (reason << 9) |
+    // Q8 (a): b13-15 outside Exit only; b9-12 stay 0 (T34).
+    std::uint32_t const gather = d.verb != Verb::Exit ? ((std::uint32_t(d.gatherKind) & 0x3u) << 13) | (d.gatherFlag ? (1u << 15) : 0u) : 0u;
+    return (std::uint32_t(d.verb) & 0xFu) | ((std::uint32_t(d.type) & 0x3u) << 4) | (objective << 6) | (reason << 9) | gather |
         (std::uint32_t(d.serial) << 16);
 }
 
@@ -262,6 +267,11 @@ inline DirectiveBits UnpackDirective(std::uint32_t b)
     d.objective = objective ? std::int8_t(objective - 1) : std::int8_t(-1);
     d.reason = d.verb == Verb::Exit ? EndReason((b >> 9) & 0x7Fu) : EndReason::None;
     d.serial = std::uint16_t(b >> 16);
+    if (d.verb != Verb::Exit)
+    {
+        d.gatherKind = std::uint8_t((b >> 13) & 0x3u);
+        d.gatherFlag = ((b >> 15) & 0x1u) != 0;
+    }
     return d;
 }
 

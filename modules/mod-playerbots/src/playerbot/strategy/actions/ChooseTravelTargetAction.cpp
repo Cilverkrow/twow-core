@@ -2425,6 +2425,11 @@ bool ChooseGroupTravelTargetAction::Execute(Event& event)
 
 bool ChooseGroupTravelTargetAction::isUseful()
 {
+    // A3 step 3 T02-GROUP R6 (AiPlayerbot.Supervisor.Arbiter = 2, BotGroups.Manager.Types > 0; default 0): no group copy in GROUP
+    // or while the self-exit lock holds (held_group_copy counted). Always free below arbiter 2 and without a supervisor.
+    if (!ai::supervisor::GroupCopyFree(ai))
+        return false;
+
     if (bot->InBattleGround())
         return false;
 
