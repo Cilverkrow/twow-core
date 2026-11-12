@@ -940,6 +940,9 @@ public:
     // A3-GERUEST-L60 7.2.11 (measurement only): a bot in the manager's cohort posts its status snapshot to the manager inbox
     // every StatusSeconds (ManagerInboxPolicy.h). 0 = no posts (default), 1..3600; above = 3600 + error line.
     uint32 botGroupsManagerStatusSeconds = 0;
+    // A3 step 6 T30-1f (R9 V3): the manager's Enter/Exit ack deadline in seconds; 10 (default, the old fixed value) .. 20,
+    // outside = the nearest bound + error line (GroupManagerPolicy.h ClampAckTimeoutSeconds).
+    uint32 botGroupsManagerAckTimeoutSeconds = 10;
     // A3 step 6 T30-1 (design T30 v1.1 5.1): the group types the manager forms and holds for the bots of its cohort (bit 1
     // ADHOC, bit 2 QUEST; 0 = none, default). Needs StatusSeconds > 0 (else 0 + error line, F9); other bits are masked.
     uint32 botGroupsManagerTypes = 0;
