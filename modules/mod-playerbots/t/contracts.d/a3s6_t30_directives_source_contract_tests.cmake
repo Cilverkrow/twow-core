@@ -886,6 +886,66 @@ function(check_t30_1d out)
   set(${out} "" PARENT_SCOPE)
 endfunction()
 
+# ---- (h9) T30-1f (R9 V3, OB-10 12.11.2026): BotGroups.Manager.AckTimeoutSeconds, default 10 = the old fixed deadline, 10..20 --
+set(AT_CLAMP "inline std::uint32_t ClampAckTimeoutSeconds(std::int64_t seconds)\n{\n    if (seconds < std::int64_t(kAckTimeoutSecondsMin))\n        return kAckTimeoutSecondsMin;\n    if (seconds > std::int64_t(kAckTimeoutSecondsMax))\n        return kAckTimeoutSecondsMax;\n    return std::uint32_t(seconds);\n}")
+set(AT_READ "    botGroupsManagerAckTimeoutSeconds = uint32(config.GetIntDefault(\"AiPlayerbot.BotGroups.Manager.AckTimeoutSeconds\",\n        int32(ai::group_mgr::kAckTimeoutSecondsDefault)));\n    int32 const ackTimeoutRaw = int32(botGroupsManagerAckTimeoutSeconds);   // the configured value, sign included\n    botGroupsManagerAckTimeoutSeconds = ai::group_mgr::ClampAckTimeoutSeconds(ackTimeoutRaw);\n    if (int64(ackTimeoutRaw) != int64(botGroupsManagerAckTimeoutSeconds))")
+function(check_t30_1f out)
+  foreach(pair "gm_policy|constexpr std::uint32_t kAckTimeoutSecondsDefault = 10;"
+      "gm_policy|constexpr std::uint32_t kAckTimeoutSecondsMin = 10;"
+      "gm_policy|constexpr std::uint32_t kAckTimeoutSecondsMax = 20;"
+      "gm_policy|static_assert(2u * kAckTimeoutSecondsMax * 1000u + 20000u <= kOrphanGraceMs, "
+      "gm_policy|constexpr std::uint32_t kOrphanGraceMs = 60000;"
+      "gm_policy|${AT_CLAMP}"
+      "gm_policy|    return ClampAckTimeoutSeconds(std::int64_t(seconds)) * 1000u;"
+      "dpol|static_assert(kAckTimeoutMs == kAckTimeoutSecondsDefault * 1000u, "
+      "dpol|    std::uint32_t ackTimeoutSeconds = kAckTimeoutSecondsDefault;"
+      "dpol|    std::uint32_t ackTimeoutMs_ = kAckTimeoutMs;"
+      "dpol|                else if (m.state == MemberState::Directed && now_ - m.sentMs > ackTimeoutMs_)"
+      "dpol|            else if (entry.second.exitOpen && now_ - entry.second.exitSentMs > ackTimeoutMs_)"
+      "config_h|    uint32 botGroupsManagerAckTimeoutSeconds = 10;"
+      "config_cpp|${AT_READ}"
+      "config_cpp|            {\"BotGroups.Manager\", Value(botGroupsManager)},\n            {\"BotGroups.Manager.AckTimeoutSeconds\", Value(botGroupsManagerAckTimeoutSeconds)},\n            {\"BotGroups.Manager.Gather\", "
+      "mgr_cpp|    rules.ackTimeoutSeconds = sPlayerbotAIConfig.botGroupsManagerAckTimeoutSeconds;"
+      "conf_dist|AiPlayerbot.BotGroups.Manager.AckTimeoutSeconds = 10\n"
+      "unit_test|    TestAckTimeoutKey();\n    TestAckTimeoutOrphanGrace();")
+    string(FIND "${pair}" "|" bar)
+    string(SUBSTRING "${pair}" 0 ${bar} var)
+    math(EXPR bar "${bar} + 1")
+    string(SUBSTRING "${pair}" ${bar} -1 needle)
+    string(FIND "${${var}}" "${needle}" at)
+    if(at EQUAL -1)
+      set(${out} "t30-1f: ${var} missing ${needle}" PARENT_SCOPE)
+      return()
+    endif()
+  endforeach()
+  # The deadline of the pass is set once, at the start of Pass, before the deadlines run; the fixed constant is only the default
+  # (its definition, the static_assert, the member's initial value) and no deadline reads it.
+  region("${dpol}" "    void Pass(PassInput const& in, Rules const& r, Io& io)\n    {" "\n    }\n" body)
+  string(FIND "${body}" "        ackTimeoutMs_ = AckTimeoutMs(r.ackTimeoutSeconds);" set_at)
+  string(FIND "${body}" "            Deadlines(r, io);" dl_at)
+  if(set_at EQUAL -1 OR dl_at EQUAL -1 OR NOT set_at LESS dl_at)
+    set(${out} "t30-1f: Pass does not set ackTimeoutMs_ before the deadlines" PARENT_SCOPE)
+    return()
+  endif()
+  foreach(pair "dpol|kAckTimeoutMs@3" "dpol|ackTimeoutMs_ = @2" "dpol|> ackTimeoutMs_)@2" "dpol|AckTimeoutMs(r.@1"
+      "config_cpp|AiPlayerbot.BotGroups.Manager.AckTimeoutSeconds@1" "config_cpp|botGroupsManagerAckTimeoutSeconds = @2")
+    string(FIND "${pair}" "|" bar)
+    string(SUBSTRING "${pair}" 0 ${bar} var)
+    math(EXPR bar "${bar} + 1")
+    string(SUBSTRING "${pair}" ${bar} -1 rest)
+    string(FIND "${rest}" "@" at)
+    string(SUBSTRING "${rest}" 0 ${at} needle)
+    math(EXPR at "${at} + 1")
+    string(SUBSTRING "${rest}" ${at} -1 want)
+    count_text("${${var}}" "${needle}" n)
+    if(NOT n EQUAL want)
+      set(${out} "t30-1f: ${var} ${needle} appears ${n} times (${want} expected)" PARENT_SCOPE)
+      return()
+    endif()
+  endforeach()
+  set(${out} "" PARENT_SCOPE)
+endfunction()
+
 # ---- (i) the unit tests ----------------------------------------------------------------------------------------------------------
 function(check_unit out)
   foreach(needle "add_executable(group_directive_policy_tests\n  \"\${PB_MODULE_DIR}/t/group_directive_policy_tests.cpp\")"
@@ -960,6 +1020,8 @@ function(run_check check out)
     check_t30_1c(r)
   elseif(check STREQUAL "check_t30_1d")
     check_t30_1d(r)
+  elseif(check STREQUAL "check_t30_1f")
+    check_t30_1f(r)
   elseif(check STREQUAL "check_unit")
     check_unit(r)
   else()
@@ -970,7 +1032,7 @@ endfunction()
 
 # ---- the real sources ----------------------------------------------------------------------------------------------------------
 foreach(check check_switch check_noop check_post check_ops check_pure check_gates check_mirrors check_order check_minute check_cohort
-    check_resume_drain check_wish check_serial check_view check_t30_1b check_t30_1c check_t30_1d check_unit)
+    check_resume_drain check_wish check_serial check_view check_t30_1b check_t30_1c check_t30_1d check_t30_1f check_unit)
   run_check(${check} r)
   fail_if("${r}")
 endforeach()
@@ -1203,6 +1265,38 @@ probe(dpol "                    m.leaderOtherMapSince = 0;\n" "                 
 probe(conf_dist "follow_other_map_open_max_ms= (the oldest open one's age), levels." "follow_other_map_open_max_ms= (an increment)." check_t30_1d
   "t30-1d: conf_dist missing" "the dist text calls the levels increments")
 probe(unit_test "    TestFollowOtherMap();\n" "" check_t30_1d "t30-1d: unit_test missing" "the T30-1d test not run")
+# T30-1f (R9 V3): the ack deadline key, default 10 (unchanged), 10..20, tied to the orphan grace.
+probe(config_h "    uint32 botGroupsManagerAckTimeoutSeconds = 10;" "    uint32 botGroupsManagerAckTimeoutSeconds = 15;" check_t30_1f
+  "t30-1f: config_h missing" "member default 15")
+probe(conf_dist "AiPlayerbot.BotGroups.Manager.AckTimeoutSeconds = 10\n" "AiPlayerbot.BotGroups.Manager.AckTimeoutSeconds = 15\n" check_t30_1f
+  "t30-1f: conf_dist missing" "dist default 15")
+probe(gm_policy "constexpr std::uint32_t kAckTimeoutSecondsDefault = 10;" "constexpr std::uint32_t kAckTimeoutSecondsDefault = 15;" check_t30_1f
+  "t30-1f: gm_policy missing" "loader default 15")
+probe(gm_policy "constexpr std::uint32_t kAckTimeoutSecondsMax = 20;" "constexpr std::uint32_t kAckTimeoutSecondsMax = 30;" check_t30_1f
+  "t30-1f: gm_policy missing" "max 30 (the Exit chain past the orphan grace)")
+probe(gm_policy "static_assert(2u * kAckTimeoutSecondsMax * 1000u + 20000u <= kOrphanGraceMs, " "static_assert(true, " check_t30_1f
+  "t30-1f: gm_policy missing" "the max no longer tied to the orphan grace")
+probe(gm_policy "    if (seconds < std::int64_t(kAckTimeoutSecondsMin))\n        return kAckTimeoutSecondsMin;\n" "" check_t30_1f
+  "t30-1f: gm_policy missing" "no lower bound (a 0 deadline times out every Enter)")
+probe(dpol "                else if (m.state == MemberState::Directed && now_ - m.sentMs > ackTimeoutMs_)"
+  "                else if (m.state == MemberState::Directed && now_ - m.sentMs > kAckTimeoutMs)" check_t30_1f "t30-1f: dpol missing"
+  "the Enter deadline on the fixed constant")
+probe(dpol "            else if (entry.second.exitOpen && now_ - entry.second.exitSentMs > ackTimeoutMs_)"
+  "            else if (entry.second.exitOpen && now_ - entry.second.exitSentMs > kAckTimeoutMs)" check_t30_1f "t30-1f: dpol missing"
+  "the Exit deadline on the fixed constant")
+probe(dpol "        ackTimeoutMs_ = AckTimeoutMs(r.ackTimeoutSeconds);   // T30-1f: the Enter/Exit ack deadline of this pass\n" "" check_t30_1f
+  "t30-1f: Pass does not set ackTimeoutMs_" "the key never reaches the engine")
+probe(dpol "                    CloseOtherMap(g, m, \"resume\", \"-\", lastPassMs_, &io);"
+  "                    CloseOtherMap(g, m, \"resume\", \"-\", lastPassMs_, &io);\n                    m.sentMs = now_ - kAckTimeoutMs;" check_t30_1f
+  "t30-1f: dpol kAckTimeoutMs appears 4 times" "another reader of the fixed constant")
+probe(mgr_cpp "    rules.ackTimeoutSeconds = sPlayerbotAIConfig.botGroupsManagerAckTimeoutSeconds;   // T30-1f\n" "" check_t30_1f
+  "t30-1f: mgr_cpp missing" "the config never reaches the rules")
+probe(config_cpp "            {\"BotGroups.Manager.AckTimeoutSeconds\", Value(botGroupsManagerAckTimeoutSeconds)},\n" "" check_t30_1f
+  "t30-1f: config_cpp missing" "echo entry dropped")
+probe(config_cpp "    botGroupsManagerAckTimeoutSeconds = ai::group_mgr::ClampAckTimeoutSeconds(ackTimeoutRaw);"
+  "    botGroupsManagerAckTimeoutSeconds = uint32(ackTimeoutRaw);" check_t30_1f "t30-1f: config_cpp missing" "the key read without the clamp")
+probe(unit_test "    TestAckTimeoutKey();\n" "" check_t30_1f "t30-1f: unit_test missing" "the key test not run")
+probe(unit_test "    TestAckTimeoutOrphanGrace();\n" "" check_t30_1f "t30-1f: unit_test missing" "the orphan grace test not run")
 # (i) the unit tests.
 probe(tests_cmake "add_test(NAME group_directive_policy\n" "add_test(NAME other\n" check_unit "unit: tests.cmake missing" "the unit test not registered")
 probe(unit_test "    TestTypesZero();\n" "" check_unit "unit: t/group_directive_policy_tests.cpp does not run" "the Types 0 test not run")
