@@ -964,6 +964,15 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[GroupMgr] config key=Manager.Types value=%u result=0 (needs Manager.StatusSeconds > 0)", botGroupsManagerTypes);
         botGroupsManagerTypes = ai::group_mgr::EffectiveTypes(botGroupsManagerTypes, botGroupsManagerStatusSeconds);
     }
+    // A3 step 6 T30-1f (R9 V3, OB-10 12.11.2026): the Enter/Exit ack deadline, 10..20 s (GroupManagerPolicy.h); outside = the
+    // nearest bound + one error line.
+    botGroupsManagerAckTimeoutSeconds = uint32(config.GetIntDefault("AiPlayerbot.BotGroups.Manager.AckTimeoutSeconds",
+        int32(ai::group_mgr::kAckTimeoutSecondsDefault)));
+    int32 const ackTimeoutRaw = int32(botGroupsManagerAckTimeoutSeconds);   // the configured value, sign included
+    botGroupsManagerAckTimeoutSeconds = ai::group_mgr::ClampAckTimeoutSeconds(ackTimeoutRaw);
+    if (int64(ackTimeoutRaw) != int64(botGroupsManagerAckTimeoutSeconds))
+        sLog.outError("[GroupMgr] config key=Manager.AckTimeoutSeconds value=%d result=%u (%u..%u s)", ackTimeoutRaw,
+            botGroupsManagerAckTimeoutSeconds, ai::group_mgr::kAckTimeoutSecondsMin, ai::group_mgr::kAckTimeoutSecondsMax);
     // A3 step 6 T33-0 (design T33 v1.1 5.1, measurement only): the meeting shadow. An unknown or negative value is off; without
     // a manager group type there is nothing to measure, so Types 0 turns it off too. One error line each.
     botGroupsManagerGather = uint32(config.GetIntDefault("AiPlayerbot.BotGroups.Manager.Gather", 0));
@@ -2183,6 +2192,7 @@ bool PlayerbotAIConfig::Initialize()
             {"BotGroups.LeaderOtherMap", Value(botGroupsLeaderOtherMap)},
             {"BotGroups.LeaderOtherMapSeconds", Value(botGroupsLeaderOtherMapSeconds)},
             {"BotGroups.Manager", Value(botGroupsManager)},
+            {"BotGroups.Manager.AckTimeoutSeconds", Value(botGroupsManagerAckTimeoutSeconds)},
             {"BotGroups.Manager.Gather", Value(botGroupsManagerGather)},
             {"BotGroups.Manager.StatusSeconds", Value(botGroupsManagerStatusSeconds)},
             {"BotGroups.Manager.Types", Value(botGroupsManagerTypes)},

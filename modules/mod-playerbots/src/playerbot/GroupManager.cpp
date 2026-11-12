@@ -27,7 +27,7 @@ bool SupervisorOn(std::uint32_t low)
 std::uint32_t LiveTypesNow()
 {
     return LiveTypes(sPlayerbotAIConfig.botGroupsManagerTypes, sPlayerbotAIConfig.botGroupsManagerStatusSeconds,
-        ai::supervisor::ArbiterValue(sPlayerbotAIConfig.supervisorArbiter));
+        ai::supervisor::ArbiterValue(sPlayerbotAIConfig.supervisorArbiter), sPlayerbotAIConfig.supervisor);
 }
 
 // The engine's I/O on the world thread: guids only (the op path looks the bots up itself, m2), the one Post, the log.
@@ -97,6 +97,7 @@ void WorldThreadManager::RunDirectives(std::map<std::uint32_t, Player*> const& b
     rules.mode = sPlayerbotAIConfig.botGroupsManager;
     rules.types = types;
     rules.statusSeconds = sPlayerbotAIConfig.botGroupsManagerStatusSeconds;
+    rules.ackTimeoutSeconds = sPlayerbotAIConfig.botGroupsManagerAckTimeoutSeconds;   // T30-1f
     rules.intervalMs = sPlayerbotAIConfig.randomBotUpdateInterval;   // ms
     rules.maxBots = sPlayerbotAIConfig.botGroupsMaxBots;
     rules.levelWindow = sPlayerbotAIConfig.botGroupsLevelWindow;
@@ -286,7 +287,8 @@ WorldThreadManager& WorldManager()
 bool OwnsBot(std::uint32_t guidLow)
 {
     // T30-1c: below arbiter 2 the manager owns no bot (Types acts like 0), so the legacy paths stay open for the cohort.
-    return Owns(sPlayerbotAIConfig.botGroupsManager, LiveTypesNow(), guidLow);
+    // SupervisorOn trap: a bot without the supervisor gets no directive, so the manager does not own it either.
+    return OwnsLive(sPlayerbotAIConfig.botGroupsManager, LiveTypesNow(), sPlayerbotAIConfig.supervisor, guidLow);
 }
 
 bool IsManaged(std::uint32_t guidLow)

@@ -27,7 +27,8 @@ namespace ai::group_mgr
 {
 // ---- constants (design 2.3) -----------------------------------------------------------------------------------------------
 constexpr std::uint32_t kJoinConfirmMs = 20000;    // from the join op's Execute to the confirming edge (no clock while pending, M7)
-constexpr std::uint32_t kAckTimeoutMs = 10000;     // Enter/Exit without an ack (ST:548): fail closed
+constexpr std::uint32_t kAckTimeoutMs = 10000;     // Enter/Exit without an ack (ST:548): fail closed; T30-1f: the default
+static_assert(kAckTimeoutMs == kAckTimeoutSecondsDefault * 1000u, "T30-1f: the key's default is the old fixed deadline");
 constexpr std::uint32_t kLeaveConfirmMs = 40000;   // a queued leave without an outcome
 constexpr std::uint32_t kExitBlockSec = 600;       // the second failed Exit: no candidate for this long (exit_failed)
 constexpr std::uint32_t kOpsPerPass = 1;           // new manager ops per pass, leaves first
@@ -370,6 +371,7 @@ struct Rules
     std::uint32_t mode = 0;               // BotGroups.Manager
     std::uint32_t types = 0;              // BotGroups.Manager.Types, already effective (F9)
     std::uint32_t statusSeconds = 0;      // BotGroups.Manager.StatusSeconds
+    std::uint32_t ackTimeoutSeconds = kAckTimeoutSecondsDefault;   // T30-1f: BotGroups.Manager.AckTimeoutSeconds (10..20)
     std::uint32_t intervalMs = 1000;      // randomBotUpdateInterval (the gap rule)
     // ADHOC (AdhocGroupWorld values)
     std::uint32_t maxBots = 3;
@@ -948,6 +950,7 @@ public:
         goneEpisodes_.clear();
         staleMs_ = manager_inbox::StaleMs(r.statusSeconds);
         wishMs_ = WishFreshMs(r.statusSeconds);
+        ackTimeoutMs_ = AckTimeoutMs(r.ackTimeoutSeconds);   // T30-1f: the Enter/Exit ack deadline of this pass
         heldAtPassStart_ = HasGroups();   // T30-1e: the registry held anything when this pass began (the final minute flush)
         ++passNo_;
         swept_.clear();
@@ -1766,7 +1769,7 @@ private:
                     Count(Cnt::JoinFailed);
                     EndMember(g, m, EndReason::JoinFailed, io, true);
                 }
-                else if (m.state == MemberState::Directed && now_ - m.sentMs > kAckTimeoutMs)
+                else if (m.state == MemberState::Directed && now_ - m.sentMs > ackTimeoutMs_)
                 {
                     Count(Cnt::AckTimeout);
                     EndMember(g, m, EndReason::AckTimeout, io, true);
@@ -1783,7 +1786,7 @@ private:
             // F8 (a): the second Exit goes out one pass after the first failed (a full ring may have drained by then).
             if (entry.second.exitDue && !entry.second.exitOpen && passNo_ > entry.second.exitDuePass)
                 PostExit(entry.first, entry.second, io);
-            else if (entry.second.exitOpen && now_ - entry.second.exitSentMs > kAckTimeoutMs)
+            else if (entry.second.exitOpen && now_ - entry.second.exitSentMs > ackTimeoutMs_)
                 ExitFailure(entry.first, entry.second, io);
         }
         // A group still forming after kFormingMaxSec (a join that never got its turn): it ends, nothing stays half built.
@@ -2765,6 +2768,7 @@ private:
     std::uint32_t nowSec_ = 0;
     std::uint32_t staleMs_ = manager_inbox::kStaleMinMs;
     std::uint32_t wishMs_ = 0;       // WishFreshMs: a wish counts only from the latest status period (OB-10 note on #984)
+    std::uint32_t ackTimeoutMs_ = kAckTimeoutMs;   // T30-1f: AckTimeoutMs(Rules::ackTimeoutSeconds), set at the start of Pass
     std::uint32_t lastPassMs_ = 0;
     std::uint32_t passDeltaMs_ = 0;   // T30-1d: now_ - lastPassMs_ of this pass (0 on the first)
     struct GoneEpisode

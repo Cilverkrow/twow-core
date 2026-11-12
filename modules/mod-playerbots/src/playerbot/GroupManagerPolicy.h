@@ -81,9 +81,23 @@ inline std::uint32_t EffectiveTypes(std::uint32_t types, std::uint32_t statusSec
 // owns no bot (the legacy paths are open again) and its open groups end with switch_off.
 constexpr std::uint32_t kManagerArbiter = 2;   // = supervisor::kArbiterEnforce
 
-inline std::uint32_t LiveTypes(std::uint32_t types, std::uint32_t statusSeconds, std::uint32_t arbiter)
+// SupervisorOn trap (OB-10 review 5d0bdcbb, point 2): a directive reaches only a bot that has the supervisor (Supervisor mode = the
+// value of AiPlayerbot.Supervisor: 0 off, 1 all, 2 cohort B, 3 cohort A). With the supervisor off the manager would own the bots
+// (and close every legacy group path) but could post no directive, so no group would form. SupervisorAny is the global half
+// (LiveTypes: no supervisor at all = Types acts like 0), SupervisorApplies the per-bot half (OwnsLive).
+inline bool SupervisorAny(std::uint32_t supervisorMode)
 {
-    return arbiter == kManagerArbiter ? EffectiveTypes(types, statusSeconds) : 0u;
+    return supervisorMode != cohort::ModeOff && supervisorMode <= cohort::ModeOnlyA;
+}
+
+inline bool SupervisorApplies(std::uint32_t supervisorMode, std::uint32_t guidLow)
+{
+    return SupervisorAny(supervisorMode) && cohort::Applies(supervisorMode, guidLow);
+}
+
+inline std::uint32_t LiveTypes(std::uint32_t types, std::uint32_t statusSeconds, std::uint32_t arbiter, std::uint32_t supervisorMode)
+{
+    return (arbiter == kManagerArbiter && SupervisorAny(supervisorMode)) ? EffectiveTypes(types, statusSeconds) : 0u;
 }
 
 inline bool TypeOn(std::uint32_t types, GroupType type)
@@ -98,11 +112,42 @@ inline bool Owns(std::uint32_t mode, std::uint32_t types, std::uint32_t guidLow)
     return SanitizeTypes(types) != 0 && Applies(mode, guidLow);
 }
 
+// The bot-thread view (OwnsBot): Owns, and the bot has the supervisor (the SupervisorOn trap above).
+inline bool OwnsLive(std::uint32_t mode, std::uint32_t types, std::uint32_t supervisorMode, std::uint32_t guidLow)
+{
+    return Owns(mode, types, guidLow) && SupervisorApplies(supervisorMode, guidLow);
+}
+
 // T30-1 (agreed with CLI-Projekt 10.11.): the orphan grace of a bot in GROUP. The supervisor's GROUP handler (T02-GROUP) asks
 // group_mgr::IsManaged(guid, serial) at most once per 10 s; when it stays false for this long (the manager dropped the bot or
 // its group and no Exit reached it), the bot leaves GROUP on its own. Longer than an Exit, its ack timeout and the one retry,
 // so a late Exit still comes first.
 constexpr std::uint32_t kOrphanGraceMs = 60000;
+
+// T30-1f (R9 V3, CLI-GRP note c2d8285a, OB-10 12.11.2026): AiPlayerbot.BotGroups.Manager.AckTimeoutSeconds, the manager's
+// deadline for the ack of an Enter or an Exit. Default 10 (the old fixed 10 s), 10..20; below = 10, above = 20 (+ error line).
+// A travelling roster bot passes only every 8.5-11.5 s (far-move wait chunks of min(rest, 10) s, jitter 15 %).
+constexpr std::uint32_t kAckTimeoutSecondsDefault = 10;
+constexpr std::uint32_t kAckTimeoutSecondsMin = 10;
+constexpr std::uint32_t kAckTimeoutSecondsMax = 20;
+// The Exit chain - Exit, deadline, the retry one pass later, deadline (exit_failed) - plus 20 s for passes and the view's 10 s
+// interval stays inside the orphan grace, so a late Exit still comes before the bot leaves GROUP on its own.
+static_assert(2u * kAckTimeoutSecondsMax * 1000u + 20000u <= kOrphanGraceMs, "AckTimeoutSeconds max vs kOrphanGraceMs");
+
+inline std::uint32_t ClampAckTimeoutSeconds(std::int64_t seconds)
+{
+    if (seconds < std::int64_t(kAckTimeoutSecondsMin))
+        return kAckTimeoutSecondsMin;
+    if (seconds > std::int64_t(kAckTimeoutSecondsMax))
+        return kAckTimeoutSecondsMax;
+    return std::uint32_t(seconds);
+}
+
+// The deadline in ms for the engine (Rules::ackTimeoutSeconds is clamped again: a test or a caller may pass anything).
+inline std::uint32_t AckTimeoutMs(std::uint32_t seconds)
+{
+    return ClampAckTimeoutSeconds(std::int64_t(seconds)) * 1000u;
+}
 
 // ---- roles ----------------------------------------------------------------------------------------------------------------
 enum class Role : std::uint8_t
