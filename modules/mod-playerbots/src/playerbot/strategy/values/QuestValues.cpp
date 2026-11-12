@@ -8,6 +8,8 @@
 #include "playerbot/RandomPlayerbotMgr.h"
 #include "playerbot/QuestBook.h"   // A3 step 2 K2 (AiPlayerbot.QuestBook): the one level window and the QB5 list
 #include "playerbot/LootChancePolicy.h"   // OB-00 08.11.: QuestRelation.GameObjectChanceDrops
+#include "playerbot/QuestNeedPolicy.h"   // A3 step 2 H5 (QuestBook.NeedPerObjective): open-objective mask, item link rule, cap
+#include <chrono>
 #include "Formulas.h"
 #include "playerbot/strategy/deathknight/DKActions.h"
 
@@ -434,6 +436,12 @@ std::vector<int32> NeededQuestEntriesValue::Calculate()
 {
 	std::vector<int32> needed;
 
+	// A3 step 2 H5 (AiPlayerbot.QuestBook.NeedPerObjective, default 0): with part (a) only the open objectives' entries; with .Log the
+	// run is timed and counted for the [QuestNeed] line (both cohorts). Off: one config read each, the old walk below.
+	bool const perObjective = ai->QuestNeedApplies();
+	ai::quest_need::BotState* const needLog = sPlayerbotAIConfig.questBookNeedPerObjectiveLog ? ai->QuestNeedState() : nullptr;
+	std::chrono::steady_clock::time_point const needStart = needLog ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
+
 	const PlayerTravelInfo& info(bot);
 
 	QuestStatusMap& questStatusMap = bot->getQuestStatusMap();
@@ -454,6 +462,28 @@ std::vector<int32> NeededQuestEntriesValue::Calculate()
 		if (statusData.m_status != QUEST_STATUS_INCOMPLETE)
 			continue;
 
+		if (perObjective)
+		{
+			// one fetch with the bits of the open objectives (the same predicate as below, asked for every objective)
+			uint32 openMask = 0;
+			for (uint32 objective = 0; objective < QUEST_OBJECTIVES_COUNT; objective++)
+			{
+				std::vector<std::string> qualifier = { std::to_string(questId), std::to_string(objective) };
+				if (AI_VALUE2(bool, "need quest objective", Qualified::MultiQualify(qualifier, ",")))
+					openMask |= ai::quest_need::ObjectiveBit(objective);
+			}
+
+			if (!openMask)
+				continue;
+
+			DestinationList destinations = sTravelMgr.GetDestinations(info, openMask, {int32(questId)}, false, 0);
+
+			for (auto destination : destinations)
+				needed.push_back(destination->GetEntry());
+
+			continue;
+		}
+
 		for (uint32 objective = 0; objective < QUEST_OBJECTIVES_COUNT; objective++)
 		{
 			std::vector<std::string> qualifier = { std::to_string(questId), std::to_string(objective) };
@@ -473,6 +503,13 @@ std::vector<int32> NeededQuestEntriesValue::Calculate()
 
 	std::sort(needed.begin(), needed.end());
 	needed.erase(std::unique(needed.begin(), needed.end()), needed.end());
+
+	if (needLog)
+	{
+		needLog->stats.calc++;
+		needLog->stats.calcUs += uint64(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - needStart).count());
+		needLog->stats.setN += needed.size();
+	}
 	return needed;
 }
 
@@ -765,17 +802,78 @@ bool CanUseItemOn::Calculate()
 			}
 
 			if (ai->CanCastSpell(spellId, unit, 0, false, nullptr, true))
-				return tryRandomCast;
+				return ai->QuestNeedItemUseApplies() ? UseByNeed(itemId, spellId, guidP) : tryRandomCast;   // H5 (b), off: the dice
 		}
 		else if (gameObject)
 		{
 			if (ai->CanCastSpell(spellId, gameObject, 0, false, true))
-				return tryRandomCast;
+				return ai->QuestNeedItemUseApplies() ? UseByNeed(itemId, spellId, guidP) : tryRandomCast;   // H5 (b), off: the dice
 		}
 	}
 
 	return false;
 };
+
+// A3 step 2 H5 part (b) (AiPlayerbot.QuestBook.NeedPerObjective.ItemUse, default 0; QuestNeedPolicy.h): the item is used on the
+// target only when an open objective of an incomplete quest links them - L1: the quest takes the item's spell on that target
+// (QUEST_SPECIAL_FLAG_KILL_OR_CAST, ReqSpell), L2: the item is the quest's source item and the target an open objective - and the
+// per-bot cap has not refused the target or the item. No link: no use (no dice).
+bool CanUseItemOn::UseByNeed(uint32 itemId, uint32 spellId, GuidPosition const& guidP)
+{
+	ai::quest_need::BotState* const state = ai->QuestNeedState();
+	bool const gameObject = guidP.IsGameObject();
+	bool const creature = guidP.IsCreature();
+	uint32 const entry = guidP.GetEntry();
+	bool linked = false;
+
+	for (auto& questStatus : bot->getQuestStatusMap())
+	{
+		if (questStatus.second.m_status != QUEST_STATUS_INCOMPLETE)
+			continue;
+
+		Quest const* quest = sObjectMgr.GetQuestTemplate(questStatus.first);
+		if (!quest || !quest->IsActive())
+			continue;
+
+		bool sourceItem = quest->GetSrcItemId() == itemId;
+		for (uint32 i = 0; i < QUEST_SOURCE_ITEM_IDS_COUNT && !sourceItem; ++i)
+			sourceItem = quest->ReqSourceId[i] == itemId;
+
+		for (uint32 objective = 0; objective < QUEST_OBJECTIVES_COUNT && !linked; ++objective)
+		{
+			int32 const req = quest->ReqCreatureOrGOId[objective];
+			ai::quest_need::ObjectiveLink link;
+			link.targetMatches = (req > 0 && creature && uint32(req) == entry) || (req < 0 && gameObject && uint32(-req) == entry);
+			link.open = questStatus.second.m_creatureOrGOcount[objective] < quest->ReqCreatureOrGOCount[objective];
+			link.killOrCast = quest->HasSpecialFlag(QUEST_SPECIAL_FLAG_KILL_OR_CAST);
+			link.spellMatches = quest->ReqSpell[objective] && quest->ReqSpell[objective] == spellId;
+			link.sourceItem = sourceItem;
+			linked = ai::quest_need::Link(link) != ai::quest_need::LinkKind::None;
+		}
+
+		if (linked)
+			break;
+	}
+
+	if (!linked)
+	{
+		if (state)
+			state->stats.refusedNolink++;
+		return false;
+	}
+
+	if (state)
+	{
+		state->stats.linked++;
+		if (state->cap.Check(itemId, guidP.GetRawValue(), WorldTimer::getMSTime()) != ai::quest_need::CapVerdict::Allowed)
+		{
+			state->stats.refusedCap++;
+			return false;
+		}
+	}
+
+	return true;
+}
 
 bool HasNearbyQuestTakerValue::Calculate()
 {

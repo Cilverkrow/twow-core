@@ -28,6 +28,7 @@
 #include "playerbot/Supervisor.h"   // A3 step 3 (AiPlayerbot.Supervisor): the per-bot supervisor scaffold
 #include "playerbot/CombatRule.h"   // A3 step 5 (AiPlayerbot.CombatRule.ProgressGuard): limits, counters, CombatLoop event
 #include "playerbot/QuestBook.h"    // A3 step 2 (AiPlayerbot.QuestBook): the per-bot quest book core
+#include "playerbot/QuestNeedPolicy.h"    // A3 step 2 H5 (QuestBook.NeedPerObjective): the per-bot cap and hour lines
 #include "playerbot/GroupManagerPolicy.h"   // A3-GERUEST-L60 7.2.11: the manager's cohort rule for the status post
 #include "playerbot/ManagerInbox.h"         // A3-GERUEST-L60 7.2.11: the manager inbox (Status post)
 #include "playerbot/ManagerFacts.h"         // A3 step 6 T30-0: the bot's own facts for the status, edge and wish posts
@@ -680,10 +681,102 @@ bool PlayerbotAI::InQuestBookScope()
     return bot && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !HasRealPlayerMaster();
 }
 
+// A3 step 2 H5 (QuestNeedPolicy.h, AiPlayerbot.QuestBook.NeedPerObjective, default 0). Switch first: off = one config read.
+bool PlayerbotAI::QuestNeedApplies()
+{
+    return sPlayerbotAIConfig.questBookNeedPerObjective && bot &&
+        ai::quest_need::H5Applies(sPlayerbotAIConfig.questBookNeedPerObjective, bot->GetGUIDLow(), bot->GetLevel()) && InQuestBookScope();
+}
+
+bool PlayerbotAI::QuestNeedItemUseApplies()
+{
+    return sPlayerbotAIConfig.questBookNeedPerObjectiveItemUse && QuestNeedApplies();
+}
+
+ai::quest_need::BotState* PlayerbotAI::QuestNeedState()
+{
+    if (!questNeed_)
+    {
+        if (!(sPlayerbotAIConfig.questBookNeedPerObjectiveLog && InQuestBookScope()) && !QuestNeedItemUseApplies())
+            return nullptr;
+        questNeed_ = std::make_unique<ai::quest_need::BotState>();
+    }
+    return questNeed_.get();
+}
+
+void PlayerbotAI::QuestNeedOnCredit(uint32 questId)
+{
+    if (!QuestNeedApplies())
+        return;
+    // the objective values are cached for up to 1 s, the set and the per-entry "need for quest" answers (the grind pick's reads)
+    // for up to 2 s: a credit that completes an objective takes its entries out on the next read. The per-entry answers reset are
+    // those of the entries in the set before this credit (only answers already made; nothing new is created).
+    for (uint32 objective = 0; objective < QUEST_OBJECTIVES_COUNT; ++objective)
+        if (Value<bool>* const need = aiObjectContext->GetValue<bool>("need quest objective", std::to_string(questId) + "," + std::to_string(objective)))
+            need->Reset();
+    if (Value<std::vector<int32>>* const needed = aiObjectContext->GetValue<std::vector<int32>>("needed quest entries"))
+    {
+        for (int32 const entry : needed->LazyGet())
+            if (aiObjectContext->HasValue("need for quest", std::to_string(entry)))
+                if (Value<bool>* const answer = aiObjectContext->GetValue<bool>("need for quest", std::to_string(entry)))
+                    answer->Reset();
+        needed->Reset();
+    }
+}
+
+void PlayerbotAI::QuestNeedOnKillCredit(uint32 creditEntry)
+{
+    if (!questNeed_)
+        return;
+    questNeed_->stats.credited += questNeed_->cap.NoteCredit(creditEntry, WorldTimer::getMSTime());
+}
+
+void PlayerbotAI::QuestNeedOnItemUse(uint32 itemId, uint64 targetRaw, uint32 creditKey)
+{
+    ai::quest_need::BotState* const state = QuestNeedState();
+    if (!state)
+        return;
+    state->stats.uses++;
+    state->cap.NoteUse(itemId, targetRaw, creditKey, WorldTimer::getMSTime());
+}
+
+void PlayerbotAI::QuestNeedWriteHour(uint32 hourStart)
+{
+    // reads only the state of the last hour tick (also called from the destructor)
+    if (!questNeed_ || !hourStart || !sPlayerbotAIConfig.questBookNeedPerObjectiveLog)
+        return;
+    ai::quest_need::BotState const& s = *questNeed_;
+    sLog.outBasic("%s", ai::quest_need::FormatNeedLine(s.guidLow, s.level, s.applies, hourStart, s.stats).c_str());
+    sLog.outBasic("%s", ai::quest_need::FormatItemUseLine(s.guidLow, s.level, s.itemUseApplies, hourStart, s.stats).c_str());
+}
+
+void PlayerbotAI::QuestNeedHourTick(uint32 nowSec)
+{
+    ai::quest_need::BotState* const state = QuestNeedState();
+    if (!state)
+        return;
+    state->cap.Expire(WorldTimer::getMSTime());
+    // the line of the past hour carries the snapshot of its last tick; the snapshot is refreshed after it
+    if (state->clock.Due(nowSec))
+    {
+        QuestNeedWriteHour(state->clock.hourStart);
+        state->stats = ai::quest_need::HourStats();
+        state->clock.hourStart = ai::quest_need::HourClock::StartOf(nowSec);
+    }
+    state->guidLow = bot->GetGUIDLow();
+    state->level = bot->GetLevel();
+    state->applies = QuestNeedApplies();
+    state->itemUseApplies = state->applies && sPlayerbotAIConfig.questBookNeedPerObjectiveItemUse;
+}
+
 PlayerbotAI::~PlayerbotAI()
 {
     // s7r (BotGroups.WorldThreadDefer): lines a manager handed to this bot are written at logout, not lost (world thread).
     DrainDeferredLogs();
+
+    // A3 step 2 H5 (QuestBook.NeedPerObjective.Log): the partial hour of a bot that logs out.
+    if (questNeed_)
+        QuestNeedWriteHour(questNeed_->clock.hourStart);
 
     // A3 step 3 mailbox pair (SupervisorMail.cpp): undelivered mail goes with the AI (logout, release to a client); every removal
     // site still holds the Player (HostHooks RemoveBotAI). No ring open anywhere = one atomic load, no lock.
@@ -1718,6 +1811,11 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
     // time, one sample a minute. Off: nothing is read or written.
     if (sPlayerbotAIConfig.activityTrace && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !HasRealPlayerMaster())
         SampleActivity(uint32(time(nullptr)));
+
+    // A3 step 2 H5 (AiPlayerbot.QuestBook.NeedPerObjective.Log / .ItemUse, default 0): the item cap judges its expired uses, and
+    // once a new clock hour begins the [QuestNeed] / [QuestItemUse] lines of the past hour are written. Off: two config reads.
+    if (sPlayerbotAIConfig.questBookNeedPerObjectiveLog || sPlayerbotAIConfig.questBookNeedPerObjectiveItemUse)
+        QuestNeedHourTick(uint32(time(nullptr)));
 
     // #421 C: progress watch. Progress (level, XP, quest state) resets the
     // quest search; a roster bot on its own that made none for 20 minutes

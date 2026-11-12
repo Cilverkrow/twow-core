@@ -1009,6 +1009,12 @@ public:
     // 3 cohort A; other = 0 + error line. BundleRadius 30..300 yd: the area that counts as one bundle.
     uint32 questBookBundle = 0;
     uint32 questBookBundleRadius = 100;
+    // A3 step 2 H5 (QuestNeedPolicy.h, OB-00 09.11./10.11.2026): the need set per open objective (a) and quest item use by need with a cap
+    // (b), only at bot level >= 10 and only for a roster bot on its own (InQuestBookScope). 0 off, 1 all, 2 cohort B, 3 cohort A; other = 0
+    // + error line. ItemUse 0/1 acts only where NeedPerObjective applies. Log 0/1: the [QuestNeed] / [QuestItemUse] hour lines, both cohorts.
+    uint32 questBookNeedPerObjective = 0;
+    bool questBookNeedPerObjectiveItemUse = false;
+    bool questBookNeedPerObjectiveLog = false;
     // twow-repo#627 S7 help groups (QuestGroupPolicy.h, QuestGroupWorld.cpp); Enable: 0 off, 1 all, 2 cohort B, 3 cohort A.
     uint32 questGroupsEnable = 0;
     uint32 questGroupsScanSeconds = 60;
