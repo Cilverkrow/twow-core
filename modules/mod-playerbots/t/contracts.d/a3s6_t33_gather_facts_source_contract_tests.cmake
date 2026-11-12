@@ -124,7 +124,7 @@ endforeach()
 
 # ---- (a) the switch ----------------------------------------------------------------------------------------------------------
 set(LOAD "    botGroupsManagerGather = uint32(config.GetIntDefault(\"AiPlayerbot.BotGroups.Manager.Gather\", 0));\n    if (!ai::group_mgr::GatherValid(botGroupsManagerGather))\n    {\n        sLog.outError(\"[GroupMgr] config key=Manager.Gather value=%d result=off (0 off, 1 all, 2 cohort B, 3 cohort A)\",\n            int32(botGroupsManagerGather));\n        botGroupsManagerGather = 0;\n    }\n    if (botGroupsManagerGather && !botGroupsManagerTypes)\n    {\n        sLog.outError(\"[GroupMgr] config key=Manager.Gather value=%u result=0 (needs Manager.Types > 0)\", botGroupsManagerGather);\n        botGroupsManagerGather = ai::group_mgr::EffectiveGather(botGroupsManagerGather, botGroupsManagerTypes);\n    }")
-set(ECHO "            {\"BotGroups.Manager\", Value(botGroupsManager)},\n            {\"BotGroups.Manager.Gather\", Value(botGroupsManagerGather)},\n            {\"BotGroups.Manager.StatusSeconds\", Value(botGroupsManagerStatusSeconds)},\n")
+set(ECHO "            {\"BotGroups.Manager\", Value(botGroupsManager)},\n            {\"BotGroups.Manager.AckTimeoutSeconds\", Value(botGroupsManagerAckTimeoutSeconds)},\n            {\"BotGroups.Manager.Gather\", Value(botGroupsManagerGather)},\n            {\"BotGroups.Manager.StatusSeconds\", Value(botGroupsManagerStatusSeconds)},\n")
 
 function(check_switch config_h config_cpp conf_dist gather_h out)
   string(FIND "${config_h}" "    uint32 botGroupsManagerGather = 0;" at)
