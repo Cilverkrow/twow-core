@@ -81,9 +81,23 @@ inline std::uint32_t EffectiveTypes(std::uint32_t types, std::uint32_t statusSec
 // owns no bot (the legacy paths are open again) and its open groups end with switch_off.
 constexpr std::uint32_t kManagerArbiter = 2;   // = supervisor::kArbiterEnforce
 
-inline std::uint32_t LiveTypes(std::uint32_t types, std::uint32_t statusSeconds, std::uint32_t arbiter)
+// SupervisorOn trap (OB-10 review 5d0bdcbb, point 2): a directive reaches only a bot that has the supervisor (Supervisor mode = the
+// value of AiPlayerbot.Supervisor: 0 off, 1 all, 2 cohort B, 3 cohort A). With the supervisor off the manager would own the bots
+// (and close every legacy group path) but could post no directive, so no group would form. SupervisorAny is the global half
+// (LiveTypes: no supervisor at all = Types acts like 0), SupervisorApplies the per-bot half (OwnsLive).
+inline bool SupervisorAny(std::uint32_t supervisorMode)
 {
-    return arbiter == kManagerArbiter ? EffectiveTypes(types, statusSeconds) : 0u;
+    return supervisorMode != cohort::ModeOff && supervisorMode <= cohort::ModeOnlyA;
+}
+
+inline bool SupervisorApplies(std::uint32_t supervisorMode, std::uint32_t guidLow)
+{
+    return SupervisorAny(supervisorMode) && cohort::Applies(supervisorMode, guidLow);
+}
+
+inline std::uint32_t LiveTypes(std::uint32_t types, std::uint32_t statusSeconds, std::uint32_t arbiter, std::uint32_t supervisorMode)
+{
+    return (arbiter == kManagerArbiter && SupervisorAny(supervisorMode)) ? EffectiveTypes(types, statusSeconds) : 0u;
 }
 
 inline bool TypeOn(std::uint32_t types, GroupType type)
@@ -96,6 +110,12 @@ inline bool TypeOn(std::uint32_t types, GroupType type)
 inline bool Owns(std::uint32_t mode, std::uint32_t types, std::uint32_t guidLow)
 {
     return SanitizeTypes(types) != 0 && Applies(mode, guidLow);
+}
+
+// The bot-thread view (OwnsBot): Owns, and the bot has the supervisor (the SupervisorOn trap above).
+inline bool OwnsLive(std::uint32_t mode, std::uint32_t types, std::uint32_t supervisorMode, std::uint32_t guidLow)
+{
+    return Owns(mode, types, guidLow) && SupervisorApplies(supervisorMode, guidLow);
 }
 
 // T30-1 (agreed with CLI-Projekt 10.11.): the orphan grace of a bot in GROUP. The supervisor's GROUP handler (T02-GROUP) asks

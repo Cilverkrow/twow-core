@@ -234,7 +234,7 @@ function(check_noop out)
     return()
   endif()
   foreach(needle
-      "bool OwnsBot(std::uint32_t guidLow)\n{\n    // T30-1c: below arbiter 2 the manager owns no bot (Types acts like 0), so the legacy paths stay open for the cohort.\n    return Owns(sPlayerbotAIConfig.botGroupsManager, LiveTypesNow(), guidLow);\n}"
+      "bool OwnsBot(std::uint32_t guidLow)\n{\n    // T30-1c: below arbiter 2 the manager owns no bot (Types acts like 0), so the legacy paths stay open for the cohort.\n    // SupervisorOn trap: a bot without the supervisor gets no directive, so the manager does not own it either.\n    return OwnsLive(sPlayerbotAIConfig.botGroupsManager, LiveTypesNow(), sPlayerbotAIConfig.supervisor, guidLow);\n}"
       "bool IsManaged(std::uint32_t guidLow)\n{\n    ViewEntry v;\n    return WorldManager().Directives().View().Find(guidLow, v);\n}"
       "bool Blocks(std::uint32_t guidLow)\n{\n    return OwnsBot(guidLow) || IsManaged(guidLow);\n}"
       "    return WorldManager().Directives().View().Find(guidLow, v) ? v.questRole : std::uint8_t(0);"
@@ -764,10 +764,10 @@ function(check_t30_1b out)
 endfunction()
 
 # ---- (h7) T30-1c: the arbiter gate (Types acts like 0 below arbiter 2) and left_stale ----------------------------------------
-set(LIVE_NOW "std::uint32_t LiveTypesNow()\n{\n    return LiveTypes(sPlayerbotAIConfig.botGroupsManagerTypes, sPlayerbotAIConfig.botGroupsManagerStatusSeconds,\n        ai::supervisor::ArbiterValue(sPlayerbotAIConfig.supervisorArbiter));\n}")
+set(LIVE_NOW "std::uint32_t LiveTypesNow()\n{\n    return LiveTypes(sPlayerbotAIConfig.botGroupsManagerTypes, sPlayerbotAIConfig.botGroupsManagerStatusSeconds,\n        ai::supervisor::ArbiterValue(sPlayerbotAIConfig.supervisorArbiter), sPlayerbotAIConfig.supervisor);\n}")
 function(check_t30_1c out)
   foreach(pair "gm_policy|constexpr std::uint32_t kManagerArbiter = 2;"
-      "gm_policy|    return arbiter == kManagerArbiter ? EffectiveTypes(types, statusSeconds) : 0u;"
+      "gm_policy|    return (arbiter == kManagerArbiter && SupervisorAny(supervisorMode)) ? EffectiveTypes(types, statusSeconds) : 0u;"
       "mgr_cpp|#include \"playerbot/SupervisorShadow.h\""
       "mgr_cpp|${LIVE_NOW}"
       "dpol|    SelfLeft,\n    // T30-1c (OB-10 note on #992): appended after skip_unknown_30m, at the very end of minute2 (kCountsMinute2Loop).\n    LeftStale,\n"
@@ -1152,14 +1152,15 @@ probe(dpol "constexpr std::uint32_t kSkipUnknownLongSec = 1800;" "constexpr std:
 probe(conf_dist "skip_unknown_30m= (a level, not an increment" "skip_unknown_30m= (an increment" check_t30_1b "t30-1b: conf_dist missing" "the dist text calls the level an increment")
 probe(unit_test "    TestSelfLeft();\n" "" check_unit "unit: t/group_directive_policy_tests.cpp does not run" "the self-left test not run")
 # (h7) T30-1c: the gate off, shadow counted as enforce, the pass or the view back on EffectiveTypes, left_stale back to ack_stale.
-probe(gm_policy "    return arbiter == kManagerArbiter ? EffectiveTypes(types, statusSeconds) : 0u;" "    return EffectiveTypes(types, statusSeconds);"
+probe(gm_policy "    return (arbiter == kManagerArbiter && SupervisorAny(supervisorMode)) ? EffectiveTypes(types, statusSeconds) : 0u;" "    return EffectiveTypes(types, statusSeconds);"
   check_t30_1c "t30-1c: gm_policy missing" "LiveTypes ignores the arbiter")
 probe(gm_policy "constexpr std::uint32_t kManagerArbiter = 2;" "constexpr std::uint32_t kManagerArbiter = 1;" check_t30_1c "t30-1c: gm_policy missing" "the shadow (1) counted as enforce")
-probe(mgr_cpp "        ai::supervisor::ArbiterValue(sPlayerbotAIConfig.supervisorArbiter));" "        sPlayerbotAIConfig.supervisorArbiter);"
+probe(gm_policy "(arbiter == kManagerArbiter && SupervisorAny(supervisorMode))" "(arbiter == kManagerArbiter)" check_t30_1c "t30-1c: gm_policy missing" "LiveTypes without the SupervisorOn trap")
+probe(mgr_cpp "        ai::supervisor::ArbiterValue(sPlayerbotAIConfig.supervisorArbiter), sPlayerbotAIConfig.supervisor);" "        sPlayerbotAIConfig.supervisorArbiter, sPlayerbotAIConfig.supervisor);"
   check_t30_1c "t30-1c: mgr_cpp missing" "the key read without the console override")
 probe(mgr_cpp "    std::uint32_t const types = LiveTypesNow();" "    std::uint32_t const types = EffectiveTypes(sPlayerbotAIConfig.botGroupsManagerTypes, sPlayerbotAIConfig.botGroupsManagerStatusSeconds);"
   check_t30_1c "t30-1c: GroupManager.cpp reads Types without the arbiter gate" "the manager pass without the gate")
-probe(mgr_cpp "    return Owns(sPlayerbotAIConfig.botGroupsManager, LiveTypesNow(), guidLow);" "    return Owns(sPlayerbotAIConfig.botGroupsManager, sPlayerbotAIConfig.botGroupsManagerTypes, guidLow);"
+probe(mgr_cpp "    return OwnsLive(sPlayerbotAIConfig.botGroupsManager, LiveTypesNow(), sPlayerbotAIConfig.supervisor, guidLow);" "    return Owns(sPlayerbotAIConfig.botGroupsManager, sPlayerbotAIConfig.botGroupsManagerTypes, guidLow);"
   check_t30_1c "t30-1c: LiveTypesNow\\(\\) appears 2 times" "the bot-thread view without the gate")
 probe(dpol "        {\n            Count(Cnt::LeftStale);\n            return;\n        }\n        Count(Cnt::SelfLeft);" "        {\n            Count(Cnt::AckStale);\n            return;\n        }\n        Count(Cnt::SelfLeft);"
   check_t30_1b "t30-1b: dpol missing" "a stale left ack counted as ack_stale again")
