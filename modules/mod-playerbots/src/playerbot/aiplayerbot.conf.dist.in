@@ -1578,7 +1578,8 @@ AiPlayerbot.Supervisor = 0
 # scope (unknown, test) on a questbook-owned target is refused outside the probe.
 # Default 2 since 12.11.2026 (C-unit T02-a ADOPT_PROPOSED + OB-10 OK, OB-00): it acts only where AiPlayerbot.Supervisor runs
 # (default 0, so with the default profile no bot is affected). At 2 the group manager's AiPlayerbot.BotGroups.Manager.Types
-# takes effect: a profile with Manager.Types > 0 and no Arbiter key now runs the manager.
+# takes effect: a profile with Manager.Types > 0, AiPlayerbot.Supervisor on (SupervisorOn trap) and no Arbiter key now runs the
+# manager.
 # 0 = off (rollback), 1 = shadow, 2 = enforce (default). Any other value acts like 0 (off; one error line at load). The console
 # "rndbot arbiter on|off|enforce" overrides it until the next restart.
 AiPlayerbot.Supervisor.Arbiter = 2
