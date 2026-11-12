@@ -997,12 +997,12 @@ bool PlayerbotAIConfig::Initialize()
     }
     // A3 step 3 behaviour pair 1 (SupervisorShadow.cpp): the arbiter shadow; A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2,
     // default 2 since the C-unit ADOPT, OB-00 12.11.2026; 0 = rollback): 2 = enforcement on the travel target
-    // (SupervisorEnforce.cpp, the shadow stays on). Only where AiPlayerbot.Supervisor runs (default 0). Above 2 is the default 2.
+    // (SupervisorEnforce.cpp, the shadow stays on). Only where AiPlayerbot.Supervisor runs (default 0). Above 2 is off.
     supervisorArbiter = uint32(config.GetIntDefault("AiPlayerbot.Supervisor.Arbiter", 2));
     if (!ai::supervisor::ValidArbiter(supervisorArbiter))
     {
-        sLog.outError("[Supervisor] config key=Supervisor.Arbiter value=%u result=2 (0 off, 1 shadow, 2 enforce; default 2)", supervisorArbiter);
-        supervisorArbiter = 2;
+        sLog.outError("[Supervisor] config key=Supervisor.Arbiter value=%u result=off (0 off, 1 shadow, 2 enforce; default 2)", supervisorArbiter);
+        supervisorArbiter = 0;
     }
     // A3 step 3 T02-a: the arbiter probe (Supervisor::ProbeTick, SupervisorEnforce.cpp) on the probe bots; above 1 is off.
     supervisorArbiterProbe = uint32(config.GetIntDefault("AiPlayerbot.Supervisor.ArbiterProbe", 0));

@@ -526,14 +526,14 @@ endfunction()
 set(ARB_GATE "        if (sPlayerbotAIConfig.supervisor && ai::supervisor::Applies(sPlayerbotAIConfig.supervisor, bot->GetGUIDLow()))\n            EnsureSupervisor()->Tick(WorldTimer::getMSTime(), ai::supervisor::ArbiterValue(sPlayerbotAIConfig.supervisorArbiter));\n")
 
 function(check_switch config_h config_cpp conf_dist ai_cpp policy all_sources out)
-  # T02-a default pair (OB-00 12.11.2026, C-unit ADOPT): default 2 (enforce), 0 = rollback, an unknown value acts like 2.
+  # T02-a default pair (OB-00 12.11.2026, C-unit ADOPT): default 2 (enforce), 0 = rollback, an unknown value is off (0), like AiPlayerbot.Supervisor (OB-10/OB-00 12.11.).
   string(FIND "${config_h}" "    uint32 supervisorArbiter = 2;" at)
   if(at EQUAL -1)
     set(${out} "PlayerbotAIConfig.h: member not default 2: uint32 supervisorArbiter = 2;" PARENT_SCOPE)
     return()
   endif()
   foreach(needle
-      "    supervisorArbiter = uint32(config.GetIntDefault(\"AiPlayerbot.Supervisor.Arbiter\", 2));\n    if (!ai::supervisor::ValidArbiter(supervisorArbiter))\n    {\n        sLog.outError(\"[Supervisor] config key=Supervisor.Arbiter value=%u result=2 (0 off, 1 shadow, 2 enforce; default 2)\", supervisorArbiter);\n        supervisorArbiter = 2;\n    }"
+      "    supervisorArbiter = uint32(config.GetIntDefault(\"AiPlayerbot.Supervisor.Arbiter\", 2));\n    if (!ai::supervisor::ValidArbiter(supervisorArbiter))\n    {\n        sLog.outError(\"[Supervisor] config key=Supervisor.Arbiter value=%u result=off (0 off, 1 shadow, 2 enforce; default 2)\", supervisorArbiter);\n        supervisorArbiter = 0;\n    }"
       "            {\"Supervisor\", Value(supervisor)},\n            {\"Supervisor.Arbiter\", Value(supervisorArbiter)},\n            {\"Supervisor.ArbiterProbe\", Value(supervisorArbiterProbe)},\n            {\"ThreadSafeTeleportAck\"")
     string(FIND "${config_cpp}" "${needle}" at)
     if(at EQUAL -1)
