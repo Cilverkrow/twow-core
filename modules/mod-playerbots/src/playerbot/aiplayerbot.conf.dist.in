@@ -1468,7 +1468,8 @@ AiPlayerbot.BotGroups.Manager.AckTimeoutSeconds = 10
 # T30-1c: the manager acts only while the arbiter enforces, i.e. AiPlayerbot.Supervisor.Arbiter = 2 or the console
 # "rndbot arbiter enforce" (the T02-GROUP handler refuses Enter and Update below 2). Below 2, Types acts like 0 (no own line;
 # the config echo and the console line show the arbiter): the manager owns no bot, the legacy paths are open again and its
-# open groups end with switch_off.
+# open groups end with switch_off. The same holds for AiPlayerbot.Supervisor = 0 (a directive reaches only a bot with the
+# supervisor): the manager then owns no bot.
 AiPlayerbot.BotGroups.Manager.Types = 0
 # A3 step 6 T33-0 (design T33 v1.1, owner decisions F1-F17 = (a)): MEASUREMENT ONLY, default 0, no behaviour change. The
 # meeting shadow of the manager's QUEST groups ("Gather" = meeting up; not the gather strategy or GatherTravelDestination).
