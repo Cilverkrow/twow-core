@@ -54,6 +54,7 @@ class ChatHandler;
 class Channel;
 namespace ai::supervisor { class Supervisor; }   // A3 step 3 (AiPlayerbot.Supervisor): PlayerbotAI.cpp holds the full type
 namespace ai::questbook { class QuestBook; }   // A3 step 2 (AiPlayerbot.QuestBook): PlayerbotAI.cpp holds the full type
+namespace ai::quest_need { struct BotState; }   // A3 step 2 H5 (QuestBook.NeedPerObjective): QuestNeedPolicy.h, held in PlayerbotAI.cpp
 namespace ai::reach_drop { struct Held; }   // twow-repo#703 item 4: ClearEngagement's result, PlayerbotAI.cpp holds the full type
 
 using namespace ai;
@@ -1364,6 +1365,21 @@ public:
     ai::questbook::QuestBook* ActiveQuestBook() const;
     // A persistent roster bot without a real player master: the population of the quest book (as quest_accept::SkipForRosterBot).
     bool InQuestBookScope();
+    // A3 step 2 H5 (QuestNeedPolicy.h, AiPlayerbot.QuestBook.NeedPerObjective, default 0): part (a) applies to this bot (switch first,
+    // then cohort, level >= 10 and InQuestBookScope). Off: one config read, nothing else. Bot thread only.
+    bool QuestNeedApplies();
+    // Part (b): QuestNeedApplies() and NeedPerObjective.ItemUse = 1.
+    bool QuestNeedItemUseApplies();
+    // The per-bot H5 state (cap + hour counters) when .Log = 1 or part (b) applies to this bot, made on first use; else null.
+    ai::quest_need::BotState* QuestNeedState();
+    // A kill / item credit of this quest: with part (a) the need set and the quest's objective values are read fresh next time.
+    void QuestNeedOnCredit(uint32 questId);
+    // A kill / cast credit packet entry (game objects with the high bit): credits the open quest item uses of that entry.
+    void QuestNeedOnKillCredit(uint32 creditEntry);
+    // A quest item use on an rpg target: counted ([QuestItemUse] uses) and held 15 s for its credit (the cap). No state: nothing.
+    void QuestNeedOnItemUse(uint32 itemId, uint64 targetRaw, uint32 creditKey);
+    // Once per update: writes the [QuestNeed] / [QuestItemUse] lines of the past clock hour (.Log = 1).
+    void QuestNeedHourTick(uint32 nowSec);
     // Switch first, then a band trip runs (travel target with a band end, active) - the idle quest rescue waits for it.
     bool BandTripRunning();
     // A park ended the episode (SetParked): consumed by the next band step on the bot thread.
@@ -1505,6 +1521,9 @@ protected:
     std::unique_ptr<ai::supervisor::Supervisor> supervisor_;
     // A3 step 2 (ADR-0041, AiPlayerbot.QuestBook, default 0): nullptr while neither the switch nor the shadow applies to this bot.
     std::unique_ptr<ai::questbook::QuestBook> questBook_;
+    // A3 step 2 H5 (AiPlayerbot.QuestBook.NeedPerObjective, default 0): nullptr until .Log or part (b) needs it; memory only.
+    std::unique_ptr<ai::quest_need::BotState> questNeed_;
+    void QuestNeedWriteHour(uint32 hourStart);
     bool isPlayerFriend = false;
     bool isMovingToTransport = false;
     bool shouldLogOut = false;
