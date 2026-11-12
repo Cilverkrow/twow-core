@@ -97,6 +97,7 @@ void WorldThreadManager::RunDirectives(std::map<std::uint32_t, Player*> const& b
     rules.mode = sPlayerbotAIConfig.botGroupsManager;
     rules.types = types;
     rules.statusSeconds = sPlayerbotAIConfig.botGroupsManagerStatusSeconds;
+    rules.ackTimeoutSeconds = sPlayerbotAIConfig.botGroupsManagerAckTimeoutSeconds;   // T30-1f
     rules.intervalMs = sPlayerbotAIConfig.randomBotUpdateInterval;   // ms
     rules.maxBots = sPlayerbotAIConfig.botGroupsMaxBots;
     rules.levelWindow = sPlayerbotAIConfig.botGroupsLevelWindow;

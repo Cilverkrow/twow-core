@@ -1938,6 +1938,97 @@ void TestFollowOtherMap()
             "minute2 at the largest values: complete, ends with follow_other_map_open_max_ms");
     }
 }
+
+// T30-1f (R9 V3): BotGroups.Manager.AckTimeoutSeconds - the key read (clamp, default) and the deadline it sets in the engine.
+void TestAckTimeoutKey()
+{
+    Require(ClampAckTimeoutSeconds(-5) == 10 && ClampAckTimeoutSeconds(0) == 10 && ClampAckTimeoutSeconds(9) == 10,
+        "AckTimeoutSeconds below 10 acts like 10");
+    Require(ClampAckTimeoutSeconds(10) == 10 && ClampAckTimeoutSeconds(15) == 15 && ClampAckTimeoutSeconds(20) == 20,
+        "AckTimeoutSeconds 10..20 is kept");
+    Require(ClampAckTimeoutSeconds(21) == 20 && ClampAckTimeoutSeconds(std::int64_t(0x7FFFFFFF)) == 20,
+        "AckTimeoutSeconds above 20 acts like 20");
+    Require(AckTimeoutMs(0) == 10000 && AckTimeoutMs(15) == 15000 && AckTimeoutMs(4000000000u) == 20000,
+        "AckTimeoutMs: seconds to ms, clamped again");
+    Require(Rules().ackTimeoutSeconds == kAckTimeoutSecondsDefault && AckTimeoutMs(Rules().ackTimeoutSeconds) == kAckTimeoutMs,
+        "the default is the old fixed 10 s");
+
+    // The R9 case: both Enters answered 11.3 s after they went out (a far-move wait chunk). 10 s: both time out first.
+    {
+        Engine e;
+        World w;
+        FakeIo io;
+        Rules const r = AdhocRules();
+        std::uint32_t const sent = FormAdhocPair(e, w, r, io, 1000);
+        Tick(e, w, r, io, sent, sent + 11000);
+        Require(e.Total(Cnt::AckTimeout) == 2 && e.TotalLeave(EndReason::AckTimeout) == 2, "10 s: the 11 s answers come too late");
+    }
+    // 15 s: the same answers apply and the group forms.
+    {
+        Engine e;
+        World w;
+        FakeIo io;
+        Rules r = AdhocRules();
+        r.ackTimeoutSeconds = 15;
+        std::uint32_t const sent = FormAdhocPair(e, w, r, io, 1000);
+        std::uint32_t t = Tick(e, w, r, io, sent, sent + 11000);
+        Require(e.Total(Cnt::AckTimeout) == 0, "15 s: no timeout at 11 s");
+        t += 300;
+        Refresh(w, t);
+        w.acks.push_back(AckFor(1, SeqOf(io, 1, Verb::Enter), mi::kAckApplied));
+        w.acks.push_back(AckFor(2, SeqOf(io, 2, Verb::Enter), mi::kAckApplied));
+        Run(e, w, r, io, t);
+        Require(e.Total(Cnt::AckApp) == 2 && e.Total(Cnt::AckTimeout) == 0 && e.Total(Cnt::Formed) == 1,
+            "15 s: the 11.3 s acks apply, the group forms");
+    }
+    // 15 s without any answer: no timeout at exactly 15 s, both one pass later (fail closed as before).
+    {
+        Engine e;
+        World w;
+        FakeIo io;
+        Rules r = AdhocRules();
+        r.ackTimeoutSeconds = 15;
+        std::uint32_t const sent = FormAdhocPair(e, w, r, io, 1000);
+        std::uint32_t t = Tick(e, w, r, io, sent, sent + 15000);
+        Require(e.Total(Cnt::AckTimeout) == 0, "15 s: no timeout at exactly 15 s");
+        Tick(e, w, r, io, t, t + 1000);
+        Require(e.Total(Cnt::AckTimeout) == 2 && Posts(io, Verb::Exit) == 2, "15 s: then both time out, an Exit each");
+    }
+}
+
+// T30-1f (OB-10 12.11.2026): at the largest deadline (20 s) the Exit chain - Exit 1, deadline, Exit 2 one pass later, its
+// deadline (exit_failed) - ends before the orphan grace, with room for the GROUP handler's 10 s view interval; nothing answers.
+void TestAckTimeoutOrphanGrace()
+{
+    Engine e;
+    World w;
+    FakeIo io;
+    Rules r = AdhocRules();
+    r.ackTimeoutSeconds = kAckTimeoutSecondsMax;
+    std::uint32_t t = FormAdhocPair(e, w, r, io, 1000);
+    std::uint32_t exit1At = 0, exit2At = 0, failAt = 0, exit1 = 0;
+    for (int i = 0; i < 120 && !failAt; ++i)
+    {
+        t += 1000;
+        Refresh(w, t);
+        Run(e, w, r, io, t);
+        std::uint32_t const seq = SeqOf(io, 1, Verb::Exit);
+        if (seq && !exit1)
+        {
+            exit1 = seq;
+            exit1At = t;
+        }
+        else if (seq && seq != exit1 && !exit2At)
+            exit2At = t;
+        if (io.CountLines("[GroupMgr] event=exit_failed bot=1"))
+            failAt = t;
+    }
+    Require(exit1At && exit2At && failAt, "20 s: Exit 1, the retry and exit_failed all happen");
+    Require(exit2At - exit1At > AckTimeoutMs(kAckTimeoutSecondsMax), "20 s: the Exit deadline follows the key (no retry before 20 s)");
+    Require(exit2At - exit1At <= AckTimeoutMs(kAckTimeoutSecondsMax) + 2000, "20 s: the retry one pass after the first deadline");
+    Require(failAt - exit1At + 10000 <= kOrphanGraceMs, "20 s: the retry's deadline ends inside the orphan grace (+10 s view)");
+    Require(e.Total(Cnt::ExitPending) >= 1 && e.Total(Cnt::ExitFailed) >= 1, "20 s: exit_pending, then exit_failed");
+}
 }
 
 int main()
@@ -1984,6 +2075,8 @@ int main()
     TestLeftQuest();
     TestSkipUnknownLong();
     TestFollowOtherMap();
+    TestAckTimeoutKey();
+    TestAckTimeoutOrphanGrace();
     std::cout << "group_directive_policy_tests: OK\n";
     return 0;
 }
