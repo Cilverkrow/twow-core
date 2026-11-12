@@ -1565,11 +1565,14 @@ AiPlayerbot.Supervisor = 0
 # [ArbiterMin]); a close-then-request errand or the travel target request waits (held_errand / held_request). Closes, the
 # null target, execution, survival, manager and commands (go, debug) are always admitted. Arming 2 moves the bots in the
 # quest book scope (roster, no real player master, not in a battleground, not parked) from Passive to Quest (one ev=mode
-# line); leaving 2 moves them back. Without group mode (a later pair) only a write without writer scope (unknown, test) on a
-# questbook-owned target is refused outside the probe.
-# 0 = off (default, rollback), 1 = shadow, 2 = enforce. Any other value acts like 0 (one error line at load). The console
+# line); leaving 2 moves them back. Without group mode (AiPlayerbot.BotGroups.Manager.Types = 0) only a write without writer
+# scope (unknown, test) on a questbook-owned target is refused outside the probe.
+# Default 2 since 12.11.2026 (C-unit T02-a ADOPT_PROPOSED + OB-10 OK, OB-00): it acts only where AiPlayerbot.Supervisor runs
+# (default 0, so with the default profile no bot is affected). At 2 the group manager's AiPlayerbot.BotGroups.Manager.Types
+# takes effect: a profile with Manager.Types > 0 and no Arbiter key now runs the manager.
+# 0 = off (rollback), 1 = shadow, 2 = enforce (default). Any other value acts like 2 (one error line at load). The console
 # "rndbot arbiter on|off|enforce" overrides it until the next restart.
-AiPlayerbot.Supervisor.Arbiter = 0
+AiPlayerbot.Supervisor.Arbiter = 2
 # A3 step 3 T02-a: the arbiter probe, a self test of the gate on fixed probe bots (cohort B, low guid / 2 a multiple of 25),
 # at most once per bot every 10 minutes and only on an open travel target. With AiPlayerbot.Supervisor.Arbiter = 2 the group
 # lane owns the target for one engine pass, then a select write, a select copy and a questbook lane check must all be refused

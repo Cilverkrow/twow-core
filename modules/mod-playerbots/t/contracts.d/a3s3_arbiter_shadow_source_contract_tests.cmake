@@ -526,13 +526,14 @@ endfunction()
 set(ARB_GATE "        if (sPlayerbotAIConfig.supervisor && ai::supervisor::Applies(sPlayerbotAIConfig.supervisor, bot->GetGUIDLow()))\n            EnsureSupervisor()->Tick(WorldTimer::getMSTime(), ai::supervisor::ArbiterValue(sPlayerbotAIConfig.supervisorArbiter));\n")
 
 function(check_switch config_h config_cpp conf_dist ai_cpp policy all_sources out)
-  string(FIND "${config_h}" "    uint32 supervisorArbiter = 0;" at)
+  # T02-a default pair (OB-00 12.11.2026, C-unit ADOPT): default 2 (enforce), 0 = rollback, an unknown value acts like 2.
+  string(FIND "${config_h}" "    uint32 supervisorArbiter = 2;" at)
   if(at EQUAL -1)
-    set(${out} "PlayerbotAIConfig.h: member not default 0: uint32 supervisorArbiter = 0;" PARENT_SCOPE)
+    set(${out} "PlayerbotAIConfig.h: member not default 2: uint32 supervisorArbiter = 2;" PARENT_SCOPE)
     return()
   endif()
   foreach(needle
-      "    supervisorArbiter = uint32(config.GetIntDefault(\"AiPlayerbot.Supervisor.Arbiter\", 0));\n    if (!ai::supervisor::ValidArbiter(supervisorArbiter))\n    {\n        sLog.outError(\"[Supervisor] config key=Supervisor.Arbiter value=%u result=off (0 off, 1 shadow, 2 enforce)\", supervisorArbiter);\n        supervisorArbiter = 0;\n    }"
+      "    supervisorArbiter = uint32(config.GetIntDefault(\"AiPlayerbot.Supervisor.Arbiter\", 2));\n    if (!ai::supervisor::ValidArbiter(supervisorArbiter))\n    {\n        sLog.outError(\"[Supervisor] config key=Supervisor.Arbiter value=%u result=2 (0 off, 1 shadow, 2 enforce; default 2)\", supervisorArbiter);\n        supervisorArbiter = 2;\n    }"
       "            {\"Supervisor\", Value(supervisor)},\n            {\"Supervisor.Arbiter\", Value(supervisorArbiter)},\n            {\"Supervisor.ArbiterProbe\", Value(supervisorArbiterProbe)},\n            {\"ThreadSafeTeleportAck\"")
     string(FIND "${config_cpp}" "${needle}" at)
     if(at EQUAL -1)
@@ -547,8 +548,8 @@ function(check_switch config_h config_cpp conf_dist ai_cpp policy all_sources ou
   endif()
   string(REGEX MATCHALL "\nAiPlayerbot\\.Supervisor\\.Arbiter = [^\n]*" lines "${conf_dist}")
   list(LENGTH lines n)
-  if(NOT n EQUAL 1 OR NOT lines STREQUAL "\nAiPlayerbot.Supervisor.Arbiter = 0")
-    set(${out} "conf.dist: AiPlayerbot.Supervisor.Arbiter not documented once as 0" PARENT_SCOPE)
+  if(NOT n EQUAL 1 OR NOT lines STREQUAL "\nAiPlayerbot.Supervisor.Arbiter = 2")
+    set(${out} "conf.dist: AiPlayerbot.Supervisor.Arbiter not documented once as 2" PARENT_SCOPE)
     return()
   endif()
   # Read only at the gate, under the parent switch and its cohort.
@@ -794,11 +795,11 @@ string(REPLACE "(ai::supervisor::ThreadKind::World, nullptr, true)" "(ai::superv
 check_tags("${ai_cpp}" "${scripts_cpp}" "${m}" "${all_sources}" r)
 expect_caught("${r}" "the console tag overrides a bot's tag")
 
-string(REPLACE "AiPlayerbot.Supervisor.Arbiter = 0" "AiPlayerbot.Supervisor.Arbiter = 1" m "${conf_dist}")
+string(REPLACE "AiPlayerbot.Supervisor.Arbiter = 2" "AiPlayerbot.Supervisor.Arbiter = 1" m "${conf_dist}")
 check_switch("${config_h}" "${config_cpp}" "${m}" "${ai_cpp}" "${policy}" "${all_sources}" r)
 expect_caught("${r}" "conf.dist default 1")
 
-string(REPLACE "uint32 supervisorArbiter = 0;" "uint32 supervisorArbiter = 1;" m "${config_h}")
+string(REPLACE "uint32 supervisorArbiter = 2;" "uint32 supervisorArbiter = 1;" m "${config_h}")
 check_switch("${m}" "${config_cpp}" "${conf_dist}" "${ai_cpp}" "${policy}" "${all_sources}" r)
 expect_caught("${r}" "member default 1")
 

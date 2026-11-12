@@ -960,8 +960,8 @@ public:
     uint32 supervisor = 0;
     // A3 step 3 behaviour pair 1: the arbiter shadow (SupervisorShadow.cpp), only where the supervisor runs. 0 off, 1 shadow
     // (watch and log, no write), 2 enforce (A3 step 3 T02-a: the shadow plus the arbiter gate on the travel target,
-    // SupervisorEnforce.cpp); other = 0 + error line.
-    uint32 supervisorArbiter = 0;
+    // SupervisorEnforce.cpp); default 2 (C-unit ADOPT, OB-00 12.11.2026), 0 = rollback; other = 2 + error line.
+    uint32 supervisorArbiter = 2;
     // A3 step 3 T02-a (AiPlayerbot.Supervisor.ArbiterProbe, default 0): the arbiter probe on the probe bots (cohort B, every 25th
     // guid pair; ArbiterLanePolicy.h IsProbeBot). 0 off, 1 probe (at arbiter 2 three refused writes every 10 minutes, at 1 only
     // the paired count); other = 0 + error line.
