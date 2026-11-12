@@ -131,7 +131,7 @@ endforeach()
 # ---- (a) the switch ----------------------------------------------------------------------------------------------------------
 set(READ_LINE "    botGroupsManagerStatusSeconds = uint32(config.GetIntDefault(\"AiPlayerbot.BotGroups.Manager.StatusSeconds\", 0));\n    if (botGroupsManagerStatusSeconds > ai::manager_inbox::kStatusSecondsMax)\n    {\n        uint32 const clamped = ai::manager_inbox::ClampStatusSeconds(int32(botGroupsManagerStatusSeconds));\n        sLog.outError(\"[GroupMgr] config key=Manager.StatusSeconds value=%d result=%u (0 off, 1..%u s)\",")
 # T33-0: the sorted echo puts BotGroups.Manager.Gather between the two.
-set(ECHO "            {\"BotGroups.Manager\", Value(botGroupsManager)},\n            {\"BotGroups.Manager.Gather\", Value(botGroupsManagerGather)},\n            {\"BotGroups.Manager.StatusSeconds\", Value(botGroupsManagerStatusSeconds)},\n")
+set(ECHO "            {\"BotGroups.Manager\", Value(botGroupsManager)},\n            {\"BotGroups.Manager.AckTimeoutSeconds\", Value(botGroupsManagerAckTimeoutSeconds)},\n            {\"BotGroups.Manager.Gather\", Value(botGroupsManagerGather)},\n            {\"BotGroups.Manager.StatusSeconds\", Value(botGroupsManagerStatusSeconds)},\n")
 
 function(check_switch config_h config_cpp conf_dist policy out)
   string(FIND "${config_h}" "    uint32 botGroupsManagerStatusSeconds = 0;" at)

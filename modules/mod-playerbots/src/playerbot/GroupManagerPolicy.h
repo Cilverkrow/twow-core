@@ -124,6 +124,31 @@ inline bool OwnsLive(std::uint32_t mode, std::uint32_t types, std::uint32_t supe
 // so a late Exit still comes first.
 constexpr std::uint32_t kOrphanGraceMs = 60000;
 
+// T30-1f (R9 V3, CLI-GRP note c2d8285a, OB-10 12.11.2026): AiPlayerbot.BotGroups.Manager.AckTimeoutSeconds, the manager's
+// deadline for the ack of an Enter or an Exit. Default 10 (the old fixed 10 s), 10..20; below = 10, above = 20 (+ error line).
+// A travelling roster bot passes only every 8.5-11.5 s (far-move wait chunks of min(rest, 10) s, jitter 15 %).
+constexpr std::uint32_t kAckTimeoutSecondsDefault = 10;
+constexpr std::uint32_t kAckTimeoutSecondsMin = 10;
+constexpr std::uint32_t kAckTimeoutSecondsMax = 20;
+// The Exit chain - Exit, deadline, the retry one pass later, deadline (exit_failed) - plus 20 s for passes and the view's 10 s
+// interval stays inside the orphan grace, so a late Exit still comes before the bot leaves GROUP on its own.
+static_assert(2u * kAckTimeoutSecondsMax * 1000u + 20000u <= kOrphanGraceMs, "AckTimeoutSeconds max vs kOrphanGraceMs");
+
+inline std::uint32_t ClampAckTimeoutSeconds(std::int64_t seconds)
+{
+    if (seconds < std::int64_t(kAckTimeoutSecondsMin))
+        return kAckTimeoutSecondsMin;
+    if (seconds > std::int64_t(kAckTimeoutSecondsMax))
+        return kAckTimeoutSecondsMax;
+    return std::uint32_t(seconds);
+}
+
+// The deadline in ms for the engine (Rules::ackTimeoutSeconds is clamped again: a test or a caller may pass anything).
+inline std::uint32_t AckTimeoutMs(std::uint32_t seconds)
+{
+    return ClampAckTimeoutSeconds(std::int64_t(seconds)) * 1000u;
+}
+
 // ---- roles ----------------------------------------------------------------------------------------------------------------
 enum class Role : std::uint8_t
 {
