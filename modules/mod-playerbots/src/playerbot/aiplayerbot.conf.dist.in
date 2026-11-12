@@ -1427,6 +1427,14 @@ AiPlayerbot.BotGroups.Manager = 0
 # snapshots, edges, wishes, stale_snap, cand_*, no_supervisor = table stands at the line).
 # 0 = no posts (default), 1..3600 seconds; a larger value acts like 3600 (one error line at load).
 AiPlayerbot.BotGroups.Manager.StatusSeconds = 0
+# A3 step 6 T30-1f (R9 V3): the manager's deadline in seconds for the ack of an Enter or an Exit directive (Manager.Types
+# below). Without an ack in time an Enter ends the membership (leave reason=ack_timeout) and an Exit goes out once more
+# (exit_pending); the second time without an ack it fails (exit_failed). A travelling roster bot passes only every 8.5-11.5 s
+# (AiPlayerbot.RosterFarMove waits its trip out in chunks of up to 10 s), so 10 s cuts some of its answers. 10 = the old fixed
+# deadline (default), 10..20; a smaller value acts like 10, a larger like 20 (one error line at load). The upper end keeps the
+# Exit, its deadline, the retry and its deadline inside the 60 s a bot in GROUP waits before it leaves an unmanaged group on
+# its own.
+AiPlayerbot.BotGroups.Manager.AckTimeoutSeconds = 10
 # A3 step 6 T30-1 (design T30 v1.1, owner decisions F1-F16 = (a)): the group types the manager forms and holds itself for the
 # roster bots of its cohort. Bit 1 = ADHOC (bots on the same quest objective nearby), bit 2 = QUEST (S7-style quest groups);
 # 3 = both. 0 = none (default): the game behaves exactly as before. With a type on, the manager owns its cohort's bots: the
