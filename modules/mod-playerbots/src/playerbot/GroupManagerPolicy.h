@@ -416,4 +416,21 @@ inline Fallback NextFallback(Fallback current, bool unobserved, bool allowTelepo
     }
     return Fallback::Dissolve;
 }
+
+// T33-1 (design T33 2.5; O6 (a) "nie in v1"): the meeting's ladder. Never a hidden hop, never a teleport (both literals false);
+// the hearthstone only with its own switch on and useful (T33-3, F5 (b), not built: hearthOn is false in v1), else straight to
+// dissolve. So v1 is walk -> dissolve (rendezvous_timeout, like S7). NextFallback stays as it is.
+struct RungFacts
+{
+    bool hearthOn = false;
+    bool hearthUseful = false;
+};
+
+inline Fallback NextRung(Fallback current, RungFacts const& f)
+{
+    Fallback const next = NextFallback(current, false, false);
+    if (next == Fallback::Hearthstone && !(f.hearthOn && f.hearthUseful))
+        return Fallback::Dissolve;
+    return next;
+}
 }
