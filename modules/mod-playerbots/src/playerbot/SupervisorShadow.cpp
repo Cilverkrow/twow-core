@@ -516,7 +516,8 @@ void CountEnforce(std::uint32_t guidLow, EnforceCount what)
 }
 
 // The shared budget of the shadow's lines (E2 a, 300 per minute). lines / dropped are counted only while a shadow minute runs,
-// so a line after the last shadow went off (ev=mode cause=arbiter_disarm) leaves no stale count in the next minute.
+// so a line after the last shadow went off leaves no stale count in the next minute (the disarming edge's own line goes
+// through EmitEdgeLine below, with the same guard).
 void EmitEnforceLine(std::uint32_t guidLow, char const* text)
 {
     if (!text)
@@ -536,5 +537,23 @@ void EmitEnforceLine(std::uint32_t guidLow, char const* text)
     }
     if (taken)
         sLog.outBasic("%s", text);
+}
+
+// R9b V12 (OB-00 13.11.): the disarming edge's ev=mode line (cause=arbiter_disarm) is written outside the budget and takes none
+// of it. It is bounded: one line per bot and arbiter 2 -> below-2 edge (Supervisor::DisarmEnforce). The burst of one such
+// edge (one line per supervised bot in seconds) used to overrun the 300 per minute, so the disarm check (V12 (a)) could not
+// be verified. The line counts in lines like any other (while a shadow minute runs); it is never dropped, so the disarm
+// minute's lines can exceed 300. The arbiter_off lines of grouped bots (SupervisorGroup.cpp) keep the budget.
+void EmitEdgeLine(std::uint32_t guidLow, char const* text)
+{
+    if (!text)
+        return;
+    std::size_t const cohortIdx = CohortIndex(guidLow);
+    {
+        std::lock_guard<std::mutex> lock(g_mutex);
+        if (g_on > 0)
+            ++g_min[cohortIdx].lines;
+    }
+    sLog.outBasic("%s", text);
 }
 }
