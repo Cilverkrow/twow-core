@@ -107,7 +107,9 @@ private:
     // A3 step 3 T02-a: the arming (false -> true) and disarming (true -> false) edges of enforcement, and the mode line of a Decide.
     void ArmEnforce();
     void DisarmEnforce(std::uint32_t arbiter);
-    void WriteModeLine(Mode from, Mode to, TransitionResult const& result, char const* cause, std::uint32_t arbiter);
+    // edgeLine: R9b V12, only the disarming edge's line goes outside the line budget (EmitEdgeLine, SupervisorShadow.h).
+    void WriteModeLine(Mode from, Mode to, TransitionResult const& result, char const* cause, std::uint32_t arbiter,
+        bool edgeLine = false);
     // A3 step 3 T02-a: the probe (AiPlayerbot.Supervisor.ArbiterProbe). Defined in SupervisorEnforce.cpp next to the gate it
     // tests; at arbiter 2 it tries three denied writes as Select under a group owner, at 1 it only counts the paired control.
     void ProbeTick(std::uint32_t nowMs, std::uint32_t arbiter);

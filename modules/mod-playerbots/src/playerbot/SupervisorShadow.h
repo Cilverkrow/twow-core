@@ -212,4 +212,8 @@ void CountEnforce(std::uint32_t guidLow, EnforceCount what);
 // One enforcement line (ev=deny, ev=probe, ev=mode) from the shared budget of 300 lines per minute; a refused line counts as
 // dropped. The text is written as given (already formatted and sanitized by the caller).
 void EmitEnforceLine(std::uint32_t guidLow, char const* text);
+
+// R9b V12: the disarming edge's ev=mode line only (cause=arbiter_disarm, Supervisor::DisarmEnforce). Outside the budget, never
+// dropped, counted in lines; bounded by one line per bot and disarming edge.
+void EmitEdgeLine(std::uint32_t guidLow, char const* text);
 }
