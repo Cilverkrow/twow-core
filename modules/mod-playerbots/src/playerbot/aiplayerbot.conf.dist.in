@@ -1492,6 +1492,23 @@ AiPlayerbot.BotGroups.Manager.Types = 0
 # gather= in event=phase). Needs Manager.Types > 0 (else it acts like 0, one error line); any other value acts like 0 (one
 # error line).
 AiPlayerbot.BotGroups.Manager.Gather = 0
+# A3 step 6 T33-1 (design T33, owner decisions F1-F17 = (a), O6 (a); OB-00 13.11.2026: its own key): THE MEETING LEVER, default
+# 0. The lever acts ONLY with Lever = 1; Gather stays the measurement switch and the arm: Gather != 0 with Lever = 0 is the
+# shadow above alone, no behaviour change. With Lever = 1 a manager QUEST group whose leader is in the Gather arm (1 all,
+# 2 cohort B, 3 cohort A by the leader's guid) gets the meeting at formed: its Enter carries the meeting flag with "follow"
+# (the followers follow the leader, the leader travels, as S7 today); the manager judges "gathered" itself (every acked
+# follower within 30 yd 2D of the leader's last place, same map, no z, a dead bot at the point counts, like S7) and runs the
+# one deadline (QuestGroups.RendezvousMinutes from formed, on the manager clock); when it passes the group ends with
+# rendezvous_timeout (never a hidden hop, never a teleport, no hearthstone). Members not yet joined at formed wait until
+# gathered; one that joins after gathered gets its own deadline from its ack and leaves alone with gather_timeout. Lines:
+# "[GroupMgr] event=gather_open group= type=quest mode=follow leader= map= minutes=", "event=arrived group= bot= ms= late=0|1
+# dead=0|1", "event=gathered group= ms= members=", "event=gather_end group= reason= arrived=n/m ms=" (every meeting ends in
+# gathered or one gather_end), and the lever_* fields at the end of minute3 (lever= lever_open= lever_gathered=
+# lever_arrived= lever_arrived_late= lever_arrived_lost= lever_end= lever_end_timeout= lever_gather_timeout=
+# lever_switch_off= lever_join_held= lever_resume= lever_meetings=). Turning it off ends no group: an open meeting closes
+# (gather_end reason=switch_off) and the group goes on under the T30 rules. Needs Gather > 0 (else it acts like 0, one error
+# line); any other value acts like 0 (one error line).
+AiPlayerbot.BotGroups.Manager.Gather.Lever = 0
 # L1 (owner 07.11.2026, owner-ordered behaviour change): a bot resets its raid lockouts ("reset raids", which drops every bind
 # except the one of its current map, PERM included) only when a real player invites it. An invite by another bot or by a
 # bot-only world-thread group manager (ad-hoc, quest groups) keeps the bot's PERM raid binds; an accept run by the group op

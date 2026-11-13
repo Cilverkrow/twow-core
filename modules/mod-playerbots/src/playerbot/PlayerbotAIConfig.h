@@ -950,6 +950,10 @@ public:
     // (GatherPlace) and the manager judges every manager QUEST group's meeting next to the T30 rule. 0 = off (default),
     // 1/2/3 = on (the cohort labels the arm). Needs Types != 0 (else 0 + error line); another value = 0 + error line.
     uint32 botGroupsManagerGather = 0;
+    // A3 step 6 T33-1 (OB-00 13.11.2026 (a)): the meeting lever. 0 = off (default: Gather is the shadow alone), 1 = the QUEST
+    // groups of the Gather arm (by the leader's guid) get the meeting. Needs Gather != 0 (else 0 + error line); another value
+    // = 0 + error line.
+    uint32 botGroupsManagerGatherLever = 0;
     // L1 (owner 07.11.2026, owner-ordered: code default 1, 0 = rollback, any other value = 1): a bot resets its raid lockouts
     // ("reset raids" in the accept tail) only on a real player's invite, and keeps out of another copy of a raid it is
     // perm-bound to (LockoutPolicy.h, LockoutGuard.cpp). 0 = the old behaviour: reset raids on every accepted invite.

@@ -874,6 +874,34 @@ void TestShadowAnchor()
     b.shadow.Off();
     Require(b.shadow.Anchors().empty() && b.shadow.Totals().adhocFormed == 0, "Off forgets anchors and counts");
 }
+
+// T33-1 (OB-10 on #1032/#1033): the whole minute3 line with every counter at its maximum fits kGatherMinuteBuf (no cut) and
+// the server's 4096 log line; the lever fields come last, in their order.
+void TestMinute3MaxFits()
+{
+    std::uint64_t const big = 0xFFFFFFFFFFFFFFFFull;
+    GatherCounts d;
+    d.regionMismatch = d.zOut = d.jumpSame = d.jumpOther = d.resume = d.arrived = d.deadAtPoint = d.gathered = big;
+    d.compared = d.disagree = d.t33First = d.t30First = d.legExpired = d.t30Cut = d.linesDropped = big;
+    d.adhocFormed = d.adhocArrived = d.adhocAll = d.adhocNever = big;
+    GatherLeverCounts l;
+    l.open = l.gathered = l.arrived = l.arrivedLate = l.arrivedLost = l.ended = l.endTimeout = big;
+    l.memberTimeout = l.switchOff = l.joinHeld = l.resume = big;
+    char buf[kGatherMinuteBuf];
+    int const n = FormatGatherMinuteAll(buf, sizeof(buf), 0xFFFFFFFFu, d, big, big, big, 0xFFFFFFFFu, l, big);
+    Require(n > 0 && std::size_t(n) < sizeof(buf) && n < 4096, "minute3 at its maximum fits the buffer and the log line");
+    std::string const s(buf);
+    Require(std::size_t(n) == s.size() && s.size() > 1024, "no cut; the worst case is over the old 1024 too");
+    Require(s.find(" adhoc_open=18446744073709551615 lever=4294967295 lever_open=18446744073709551615 ") != std::string::npos &&
+        s.size() > 36 && s.compare(s.size() - 36, 36, " lever_meetings=18446744073709551615") == 0,
+        "the lever fields come after adhoc_open, lever_meetings last");
+    GatherLeverCounts zero;
+    char small[kGatherMinuteBuf];
+    FormatGatherMinuteAll(small, sizeof(small), 2, GatherCounts(), 0, 0, 0, 0, zero, 0);
+    Require(std::string(small).find(" adhoc_open=0 lever=0 lever_open=0 lever_gathered=0 lever_arrived=0 lever_arrived_late=0"
+        " lever_arrived_lost=0 lever_end=0 lever_end_timeout=0 lever_gather_timeout=0 lever_switch_off=0 lever_join_held=0"
+        " lever_resume=0 lever_meetings=0") != std::string::npos, "the lever field order");
+}
 }
 
 int main()
@@ -895,6 +923,7 @@ int main()
     TestPlaceJumpStale();
     TestArrivedAtAnchor();
     TestShadowAnchor();
+    TestMinute3MaxFits();
     std::cout << "group_gather_policy_tests: OK\n";
     return 0;
 }
