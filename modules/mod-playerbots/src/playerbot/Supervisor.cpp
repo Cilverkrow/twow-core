@@ -124,11 +124,13 @@ void Supervisor::DisarmEnforce(std::uint32_t arbiter)
     TransitionResult const result = Decide(from, Mode::Passive, Requester::External, phase_, 0, Cadence{});
     if (result.allowed)
         mode_ = result.to;
-    WriteModeLine(from, Mode::Passive, result, "arbiter_disarm", arbiter);
+    WriteModeLine(from, Mode::Passive, result, "arbiter_disarm", arbiter, true);
 }
 
-// One ev=mode line (FormatModeLine) from the shadow's shared line budget.
-void Supervisor::WriteModeLine(Mode from, Mode to, TransitionResult const& result, char const* cause, std::uint32_t arbiter)
+// One ev=mode line (FormatModeLine) from the shadow's shared line budget. R9b V12: the disarming edge's line (edgeLine) goes
+// outside the budget (EmitEdgeLine), one per bot and edge, so the disarm check can see every bot.
+void Supervisor::WriteModeLine(Mode from, Mode to, TransitionResult const& result, char const* cause, std::uint32_t arbiter,
+    bool edgeLine)
 {
     Player* const bot = ai_ ? ai_->GetBot() : nullptr;
     if (!bot)
@@ -149,6 +151,9 @@ void Supervisor::WriteModeLine(Mode from, Mode to, TransitionResult const& resul
     line.deny = result.allowed ? Deny::None : result.reason;
     char buf[512];
     FormatModeLine(buf, sizeof(buf), line);
-    EmitEnforceLine(line.guid, buf);
+    if (edgeLine)
+        EmitEdgeLine(line.guid, buf);
+    else
+        EmitEnforceLine(line.guid, buf);
 }
 }
