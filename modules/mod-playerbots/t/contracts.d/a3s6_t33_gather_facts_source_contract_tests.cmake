@@ -21,9 +21,9 @@ cmake_policy(VERSION 3.16)
 #       sink, an ending group not judged) calls ArrivedAtAnchor once (the formation anchor, the leader's instance only on an
 #       instanceable map, no z, nobody judged = not all there), a group gone while never all at its anchor is adhoc_never,
 #       Off forgets the anchors, the adhoc_* fields last in minute3;
-#   (e) T33-1 is absent: no Update verb sender, no b15, no MaskRendezvous/NextRung/ReanchorDue, no new caller of NextFallback,
-#       the ack reasons 19/20 unused; no movement, teleport or action in the manager, facts or shadow files; supervisor::Post(
-#       and ->Tick( keep their counts;
+#   (e) the later T33 steps are absent (T33-1 the lever is pinned in a3s6_t33_lever): no Update verb sender, no ReanchorDue/
+#       kReanchorMs/PackUpdateVerb/rungSentMs, NextFallback only in its definition and NextRung, the ack reasons 19/20 unused; no
+#       movement, teleport or action in the manager, facts or shadow files; supervisor::Post( and ->Tick( keep their counts;
 #   (f) the unit test is registered and runs every test group.
 # Pure rules: t/group_gather_policy_tests.cpp. Every check_* returns "" when it holds, else the reason; the negative probes at
 # the end reuse them on mutated text.
@@ -124,7 +124,7 @@ endforeach()
 
 # ---- (a) the switch ----------------------------------------------------------------------------------------------------------
 set(LOAD "    botGroupsManagerGather = uint32(config.GetIntDefault(\"AiPlayerbot.BotGroups.Manager.Gather\", 0));\n    if (!ai::group_mgr::GatherValid(botGroupsManagerGather))\n    {\n        sLog.outError(\"[GroupMgr] config key=Manager.Gather value=%d result=off (0 off, 1 all, 2 cohort B, 3 cohort A)\",\n            int32(botGroupsManagerGather));\n        botGroupsManagerGather = 0;\n    }\n    if (botGroupsManagerGather && !botGroupsManagerTypes)\n    {\n        sLog.outError(\"[GroupMgr] config key=Manager.Gather value=%u result=0 (needs Manager.Types > 0)\", botGroupsManagerGather);\n        botGroupsManagerGather = ai::group_mgr::EffectiveGather(botGroupsManagerGather, botGroupsManagerTypes);\n    }")
-set(ECHO "            {\"BotGroups.Manager\", Value(botGroupsManager)},\n            {\"BotGroups.Manager.AckTimeoutSeconds\", Value(botGroupsManagerAckTimeoutSeconds)},\n            {\"BotGroups.Manager.Gather\", Value(botGroupsManagerGather)},\n            {\"BotGroups.Manager.StatusSeconds\", Value(botGroupsManagerStatusSeconds)},\n")
+set(ECHO "            {\"BotGroups.Manager\", Value(botGroupsManager)},\n            {\"BotGroups.Manager.AckTimeoutSeconds\", Value(botGroupsManagerAckTimeoutSeconds)},\n            {\"BotGroups.Manager.Gather\", Value(botGroupsManagerGather)},\n            {\"BotGroups.Manager.Gather.Lever\", Value(botGroupsManagerGatherLever)},\n            {\"BotGroups.Manager.StatusSeconds\", Value(botGroupsManagerStatusSeconds)},\n")
 
 function(check_switch config_h config_cpp conf_dist gather_h out)
   string(FIND "${config_h}" "    uint32 botGroupsManagerGather = 0;" at)
@@ -300,10 +300,7 @@ function(check_manager mgr_h mgr_cpp out)
       "    if (resumedPass_)\n        places_.clear();"
       "    in.mgrMs = mgrMs_;"
       "    in.resumed = resumedPass_;"
-      "    in.rules.radius = kGatherYards;"
-      "    in.rules.zBand = kZUnknown;"
-      "    in.rules.deadCounts = true;"
-      "    in.rules.maxAgeMs = PlaceMaxAgeMs(sPlayerbotAIConfig.botGroupsManagerStatusSeconds, sPlayerbotAIConfig.randomBotUpdateInterval);"
+      "    in.rules = GatherRulesNow();"
       "    in.swept = &engine_.Swept();"
       "    gather_.Pass(engine_.Groups(), in, [&io](char const* line) { io.Line(line); });\n}")
     string(FIND "${run}" "${needle}" at)
@@ -312,9 +309,18 @@ function(check_manager mgr_h mgr_cpp out)
       return()
     endif()
   endforeach()
+  # T33-1: the shadow and the lever's verdict share one rule set (GatherRulesNow), so both judge arrival alike.
+  string(FIND "${mgr_cpp}" "GatherRules GatherRulesNow()\n{\n    GatherRules rules;\n    rules.radius = kGatherYards;\n    rules.zBand = kZUnknown;\n    rules.deadCounts = true;\n    rules.maxAgeMs = PlaceMaxAgeMs(sPlayerbotAIConfig.botGroupsManagerStatusSeconds, sPlayerbotAIConfig.randomBotUpdateInterval);\n    return rules;\n}" at)
+  count_text("${mgr_cpp}" "GatherRulesNow()" n)
+  if(at EQUAL -1 OR NOT n EQUAL 3)
+    set(${out} "manager: GatherRulesNow is not the one rule set (radius, zBand, deadCounts, maxAgeMs) or used ${n} times (3 expected: body, directive input, RunGather)" PARENT_SCOPE)
+    return()
+  endif()
   # The shadow reads the registry and the swept list: no other engine call, no op, no directive, no post in RunGather.
   string(REPLACE "engine_.Groups()" "" rest "${run}")
   string(REPLACE "engine_.Swept()" "" rest "${rest}")
+  string(REPLACE "engine_.Lever()" "" rest "${rest}")   # T33-1: the lever counters and open meetings for minute3 (read only)
+  string(REPLACE "engine_.MeetingsOpen()" "" rest "${rest}")
   foreach(bad "engine_" "group_ops::" "supervisor::" "Post(" "Enqueue" "Directive")
     string(FIND "${rest}" "${bad}" at)
     if(NOT at EQUAL -1)
@@ -329,8 +335,8 @@ function(check_manager mgr_h mgr_cpp out)
   endif()
   count_text("${mgr_cpp}" "places_" n)
   count_text("${mgr_cpp}" "DropGone(places_, bots);" nd)
-  if(NOT n EQUAL 6 OR NOT nd EQUAL 1)
-    set(${out} "manager: places_ used ${n} times in GroupManager.cpp (6 expected: off empty/clear, resume clear, input, store, drop) or not dropped with the tables" PARENT_SCOPE)
+  if(NOT n EQUAL 7 OR NOT nd EQUAL 1)
+    set(${out} "manager: places_ used ${n} times in GroupManager.cpp (7 expected: off empty/clear, resume clear, shadow input, T33-1 directive input, store, drop) or not dropped with the tables" PARENT_SCOPE)
     return()
   endif()
   count_text("${mgr_cpp}" "AdvanceClock(" n)
@@ -399,13 +405,13 @@ function(check_shadow gather_h shadow_h mgr_cpp all_sources out)
       return()
     endif()
   endforeach()
-  # The T33 arrival rule: S7's Arrived, only inside ArrivedForGroup and (T33-0b) ArrivedAtAnchor; the shadow and the manager
-  # call only those.
+  # The T33 arrival rule: S7's Arrived, only inside ArrivedForGroup and (T33-0b) ArrivedAtAnchor; the shadow, the manager and
+  # (T33-1) the lever's verdict in GroupDirectivePolicy.h call only those.
   count_text("${gather_h}" "Arrived(" n)
   count_text("${shadow_h}\n${mgr_cpp}" "Arrived(" m)
   count_text("${all_sources}" "ArrivedForGroup(" k)
-  if(NOT n EQUAL 2 OR NOT m EQUAL 0 OR NOT k EQUAL 2)
-    set(${out} "shadow: Arrived( ${n} times in GroupGatherPolicy.h (2), ${m} in the shadow/manager (0), ArrivedForGroup( ${k} in the module (2)" PARENT_SCOPE)
+  if(NOT n EQUAL 2 OR NOT m EQUAL 0 OR NOT k EQUAL 3)
+    set(${out} "shadow: Arrived( ${n} times in GroupGatherPolicy.h (2), ${m} in the shadow/manager (0), ArrivedForGroup( ${k} in the module (3: definition, shadow, T33-1 lever verdict)" PARENT_SCOPE)
     return()
   endif()
   # T33-0b review: ArrivedForGroup and ArrivedAtAnchor share the leader and arrival lines; each must keep its own copy.
@@ -534,26 +540,28 @@ function(check_swept directive_h out)
   set(${out} "" PARENT_SCOPE)
 endfunction()
 
-# ---- (e) T33-1 absent, no movement -------------------------------------------------------------------------------------------
+# ---- (e) the later T33 steps absent, no movement ---------------------------------------------------------------------------
 function(check_absent mgr_h mgr_cpp facts_cpp gather_h shadow_h all_sources out)
-  foreach(bad "MaskRendezvous" "ReanchorDue" "kReanchorMs" "PackUpdateVerb" "GatherApplies" "rungSentMs")
+  # T33-1 (lever) added MaskRendezvous/GatherApplies and the one NextFallback caller (NextRung, GroupManagerPolicy.h); the
+  # re-anchor and the Update verb stay later steps.
+  foreach(bad "ReanchorDue" "kReanchorMs" "PackUpdateVerb" "rungSentMs")
     string(FIND "${all_sources}" "${bad}" at)
     if(NOT at EQUAL -1)
-      set(${out} "absent: T33-1 name ${bad} in the module" PARENT_SCOPE)
+      set(${out} "absent: later T33 name ${bad} in the module" PARENT_SCOPE)
       return()
     endif()
   endforeach()
   # kAckReasonGatherOtherMap 4 and kAckReasonNoOpenGroup 4 = definition and name in GroupDirectivePolicy.h (2 each) plus the
   # bot-side handler A3 step 3 T02-GROUP (#1026/#1027, SupervisorGroupPolicy.h: the Update acks 3/19 and 3/20 in ChangeCheck
-  # and their counters in ReasonField, 2 each). A manager use (T33-1) makes it 5 and fails here.
-  foreach(pair "NextFallback(@1" "Verb::Update@1" "kAckReasonGatherOtherMap@4" "kAckReasonNoOpenGroup@4" "supervisor::Post(@1" "->Tick(@1")
+  # and their counters in ReasonField, 2 each). A manager use makes it 5 and fails here.
+  foreach(pair "NextFallback(@2" "Verb::Update@1" "kAckReasonGatherOtherMap@4" "kAckReasonNoOpenGroup@4" "supervisor::Post(@1" "->Tick(@1")
     string(FIND "${pair}" "@" cut)
     string(SUBSTRING "${pair}" 0 ${cut} needle)
     math(EXPR cut "${cut} + 1")
     string(SUBSTRING "${pair}" ${cut} -1 want)
     count_text("${all_sources}" "${needle}" n)
     if(NOT n EQUAL want)
-      set(${out} "absent: ${needle} appears ${n} times in the module (${want} expected: no T33-1 use)" PARENT_SCOPE)
+      set(${out} "absent: ${needle} appears ${n} times in the module (${want} expected: no use beyond T33-1)" PARENT_SCOPE)
       return()
     endif()
   endforeach()
@@ -623,8 +631,8 @@ expect_reason("Gather on without manager types" "${r}" "does not read Gather")
 string(REPLACE "    return raw <= cohort::ModeOnlyA;" "    return true;" m "${gather_h}")
 check_switch("${config_h}" "${config_cpp}" "${conf_dist}" "${m}" r)
 expect_reason("any value valid" "${r}" "GroupGatherPolicy.h missing")
-string(REPLACE "            {\"BotGroups.Manager.Gather\", Value(botGroupsManagerGather)},\n            {\"BotGroups.Manager.StatusSeconds\", Value(botGroupsManagerStatusSeconds)},\n"
-  "            {\"BotGroups.Manager.StatusSeconds\", Value(botGroupsManagerStatusSeconds)},\n            {\"BotGroups.Manager.Gather\", Value(botGroupsManagerGather)},\n" m "${config_cpp}")
+string(REPLACE "            {\"BotGroups.Manager.Gather\", Value(botGroupsManagerGather)},\n            {\"BotGroups.Manager.Gather.Lever\", Value(botGroupsManagerGatherLever)},\n"
+  "            {\"BotGroups.Manager.Gather.Lever\", Value(botGroupsManagerGatherLever)},\n            {\"BotGroups.Manager.Gather\", Value(botGroupsManagerGather)},\n" m "${config_cpp}")
 check_switch("${config_h}" "${m}" "${conf_dist}" "${gather_h}" r)
 expect_reason("echo unsorted" "${r}" "sorted place")
 string(REPLACE "AiPlayerbot.BotGroups.Manager.Gather = 0" "AiPlayerbot.BotGroups.Manager.Gather = 1" m "${conf_dist}")
@@ -777,17 +785,17 @@ expect_reason("Off keeps the anchors" "${r}" "GroupGatherShadow.h missing")
 string(REPLACE " shadow_lines_dropped=%llu adhoc_formed=%llu" " adhoc_formed=%llu shadow_lines_dropped=%llu" m "${shadow_h}")
 check_shadow("${gather_h}" "${m}" "${mgr_cpp}" "${all_sources}" r)
 expect_reason("adhoc fields not last" "${r}" "GroupGatherShadow.h missing")
-# (e) a T33-1 lever piece, the reason codes used, a teleport in the manager, a new NextFallback caller, a second supervisor post.
-check_absent("${mgr_h}" "${mgr_cpp}" "${facts_cpp}" "${gather_h}" "${shadow_h}" "${all_sources}\ninline std::uint32_t MaskRendezvous(std::uint32_t b) { return b; }" r)
-expect_reason("MaskRendezvous added" "${r}" "T33-1 name MaskRendezvous")
+# (e) a later T33 piece (re-anchor), the reason codes used, a teleport in the manager, a new NextFallback caller, a second supervisor post.
+check_absent("${mgr_h}" "${mgr_cpp}" "${facts_cpp}" "${gather_h}" "${shadow_h}" "${all_sources}\ninline std::uint32_t ReanchorDue(std::uint32_t b) { return b; }" r)
+expect_reason("ReanchorDue added" "${r}" "later T33 name ReanchorDue")
 check_absent("${mgr_h}" "${mgr_cpp}" "${facts_cpp}" "${gather_h}" "${shadow_h}" "${all_sources}\n    a.reason = kAckReasonGatherOtherMap;" r)
 expect_reason("reason 19 used" "${r}" "kAckReasonGatherOtherMap appears 5 times")
 check_absent("${mgr_h}" "${mgr_cpp}" "${facts_cpp}" "${gather_h}" "${shadow_h}" "${all_sources}\n    a.reason = kAckReasonNoOpenGroup;" r)
 expect_reason("reason 20 used" "${r}" "kAckReasonNoOpenGroup appears 5 times")
 check_absent("${mgr_h}" "${mgr_cpp}" "${facts_cpp}" "${gather_h}" "${shadow_h}" "${all_sources}\n    d.verb = Verb::Update;" r)
 expect_reason("the Update verb sent" "${r}" "Verb::Update appears 2 times")
-check_absent("${mgr_h}" "${mgr_cpp}" "${facts_cpp}" "${gather_h}" "${shadow_h}" "${all_sources}\n    f = NextFallback(f, true, false);" r)
-expect_reason("a NextFallback caller" "${r}" "NextFallback\\( appears 2 times")
+check_absent("${mgr_h}" "${mgr_cpp}" "${facts_cpp}" "${gather_h}" "${shadow_h}" "${all_sources}\n    f = NextFallback(f, true, true);" r)
+expect_reason("a NextFallback caller" "${r}" "NextFallback\\( appears 3 times")
 check_absent("${mgr_h}" "${mgr_cpp}\n    bot->TeleportTo(map, x, y, z, 0.0f);" "${facts_cpp}" "${gather_h}" "${shadow_h}" "${all_sources}" r)
 expect_reason("a teleport in the manager" "${r}" "movement or action TeleportTo")
 check_absent("${mgr_h}" "${mgr_cpp}" "${facts_cpp}" "${gather_h}" "${shadow_h}" "${all_sources}\n    ai::supervisor::Post(1, ev);" r)

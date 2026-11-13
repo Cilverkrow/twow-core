@@ -987,6 +987,20 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[GroupMgr] config key=Manager.Gather value=%u result=0 (needs Manager.Types > 0)", botGroupsManagerGather);
         botGroupsManagerGather = ai::group_mgr::EffectiveGather(botGroupsManagerGather, botGroupsManagerTypes);
     }
+    // A3 step 6 T33-1 (OB-00 13.11.2026 (a)): the meeting lever, its own key. It acts only with 1, and only on the QUEST groups
+    // of the Gather arm; it needs Gather != 0 (read after Gather). An unknown or negative value is 0. One error line each.
+    botGroupsManagerGatherLever = uint32(config.GetIntDefault("AiPlayerbot.BotGroups.Manager.Gather.Lever", 0));
+    if (!ai::group_mgr::GatherLeverValid(botGroupsManagerGatherLever))
+    {
+        sLog.outError("[GroupMgr] config key=Manager.Gather.Lever value=%d result=0 (0 off, 1 on)", int32(botGroupsManagerGatherLever));
+        botGroupsManagerGatherLever = 0;
+    }
+    if (botGroupsManagerGatherLever && !botGroupsManagerGather)
+    {
+        sLog.outError("[GroupMgr] config key=Manager.Gather.Lever value=%u result=0 (needs Manager.Gather > 0)",
+            botGroupsManagerGatherLever);
+        botGroupsManagerGatherLever = ai::group_mgr::EffectiveGatherLever(botGroupsManagerGatherLever, botGroupsManagerGather);
+    }
     // L1 (owner 07.11.2026): code default 1; only "0" is off, any other value is 1. Read as a string: GetIntDefault is atoi,
     // which would turn a non-numeric value such as "on" into 0 (rollback).
     botGroupsResetRaidsRealInviterOnly = ai::lockout::SwitchOn(config.GetStringDefault("AiPlayerbot.BotGroups.ResetRaidsRealInviterOnly", "1"));
@@ -2194,6 +2208,7 @@ bool PlayerbotAIConfig::Initialize()
             {"BotGroups.Manager", Value(botGroupsManager)},
             {"BotGroups.Manager.AckTimeoutSeconds", Value(botGroupsManagerAckTimeoutSeconds)},
             {"BotGroups.Manager.Gather", Value(botGroupsManagerGather)},
+            {"BotGroups.Manager.Gather.Lever", Value(botGroupsManagerGatherLever)},
             {"BotGroups.Manager.StatusSeconds", Value(botGroupsManagerStatusSeconds)},
             {"BotGroups.Manager.Types", Value(botGroupsManagerTypes)},
             {"BotGroups.OpQueue", Value(botGroupsOpQueue)},
