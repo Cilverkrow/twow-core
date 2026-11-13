@@ -5,6 +5,7 @@
 // G1-G12, the one supervisor::Post) is pinned by t/contracts.d/a3s6_t30_directives_source_contract_tests.cmake.
 
 #include "GroupDirectivePolicy.h"
+#include "GroupGatherShadow.h"   // T33-1: the shadow next to the lever (Gather != 0, Lever 0)
 
 #include <algorithm>
 #include <cstdint>
@@ -116,6 +117,12 @@ struct World
     std::vector<go::ManagerOutcome> outcomes;
     bool started = false;
     std::uint32_t originMs = 0;   // the seconds clock runs on from here (time(nullptr) in the game; it never wraps with the ms)
+    // T33-1: the lever's inputs - the Gather arm, Gather.Lever, the place table. The manager clock runs with nowMs from 1 at
+    // the first pass; clockLagMs holds it back (a world gap AdvanceClock clamped to one interval).
+    std::uint32_t gather = 0;
+    std::uint32_t lever = 0;
+    PlaceTable places;
+    std::uint64_t clockLagMs = 0;
 };
 
 std::uint32_t SecOf(World const& w, std::uint32_t nowMs)
@@ -183,6 +190,29 @@ void Refresh(World& w, std::uint32_t nowMs)
         e.second.receivedMs = nowMs;
     for (auto& s : w.wishes)
         s.second.receivedMs = nowMs;
+    for (auto& p : w.places)
+        p.second.receivedMs = nowMs;
+}
+
+// T33-1: the verdict rules GroupManager.cpp passes (GatherRulesNow): S7's 2D radius, no z, dead counts, StatusSeconds 10.
+GatherRules LeverRules()
+{
+    GatherRules g;
+    g.radius = kGatherYards;
+    g.zBand = kZUnknown;
+    g.deadCounts = true;
+    g.maxAgeMs = PlaceMaxAgeMs(10, 1000);
+    return g;
+}
+
+void SetPlace(World& w, std::uint32_t low, std::uint32_t nowMs, float x, float y, std::uint32_t mapId = 1)
+{
+    PlaceSnapshot p;
+    p.place.mapId = mapId;
+    p.place.x = x;
+    p.place.y = y;
+    p.receivedMs = nowMs;
+    w.places[low] = p;
 }
 
 Rules AdhocRules()
@@ -211,6 +241,11 @@ void Run(Engine& e, World& w, Rules const& r, FakeIo& io, std::uint32_t nowMs, b
     in.wishes = &w.wishes;
     in.acks = &w.acks;
     in.outcomes = &w.outcomes;
+    in.gather = w.gather;
+    in.gatherLever = w.lever;
+    in.mgrMs = 1u + std::uint64_t(nowMs - w.originMs) - w.clockLagMs;
+    in.places = &w.places;
+    in.gatherRules = LeverRules();
     e.Pass(in, r, io);
     w.acks.clear();
     w.outcomes.clear();
@@ -1443,7 +1478,9 @@ void TestLeftReasons()
     Require(std::string(EndReasonName(EndReason::BotLeftDone)) == "bot_left_done" &&
         std::string(EndReasonName(EndReason::BotLeftLost)) == "bot_left_lost" &&
         std::string(EndReasonName(EndReason::BotLeftOff)) == "bot_left_off", "the three bot_left reason names");
-    Require(std::size_t(EndReason::BotLeftOff) + 1 == kEndReasons && kEndReasons <= 128, "appended right before Count, fits b9-15");
+    // T33-1 appends gather_timeout after them; the values above stay.
+    Require(std::size_t(EndReason::BotLeftOff) + 1 == std::size_t(EndReason::GatherTimeout) &&
+        std::size_t(EndReason::GatherTimeout) + 1 == kEndReasons && kEndReasons <= 128, "appended right before Count, fits b9-15");
     DirectiveBits d;
     d.verb = Verb::Exit;
     d.reason = EndReason::BotLeftOff;
@@ -2031,6 +2068,437 @@ void TestAckTimeoutOrphanGrace()
 }
 }
 
+// ---- T33-1: the meeting lever (design T33 2.3-2.5; owner F1, F3, F7, F12-F16 = (a); OB-00 13.11. (a): Gather.Lever) ----------
+Rules LeverQuestRules()
+{
+    Rules r = QuestRulesOnly();
+    r.timers.rendezvousMinutes = 10;
+    return r;
+}
+
+// The pure parts: the key, the arm, the ladder, the mask.
+void TestGatherLeverPure()
+{
+    Require(GatherLeverValid(0) && GatherLeverValid(1) && !GatherLeverValid(2) && !GatherLeverValid(0xFFFFFFFFu), "Gather.Lever: 0 and 1 only");
+    Require(EffectiveGatherLever(1, 0) == 0 && EffectiveGatherLever(1, 2) == 1 && EffectiveGatherLever(0, 2) == 0 &&
+        EffectiveGatherLever(2, 1) == 0, "the lever needs Gather != 0 and exactly 1");
+    Require(GatherApplies(2, 1, GroupType::Quest, 3) && !GatherApplies(2, 1, GroupType::Quest, 4) && GatherApplies(3, 1, GroupType::Quest, 4) &&
+        !GatherApplies(3, 1, GroupType::Quest, 3) && GatherApplies(1, 1, GroupType::Quest, 4), "the arm by the leader's guid (2 odd, 3 even, 1 all)");
+    Require(!GatherApplies(1, 1, GroupType::Adhoc, 3) && !GatherApplies(1, 0, GroupType::Quest, 3) && !GatherApplies(0, 1, GroupType::Quest, 3),
+        "QUEST only (F2 (a)), Lever 1 only, Gather != 0 only");
+    Require(NextRung(Fallback::Walk, RungFacts()) == Fallback::Dissolve, "v1 ladder: walk -> dissolve (O6 (a), no hearthstone)");
+    RungFacts h;
+    h.hearthOn = true;
+    h.hearthUseful = true;
+    Require(NextRung(Fallback::Walk, h) == Fallback::Hearthstone && NextRung(Fallback::Hearthstone, h) == Fallback::Dissolve,
+        "the hearthstone only with its own switch and useful (T33-3)");
+    for (Fallback c : { Fallback::Walk, Fallback::HiddenHop, Fallback::Teleport, Fallback::Hearthstone, Fallback::Dissolve })
+        Require(NextRung(c, h) != Fallback::HiddenHop && NextRung(c, h) != Fallback::Teleport &&
+            NextRung(c, RungFacts()) == Fallback::Dissolve, "never a hidden hop or a teleport");
+    ai::quest_groups::GroupFacts f;
+    f.phase = ai::quest_groups::Phase::Rendezvous;
+    f.formedAt = 1000;
+    f.phaseSince = 1000;
+    f.lastProgress = 1000;
+    f.now = 1600;
+    f.members = 2;
+    ai::quest_groups::Timers t;
+    t.rendezvousMinutes = 10;
+    Require(ai::quest_groups::Decide(f, t).dissolve == ai::quest_groups::Dissolve::RendezvousTimeout, "unmasked: S7's rendezvous timeout at 10 min");
+    Require(ai::quest_groups::Decide(MaskRendezvous(f), t).dissolve == ai::quest_groups::Dissolve::None &&
+        ai::quest_groups::Decide(MaskRendezvous(f), t).next == ai::quest_groups::Phase::Rendezvous, "masked: the rendezvous branch never fires");
+    f.gathered = true;
+    Require(ai::quest_groups::Decide(MaskRendezvous(f), t).next == ai::quest_groups::Phase::Goal, "masked: gathered still goes to Goal");
+    f.gathered = false;
+    f.allComplete = true;
+    Require(ai::quest_groups::Decide(MaskRendezvous(f), t).next == ai::quest_groups::Phase::TurnIn, "masked: all complete still goes to TurnIn");
+    f.allComplete = false;
+    f.realPlayer = true;
+    Require(ai::quest_groups::Decide(MaskRendezvous(f), t).dissolve == ai::quest_groups::Dissolve::RealPlayer, "masked: the safety rules stay");
+}
+
+// 3.1, F1 (a): a meeting group's Enter carries b15 = 1 and kind a (follow); Lever 0 (or a leader outside the arm) packs T30's.
+void TestGatherLeverEnter()
+{
+    for (std::uint32_t lever = 0; lever <= 1; ++lever)
+    {
+        Engine e;
+        World w;
+        FakeIo io;
+        w.gather = 1;
+        w.lever = lever;
+        std::uint32_t leader = 0;
+        std::uint32_t follower = 0;
+        FormQuestPair(e, w, LeverQuestRules(), io, 1000, leader, follower);
+        std::size_t enters = 0;
+        for (auto const& p : io.posts)
+        {
+            DirectiveBits const d = UnpackDirective(p.second.b);
+            if (d.verb != Verb::Enter)
+                continue;
+            ++enters;
+            Require(d.gatherFlag == (lever == 1) && d.gatherKind == kGatherKindFollow, "Enter: b15 only with the lever, kind a (follow)");
+        }
+        Require(enters == 2, "both Enters checked");
+        Require(io.CountLines("[GroupMgr] event=gather_open group=") == lever && e.MeetingsOpen() == lever && e.Lever().open == lever,
+            "a meeting opens at formed only with the lever");
+        Require(lever == 0 || io.CountLines(" type=quest mode=follow ") == 1, "gather_open names type quest and mode follow");
+    }
+    // Gather 2 (cohort B, odd leaders) with Lever 1: a group of an even leader gets no meeting.
+    {
+        Engine e;
+        World w;
+        FakeIo io;
+        w.gather = 2;
+        w.lever = 1;
+        std::uint32_t leader = 0;
+        std::uint32_t follower = 0;
+        FormQuestPair(e, w, LeverQuestRules(), io, 1000, leader, follower);
+        bool const odd = (leader & 1u) != 0;
+        Require(e.MeetingsOpen() == (odd ? 1u : 0u), "Gather 2: the meeting only for an odd leader (F8 (a))");
+        for (auto const& p : io.posts)
+            if (UnpackDirective(p.second.b).verb == Verb::Enter)
+                Require(UnpackDirective(p.second.b).gatherFlag == odd, "Gather 2: b15 by the leader's cohort");
+    }
+}
+
+// OB-00 13.11. (a): Gather != 0 with Lever 0 is the shadow alone - the engine posts and writes exactly what it does with Gather 0
+// (a whole QUEST group life up to its rendezvous_timeout), while the shadow measures the same groups.
+void TestGatherLeverShadowOnly()
+{
+    Rules const r = LeverQuestRules();
+    FakeIo ioOff;
+    FakeIo ioShadow;
+    Engine eOff;
+    Engine eShadow;
+    World wOff;
+    World wShadow;
+    wShadow.gather = 2;
+    wShadow.lever = 0;
+    GatherShadow shadow;
+    std::vector<std::string> shadowLines;
+    // One pass of both worlds, the shadow after the Lever 0 engine (as RunGather after RunDirectives), from the first pass on (the
+    // shadow measures only groups it saw forming).
+    auto both = [&](std::uint32_t t)
+    {
+        Refresh(wOff, t);
+        Refresh(wShadow, t);
+        Run(eOff, wOff, r, ioOff, t);
+        Run(eShadow, wShadow, r, ioShadow, t);
+        ShadowInput in;
+        in.nowMs = t;
+        in.mgrMs = 1u + std::uint64_t(t - wShadow.originMs);
+        in.gather = wShadow.gather;
+        in.rendezvousMinutes = r.timers.rendezvousMinutes;
+        in.rules = LeverRules();
+        in.status = &wShadow.status;
+        in.places = &wShadow.places;
+        in.swept = &eShadow.Swept();
+        in.gatherLever = wShadow.lever;
+        in.lever = &eShadow.Lever();
+        in.leverMeetings = eShadow.MeetingsOpen();
+        shadow.Pass(eShadow.Groups(), in, [&shadowLines](char const* line) { shadowLines.emplace_back(line); });
+    };
+    std::uint32_t t = 1000;
+    SetQuestPair(wOff, t, -1);
+    SetQuestPair(wShadow, t, -1);
+    both(t);
+    Require(ioOff.joins.size() == 1 && ioShadow.joins.size() == 1, "one QUEST join each");
+    std::uint32_t const leader = ioOff.joins[0].inviter;
+    std::uint32_t const follower = ioOff.joins[0].invitee;
+    SetPlace(wShadow, leader, t, 0.0f, 0.0f);
+    SetPlace(wShadow, follower, t, 100.0f, 0.0f);
+    t += 1000;
+    for (World* w : { &wOff, &wShadow })
+    {
+        w->outcomes.push_back(Outcome(follower, leader, go::OpKind::Join, go::ManagerOpResult::Executed));
+        SetEdge(*w, follower, t, 88, leader, 2);
+        SetEdge(*w, leader, t, 88, leader, 2);
+    }
+    both(t);
+    t += 1000;
+    wOff.acks.push_back(AckFor(leader, SeqOf(ioOff, leader, Verb::Enter), mi::kAckApplied));
+    wOff.acks.push_back(AckFor(follower, SeqOf(ioOff, follower, Verb::Enter), mi::kAckApplied));
+    wShadow.acks.push_back(AckFor(leader, SeqOf(ioShadow, leader, Verb::Enter), mi::kAckApplied));
+    wShadow.acks.push_back(AckFor(follower, SeqOf(ioShadow, follower, Verb::Enter), mi::kAckApplied));
+    both(t);
+    Require(eOff.Total(Cnt::Formed) == 1 && eShadow.Total(Cnt::Formed) == 1, "both formed");
+    std::uint32_t const end = t + 700000;
+    while (t < end)
+    {
+        t += 1000;
+        both(t);
+    }
+    Require(eOff.TotalLeave(EndReason::RendezvousTimeout) == 2 && eShadow.TotalLeave(EndReason::RendezvousTimeout) == 2,
+        "both end by T30's rendezvous_timeout");
+    Require(ioOff.lines == ioShadow.lines, "Lever 0: the same engine lines as Gather 0");
+    Require(ioOff.posts.size() == ioShadow.posts.size(), "Lever 0: the same number of directives");
+    for (std::size_t i = 0; i < ioOff.posts.size(); ++i)
+        Require(ioOff.posts[i].first == ioShadow.posts[i].first && ioOff.posts[i].second.a == ioShadow.posts[i].second.a &&
+            ioOff.posts[i].second.b == ioShadow.posts[i].second.b && ioOff.posts[i].second.c == ioShadow.posts[i].second.c &&
+            ioOff.posts[i].second.mapId == ioShadow.posts[i].second.mapId, "Lever 0: byte-equal directives");
+    Require(ioShadow.CountLines("event=gather_open") == 0 && eShadow.Lever().open == 0, "Lever 0: no meeting");
+    std::size_t phase = 0;
+    std::size_t lever0 = 0;
+    for (std::string const& l : shadowLines)
+    {
+        phase += l.find("[GroupMgr] event=phase group=") != std::string::npos ? 1 : 0;
+        lever0 += l.find(" lever=0 lever_open=0 ") != std::string::npos ? 1 : 0;
+    }
+    Require(phase >= 1 && lever0 >= 10, "Lever 0: the shadow measures (event=phase, minute3 with lever=0)");
+}
+
+// The meeting of a pair: the T33 verdict on the places replaces T30's gathered; the one deadline on the manager clock; the
+// rendezvous branch of Decide masked, so T30's wall clock never ends it.
+void TestGatherLeverMeeting()
+{
+    Rules const r = LeverQuestRules();
+    // The places far apart, the wall clock 30 s ahead of the manager clock: T30 alone would end the group at 10 min wall time;
+    // the lever ends it at 10 min on the manager clock, exactly, with one gather_end.
+    {
+        Engine e;
+        World w;
+        FakeIo io;
+        w.gather = 1;
+        w.lever = 1;
+        std::uint32_t leader = 0;
+        std::uint32_t follower = 0;
+        std::uint32_t const formed = FormQuestPair(e, w, r, io, 1000, leader, follower);
+        SetPlace(w, leader, formed, 0.0f, 0.0f);
+        SetPlace(w, follower, formed, 100.0f, 0.0f);
+        // A world gap after 60 s: the wall clock runs 30 s ahead of the manager clock from then on.
+        std::uint32_t t = Tick(e, w, r, io, formed, formed + 60000);
+        w.clockLagMs = 30000;
+        t = Tick(e, w, r, io, t, formed + 629000);
+        Require(e.Groups().size() == 1 && e.TotalLeave(EndReason::RendezvousTimeout) == 0 && e.MeetingsOpen() == 1,
+            "masked: no end at 10 min wall time, none before the deadline on the manager clock");
+        t = Tick(e, w, r, io, t, t + 1000);
+        Require(e.TotalLeave(EndReason::RendezvousTimeout) == 2 && e.Lever().endTimeout == 1 && e.Lever().ended == 1 &&
+            e.Lever().gathered == 0, "the deadline: rendezvous_timeout exactly at RendezvousMinutes on the manager clock");
+        Require(io.CountLines("[GroupMgr] event=gather_end group=") == 1 && io.CountLines(" reason=rendezvous_timeout arrived=0/1 ms=600000") == 1,
+            "one gather_end with its reason, arrived 0 of 1, ms on the manager clock");
+    }
+    // T33 judges the places, not the statuses: the statuses 10 yd apart (T30 would see gathered), the places 100 yd: no meeting
+    // yet; then the follower's place within 30 yd: gathered, Goal, one event=arrived and one event=gathered.
+    {
+        Engine e;
+        World w;
+        FakeIo io;
+        w.gather = 1;
+        w.lever = 1;
+        std::uint32_t leader = 0;
+        std::uint32_t follower = 0;
+        std::uint32_t const formed = FormQuestPair(e, w, r, io, 1000, leader, follower);
+        w.status[follower].x = w.status[leader].x + 10.0f;
+        w.status[follower].y = w.status[leader].y;
+        SetPlace(w, leader, formed, 0.0f, 0.0f);
+        SetPlace(w, follower, formed, 100.0f, 0.0f);
+        std::uint32_t t = Tick(e, w, r, io, formed, formed + 20000);
+        Require(e.Groups().begin()->second.phase == ai::quest_groups::Phase::Rendezvous && e.MeetingsOpen() == 1,
+            "the statuses close, the places far: not gathered");
+        SetPlace(w, follower, t, 20.0f, 0.0f);
+        w.status[follower].mapId = 1;
+        t = Tick(e, w, r, io, t, t + 1000);
+        Require(e.Groups().begin()->second.phase == ai::quest_groups::Phase::Goal && e.MeetingsOpen() == 0 && e.Lever().gathered == 1 &&
+            e.Lever().arrived == 1 && e.Lever().ended == 0, "the place within 30 yd: gathered, Goal");
+        Require(io.CountLines("[GroupMgr] event=arrived group=") == 1 && io.CountLines(" late=0 dead=0") == 1 &&
+            io.CountLines("[GroupMgr] event=gathered group=") == 1 && io.CountLines(" members=2") >= 1, "one arrived, one gathered line");
+        Tick(e, w, r, io, t, t + 700000);
+        Require(e.TotalLeave(EndReason::RendezvousTimeout) == 0 && e.Lever().ended == 0, "gathered: one meeting per group, no deadline after it");
+    }
+    // Without the lever the same statuses gather at once by T30's own rule (the comparison above).
+    {
+        Engine e;
+        World w;
+        FakeIo io;
+        std::uint32_t leader = 0;
+        std::uint32_t follower = 0;
+        std::uint32_t const formed = FormQuestPair(e, w, r, io, 1000, leader, follower);
+        w.status[follower].x = w.status[leader].x + 10.0f;
+        w.status[follower].y = w.status[leader].y;
+        Tick(e, w, r, io, formed, formed + 2000);
+        Require(e.Groups().begin()->second.phase == ai::quest_groups::Phase::Goal, "Lever 0: T30 gathers on the statuses");
+    }
+    // F12 (a): a dead follower at the point counts as there (dead=1); F15 (a): a place on another map is not there.
+    {
+        Engine e;
+        World w;
+        FakeIo io;
+        w.gather = 1;
+        w.lever = 1;
+        std::uint32_t leader = 0;
+        std::uint32_t follower = 0;
+        std::uint32_t const formed = FormQuestPair(e, w, r, io, 1000, leader, follower);
+        SetPlace(w, leader, formed, 0.0f, 0.0f);
+        SetPlace(w, follower, formed, 5.0f, 0.0f, 2);
+        std::uint32_t t = Tick(e, w, r, io, formed, formed + 5000);
+        Require(e.MeetingsOpen() == 1 && e.Lever().arrived == 0, "F15 (a): another map is not there");
+        SetPlace(w, follower, t, 5.0f, 0.0f, 1);
+        mi::StatusFlags fl = mi::UnpackFlags(w.status[follower].flags);
+        fl.alive = false;
+        w.status[follower].flags = mi::PackFlags(fl);
+        Tick(e, w, r, io, t, t + 1000);
+        Require(e.Lever().gathered == 1 && io.CountLines(" late=0 dead=1") == 1, "F12 (a): dead at the point counts as there");
+    }
+}
+
+// F13 (a) and K1-4: four bots. Join 4 waits while the meeting is open; an arrived member that walks off again counts
+// arrived_lost; after gathered join 4 goes, its Enter carries b15, and it gets its own deadline from its ack - out alone with
+// gather_timeout (the group stays), or arrived late=1.
+void TestGatherLeverLateMembers()
+{
+    for (int arrive = 0; arrive <= 1; ++arrive)
+    {
+        Rules const r = LeverQuestRules();
+        Engine e;
+        World w;
+        FakeIo io;
+        w.gather = 1;
+        w.lever = 1;
+        std::uint32_t t = 1000;
+        for (std::uint32_t b = 1; b <= 4; ++b)
+        {
+            SetStatus(w, b, t, 30.0f * float(b - 1), 0.0f, 300, -1);
+            SetEdge(w, b, t);
+            SetWish(w, b, t, 300, 30.0f * float(b - 1), 0.0f);
+        }
+        Run(e, w, r, io, t);
+        Require(io.joins.size() == 1 && e.Groups().size() == 1 && e.Groups().begin()->second.m.size() == 4, "one QUEST group of four, one join");
+        std::uint32_t const leader = io.joins[0].inviter;
+        std::uint32_t const a = io.joins[0].invitee;
+        t += 1000;
+        Refresh(w, t);
+        w.outcomes.push_back(Outcome(a, leader, go::OpKind::Join, go::ManagerOpResult::Executed));
+        SetEdge(w, a, t, 88, leader, 2);
+        SetEdge(w, leader, t, 88, leader, 2);
+        Run(e, w, r, io, t);
+        Require(io.joins.size() == 2 && io.joins[1].groupId == 88, "join 3 queued with the core id before the group formed");
+        std::uint32_t const b = io.joins[1].invitee;
+        std::uint32_t c = 0;
+        for (std::uint32_t x = 1; x <= 4; ++x)
+            if (x != leader && x != a && x != b)
+                c = x;
+        SetPlace(w, leader, t, 0.0f, 0.0f);
+        SetPlace(w, a, t, 200.0f, 0.0f);
+        SetPlace(w, b, t, 200.0f, 0.0f);
+        SetPlace(w, c, t, 300.0f, 0.0f);
+        // Formed (two acked) in the pass that also confirms join 3: its Enter goes out, join 4 is held from now on. The verdict
+        // judges the acked followers only (T30's set): a far away keeps the meeting open.
+        t += 1000;
+        Refresh(w, t);
+        w.acks.push_back(AckFor(leader, SeqOf(io, leader, Verb::Enter), mi::kAckApplied));
+        w.acks.push_back(AckFor(a, SeqOf(io, a, Verb::Enter), mi::kAckApplied));
+        w.outcomes.push_back(Outcome(b, leader, go::OpKind::Join, go::ManagerOpResult::Executed));
+        SetEdge(w, b, t, 88, leader, 3);
+        SetEdge(w, leader, t, 88, leader, 3);
+        SetEdge(w, a, t, 88, leader, 3);
+        Run(e, w, r, io, t);
+        Require(e.Total(Cnt::Formed) == 1 && e.MeetingsOpen() == 1, "formed: the meeting is open");
+        Require(io.joins.size() == 2 && e.Lever().joinHeld == 1, "F13 (a): join 4 held while the meeting is open");
+        Require(UnpackDirective(io.posts.back().second.b).gatherFlag && io.posts.back().first == b, "join 3's Enter carries b15");
+        t += 1000;
+        Refresh(w, t);
+        w.acks.push_back(AckFor(b, SeqOf(io, b, Verb::Enter), mi::kAckApplied));
+        Run(e, w, r, io, t);
+        t = Tick(e, w, r, io, t, t + 5000);
+        Require(e.Lever().arrived == 0 && e.MeetingsOpen() == 1, "b acked before gathered: judged with the group, nobody there yet");
+        SetPlace(w, a, t, 10.0f, 0.0f);
+        t = Tick(e, w, r, io, t, t + 5000);
+        Require(e.Lever().arrived == 1 && io.joins.size() == 2 && e.Lever().joinHeld == 1, "a arrived, b not: still open, join 4 held (counted once)");
+        SetPlace(w, a, t, 100.0f, 0.0f);
+        t = Tick(e, w, r, io, t, t + 1000);
+        Require(e.Lever().arrivedLost == 1 && e.MeetingsOpen() == 1, "a walks off before gathered: arrived_lost");
+        SetPlace(w, a, t, 10.0f, 0.0f);
+        SetPlace(w, b, t, 20.0f, 0.0f);
+        t = Tick(e, w, r, io, t, t + 1000);
+        Require(e.Lever().gathered == 1 && e.Lever().arrived == 2 && e.MeetingsOpen() == 0, "a and b there: gathered (counted once each)");
+        Require(io.joins.size() == 3 && io.joins[2].invitee == c, "after gathered join 4 goes");
+        t += 1000;
+        Refresh(w, t);
+        w.outcomes.push_back(Outcome(c, leader, go::OpKind::Join, go::ManagerOpResult::Executed));
+        for (std::uint32_t x : { leader, a, b, c })
+            SetEdge(w, x, t, 88, leader, 4);
+        Run(e, w, r, io, t);
+        Require(io.posts.back().first == c && UnpackDirective(io.posts.back().second.b).gatherFlag, "join 4's Enter carries b15");
+        t += 1000;
+        Refresh(w, t);
+        w.acks.push_back(AckFor(c, SeqOf(io, c, Verb::Enter), mi::kAckApplied));
+        Run(e, w, r, io, t);
+        std::uint32_t const acked = t;
+        if (arrive)
+        {
+            t = Tick(e, w, r, io, t, t + 30000);
+            SetPlace(w, c, t, 25.0f, 0.0f);
+            t = Tick(e, w, r, io, t, t + 1000);
+            Require(e.Lever().arrivedLate == 1 && io.CountLines(" late=1 dead=0") == 1, "the late member arrived: late=1");
+            Tick(e, w, r, io, t, acked + 700000);
+            Require(e.Lever().memberTimeout == 0 && e.TotalLeave(EndReason::GatherTimeout) == 0, "arrived: no own deadline any more");
+        }
+        else
+        {
+            t = Tick(e, w, r, io, t, acked + 599000);
+            Require(e.TotalLeave(EndReason::GatherTimeout) == 0, "the late member's own deadline: not before RendezvousMinutes from its ack");
+            Tick(e, w, r, io, t, acked + 600000);
+            Require(e.TotalLeave(EndReason::GatherTimeout) == 1 && e.Lever().memberTimeout == 1, "the late member out alone: gather_timeout");
+            Require(e.Groups().size() == 1 && e.Groups().begin()->second.state == GroupState::Active, "the group stays (>= 2 live)");
+            Require(io.CountLines("[GroupMgr] event=leave group=") == 1 && io.CountLines(" reason=gather_timeout ") == 1,
+                "one leave line with gather_timeout");
+        }
+        Require(e.Lever().ended == 0, "gathered meetings have no gather_end");
+    }
+}
+
+// 2.8 switch-off: the lever off closes an open meeting (gather_end switch_off) and the group goes on under T30 (its wall-clock
+// rendezvous timeout from formed). 2.5 resume: a resumed pass gives open meetings a fresh deadline.
+void TestGatherLeverSwitchOffResume()
+{
+    Rules const r = LeverQuestRules();
+    {
+        Engine e;
+        World w;
+        FakeIo io;
+        w.gather = 1;
+        w.lever = 1;
+        std::uint32_t leader = 0;
+        std::uint32_t follower = 0;
+        std::uint32_t const formed = FormQuestPair(e, w, r, io, 1000, leader, follower);
+        SetPlace(w, leader, formed, 0.0f, 0.0f);
+        SetPlace(w, follower, formed, 100.0f, 0.0f);
+        std::uint32_t t = Tick(e, w, r, io, formed, formed + 60000);
+        w.lever = 0;
+        t = Tick(e, w, r, io, t, t + 1000);
+        Require(e.MeetingsOpen() == 0 && e.Lever().switchOff == 1 && e.Lever().ended == 1 && e.Groups().size() == 1 &&
+            io.CountLines(" reason=switch_off arrived=0/1 ") == 1, "switch-off: gather_end switch_off, the group goes on");
+        w.lever = 1;
+        t = Tick(e, w, r, io, t, t + 5000);
+        Require(e.MeetingsOpen() == 0 && e.Lever().open == 1, "switched on again: the group gets no new meeting");
+        Tick(e, w, r, io, t, formed + 601000);
+        Require(e.TotalLeave(EndReason::RendezvousTimeout) == 2 && e.Lever().endTimeout == 0, "then T30's own rendezvous timeout");
+    }
+    {
+        Engine e;
+        World w;
+        FakeIo io;
+        w.gather = 1;
+        w.lever = 1;
+        std::uint32_t leader = 0;
+        std::uint32_t follower = 0;
+        std::uint32_t const formed = FormQuestPair(e, w, r, io, 1000, leader, follower);
+        SetPlace(w, leader, formed, 0.0f, 0.0f);
+        SetPlace(w, follower, formed, 100.0f, 0.0f);
+        std::uint32_t t = Tick(e, w, r, io, formed, formed + 300000);
+        t += 1000;
+        Refresh(w, t);
+        Run(e, w, r, io, t, true);
+        std::uint32_t const resumedAt = t;
+        Require(e.Lever().resume == 1 && e.MeetingsOpen() == 1, "resume: counted, the meeting stays open");
+        t = Tick(e, w, r, io, t, resumedAt + 599000);
+        Require(e.TotalLeave(EndReason::RendezvousTimeout) == 0, "resume: the fresh deadline runs from the resumed pass");
+        Tick(e, w, r, io, t, resumedAt + 600000);
+        Require(e.TotalLeave(EndReason::RendezvousTimeout) == 2 && e.Lever().endTimeout == 1, "resume: then the deadline");
+    }
+}
+
 int main()
 {
     TestDirectiveBits();
@@ -2077,6 +2545,12 @@ int main()
     TestFollowOtherMap();
     TestAckTimeoutKey();
     TestAckTimeoutOrphanGrace();
+    TestGatherLeverPure();
+    TestGatherLeverEnter();
+    TestGatherLeverShadowOnly();
+    TestGatherLeverMeeting();
+    TestGatherLeverLateMembers();
+    TestGatherLeverSwitchOffResume();
     std::cout << "group_directive_policy_tests: OK\n";
     return 0;
 }

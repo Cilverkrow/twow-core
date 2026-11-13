@@ -30,6 +30,18 @@ std::uint32_t LiveTypesNow()
         ai::supervisor::ArbiterValue(sPlayerbotAIConfig.supervisorArbiter), sPlayerbotAIConfig.supervisor);
 }
 
+// T33: the meeting verdict rules, one source for the shadow (T33-0) and the lever (T33-1). F7 (a): S7's 2D radius, no z (kZUnknown),
+// the instance only on instanceable maps; F12 (a): S7 checks no alive; snapshots at most StatusSeconds plus one pass old.
+GatherRules GatherRulesNow()
+{
+    GatherRules rules;
+    rules.radius = kGatherYards;
+    rules.zBand = kZUnknown;
+    rules.deadCounts = true;
+    rules.maxAgeMs = PlaceMaxAgeMs(sPlayerbotAIConfig.botGroupsManagerStatusSeconds, sPlayerbotAIConfig.randomBotUpdateInterval);
+    return rules;
+}
+
 // The engine's I/O on the world thread: guids only (the op path looks the bots up itself, m2), the one Post, the log.
 class WorldIo : public Io
 {
@@ -126,6 +138,12 @@ void WorldThreadManager::RunDirectives(std::map<std::uint32_t, Player*> const& b
     in.acks = &acks_;
     in.outcomes = &outcomes_;
     in.keyOverflow = manager_inbox::Read().keyOverflow;   // 5.3 key_overflow (the engine prints its increment)
+    // T33-1: the lever acts only with Gather.Lever 1 (the loader keeps it 0 while Gather is 0) on the Gather arm's QUEST groups.
+    in.gather = sPlayerbotAIConfig.botGroupsManagerGather;
+    in.gatherLever = sPlayerbotAIConfig.botGroupsManagerGatherLever;
+    in.mgrMs = mgrMs_;
+    in.places = &places_;
+    in.gatherRules = GatherRulesNow();
     // A bot that left the bot map (logout, roster release) can take no op: forgotten (map keys only). Not after a resume (M16).
     if (!resumedPass_)
         engine_.ForgetGone([&bots](std::uint32_t low) { return bots.find(low) != bots.end(); });
@@ -156,13 +174,13 @@ void WorldThreadManager::RunGather(std::uint32_t nowMs)
     in.resumed = resumedPass_;
     in.gather = gather;
     in.rendezvousMinutes = sPlayerbotAIConfig.questGroupsRendezvousMinutes;
-    in.rules.radius = kGatherYards;   // F7 (a): S7's 2D radius, no z (kZUnknown), the instance only on instanceable maps
-    in.rules.zBand = kZUnknown;
-    in.rules.deadCounts = true;       // F12 (a): S7 checks no alive
-    in.rules.maxAgeMs = PlaceMaxAgeMs(sPlayerbotAIConfig.botGroupsManagerStatusSeconds, sPlayerbotAIConfig.randomBotUpdateInterval);
+    in.rules = GatherRulesNow();
     in.status = &status_;
     in.places = &places_;
     in.swept = &engine_.Swept();   // groups this directive pass ended and swept: their meetings still get a verdict
+    in.gatherLever = sPlayerbotAIConfig.botGroupsManagerGatherLever;   // T33-1: the lever's part of minute3 (read only)
+    in.lever = &engine_.Lever();
+    in.leverMeetings = engine_.MeetingsOpen();
     WorldIo io;
     gather_.Pass(engine_.Groups(), in, [&io](char const* line) { io.Line(line); });
 }
