@@ -309,7 +309,7 @@ endfunction()
 function(check_pure out)
   string(REGEX MATCHALL "#include [<\"][^>\"]+[>\"]" includes "${dpol}")
   foreach(inc IN LISTS includes)
-    if(NOT inc MATCHES "^#include (\"(GroupManagerPolicy|ManagerInboxPolicy|AdhocGroupPolicy|QuestGroupPolicy|SupervisorPolicy|GroupOpPolicy)\\.h\"|<(algorithm|atomic|cstddef|cstdint|cstdio|iterator|mutex|unordered_map|vector)>)$")
+    if(NOT inc MATCHES "^#include (\"(GroupManagerPolicy|ManagerInboxPolicy|GroupGatherPolicy|AdhocGroupPolicy|QuestGroupPolicy|SupervisorPolicy|GroupOpPolicy)\\.h\"|<(algorithm|atomic|cstddef|cstdint|cstdio|iterator|mutex|unordered_map|vector)>)$")
       set(${out} "pure: GroupDirectivePolicy.h has a non-pure include: ${inc}" PARENT_SCOPE)
       return()
     endif()
@@ -703,7 +703,7 @@ function(check_t30_1b out)
       "dpol|\"[GroupMgr] event=self_left group=%u bot=%u reason=%s\""
       "dpol|        EndMember(*g, *m, FromLeftReason(a.reason), io, true);"
       "dpol|        case manager_inbox::kAckLeft: return \"left\";"
-      "dpol|    BotLeftDone,   // left reason 26 goal_done: a natural end\n    BotLeftLost,   // left reason 27 goal_lost: the manager's own (retry cooldown only)\n    BotLeftOff,    // left reason 22 arbiter_off (or any other): the manager's own (retry cooldown only)\n    Count,\n};"
+      "dpol|    BotLeftDone,   // left reason 26 goal_done: a natural end\n    BotLeftLost,   // left reason 27 goal_lost: the manager's own (retry cooldown only)\n    BotLeftOff,    // left reason 22 arbiter_off (or any other): the manager's own (retry cooldown only)\n"
       "dpol|static_assert(kEndReasons <= 128,"
       "dpol|        case EndReason::BotLeftDone: return \"bot_left_done\";"
       "dpol|        case EndReason::BotLeftLost: return \"bot_left_lost\";"
@@ -1199,8 +1199,8 @@ probe(dpol "        if (!g || std::uint16_t(g->serial) != a.serial || m->state" 
 probe(dpol " || (entry && entry->exitOpen))\n        {\n            Count(Cnt::LeftStale);" ")\n        {\n            Count(Cnt::LeftStale);" check_t30_1b "t30-1b: dpol missing" "a left ack while an Exit is open accepted")
 probe(dpol "${LEFT_BRANCH}\n" "" check_t30_1b "t30-1b: ApplyAcks does not handle the left ack before" "the left branch dropped (left acks seq-matched)")
 probe(dpol "        case EndReason::BotLeftLost: return \"bot_left_lost\";" "        case EndReason::BotLeftLost: return \"bot_left\";" check_t30_1b "t30-1b: dpol missing" "an end reason renamed")
-probe(dpol "    BotLeftOff,    // left reason 22 arbiter_off (or any other): the manager's own (retry cooldown only)\n    Count,"
-  "    Count,\n    BotLeftOff,    // left reason 22 arbiter_off (or any other): the manager's own (retry cooldown only)" check_t30_1b "t30-1b: dpol missing" "a bot_left reason after Count")
+probe(dpol "(retry cooldown only)\n    BotLeftOff,    // left reason 22"
+  "(retry cooldown only)\n    Count,\n    BotLeftOff,    // left reason 22" check_t30_1b "t30-1b: dpol missing" "a bot_left reason after Count")
 probe(dpol "            if (why == EndReason::TurnedIn || why == EndReason::BotLeftDone || m.turnedIn)" "            if (why == EndReason::TurnedIn || m.turnedIn)" check_t30_1b "t30-1b: dpol missing" "bot_left_done charges the S7 entry")
 probe(dpol "        case kAckReasonFocusConflict: return \"focus_conflict\";\n" "" check_t30_1b "t30-1b: dpol missing" "ack reason 25 unnamed")
 probe(dpol "constexpr std::uint8_t kAckReasonGoalLost = 27;" "constexpr std::uint8_t kAckReasonGoalLost = 28;" check_t30_1b "t30-1b: dpol missing" "goal_lost renumbered")
