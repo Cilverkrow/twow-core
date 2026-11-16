@@ -127,7 +127,8 @@ void GroupLine(Player* bot, std::uint32_t arbiter, char const* format, ...)
 }
 
 // R4 (design 7.4): only the newest group directive of the drain counts; it waits in pendingDir_ for GroupTick (same tick). Every
-// taken directive counts dir_* by its verb class, each older one (and a still pending one it replaces) superseded. No write here.
+// taken directive counts dir_* by its verb class (an Enter or Change of gather kind 3 also gather_kind3), each older one (and a
+// still pending one it replaces) superseded. No write here.
 void Supervisor::HandleMail(Event const* mail, std::size_t n)
 {
     std::size_t superseded = 0;
@@ -138,7 +139,13 @@ void Supervisor::HandleMail(Event const* mail, std::size_t n)
     std::uint32_t const guidLow = bot ? bot->GetGUIDLow() : 0;
     for (std::size_t i = 0; i < n; ++i)
         if (mail[i].kind == EventKind::GroupDirective)
-            CountGrp(guidLow, DirField(ClassifyVerb(group_mgr::UnpackDirective(mail[i].b).verb)));
+        {
+            group_mgr::DirectiveBits const d = group_mgr::UnpackDirective(mail[i].b);
+            VerbClass const v = ClassifyVerb(d.verb);
+            CountGrp(guidLow, DirField(v));
+            if (GatherKindUndefined(v, d.gatherKind))
+                CountGrp(guidLow, GrpField::GatherKind3);
+        }
     for (std::size_t i = 0; i < superseded; ++i)
         CountGrp(guidLow, GrpField::Superseded);
     if (hasPendingDir_)

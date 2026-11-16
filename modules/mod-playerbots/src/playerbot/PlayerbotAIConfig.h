@@ -940,6 +940,9 @@ public:
     // A3-GERUEST-L60 7.2.11 (measurement only): a bot in the manager's cohort posts its status snapshot to the manager inbox
     // every StatusSeconds (ManagerInboxPolicy.h). 0 = no posts (default), 1..3600; above = 3600 + error line.
     uint32 botGroupsManagerStatusSeconds = 0;
+    // A3 step 6 T30-1f (R9 V3): the manager's Enter/Exit ack deadline in seconds; 10 (default, the old fixed value) .. 20,
+    // outside = the nearest bound + error line (GroupManagerPolicy.h ClampAckTimeoutSeconds).
+    uint32 botGroupsManagerAckTimeoutSeconds = 10;
     // A3 step 6 T30-1 (design T30 v1.1 5.1): the group types the manager forms and holds for the bots of its cohort (bit 1
     // ADHOC, bit 2 QUEST; 0 = none, default). Needs StatusSeconds > 0 (else 0 + error line, F9); other bits are masked.
     uint32 botGroupsManagerTypes = 0;
@@ -947,6 +950,10 @@ public:
     // (GatherPlace) and the manager judges every manager QUEST group's meeting next to the T30 rule. 0 = off (default),
     // 1/2/3 = on (the cohort labels the arm). Needs Types != 0 (else 0 + error line); another value = 0 + error line.
     uint32 botGroupsManagerGather = 0;
+    // A3 step 6 T33-1 (OB-00 13.11.2026 (a)): the meeting lever. 0 = off (default: Gather is the shadow alone), 1 = the QUEST
+    // groups of the Gather arm (by the leader's guid) get the meeting. Needs Gather != 0 (else 0 + error line); another value
+    // = 0 + error line.
+    uint32 botGroupsManagerGatherLever = 0;
     // L1 (owner 07.11.2026, owner-ordered: code default 1, 0 = rollback, any other value = 1): a bot resets its raid lockouts
     // ("reset raids" in the accept tail) only on a real player's invite, and keeps out of another copy of a raid it is
     // perm-bound to (LockoutPolicy.h, LockoutGuard.cpp). 0 = the old behaviour: reset raids on every accepted invite.
@@ -960,8 +967,8 @@ public:
     uint32 supervisor = 0;
     // A3 step 3 behaviour pair 1: the arbiter shadow (SupervisorShadow.cpp), only where the supervisor runs. 0 off, 1 shadow
     // (watch and log, no write), 2 enforce (A3 step 3 T02-a: the shadow plus the arbiter gate on the travel target,
-    // SupervisorEnforce.cpp); other = 0 + error line.
-    uint32 supervisorArbiter = 0;
+    // SupervisorEnforce.cpp); default 2 (C-unit ADOPT, OB-00 12.11.2026), 0 = rollback; other = 0 (off) + error line.
+    uint32 supervisorArbiter = 2;
     // A3 step 3 T02-a (AiPlayerbot.Supervisor.ArbiterProbe, default 0): the arbiter probe on the probe bots (cohort B, every 25th
     // guid pair; ArbiterLanePolicy.h IsProbeBot). 0 off, 1 probe (at arbiter 2 three refused writes every 10 minutes, at 1 only
     // the paired count); other = 0 + error line.

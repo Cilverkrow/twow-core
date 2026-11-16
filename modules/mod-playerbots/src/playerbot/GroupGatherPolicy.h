@@ -38,6 +38,30 @@ inline bool GatherArm(std::uint32_t gather, std::uint32_t leaderLow)
     return GatherValid(gather) && cohort::Applies(gather, leaderLow);
 }
 
+// ---- T33-1: the lever (5.1; OB-00 13.11.2026 (a): its own key) -------------------------------------------------------------
+// AiPlayerbot.BotGroups.Manager.Gather.Lever: 0 off (default), 1 on. The lever acts ONLY with Lever = 1: then a manager QUEST
+// group whose leader is in the Gather arm (GatherArm, F8 (a)) gets the meeting (GroupDirectivePolicy.h Engine, design 2.3).
+// Gather stays the measurement switch and the arm cohort: Gather != 0 with Lever 0 is the T33-0 shadow alone, everything else
+// as T30. Any other value is 0 (one error line); it needs Gather != 0 (else 0, one error line).
+inline bool GatherLeverValid(std::uint32_t raw)
+{
+    return raw <= 1u;
+}
+
+inline std::uint32_t EffectiveGatherLever(std::uint32_t lever, std::uint32_t gather)
+{
+    return gather && lever == 1u ? 1u : 0u;
+}
+
+inline bool GatherApplies(std::uint32_t gather, std::uint32_t lever, GroupType type, std::uint32_t leaderLow)
+{
+    return EffectiveGatherLever(lever, gather) && type == GroupType::Quest && GatherArm(gather, leaderLow);
+}
+
+// F1 (a): the Enter of a meeting group carries b15 = 1 and kind a (follow the leader, like S7); the manager never packs
+// another kind in v1 (kind b / c and kind 3 never, design v1.3 Nachtrag 2).
+constexpr std::uint8_t kGatherKindFollow = 0;
+
 // ---- the bot's place (3.2; Kind::GatherPlace) --------------------------------------------------------------------------------
 // Event layout: level b0 = the map is instanceable (b1-7 = 0; b4/b5 reserved for the hearthstone appendix), mapOrDungeon = map
 // id, seq = the raw instance id of the bot's map (continent regions included), hpPct10 = the group serial's low 16 bits of the
@@ -244,6 +268,60 @@ GroupVerdict ArrivedForGroup(std::uint32_t leaderLow, std::vector<MemberVerdict>
         m.dead = !manager_inbox::UnpackFlags(s->second.flags).alive;
     }
     v.gathered = v.pointKnown && v.arrived == v.judged;
+    return v;
+}
+
+// T33-0b (F2 (a), design 2.1): a manager ADHOC group has no meeting point; the shadow only counts who is at its formation anchor
+// (ManagedGroup mapId/anchorX/anchorY = the leader's Status at creation). Every member but the leader is judged (S7: bot !=
+// leader), 2D within the radius, no z (the anchor has none). The anchor carries no instance id: on a map that is not
+// instanceable the instance counts as 0 (PlaceOf); on an instanceable map the point takes the leader's instance from its
+// fresh GatherPlace on the anchor map, so without that place nobody there counts as arrived. Never a directive or a deadline.
+inline GatherPoint AnchorPointFor(std::uint32_t mapId, float x, float y, PlaceSnapshot const* leader, float radius)
+{
+    GatherPoint g;
+    g.mapId = mapId;
+    g.instanceId = leader && leader->place.mapId == mapId && leader->place.instanceable ? leader->place.instanceId : 0u;
+    g.x = x;
+    g.y = y;
+    g.z = 0.0f;
+    g.radius = radius;
+    g.zBand = kZUnknown;
+    g.deadlineMs = 0;
+    g.leg = Leg::SameMap;
+    return g;
+}
+
+template <typename StatusMap, typename PlaceMap>
+GroupVerdict ArrivedAtAnchor(std::uint32_t mapId, float x, float y, std::uint32_t leaderLow, std::vector<MemberVerdict>& members,
+    StatusMap const& status, PlaceMap const& places, std::uint32_t nowMs, GatherRules const& r)
+{
+    GroupVerdict v;
+    v.pointKnown = true;   // the anchor is fixed at creation
+    auto const lp = places.find(leaderLow);
+    PlaceSnapshot const* leader =
+        lp != places.end() && manager_inbox::Fresh(lp->second.receivedMs, nowMs, r.maxAgeMs) ? &lp->second : nullptr;
+    GatherPoint const point = AnchorPointFor(mapId, x, y, leader, r.radius);
+    for (MemberVerdict& m : members)
+    {
+        m.judged = m.low != leaderLow;
+        m.arrived = false;
+        m.zOut = false;
+        m.regionMismatch = false;
+        m.dead = false;
+        if (!m.judged)
+            continue;
+        ++v.judged;
+        auto const s = status.find(m.low);
+        auto const p = places.find(m.low);
+        Place const place = PlaceOf(s == status.end() ? nullptr : &s->second, p == places.end() ? nullptr : &p->second, nowMs,
+            r.maxAgeMs, r.deadCounts);
+        m.arrived = Arrived(place, point);
+        if (!m.arrived)
+            continue;
+        ++v.arrived;
+        m.dead = !manager_inbox::UnpackFlags(s->second.flags).alive;
+    }
+    v.gathered = v.judged > 0 && v.arrived == v.judged;
     return v;
 }
 

@@ -50,10 +50,29 @@ void TestMode()
 void TestLiveTypes()
 {
     Require(kManagerArbiter == 2, "the manager needs arbiter 2 (enforce)");
-    Require(LiveTypes(3, 10, 2) == 3 && LiveTypes(6, 10, 2) == 2, "arbiter 2: Types after the StatusSeconds rule");
-    Require(LiveTypes(3, 10, 0) == 0 && LiveTypes(3, 10, 1) == 0, "arbiter off or shadow: Types acts like 0");
-    Require(LiveTypes(3, 0, 2) == 0, "arbiter 2 without StatusSeconds: still 0");
-    Require(!Owns(1, LiveTypes(3, 10, 1), 1) && Owns(1, LiveTypes(3, 10, 2), 1), "ownership follows the arbiter");
+    // (supervisor 1 = every bot: the behaviour of every measured config)
+    Require(LiveTypes(3, 10, 2, 1) == 3 && LiveTypes(6, 10, 2, 1) == 2, "arbiter 2: Types after the StatusSeconds rule");
+    Require(LiveTypes(3, 10, 0, 1) == 0 && LiveTypes(3, 10, 1, 1) == 0, "arbiter off or shadow: Types acts like 0");
+    Require(LiveTypes(3, 0, 2, 1) == 0, "arbiter 2 without StatusSeconds: still 0");
+    Require(!Owns(1, LiveTypes(3, 10, 1, 1), 1) && Owns(1, LiveTypes(3, 10, 2, 1), 1), "ownership follows the arbiter");
+}
+
+// SupervisorOn trap: Manager on, Types 3, Arbiter 2 and Supervisor 0 must own nobody (no directive can be posted).
+void TestSupervisorOn()
+{
+    Require(!SupervisorAny(0) && SupervisorAny(1) && SupervisorAny(2) && SupervisorAny(3) && !SupervisorAny(4), "SupervisorAny: modes 1..3");
+    Require(LiveTypes(3, 10, 2, 0) == 0 && LiveTypes(3, 10, 2, 9) == 0, "(1) supervisor off or unknown: Types acts like 0");
+    for (std::uint32_t low = 1; low <= 8; ++low)
+    {
+        Require(!OwnsLive(2, LiveTypes(3, 10, 2, 0), 0, low) && !OwnsLive(1, LiveTypes(3, 10, 2, 0), 0, low),
+            "(1) Manager on, Types 3, Arbiter 2, Supervisor 0: OwnsBot false for every bot");
+        // (3) supervisor 1: as before (the cohort rule of the manager alone)
+        Require(OwnsLive(1, LiveTypes(3, 10, 2, 1), 1, low) == Owns(1, 3, low), "(3) supervisor 1: unchanged for every bot");
+        Require(OwnsLive(2, LiveTypes(3, 10, 2, 1), 1, low) == Owns(2, 3, low), "(3) supervisor 1: unchanged, cohort B manager");
+        // (2) supervisor 2 = cohort B: only odd guids
+        Require(OwnsLive(1, LiveTypes(3, 10, 2, 2), 2, low) == ((low % 2) == 1), "(2) supervisor 2: only odd guids");
+        Require(OwnsLive(1, LiveTypes(3, 10, 2, 3), 3, low) == ((low % 2) == 0), "supervisor 3: only even guids");
+    }
 }
 
 void TestNames()
@@ -256,6 +275,7 @@ int main()
 {
     TestMode();
     TestLiveTypes();
+    TestSupervisorOn();
     TestNames();
     TestRole();
     TestComposition();

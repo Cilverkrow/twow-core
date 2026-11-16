@@ -1,0 +1,156 @@
+cmake_policy(VERSION 3.16)
+# twow-repo#563 HARM-RACE inventory item E3 (1) (OB-00 order 11.11.2026, closed as safe, accepted by OB-10): TravelMgr::Clear() calls
+# SetNullTravelTarget(plr) for EVERY online player - it reads and writes each bot's "travel target" value, so it may only run on the world thread
+# outside the map updates. That holds because of how it is reached:
+#   1. the destructor ~TravelMgr (process exit; the map threads are gone);
+#   2. TravelMgr::LoadQuestTravelTable(), which returns early when destinationMap is non-empty, so Clear() runs only at the FIRST load - and that
+#      function is called from one place only, PlayerbotAIConfig.cpp (the startup / config load on the world thread).
+# This contract pins exactly that: a new caller of Clear(), a second caller of LoadQuestTravelTable(), or the early return moved behind Clear()
+# fails here and must be reviewed (a guard or a world-thread proof is then needed).
+
+set(TAG "TravelMgr::Clear world-thread only (E3)")
+
+if(NOT DEFINED PB_SOURCE_DIR)
+  message(FATAL_ERROR "${TAG}: PB_SOURCE_DIR is required")
+endif()
+
+function(read_source path out_var)
+  if(NOT EXISTS "${PB_SOURCE_DIR}/${path}")
+    message(FATAL_ERROR "${TAG}: missing source ${path}")
+  endif()
+  file(READ "${PB_SOURCE_DIR}/${path}" text)
+  string(REPLACE "\r" "" text "${text}")
+  set(${out_var} "${text}" PARENT_SCOPE)
+endfunction()
+
+function(region out text start_marker end_marker)
+  string(FIND "${text}" "${start_marker}" start)
+  if(start EQUAL -1)
+    message(FATAL_ERROR "${TAG}: cannot find ${start_marker}")
+  endif()
+  string(SUBSTRING "${text}" ${start} -1 rest)
+  string(FIND "${rest}" "${end_marker}" length)
+  if(length EQUAL -1)
+    message(FATAL_ERROR "${TAG}: cannot find ${end_marker}")
+  endif()
+  string(SUBSTRING "${rest}" 0 ${length} body)
+  set(${out} "${body}" PARENT_SCOPE)
+endfunction()
+
+# ---- the checkers (each returns the list of violations, empty = ok) ----
+# the Load function: the early return must stand before the (single) Clear() call
+function(load_violations out load_fn)
+  set(errors "")
+  string(FIND "${load_fn}" "if (!sTravelMgr.destinationMap.empty())\n        return;" guard_at)
+  string(FIND "${load_fn}" "    Clear();" clear_at)
+  if(guard_at EQUAL -1)
+    list(APPEND errors "LoadQuestTravelTable: the early return on a non-empty destinationMap is missing")
+  endif()
+  if(clear_at EQUAL -1)
+    list(APPEND errors "LoadQuestTravelTable: the checker lost the Clear() call")
+  elseif(NOT guard_at EQUAL -1 AND NOT guard_at LESS clear_at)
+    list(APPEND errors "LoadQuestTravelTable: the early return must stand before Clear()")
+  endif()
+  # (no ';' in a pattern: a CMake list would split a match on it and count it twice)
+  string(REGEX MATCHALL "[^A-Za-z_.>:]Clear\\(\\)" clears "${load_fn}")
+  list(LENGTH clears n_clears)
+  if(NOT n_clears EQUAL 1)
+    list(APPEND errors "LoadQuestTravelTable: expected exactly one Clear() call, found ${n_clears}")
+  endif()
+  set(${out} "${errors}" PARENT_SCOPE)
+endfunction()
+
+# TravelMgr.cpp: Clear() is called unprefixed exactly once outside its own definition (in LoadQuestTravelTable); the header: only the destructor
+function(clear_callers_violations out cpp_text header_text)
+  set(errors "")
+  string(REGEX MATCHALL "\n[ \t]*Clear\\(\\)" cpp_calls "${cpp_text}")
+  list(LENGTH cpp_calls n_cpp)
+  if(NOT n_cpp EQUAL 1)
+    list(APPEND errors "TravelMgr.cpp: expected exactly one unprefixed Clear() call (LoadQuestTravelTable), found ${n_cpp}")
+  endif()
+  # an inline call inside a body: `{ Clear();` (the declaration `void Clear();` is not a call)
+  string(REGEX MATCHALL "{[ \t]*Clear\\(\\)" header_calls "${header_text}")
+  list(LENGTH header_calls n_header)
+  string(FIND "${header_text}" "~TravelMgr() { Clear(); }" dtor_at)
+  if(dtor_at EQUAL -1)
+    list(APPEND errors "TravelMgr.h: the destructor call '~TravelMgr() { Clear(); }' is missing (the checker lost the site)")
+  endif()
+  if(NOT n_header EQUAL 1)
+    list(APPEND errors "TravelMgr.h: expected exactly one Clear() call (the destructor), found ${n_header}")
+  endif()
+  set(${out} "${errors}" PARENT_SCOPE)
+endfunction()
+
+# module-wide: nobody calls sTravelMgr.Clear(), and LoadQuestTravelTable() is called from PlayerbotAIConfig.cpp only
+function(module_callers_violations out)
+  set(errors "")
+  file(GLOB_RECURSE all_src "${PB_SOURCE_DIR}/*.cpp" "${PB_SOURCE_DIR}/*.h")
+  set(load_callers "")
+  foreach(f ${all_src})
+    file(READ "${f}" body)
+    if(body MATCHES "sTravelMgr\\.Clear\\(")
+      list(APPEND errors "a new caller of sTravelMgr.Clear() in ${f}")
+    endif()
+    if(body MATCHES "LoadQuestTravelTable\\(\\)")
+      get_filename_component(base "${f}" NAME)
+      if(NOT base STREQUAL "TravelMgr.cpp" AND NOT base STREQUAL "TravelMgr.h")
+        list(APPEND load_callers "${base}")
+      endif()
+    endif()
+  endforeach()
+  list(REMOVE_DUPLICATES load_callers)
+  if(NOT "${load_callers}" STREQUAL "PlayerbotAIConfig.cpp")
+    list(APPEND errors "LoadQuestTravelTable() callers must be exactly PlayerbotAIConfig.cpp, found '${load_callers}'")
+  endif()
+  set(${out} "${errors}" PARENT_SCOPE)
+endfunction()
+
+# ---- the real sources ----
+read_source("TravelMgr.cpp" tm)
+read_source("TravelMgr.h" tmh)
+region(load_fn "${tm}" "void TravelMgr::LoadQuestTravelTable()" "sLog.outString(\"Loading trainable spells.\");")
+load_violations(load_errors "${load_fn}")
+clear_callers_violations(callers_errors "${tm}" "${tmh}")
+module_callers_violations(module_errors)
+
+foreach(set_name load callers module)
+  if(${set_name}_errors)
+    string(REPLACE ";" "\n  - " listed "${${set_name}_errors}")
+    message(FATAL_ERROR "${TAG}: ${set_name}:\n  - ${listed}")
+  endif()
+endforeach()
+
+# ---- negative probes ----
+function(expect_rejected name errs)
+  if(NOT errs)
+    message(FATAL_ERROR "${TAG}: negative probe '${name}' was accepted - the checker no longer sees it")
+  endif()
+endfunction()
+
+# 1. the early return moved behind Clear(): a runtime reload would clear every player's target from whatever thread called it
+string(REPLACE "    if (!sTravelMgr.destinationMap.empty())\n        return;\n" "" probe_load "${load_fn}")
+if("${probe_load}" STREQUAL "${load_fn}")
+  message(FATAL_ERROR "${TAG}: probe 1 did not change the text (layout moved?)")
+endif()
+load_violations(e1 "${probe_load}")
+expect_rejected("LoadQuestTravelTable without the early return" "${e1}")
+
+# 2. a second unprefixed Clear() call in TravelMgr.cpp
+set(probe_cpp "${tm}\n    Clear();\n")
+clear_callers_violations(e2 "${probe_cpp}" "${tmh}")
+expect_rejected("a second Clear() call in TravelMgr.cpp" "${e2}")
+
+# 3. a second Clear() call in the header (an inline caller)
+set(probe_h "${tmh}\n        void Reload() { Clear(); }\n")
+clear_callers_violations(e3 "${tm}" "${probe_h}")
+expect_rejected("a second Clear() call in TravelMgr.h" "${e3}")
+
+# 4. the module-wide scan sees an external caller (checked on synthetic text with the same regexes)
+if(NOT "x sTravelMgr.Clear(); y" MATCHES "sTravelMgr\\.Clear\\(")
+  message(FATAL_ERROR "${TAG}: probe 4: the sTravelMgr.Clear() regex no longer matches a call")
+endif()
+if(NOT "sTravelMgr.LoadQuestTravelTable();" MATCHES "LoadQuestTravelTable\\(\\)")
+  message(FATAL_ERROR "${TAG}: probe 5: the LoadQuestTravelTable() regex no longer matches a call")
+endif()
+
+message(STATUS "${TAG} contract passed")

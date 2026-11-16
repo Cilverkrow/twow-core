@@ -2,6 +2,7 @@
 
 #include "GroupManagerPolicy.h"
 #include "ManagerInboxPolicy.h"
+#include "GroupGatherPolicy.h"   // T33-1: the meeting verdict and the lever (pure)
 #include "AdhocGroupPolicy.h"
 #include "QuestGroupPolicy.h"
 #include "SupervisorPolicy.h"
@@ -27,7 +28,8 @@ namespace ai::group_mgr
 {
 // ---- constants (design 2.3) -----------------------------------------------------------------------------------------------
 constexpr std::uint32_t kJoinConfirmMs = 20000;    // from the join op's Execute to the confirming edge (no clock while pending, M7)
-constexpr std::uint32_t kAckTimeoutMs = 10000;     // Enter/Exit without an ack (ST:548): fail closed
+constexpr std::uint32_t kAckTimeoutMs = 10000;     // Enter/Exit without an ack (ST:548): fail closed; T30-1f: the default
+static_assert(kAckTimeoutMs == kAckTimeoutSecondsDefault * 1000u, "T30-1f: the key's default is the old fixed deadline");
 constexpr std::uint32_t kLeaveConfirmMs = 40000;   // a queued leave without an outcome
 constexpr std::uint32_t kExitBlockSec = 600;       // the second failed Exit: no candidate for this long (exit_failed)
 constexpr std::uint32_t kOpsPerPass = 1;           // new manager ops per pass, leaves first
@@ -41,6 +43,7 @@ constexpr std::uint32_t kFormingMaxSec = 120;          // a group not active by 
 constexpr std::uint32_t kSkipLineMs = 60000;           // one foreign skip line per bot per minute (the rest is counted only)
 constexpr std::uint32_t kGapShiftMaxMs = 120000;       // the stale-anchor credit stops at the resume limit (M15/M16)
 constexpr std::uint32_t kSkipUnknownLongSec = 1800;    // T30-1b: minute2 skip_unknown_30m counts bots skip_unknown this long
+constexpr std::uint32_t kOtherMapLongMs = 600000;      // T30-1d: minute2 follow_other_map_600 counts episodes this long
 
 // a is later than b on the 32-bit ms clock (unsigned difference, wraps).
 inline bool After(std::uint32_t a, std::uint32_t b)
@@ -89,6 +92,9 @@ enum class EndReason : std::uint8_t
     BotLeftDone,   // left reason 26 goal_done: a natural end
     BotLeftLost,   // left reason 27 goal_lost: the manager's own (retry cooldown only)
     BotLeftOff,    // left reason 22 arbiter_off (or any other): the manager's own (retry cooldown only)
+    // T33-1 (design T33 2.3, K1-4): a member that joined after its group gathered did not arrive within its own deadline. The
+    // manager's own (retry cooldown only). Appended: the values above stay.
+    GatherTimeout,
     Count,
 };
 constexpr std::size_t kEndReasons = std::size_t(EndReason::Count);
@@ -131,6 +137,7 @@ inline char const* EndReasonName(EndReason r)
         case EndReason::BotLeftDone: return "bot_left_done";
         case EndReason::BotLeftLost: return "bot_left_lost";
         case EndReason::BotLeftOff: return "bot_left_off";
+        case EndReason::GatherTimeout: return "gather_timeout";
         case EndReason::Count: break;
     }
     return "unknown";
@@ -369,6 +376,7 @@ struct Rules
     std::uint32_t mode = 0;               // BotGroups.Manager
     std::uint32_t types = 0;              // BotGroups.Manager.Types, already effective (F9)
     std::uint32_t statusSeconds = 0;      // BotGroups.Manager.StatusSeconds
+    std::uint32_t ackTimeoutSeconds = kAckTimeoutSecondsDefault;   // T30-1f: BotGroups.Manager.AckTimeoutSeconds (10..20)
     std::uint32_t intervalMs = 1000;      // randomBotUpdateInterval (the gap rule)
     // ADHOC (AdhocGroupWorld values)
     std::uint32_t maxBots = 3;
@@ -407,6 +415,7 @@ public:
 using StatusTable = std::unordered_map<std::uint32_t, manager_inbox::StatusSnapshot>;
 using EdgeTable = std::unordered_map<std::uint32_t, manager_inbox::EdgeSnapshot>;
 using WishTable = std::unordered_map<std::uint32_t, manager_inbox::WishSnapshot>;
+using PlaceTable = std::unordered_map<std::uint32_t, PlaceSnapshot>;   // T33: guid low -> latest GatherPlace (only while Gather != 0)
 
 struct Ack
 {
@@ -440,6 +449,13 @@ struct PassInput
     std::vector<Ack> const* acks = nullptr;
     std::vector<group_ops::ManagerOutcome> const* outcomes = nullptr;
     std::uint64_t keyOverflow = 0;   // manager_inbox::Read().keyOverflow (a total; the minute line shows its increment)
+    // T33-1 (the lever, design T33 2.3-2.5): the effective Gather (the arm cohort) and Gather.Lever, the manager clock of this
+    // pass (AdvanceClock), the place table and the verdict rules (the shadow's). Lever 0 (the default): no group gets a meeting.
+    std::uint32_t gather = 0;
+    std::uint32_t gatherLever = 0;
+    std::uint64_t mgrMs = 0;
+    PlaceTable const* places = nullptr;
+    GatherRules gatherRules;
 };
 
 // ---- the registry (design 3.2) --------------------------------------------------------------------------------------------
@@ -496,6 +512,14 @@ struct Member
     std::uint32_t leaderOtherMapSince = 0;
     bool ackKnown = false;           // T30-1b osc: its Enter was applied (ack 2) at ackSec
     std::uint32_t ackSec = 0;
+    std::uint32_t otherMapSinceMs = 0;   // T30-1d: an open other-map episode (QUEST follower) since (PostStamp), 0 = none
+    bool otherMapConfirmed = false;      // T30-1d: two maps again on snapshots of both received at or after the open
+    // T33-1 (design 2.3): the member in its group's meeting.
+    bool meetArrived = false;            // judged arrived in the last verdict
+    bool meetCounted = false;            // its first arrival is counted (event=arrived once per member and meeting)
+    bool joinHeld = false;               // F13 (a): its join waited for the meeting (gather_join_held once per member)
+    std::uint64_t meetDeadlineMs = 0;    // K1-4: joined after gathered - its own deadline on the manager clock (0 = none)
+    std::uint64_t meetAnchorMs = 0;      // K1-4: its ack (the anchor of event=arrived late=1)
 };
 
 enum class GroupState : std::uint8_t
@@ -529,7 +553,41 @@ struct ManagedGroup
     std::uint32_t realPlayerSinceMs = 0;
     EndReason endReason = EndReason::None;
     std::uint32_t sizeMax = 0;
+    // T33-1 (design 2.3, 2.5): the meeting. lever = GatherApplies when the group was created (a later switch-on gives an
+    // existing group no meeting; a switch-off closes it, gather_end switch_off). open from formed until gathered or its end.
+    bool meetLever = false;
+    bool meetOpen = false;
+    bool meetGathered = false;
+    std::uint64_t meetAnchorMs = 0;      // formed on the manager clock (F16 (a))
+    std::uint64_t meetDeadlineMs = 0;    // anchor + RendezvousMinutes; a resume restarts it
+    std::uint32_t meetJudged = 0;        // members judged in the last verdict
+    std::uint32_t meetArrived = 0;       // of those, arrived
 };
+
+// T33-1: the lever's totals since start (the shadow's minute3 prints their increments, gather_* fields).
+struct GatherLeverCounts
+{
+    std::uint64_t open = 0;          // meetings opened (formed, lever on)
+    std::uint64_t gathered = 0;      // meetings gathered (every judged follower arrived)
+    std::uint64_t arrived = 0;       // first arrivals of members in a meeting (once per member and meeting)
+    std::uint64_t arrivedLate = 0;   // first arrivals of members that joined after gathered (K1-4)
+    std::uint64_t arrivedLost = 0;   // an arrived member out of the radius again before gathered
+    std::uint64_t ended = 0;         // meetings ended without gathered (any reason, gather_end)
+    std::uint64_t endTimeout = 0;    // of those, rendezvous_timeout (the deadline on the manager clock, ladder walk -> dissolve)
+    std::uint64_t memberTimeout = 0; // late members out by their own deadline (gather_timeout)
+    std::uint64_t switchOff = 0;     // open meetings closed because the lever no longer applies (gather_end switch_off)
+    std::uint64_t joinHeld = 0;      // joins held until gathered (F13 (a)), once per member
+    std::uint64_t resume = 0;        // passes after an off gap with open meetings (fresh deadlines, no expiry in that pass)
+};
+
+// T33-1 (design 2.5, K0-2/K1-3): one deadline. While the meeting is open the manager judges the rendezvous itself (T33
+// verdict, deadline on the manager clock), so quest_groups::Decide gets a copy with phaseSince = now: its rendezvous branch
+// never fires. gathered and allComplete act as before; Decide stays as it is.
+inline quest_groups::GroupFacts MaskRendezvous(quest_groups::GroupFacts f)
+{
+    f.phaseSince = f.now;
+    return f;
+}
 
 // T33-0 (the meeting shadow, measurement only): a group Sweep erased in this pass and why it ended. The shadow reads the list
 // after the pass, so a meeting T30 ended and swept in the same pass still gets its verdict. Cleared at the start of every pass.
@@ -772,6 +830,12 @@ enum class Cnt : std::uint8_t
     SelfLeft,
     // T30-1c (OB-10 note on #992): appended after skip_unknown_30m, at the very end of minute2 (kCountsMinute2Loop).
     LeftStale,
+    // T30-1d (OB-10 review of R9, B4): a QUEST follower on another map than its leader, appended after left_stale.
+    FollowOtherMap,
+    FollowOtherMap600,
+    FollowOtherMapMs,
+    FollowQuestMs,
+    FollowOtherMapShort,
     Count,
 };
 constexpr std::size_t kCounts = std::size_t(Cnt::Count);
@@ -822,6 +886,11 @@ inline char const* CntName(Cnt c)
         case Cnt::Osc: return "osc";                       // G5: a membership ended < kOscSec after its ack 2, no natural end
         case Cnt::SelfLeft: return "self_left";            // a left ack (state 4) that ended its member
         case Cnt::LeftStale: return "left_stale";          // T30-1c: a left ack that did not match (not counted as ack_stale)
+        case Cnt::FollowOtherMap: return "follow_other_map";          // T30-1d: other-map episodes closed
+        case Cnt::FollowOtherMap600: return "follow_other_map_600";   // T30-1d: of them >= kOtherMapLongMs
+        case Cnt::FollowOtherMapMs: return "follow_other_map_ms";     // T30-1d: their ms
+        case Cnt::FollowQuestMs: return "follow_quest_ms";            // T30-1d: ms of acked QUEST followers (the base)
+        case Cnt::FollowOtherMapShort: return "follow_other_map_short";   // T30-1d: episodes closed before confirmed (no line)
         case Cnt::Count: break;
     }
     return "unknown";
@@ -855,6 +924,11 @@ struct MinuteCounts
     // T30-1b (OB-10 smoke note): a level, not an increment - the bots skip_unknown without a break for >= kSkipUnknownLongSec at
     // the minute line (minute2 skip_unknown_30m).
     std::uint64_t skipUnknown30m = 0;
+    // T30-1d: the longest other-map episode closed in the minute (ms), the open episodes at the line and the age of the oldest
+    // of them (levels: a run's last minute2 shows an episode still open at its end).
+    std::uint64_t otherMapMaxMs = 0;
+    std::uint64_t otherMapOpen = 0;
+    std::uint64_t otherMapOpenMaxMs = 0;
 };
 
 // "[GroupMgr] minute types= passes= cand_adhoc= ... owned=": fixed fields, increments except the stands (types, groups,
@@ -875,9 +949,11 @@ inline int FormatMinute(char* buf, std::size_t size, MinuteCounts const& m, Stan
     return n;
 }
 
-// "[GroupMgr] minute2 leave_<reason>=.. osc= self_left= skip_unknown_30m= left_stale=": every reason, 0 included (increments),
-// then the T30-1b counters osc and self_left (increments), skip_unknown_30m (a level) and the T30-1c left_stale (an increment),
-// each appended at the end.
+// "[GroupMgr] minute2 leave_<reason>=.. osc= self_left= skip_unknown_30m= left_stale= follow_other_map= follow_other_map_600=
+// follow_other_map_ms= follow_quest_ms= follow_other_map_short= follow_other_map_max_ms= follow_other_map_open=
+// follow_other_map_open_max_ms=": every reason, 0 included (increments), then the T30-1b counters osc and self_left
+// (increments), skip_unknown_30m (a level), the T30-1c left_stale (an increment) and the T30-1d counters (increments, then the
+// minute's max, and the open episodes and the oldest one's age, levels), each appended at the end.
 inline int FormatMinute2(char* buf, std::size_t size, MinuteCounts const& m)
 {
     int n = std::snprintf(buf, size, "[GroupMgr] minute2");
@@ -889,6 +965,10 @@ inline int FormatMinute2(char* buf, std::size_t size, MinuteCounts const& m)
         n += std::snprintf(buf + n, size - std::size_t(n), " skip_unknown_30m=%llu", (unsigned long long)m.skipUnknown30m);
     for (std::size_t i = kCountsMinute2Loop; i < kCounts && n > 0 && std::size_t(n) < size; ++i)
         n += std::snprintf(buf + n, size - std::size_t(n), " %s=%llu", CntName(Cnt(i)), (unsigned long long)m.c[i]);
+    if (n > 0 && std::size_t(n) < size)
+        n += std::snprintf(buf + n, size - std::size_t(n), " follow_other_map_max_ms=%llu follow_other_map_open=%llu"
+            " follow_other_map_open_max_ms=%llu", (unsigned long long)m.otherMapMaxMs, (unsigned long long)m.otherMapOpen,
+            (unsigned long long)m.otherMapOpenMaxMs);
     return n;
 }
 
@@ -917,11 +997,25 @@ public:
     {
         now_ = in.nowMs;
         nowSec_ = in.nowSec;
+        passDeltaMs_ = passed_ ? now_ - lastPassMs_ : 0u;   // T30-1d: follow_quest_ms accrues by the time since the last pass
+        for (GoneEpisode const& ge : goneEpisodes_)          // T30-1d: the episodes ForgetGone closed before this pass
+            OtherMapLine(io, ge.serial, ge.low, ge.ms, "gone", "-");
+        goneEpisodes_.clear();
         staleMs_ = manager_inbox::StaleMs(r.statusSeconds);
         wishMs_ = WishFreshMs(r.statusSeconds);
+        ackTimeoutMs_ = AckTimeoutMs(r.ackTimeoutSeconds);   // T30-1f: the Enter/Exit ack deadline of this pass
+        heldAtPassStart_ = HasGroups();   // T30-1e: the registry held anything when this pass began (the final minute flush)
         ++passNo_;
         swept_.clear();
         retryCooldownSec_ = r.retryCooldownMinutes * 60;
+        // T33-1: the lever's inputs of this pass (the manager clock, the leg = RendezvousMinutes); after an off gap the open
+        // meetings get a fresh deadline (2.5) - no deadline or end rule runs in a resumed pass anyway.
+        gatherNow_ = in.gather;
+        leverNow_ = in.gatherLever;
+        mgrMs_ = in.mgrMs;
+        legMs_ = std::uint64_t(r.timers.rendezvousMinutes) * 60000u;
+        if (in.resumed)
+            MeetResume();
         Count(Cnt::Passes);
         ApplyOutcomes(in, io);
         ApplyAcks(in, r, io);
@@ -954,6 +1048,7 @@ public:
                     // find no member, so the slot is freed here.
                     if (!m.inviter && (m.opQueued || (m.state == MemberState::Joining && m.opExecMs)))
                         entry.second.joinInFlight = false;
+                    CloseOtherMap(entry.second, m, "gone", "-", now_, nullptr);   // T30-1d: now_ = the last pass, line next pass
                     m.state = MemberState::Left;
                     m.leaveWanted = false;
                     m.opWanted = false;
@@ -979,6 +1074,15 @@ public:
     std::unordered_map<std::uint32_t, ManagedGroup> const& Groups() const { return groups_; }
     // T33-0: the groups the last pass swept (the meeting shadow, read only).
     std::vector<SweptGroup> const& Swept() const { return swept_; }
+    // T33-1: the lever's totals (the shadow's minute3 prints their increments) and its open meetings.
+    GatherLeverCounts const& Lever() const { return lever_; }
+    std::uint64_t MeetingsOpen() const
+    {
+        std::uint64_t n = 0;
+        for (auto const& entry : groups_)
+            n += entry.second.meetOpen ? 1 : 0;
+        return n;
+    }
     std::unordered_map<std::uint32_t, BotEntry> const& Bots() const { return bots_; }
     MinuteCounts const& Minute() const { return minute_; }
     std::uint64_t Total(Cnt c) const { return total_[std::size_t(c)]; }
@@ -1230,6 +1334,12 @@ private:
                 m->state = MemberState::Acked;
                 m->ackKnown = true;
                 m->ackSec = nowSec_;
+                // T33-1 (K1-4): a follower acked after its group gathered gets its own deadline from its ack.
+                if (g->meetLever && g->meetGathered && m->low != g->leaderLow)
+                {
+                    m->meetAnchorMs = mgrMs_;
+                    m->meetDeadlineMs = MeetDeadline();
+                }
                 continue;
             }
             Count(Cnt::AckRef);
@@ -1278,6 +1388,8 @@ private:
                 g.realPlayerSinceMs = 0;
                 for (Member& m : g.m)
                 {
+                    // T30-1d: an open episode ends at the last pass before the gap (the base skips the gap as well).
+                    CloseOtherMap(g, m, "resume", "-", lastPassMs_, &io);
                     if (m.opExecMs)
                         m.opExecMs = manager_inbox::PostStamp(now_);
                     if (m.sentMs)
@@ -1448,6 +1560,60 @@ private:
             " levels=%u-%u map=%u cohort=%c", g.serial, g.coreGroupId, TypeName(g.type), g.questId, int(g.objective), g.leaderLow, acked,
             hi ? lo : 0u, hi, g.mapId, cohort::InB(g.leaderLow) ? 'B' : 'A');
         Emit(io, line);
+        if (g.meetLever)
+            OpenMeeting(g, io);
+    }
+
+    // ---- T33-1: the meeting (design T33 2.3-2.5; owner F1, F3, F7, F12-F16 = (a)) ----
+    // Opened at formed (F16 (a)): the anchor and the one deadline on the manager clock.
+    void OpenMeeting(ManagedGroup& g, Io& io)
+    {
+        g.meetOpen = true;
+        g.meetAnchorMs = mgrMs_;
+        g.meetDeadlineMs = MeetDeadline();
+        ++lever_.open;
+        char line[256];
+        std::snprintf(line, sizeof(line), "[GroupMgr] event=gather_open group=%u type=%s mode=follow leader=%u map=%u minutes=%u",
+            g.serial, TypeName(g.type), g.leaderLow, g.mapId, std::uint32_t(legMs_ / 60000u));
+        Emit(io, line);
+    }
+
+    // anchor = now on the manager clock; never 0 (0 = no deadline, LegExpired), so RendezvousMinutes 0 expires at once.
+    std::uint64_t MeetDeadline() const { return std::max<std::uint64_t>(mgrMs_ + legMs_, 1u); }
+
+    // 2.5: after an off gap every open meeting and every late member's own deadline start again from now.
+    void MeetResume()
+    {
+        bool any = false;
+        for (auto& entry : groups_)
+        {
+            ManagedGroup& g = entry.second;
+            if (g.meetOpen)
+            {
+                g.meetDeadlineMs = MeetDeadline();
+                any = true;
+            }
+            for (Member& m : g.m)
+                if (m.meetDeadlineMs)
+                {
+                    m.meetDeadlineMs = MeetDeadline();
+                    any = true;
+                }
+        }
+        lever_.resume += any ? 1 : 0;
+    }
+
+    // Every meeting that opened ends in gathered or in exactly one gather_end (design 8.1: gathered + gather_end = gather_open).
+    void CloseMeeting(ManagedGroup& g, char const* why, Io& io)
+    {
+        if (!g.meetOpen)
+            return;
+        g.meetOpen = false;
+        ++lever_.ended;
+        char line[256];
+        std::snprintf(line, sizeof(line), "[GroupMgr] event=gather_end group=%u reason=%s arrived=%u/%u ms=%llu", g.serial, why,
+            g.meetArrived, g.meetJudged, (unsigned long long)(mgrMs_ - g.meetAnchorMs));
+        Emit(io, line);
     }
 
     // ---- directives ----
@@ -1458,6 +1624,12 @@ private:
         d.type = g.type;
         d.objective = g.objective;
         d.serial = std::uint16_t(g.serial);
+        // T33-1 (3.1, F1 (a)): a meeting group's Enter carries b15 = 1, kind a (follow); without the lever byte-equal to T30.
+        if (g.meetLever)
+        {
+            d.gatherFlag = true;
+            d.gatherKind = kGatherKindFollow;
+        }
         std::uint32_t const seq = NextSeq();
         bool const ok = io.PostDirective(m.low, MakeDirective(seq, d, g.questId, g.mapId, g.anchorX, g.anchorY, now_));
         DirectiveLine(io, g, m.low, seq, d, ok);
@@ -1539,10 +1711,65 @@ private:
     }
 
     // ---- ending a member / a group ----
+    // T30-1d: a QUEST follower on another map than its leader (OB-10 review of R9, B4). An episode opens on fresh snapshots
+    // that show two maps and counts only once confirmed: a later pass still shows two maps on snapshots of both received at or
+    // after the open. Without that a joint map change (portal, boat, a dissolving leader_stuck group) would make a phantom
+    // episode of up to one status period, so an unconfirmed close only counts follow_other_map_short. The episode closes when
+    // both are on one map again (end=back), when the member ends (end=ended with its reason: every end, switch_off and disarm
+    // included), when it leaves the bot map (end=gone, ForgetGone) or at a resume (end=resume, at the last pass before the gap:
+    // the base skips the gap too). One line per counted episode (the line budget) and the minute2 counters, which count even
+    // when lines drop.
+    void OtherMapEpisode(ManagedGroup& g, Member& m, bool otherMap, std::uint32_t leaderRcvMs, std::uint32_t memberRcvMs, Io& io)
+    {
+        if (otherMap && !m.otherMapSinceMs)
+        {
+            m.otherMapSinceMs = manager_inbox::PostStamp(now_);
+            m.otherMapConfirmed = false;
+        }
+        else if (otherMap && !m.otherMapConfirmed && !After(m.otherMapSinceMs, leaderRcvMs) && !After(m.otherMapSinceMs, memberRcvMs))
+            m.otherMapConfirmed = true;
+        else if (!otherMap && m.otherMapSinceMs)
+            CloseOtherMap(g, m, "back", "-", now_, &io);
+    }
+
+    // Closes an open episode at atMs; io null (ForgetGone runs before the pass) queues the line for the next pass.
+    void CloseOtherMap(ManagedGroup& g, Member& m, char const* end, char const* reason, std::uint32_t atMs, Io* io)
+    {
+        if (!m.otherMapSinceMs)
+            return;
+        std::uint32_t const ms = After(atMs, m.otherMapSinceMs) ? atMs - m.otherMapSinceMs : 0u;
+        bool const confirmed = m.otherMapConfirmed;
+        m.otherMapSinceMs = 0;
+        m.otherMapConfirmed = false;
+        if (!confirmed)
+        {
+            Count(Cnt::FollowOtherMapShort);
+            return;
+        }
+        Count(Cnt::FollowOtherMap);
+        Count(Cnt::FollowOtherMapMs, ms);
+        if (ms >= kOtherMapLongMs)
+            Count(Cnt::FollowOtherMap600);
+        minute_.otherMapMaxMs = std::max<std::uint64_t>(minute_.otherMapMaxMs, ms);
+        if (io)
+            OtherMapLine(*io, g.serial, m.low, ms, end, reason);
+        else
+            goneEpisodes_.push_back(GoneEpisode{ g.serial, m.low, ms });
+    }
+
+    void OtherMapLine(Io& io, std::uint32_t serial, std::uint32_t low, std::uint32_t ms, char const* end, char const* reason)
+    {
+        char line[192];
+        std::snprintf(line, sizeof(line), "[GroupMgr] event=other_map group=%u bot=%u ms=%u end=%s reason=%s", serial, low, ms, end,
+            reason);
+        Emit(io, line);
+    }
+
     void EndMember(ManagedGroup& g, Member& m, EndReason why, Io& io, bool mayBeGrouped)
     {
         if (m.state == MemberState::Leaving || m.state == MemberState::Left)
             return;
+        CloseOtherMap(g, m, "ended", EndReasonName(why), now_, &io);
         m.reason = why;
         ++minute_.leave[std::size_t(why)];
         ++totalLeave_[std::size_t(why)];
@@ -1619,6 +1846,7 @@ private:
             return;
         g.state = GroupState::Ending;
         g.endReason = why;
+        CloseMeeting(g, EndReasonName(why), io);   // T33-1: an open meeting ends with its group
         // Non-leaders first: the last leave dissolves the core group (GroupOps.cpp RunLeave).
         for (Member& m : g.m)
             if (m.low != g.leaderLow)
@@ -1632,6 +1860,7 @@ private:
     {
         if (m.state == MemberState::Left)
             return;
+        CloseOtherMap(g, m, "ended", EndReasonName(m.reason), now_, &io);
         m.state = MemberState::Left;
         m.leaveWanted = false;
         m.leaveQueued = false;
@@ -1677,7 +1906,7 @@ private:
                     Count(Cnt::JoinFailed);
                     EndMember(g, m, EndReason::JoinFailed, io, true);
                 }
-                else if (m.state == MemberState::Directed && now_ - m.sentMs > kAckTimeoutMs)
+                else if (m.state == MemberState::Directed && now_ - m.sentMs > ackTimeoutMs_)
                 {
                     Count(Cnt::AckTimeout);
                     EndMember(g, m, EndReason::AckTimeout, io, true);
@@ -1694,7 +1923,7 @@ private:
             // F8 (a): the second Exit goes out one pass after the first failed (a full ring may have drained by then).
             if (entry.second.exitDue && !entry.second.exitOpen && passNo_ > entry.second.exitDuePass)
                 PostExit(entry.first, entry.second, io);
-            else if (entry.second.exitOpen && now_ - entry.second.exitSentMs > kAckTimeoutMs)
+            else if (entry.second.exitOpen && now_ - entry.second.exitSentMs > ackTimeoutMs_)
                 ExitFailure(entry.first, entry.second, io);
         }
         // A group still forming after kFormingMaxSec (a join that never got its turn): it ends, nothing stays half built.
@@ -1909,6 +2138,9 @@ private:
             manager_inbox::EdgeSnapshot const* e = FindEdge(in.edges, m.low);
             if (e && Fresh(e->receivedMs) && e->edge.groupId == g.coreGroupId)
                 ++reporters;
+            // T30-1d: the base of follow_other_map - every acked follower (silent or bg_wait too) for the time since the last pass.
+            if (m.state == MemberState::Acked && m.low != g.leaderLow)
+                Count(Cnt::FollowQuestMs, passDeltaMs_);
             if (m.state != MemberState::Acked || m.silent || m.bgWait)
                 continue;
             ++members;
@@ -1917,6 +2149,10 @@ private:
                 continue;
             manager_inbox::KeyFacts const k = manager_inbox::UnpackKey(s->key);
             TrackProgress(g, m, k);
+            // T30-1d: an episode opens or closes only on fresh snapshots of the follower and its leader (no old map after a
+            // teleport); without them it stays as it is.
+            if (m.low != g.leaderLow && ls && Fresh(ls->receivedMs) && Fresh(s->receivedMs))
+                OtherMapEpisode(g, m, ls->mapId != s->mapId, ls->receivedMs, s->receivedMs, io);
             bool const sameKey = k.questId == g.questId;
             if (sameKey && k.questStatus == manager_inbox::kQuestRewarded)
                 m.turnedIn = true;
@@ -1938,7 +2174,10 @@ private:
         bool const fewer = le && Fresh(le->receivedMs) && le->edge.groupId == g.coreGroupId && reporters < le->edge.members;
         g.realPlayerSinceMs = fewer ? (g.realPlayerSinceMs ? g.realPlayerSinceMs : manager_inbox::PostStamp(now_)) : 0;
         f.realPlayer = g.realPlayerSinceMs && now_ - g.realPlayerSinceMs >= kRealPlayerGraceMs;
-        quest_groups::Step const s = quest_groups::Decide(f, r.timers);
+        // T33-1: a meeting group - the T33 verdict replaces T30's gathered while the meeting is open, the late members.
+        if (g.meetLever)
+            MeetVerdict(g, in, f, io);
+        quest_groups::Step const s = quest_groups::Decide(g.meetOpen ? MaskRendezvous(f) : f, r.timers);
         if (s.dissolve != quest_groups::Dissolve::None)
         {
             EndGroup(g, FromDissolve(s.dissolve), io);
@@ -1948,7 +2187,95 @@ private:
         {
             g.phase = s.next;
             g.phaseSinceSec = nowSec_;
+            // T33-1: an open meeting can only leave Rendezvous to TurnIn (all complete before gathered): no meeting needed.
+            CloseMeeting(g, "complete", io);
         }
+        // T33-1 (2.5): the one deadline on the manager clock, after Decide's safety and end rules (S7's order: the rendezvous
+        // timeout comes last). The ladder of v1 is walk -> dissolve (O6 (a), no hearthstone): rendezvous_timeout, like S7.
+        GatherPoint leg;
+        leg.deadlineMs = g.meetDeadlineMs;
+        if (g.meetOpen && !in.resumed && LegExpired(mgrMs_, leg) && NextRung(Fallback::Walk, RungFacts()) == Fallback::Dissolve)
+        {
+            ++lever_.endTimeout;
+            EndGroup(g, EndReason::RendezvousTimeout, io);
+        }
+    }
+
+    // T33-1 (design 2.3, 2.4): the verdict of a meeting group in this pass. The judged members are T30's (acked, not silent, not
+    // in a BG queue), the leader not judged (F1 (a), like S7); against the leader's last GatherPlace (ArrivedForGroup, F7 (a):
+    // 2D 30 yd, no z; F12 (a): dead counts; F15 (a): another map is "not there"). A switch-off closes the meeting (2.8).
+    void MeetVerdict(ManagedGroup& g, PassInput const& in, quest_groups::GroupFacts& f, Io& io)
+    {
+        if (!GatherApplies(gatherNow_, leverNow_, g.type, g.leaderLow))
+        {
+            lever_.switchOff += g.meetOpen ? 1 : 0;
+            CloseMeeting(g, "switch_off", io);
+            g.meetLever = false;
+            for (Member& m : g.m)
+                m.meetDeadlineMs = 0;
+            return;
+        }
+        meetVerdicts_.clear();
+        for (Member const& m : g.m)
+            if (m.state == MemberState::Acked && !m.silent && !m.bgWait && m.low != g.leaderLow)
+            {
+                MemberVerdict v;
+                v.low = m.low;
+                meetVerdicts_.push_back(v);
+            }
+        StatusTable const noStatus;
+        PlaceTable const noPlaces;
+        GroupVerdict const v = ArrivedForGroup(g.leaderLow, meetVerdicts_, in.status ? *in.status : noStatus,
+            in.places ? *in.places : noPlaces, now_, in.gatherRules);
+        for (MemberVerdict const& mv : meetVerdicts_)
+        {
+            Member* m = nullptr;
+            for (Member& o : g.m)
+                if (o.low == mv.low)
+                    m = &o;
+            if (!m)
+                continue;
+            bool const late = m->meetDeadlineMs != 0;
+            if (mv.arrived && !m->meetCounted)
+            {
+                m->meetCounted = true;
+                ++lever_.arrived;
+                lever_.arrivedLate += late ? 1 : 0;
+                char line[256];
+                std::snprintf(line, sizeof(line), "[GroupMgr] event=arrived group=%u bot=%u ms=%llu late=%u dead=%u", g.serial, m->low,
+                    (unsigned long long)(mgrMs_ - (late ? m->meetAnchorMs : g.meetAnchorMs)), late ? 1u : 0u, mv.dead ? 1u : 0u);
+                Emit(io, line);
+            }
+            lever_.arrivedLost += g.meetOpen && m->meetArrived && !mv.arrived ? 1 : 0;
+            m->meetArrived = mv.arrived;
+            if (!late)
+                continue;
+            GatherPoint own;
+            own.deadlineMs = m->meetDeadlineMs;
+            if (mv.arrived)
+                m->meetDeadlineMs = 0;   // arrived: it follows the leader like the others (F14 (a)), no deadline of its own
+            else if (!in.resumed && LegExpired(mgrMs_, own))
+            {
+                // K1-4: only this member goes; the group stays while >= 2 are live (too_small otherwise, next pass).
+                m->meetDeadlineMs = 0;
+                ++lever_.memberTimeout;
+                EndMember(g, *m, EndReason::GatherTimeout, io, true);
+            }
+        }
+        if (!g.meetOpen)
+            return;
+        g.meetJudged = v.judged;
+        g.meetArrived = v.arrived;
+        f.gathered = v.gathered;
+        if (!v.gathered)
+            return;
+        g.meetOpen = false;
+        g.meetGathered = true;
+        ++lever_.gathered;
+        char line[256];
+        std::snprintf(line, sizeof(line), "[GroupMgr] event=gathered group=%u ms=%llu members=%u", g.serial,
+            (unsigned long long)(mgrMs_ - g.meetAnchorMs), v.judged + 1u);
+        Emit(io, line);
     }
 
     // Orphans (M2) and foreign groups of owned bots (F4 (a)), from the fresh edges.
@@ -2201,6 +2528,7 @@ private:
         g.anchorY = leader.s->y;
         g.createdSec = nowSec_;
         g.lastProgressSec = nowSec_;
+        g.meetLever = GatherApplies(gatherNow_, leverNow_, type, leader.low);   // T33-1: decided once, at creation
         g.m.push_back(NewMember(leader.low, true));
         bots_[leader.low].serial = serial;
         return g;
@@ -2430,6 +2758,14 @@ private:
             {
                 if (!m.opWanted || m.state != MemberState::Joining)
                     continue;
+                // T33-1 F13 (a): while the meeting is open (formed, not gathered) join n+1 waits; after gathered it joins and
+                // gets its own deadline (K1-4). The formation itself (Forming) is not held.
+                if (g.meetOpen)
+                {
+                    lever_.joinHeld += m.joinHeld ? 0 : 1;
+                    m.joinHeld = true;
+                    continue;
+                }
                 // QUEST join n+1 only with the confirmed core id (M8); the first join of a new group carries 0.
                 bool const first = !g.coreGroupId;
                 // A join still queued, or executed for a member that is still in (not ending): the core id comes from it. A
@@ -2583,7 +2919,11 @@ private:
             keyOverflowSeen_ = in.keyOverflow;
             return;
         }
-        if (in.nowMs - minuteStartMs_ < 60000)
+        // T30-1e (CLI-Projekt, R9 P5): the pass in which the registry empties with Types 0 (switch_off, the disarm) prints the
+        // minute lines once with the increments so far. From the next pass on RunDirectives returns early (no Types, nothing
+        // held), so that minute's switch_off leaves, acks, left acks and exits would never be printed.
+        bool const finalFlush = !r.types && heldAtPassStart_ && !HasGroups();
+        if (!finalFlush && in.nowMs - minuteStartMs_ < 60000)
             return;
         minuteStartMs_ = in.nowMs;
         linesThisMinute_ = 0;
@@ -2593,8 +2933,8 @@ private:
             it = now_ - it->second >= kLeaveConfirmMs ? strayMs_.erase(it) : std::next(it);
         for (auto it = skipLineMs_.begin(); it != skipLineMs_.end();)
             it = now_ - it->second >= kSkipLineMs ? skipLineMs_.erase(it) : std::next(it);
-        // 5.3: only while Types != 0 or the registry holds anything.
-        if (r.types || HasGroups())
+        // 5.3: only while Types != 0 or the registry holds anything, and once more in the pass that empties it (T30-1e).
+        if (r.types || HasGroups() || finalFlush)
         {
             stands_.groups = groups_.size();
             for (auto const& entry : groups_)
@@ -2604,6 +2944,12 @@ private:
                         continue;
                     ++stands_.members;
                     stands_.silent += m.silent ? 1 : 0;
+                    if (m.otherMapSinceMs)
+                    {
+                        ++minute_.otherMapOpen;
+                        minute_.otherMapOpenMaxMs = std::max<std::uint64_t>(minute_.otherMapOpenMaxMs,
+                            After(now_, m.otherMapSinceMs) ? now_ - m.otherMapSinceMs : 0u);
+                    }
                 }
             for (auto const& entry : skipUnknown_)
                 minute_.skipUnknown30m += nowSec_ - entry.second.sinceSec >= kSkipUnknownLongSec ? 1 : 0;
@@ -2614,6 +2960,8 @@ private:
             io.Line(buf);
         }
         minute_ = MinuteCounts();
+        if (finalFlush)
+            minuteStarted_ = false;   // T30-1e: a later start counts its first minute from its own first pass
     }
 
     struct StrayLeave
@@ -2657,11 +3005,28 @@ private:
     std::uint32_t nowSec_ = 0;
     std::uint32_t staleMs_ = manager_inbox::kStaleMinMs;
     std::uint32_t wishMs_ = 0;       // WishFreshMs: a wish counts only from the latest status period (OB-10 note on #984)
+    std::uint32_t ackTimeoutMs_ = kAckTimeoutMs;   // T30-1f: AckTimeoutMs(Rules::ackTimeoutSeconds), set at the start of Pass
+    // T33-1: the lever's inputs of this pass (set at the start of Pass) and its totals.
+    std::uint32_t gatherNow_ = 0;
+    std::uint32_t leverNow_ = 0;
+    std::uint64_t mgrMs_ = 0;
+    std::uint64_t legMs_ = 0;
+    std::vector<MemberVerdict> meetVerdicts_;   // reused per group
+    GatherLeverCounts lever_;
     std::uint32_t lastPassMs_ = 0;
+    std::uint32_t passDeltaMs_ = 0;   // T30-1d: now_ - lastPassMs_ of this pass (0 on the first)
+    struct GoneEpisode
+    {
+        std::uint32_t serial = 0;
+        std::uint32_t low = 0;
+        std::uint32_t ms = 0;
+    };
+    std::vector<GoneEpisode> goneEpisodes_;   // T30-1d: closed by ForgetGone (no Io there), their lines at the next pass
     bool passed_ = false;
     std::uint64_t passNo_ = 0;
     std::uint32_t lastQueueSweepMs_ = 0;
     bool minuteStarted_ = false;
+    bool heldAtPassStart_ = false;   // T30-1e: HasGroups() at the start of this pass
     std::uint32_t minuteStartMs_ = 0;
     std::uint32_t linesThisMinute_ = 0;
     std::uint64_t keyOverflowSeen_ = 0;

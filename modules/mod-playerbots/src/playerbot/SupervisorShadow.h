@@ -132,12 +132,12 @@ ThreadKind CurrentThreadKind();
 // Counted only while a shadow minute runs (enforcement implies the shadow, 2 >= 1).
 // A3 step 3 T02-GROUP (AiPlayerbot.Supervisor.Arbiter = 2, BotGroups.Manager.Types > 0; default 0): the three gate_off_* fields
 // of [ArbiterMin], then the [ArbiterGrp] block - one value per SupervisorPolicy.h GrpField, same names, same order (from DirEnter
-// to HandlerOff; SupervisorShadow.cpp asserts every value against its GrpField). The final list, in print order:
+// to GatherKind3; SupervisorShadow.cpp asserts every value against its GrpField). The final list, in print order:
 //   dir_enter dir_update dir_exit dir_bad superseded enter_ok enter_ref update_ok update_ref exit_ok exit_stale bad_ref
 //   ack_drop_enter ack_drop_exit left left_drop left_cancel r_deny r16 r19 r20 r21 r22 r23 r24 r25 orphan goal_done goal_lost
 //   rescue_in rescue_group rescue_back leader_far follow_make follow_turnin point_reapply held_group_copy goal_close prep_cancel
 //   close_burst close_warn band_held goal_adopt_enter goal_adopt_write cross_keep owner_q owner_g nonquest follow_self
-//   handler_off
+//   handler_off gather_kind3
 enum class EnforceCount : std::uint8_t
 {
     Deny,
@@ -202,13 +202,18 @@ enum class EnforceCount : std::uint8_t
     Nonquest,
     FollowSelf,
     HandlerOff,
+    GatherKind3,
 };
 constexpr EnforceCount kGrpFirst = EnforceCount::DirEnter;
-static_assert(std::size_t(EnforceCount::HandlerOff) - std::size_t(kGrpFirst) + 1 == kGrpFields,
+static_assert(std::size_t(EnforceCount::GatherKind3) - std::size_t(kGrpFirst) + 1 == kGrpFields,
     "the [ArbiterGrp] block of EnforceCount spans every GrpField");
 void CountEnforce(std::uint32_t guidLow, EnforceCount what);
 
 // One enforcement line (ev=deny, ev=probe, ev=mode) from the shared budget of 300 lines per minute; a refused line counts as
 // dropped. The text is written as given (already formatted and sanitized by the caller).
 void EmitEnforceLine(std::uint32_t guidLow, char const* text);
+
+// R9b V12: the disarming edge's ev=mode line only (cause=arbiter_disarm, Supervisor::DisarmEnforce). Outside the budget, never
+// dropped, counted in lines; bounded by one line per bot and disarming edge.
+void EmitEdgeLine(std::uint32_t guidLow, char const* text);
 }

@@ -1427,6 +1427,14 @@ AiPlayerbot.BotGroups.Manager = 0
 # snapshots, edges, wishes, stale_snap, cand_*, no_supervisor = table stands at the line).
 # 0 = no posts (default), 1..3600 seconds; a larger value acts like 3600 (one error line at load).
 AiPlayerbot.BotGroups.Manager.StatusSeconds = 0
+# A3 step 6 T30-1f (R9 V3): the manager's deadline in seconds for the ack of an Enter or an Exit directive (Manager.Types
+# below). Without an ack in time an Enter ends the membership (leave reason=ack_timeout) and an Exit goes out once more
+# (exit_pending); the second time without an ack it fails (exit_failed). A travelling roster bot passes only every 8.5-11.5 s
+# (AiPlayerbot.RosterFarMove waits its trip out in chunks of up to 10 s), so 10 s cuts some of its answers. 10 = the old fixed
+# deadline (default), 10..20; a smaller value acts like 10, a larger like 20 (one error line at load). The upper end keeps the
+# Exit, its deadline, the retry and its deadline inside the 60 s a bot in GROUP waits before it leaves an unmanaged group on
+# its own.
+AiPlayerbot.BotGroups.Manager.AckTimeoutSeconds = 10
 # A3 step 6 T30-1 (design T30 v1.1, owner decisions F1-F16 = (a)): the group types the manager forms and holds itself for the
 # roster bots of its cohort. Bit 1 = ADHOC (bots on the same quest objective nearby), bit 2 = QUEST (S7-style quest groups);
 # 3 = both. 0 = none (default): the game behaves exactly as before. With a type on, the manager owns its cohort's bots: the
@@ -1437,6 +1445,8 @@ AiPlayerbot.BotGroups.Manager.StatusSeconds = 0
 # line). Lines: "[GroupMgr] event=..." per op / directive / ack / end and "[GroupMgr] minute ..." / "[GroupMgr] minute2 ...".
 # All [GroupMgr] and [ManagerInbox] lines are key=value pairs; later pairs only append fields at the end. Evaluators parse the
 # key=value pairs and ignore keys they do not know (OB-10 rule).
+# T30-1e: the pass that empties the registry with Types 0 (switch_off, the disarm) prints minute and minute2 once more with
+# the increments of the minute so far (a shorter window); then the lines stop until the manager runs again.
 # T30-1b: a bot that leaves the GROUP mode itself (T02-GROUP; ack state 4 "left", seq 0, the group serial it held) ends its
 # membership only while its Enter is applied, the serial is that of its current group and no Exit of it is open; then
 # "[GroupMgr] event=self_left group= bot= reason=" and the member ends with bot_left_done (goal_done, a natural end),
@@ -1446,10 +1456,20 @@ AiPlayerbot.BotGroups.Manager.StatusSeconds = 0
 # not as too_small or switch_off; an increment), self_left= (an increment) and skip_unknown_30m= (a level, not an increment: the bots the manager skipped as
 # skip_unknown without a break for 30 minutes or more at the line), then left_stale= (T30-1c, an increment: left acks that did
 # not match).
+# T30-1d (measurement only): a QUEST follower whose fresh status shows another map than its leader's fresh status opens an
+# other-map episode; it counts once a later pass still shows two maps on snapshots of both received after the open (else a
+# joint map change would count). It closes when both are on one map again (end=back), when the member ends (end=ended with
+# its end reason, switch_off too), when it leaves the bot map (end=gone) or at a resume (end=resume, at the last pass before
+# the gap): "[GroupMgr] event=other_map group= bot= ms= end= reason=". minute2 then ends with follow_other_map= (counted
+# episodes closed), follow_other_map_600= (of them 10 minutes or longer), follow_other_map_ms= (their ms), follow_quest_ms=
+# (ms of the acked QUEST followers, leaders not included: the base), follow_other_map_short= (episodes closed before they
+# counted, no line), all increments, then follow_other_map_max_ms= (the longest episode closed in the minute),
+# follow_other_map_open= (open episodes at the line) and follow_other_map_open_max_ms= (the oldest open one's age), levels.
 # T30-1c: the manager acts only while the arbiter enforces, i.e. AiPlayerbot.Supervisor.Arbiter = 2 or the console
 # "rndbot arbiter enforce" (the T02-GROUP handler refuses Enter and Update below 2). Below 2, Types acts like 0 (no own line;
 # the config echo and the console line show the arbiter): the manager owns no bot, the legacy paths are open again and its
-# open groups end with switch_off.
+# open groups end with switch_off. The same holds for AiPlayerbot.Supervisor = 0 (a directive reaches only a bot with the
+# supervisor): the manager then owns no bot.
 AiPlayerbot.BotGroups.Manager.Types = 0
 # A3 step 6 T33-0 (design T33 v1.1, owner decisions F1-F17 = (a)): MEASUREMENT ONLY, default 0, no behaviour change. The
 # meeting shadow of the manager's QUEST groups ("Gather" = meeting up; not the gather strategy or GatherTravelDestination).
@@ -1463,12 +1483,32 @@ AiPlayerbot.BotGroups.Manager.Types = 0
 # deadline passed; t30_cut = T30's wall-clock rendezvous_timeout came first), both under their own 300 lines per minute, and
 # once a minute "[GroupMgr] minute3 gather= region_mismatch= z_out= place_jump_same= place_jump_other= gather_resume=
 # shadow_arrived= shadow_disagree= shadow_leg_expired= places= open= shadow_gathered= shadow_compared= shadow_t33_first=
-# shadow_t30_first= shadow_t30_cut= dead_at_point= shadow_lines_dropped=" (increments; gather, places = fresh places, open =
-# stands; shadow_disagree / shadow_compared count manager passes, shadow_t33_first / shadow_t30_first meetings).
+# shadow_t30_first= shadow_t30_cut= dead_at_point= shadow_lines_dropped= adhoc_formed= adhoc_arrived= adhoc_all= adhoc_never=
+# adhoc_open=" (increments; gather, places = fresh places, open and adhoc_open = stands; shadow_disagree / shadow_compared
+# count manager passes, shadow_t33_first / shadow_t30_first meetings). Manager ADHOC groups get no meeting, only the adhoc_*
+# counters of who is within 30 yd 2D of the group's formation anchor (every member but the leader, no z, no deadline, no
+# line): adhoc_all = groups once all there, adhoc_never = groups gone without that.
 # 0 = off (default), 1 = all, 2 = cohort B, 3 = cohort A by the group leader's guid (in T33-0 the cohort only labels the arm,
 # gather= in event=phase). Needs Manager.Types > 0 (else it acts like 0, one error line); any other value acts like 0 (one
 # error line).
 AiPlayerbot.BotGroups.Manager.Gather = 0
+# A3 step 6 T33-1 (design T33, owner decisions F1-F17 = (a), O6 (a); OB-00 13.11.2026: its own key): THE MEETING LEVER, default
+# 0. The lever acts ONLY with Lever = 1; Gather stays the measurement switch and the arm: Gather != 0 with Lever = 0 is the
+# shadow above alone, no behaviour change. With Lever = 1 a manager QUEST group whose leader is in the Gather arm (1 all,
+# 2 cohort B, 3 cohort A by the leader's guid) gets the meeting at formed: its Enter carries the meeting flag with "follow"
+# (the followers follow the leader, the leader travels, as S7 today); the manager judges "gathered" itself (every acked
+# follower within 30 yd 2D of the leader's last place, same map, no z, a dead bot at the point counts, like S7) and runs the
+# one deadline (QuestGroups.RendezvousMinutes from formed, on the manager clock); when it passes the group ends with
+# rendezvous_timeout (never a hidden hop, never a teleport, no hearthstone). Members not yet joined at formed wait until
+# gathered; one that joins after gathered gets its own deadline from its ack and leaves alone with gather_timeout. Lines:
+# "[GroupMgr] event=gather_open group= type=quest mode=follow leader= map= minutes=", "event=arrived group= bot= ms= late=0|1
+# dead=0|1", "event=gathered group= ms= members=", "event=gather_end group= reason= arrived=n/m ms=" (every meeting ends in
+# gathered or one gather_end), and the lever_* fields at the end of minute3 (lever= lever_open= lever_gathered=
+# lever_arrived= lever_arrived_late= lever_arrived_lost= lever_end= lever_end_timeout= lever_gather_timeout=
+# lever_switch_off= lever_join_held= lever_resume= lever_meetings=). Turning it off ends no group: an open meeting closes
+# (gather_end reason=switch_off) and the group goes on under the T30 rules. Needs Gather > 0 (else it acts like 0, one error
+# line); any other value acts like 0 (one error line).
+AiPlayerbot.BotGroups.Manager.Gather.Lever = 0
 # L1 (owner 07.11.2026, owner-ordered behaviour change): a bot resets its raid lockouts ("reset raids", which drops every bind
 # except the one of its current map, PERM included) only when a real player invites it. An invite by another bot or by a
 # bot-only world-thread group manager (ad-hoc, quest groups) keeps the bot's PERM raid binds; an accept run by the group op
@@ -1551,11 +1591,15 @@ AiPlayerbot.Supervisor = 0
 # [ArbiterMin]); a close-then-request errand or the travel target request waits (held_errand / held_request). Closes, the
 # null target, execution, survival, manager and commands (go, debug) are always admitted. Arming 2 moves the bots in the
 # quest book scope (roster, no real player master, not in a battleground, not parked) from Passive to Quest (one ev=mode
-# line); leaving 2 moves them back. Without group mode (a later pair) only a write without writer scope (unknown, test) on a
-# questbook-owned target is refused outside the probe.
-# 0 = off (default, rollback), 1 = shadow, 2 = enforce. Any other value acts like 0 (one error line at load). The console
+# line); leaving 2 moves them back. Without group mode (AiPlayerbot.BotGroups.Manager.Types = 0) only a write without writer
+# scope (unknown, test) on a questbook-owned target is refused outside the probe.
+# Default 2 since 12.11.2026 (C-unit T02-a ADOPT_PROPOSED + OB-10 OK, OB-00): it acts only where AiPlayerbot.Supervisor runs
+# (default 0, so with the default profile no bot is affected). At 2 the group manager's AiPlayerbot.BotGroups.Manager.Types
+# takes effect: a profile with Manager.Types > 0, AiPlayerbot.Supervisor on (SupervisorOn trap) and no Arbiter key now runs the
+# manager.
+# 0 = off (rollback), 1 = shadow, 2 = enforce (default). Any other value acts like 0 (off; one error line at load). The console
 # "rndbot arbiter on|off|enforce" overrides it until the next restart.
-AiPlayerbot.Supervisor.Arbiter = 0
+AiPlayerbot.Supervisor.Arbiter = 2
 # A3 step 3 T02-a: the arbiter probe, a self test of the gate on fixed probe bots (cohort B, low guid / 2 a multiple of 25),
 # at most once per bot every 10 minutes and only on an open travel target. With AiPlayerbot.Supervisor.Arbiter = 2 the group
 # lane owns the target for one engine pass, then a select write, a select copy and a questbook lane check must all be refused

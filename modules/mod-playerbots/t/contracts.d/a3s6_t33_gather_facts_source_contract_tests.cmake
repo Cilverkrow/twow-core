@@ -17,9 +17,13 @@ cmake_policy(VERSION 3.16)
 #       whole second (kT30SecondSlackMs; else t30_cut), also for a group the directive pass ended and swept in one pass (the
 #       engine's swept list, read only), no place_jump from a stale previous place, both leader snapshots fresh, the fixed
 #       minute3 field list, the event=phase and event=shadow_end lines;
-#   (e) T33-1 is absent: no Update verb sender, no b15, no MaskRendezvous/NextRung/ReanchorDue, no new caller of NextFallback,
-#       the ack reasons 19/20 unused; no movement, teleport or action in the manager, facts or shadow files; supervisor::Post(
-#       and ->Tick( keep their counts;
+#   (d2) T33-0b (design v1.2 7, 2.1, F2 (a)): manager ADHOC groups get no meeting, only anchor counters: AnchorPass (no line
+#       sink, an ending group not judged) calls ArrivedAtAnchor once (the formation anchor, the leader's instance only on an
+#       instanceable map, no z, nobody judged = not all there), a group gone while never all at its anchor is adhoc_never,
+#       Off forgets the anchors, the adhoc_* fields last in minute3;
+#   (e) the later T33 steps are absent (T33-1 the lever is pinned in a3s6_t33_lever): no Update verb sender, no ReanchorDue/
+#       kReanchorMs/PackUpdateVerb/rungSentMs, NextFallback only in its definition and NextRung, the ack reasons 19/20 unused; no
+#       movement, teleport or action in the manager, facts or shadow files; supervisor::Post( and ->Tick( keep their counts;
 #   (f) the unit test is registered and runs every test group.
 # Pure rules: t/group_gather_policy_tests.cpp. Every check_* returns "" when it holds, else the reason; the negative probes at
 # the end reuse them on mutated text.
@@ -120,7 +124,7 @@ endforeach()
 
 # ---- (a) the switch ----------------------------------------------------------------------------------------------------------
 set(LOAD "    botGroupsManagerGather = uint32(config.GetIntDefault(\"AiPlayerbot.BotGroups.Manager.Gather\", 0));\n    if (!ai::group_mgr::GatherValid(botGroupsManagerGather))\n    {\n        sLog.outError(\"[GroupMgr] config key=Manager.Gather value=%d result=off (0 off, 1 all, 2 cohort B, 3 cohort A)\",\n            int32(botGroupsManagerGather));\n        botGroupsManagerGather = 0;\n    }\n    if (botGroupsManagerGather && !botGroupsManagerTypes)\n    {\n        sLog.outError(\"[GroupMgr] config key=Manager.Gather value=%u result=0 (needs Manager.Types > 0)\", botGroupsManagerGather);\n        botGroupsManagerGather = ai::group_mgr::EffectiveGather(botGroupsManagerGather, botGroupsManagerTypes);\n    }")
-set(ECHO "            {\"BotGroups.Manager\", Value(botGroupsManager)},\n            {\"BotGroups.Manager.Gather\", Value(botGroupsManagerGather)},\n            {\"BotGroups.Manager.StatusSeconds\", Value(botGroupsManagerStatusSeconds)},\n")
+set(ECHO "            {\"BotGroups.Manager\", Value(botGroupsManager)},\n            {\"BotGroups.Manager.AckTimeoutSeconds\", Value(botGroupsManagerAckTimeoutSeconds)},\n            {\"BotGroups.Manager.Gather\", Value(botGroupsManagerGather)},\n            {\"BotGroups.Manager.Gather.Lever\", Value(botGroupsManagerGatherLever)},\n            {\"BotGroups.Manager.StatusSeconds\", Value(botGroupsManagerStatusSeconds)},\n")
 
 function(check_switch config_h config_cpp conf_dist gather_h out)
   string(FIND "${config_h}" "    uint32 botGroupsManagerGather = 0;" at)
@@ -296,10 +300,7 @@ function(check_manager mgr_h mgr_cpp out)
       "    if (resumedPass_)\n        places_.clear();"
       "    in.mgrMs = mgrMs_;"
       "    in.resumed = resumedPass_;"
-      "    in.rules.radius = kGatherYards;"
-      "    in.rules.zBand = kZUnknown;"
-      "    in.rules.deadCounts = true;"
-      "    in.rules.maxAgeMs = PlaceMaxAgeMs(sPlayerbotAIConfig.botGroupsManagerStatusSeconds, sPlayerbotAIConfig.randomBotUpdateInterval);"
+      "    in.rules = GatherRulesNow();"
       "    in.swept = &engine_.Swept();"
       "    gather_.Pass(engine_.Groups(), in, [&io](char const* line) { io.Line(line); });\n}")
     string(FIND "${run}" "${needle}" at)
@@ -308,9 +309,18 @@ function(check_manager mgr_h mgr_cpp out)
       return()
     endif()
   endforeach()
+  # T33-1: the shadow and the lever's verdict share one rule set (GatherRulesNow), so both judge arrival alike.
+  string(FIND "${mgr_cpp}" "GatherRules GatherRulesNow()\n{\n    GatherRules rules;\n    rules.radius = kGatherYards;\n    rules.zBand = kZUnknown;\n    rules.deadCounts = true;\n    rules.maxAgeMs = PlaceMaxAgeMs(sPlayerbotAIConfig.botGroupsManagerStatusSeconds, sPlayerbotAIConfig.randomBotUpdateInterval);\n    return rules;\n}" at)
+  count_text("${mgr_cpp}" "GatherRulesNow()" n)
+  if(at EQUAL -1 OR NOT n EQUAL 3)
+    set(${out} "manager: GatherRulesNow is not the one rule set (radius, zBand, deadCounts, maxAgeMs) or used ${n} times (3 expected: body, directive input, RunGather)" PARENT_SCOPE)
+    return()
+  endif()
   # The shadow reads the registry and the swept list: no other engine call, no op, no directive, no post in RunGather.
   string(REPLACE "engine_.Groups()" "" rest "${run}")
   string(REPLACE "engine_.Swept()" "" rest "${rest}")
+  string(REPLACE "engine_.Lever()" "" rest "${rest}")   # T33-1: the lever counters and open meetings for minute3 (read only)
+  string(REPLACE "engine_.MeetingsOpen()" "" rest "${rest}")
   foreach(bad "engine_" "group_ops::" "supervisor::" "Post(" "Enqueue" "Directive")
     string(FIND "${rest}" "${bad}" at)
     if(NOT at EQUAL -1)
@@ -325,8 +335,8 @@ function(check_manager mgr_h mgr_cpp out)
   endif()
   count_text("${mgr_cpp}" "places_" n)
   count_text("${mgr_cpp}" "DropGone(places_, bots);" nd)
-  if(NOT n EQUAL 6 OR NOT nd EQUAL 1)
-    set(${out} "manager: places_ used ${n} times in GroupManager.cpp (6 expected: off empty/clear, resume clear, input, store, drop) or not dropped with the tables" PARENT_SCOPE)
+  if(NOT n EQUAL 7 OR NOT nd EQUAL 1)
+    set(${out} "manager: places_ used ${n} times in GroupManager.cpp (7 expected: off empty/clear, resume clear, shadow input, T33-1 directive input, store, drop) or not dropped with the tables" PARENT_SCOPE)
     return()
   endif()
   count_text("${mgr_cpp}" "AdvanceClock(" n)
@@ -347,7 +357,7 @@ function(check_manager mgr_h mgr_cpp out)
 endfunction()
 
 # ---- (d) the shadow ----------------------------------------------------------------------------------------------------------
-set(MINUTE3 "\"[GroupMgr] minute3 gather=%u region_mismatch=%llu z_out=%llu place_jump_same=%llu\"\n        \" place_jump_other=%llu gather_resume=%llu shadow_arrived=%llu shadow_disagree=%llu shadow_leg_expired=%llu places=%llu\"\n        \" open=%llu shadow_gathered=%llu shadow_compared=%llu shadow_t33_first=%llu shadow_t30_first=%llu shadow_t30_cut=%llu\"\n        \" dead_at_point=%llu shadow_lines_dropped=%llu\"")
+set(MINUTE3 "\"[GroupMgr] minute3 gather=%u region_mismatch=%llu z_out=%llu place_jump_same=%llu\"\n        \" place_jump_other=%llu gather_resume=%llu shadow_arrived=%llu shadow_disagree=%llu shadow_leg_expired=%llu places=%llu\"\n        \" open=%llu shadow_gathered=%llu shadow_compared=%llu shadow_t33_first=%llu shadow_t30_first=%llu shadow_t30_cut=%llu\"\n        \" dead_at_point=%llu shadow_lines_dropped=%llu adhoc_formed=%llu adhoc_arrived=%llu adhoc_all=%llu adhoc_never=%llu\"\n        \" adhoc_open=%llu\"")
 set(PHASE "\"[GroupMgr] event=phase group=%u phase=%s ms=%llu gather=%u\"")
 set(SHADOW_END "\"[GroupMgr] event=shadow_end group=%u gather=%u result=%s ms=%llu arrived=%u/%u\"")
 set(T30_TIMEOUT "    if (why != EndReason::RendezvousTimeout)\n        return ShadowEnd::Closed;\n    GatherPoint leg;\n    leg.deadlineMs = deadlineMs;\n    return !resumed && LegExpired(mgrMs + kT30SecondSlackMs, leg) ? ShadowEnd::Expired : ShadowEnd::T30Cut;")
@@ -395,12 +405,20 @@ function(check_shadow gather_h shadow_h mgr_cpp all_sources out)
       return()
     endif()
   endforeach()
-  # The T33 arrival rule: S7's Arrived, only inside ArrivedForGroup; the shadow and the manager call only ArrivedForGroup.
+  # The T33 arrival rule: S7's Arrived, only inside ArrivedForGroup and (T33-0b) ArrivedAtAnchor; the shadow, the manager and
+  # (T33-1) the lever's verdict in GroupDirectivePolicy.h call only those.
   count_text("${gather_h}" "Arrived(" n)
   count_text("${shadow_h}\n${mgr_cpp}" "Arrived(" m)
   count_text("${all_sources}" "ArrivedForGroup(" k)
-  if(NOT n EQUAL 1 OR NOT m EQUAL 0 OR NOT k EQUAL 2)
-    set(${out} "shadow: Arrived( ${n} times in GroupGatherPolicy.h (1), ${m} in the shadow/manager (0), ArrivedForGroup( ${k} in the module (2)" PARENT_SCOPE)
+  if(NOT n EQUAL 2 OR NOT m EQUAL 0 OR NOT k EQUAL 3)
+    set(${out} "shadow: Arrived( ${n} times in GroupGatherPolicy.h (2), ${m} in the shadow/manager (0), ArrivedForGroup( ${k} in the module (3: definition, shadow, T33-1 lever verdict)" PARENT_SCOPE)
+    return()
+  endif()
+  # T33-0b review: ArrivedForGroup and ArrivedAtAnchor share the leader and arrival lines; each must keep its own copy.
+  count_text("${gather_h}" "        m.judged = m.low != leaderLow;" n)
+  count_text("${gather_h}" "        m.arrived = Arrived(place, point);" m)
+  if(NOT n EQUAL 2 OR NOT m EQUAL 2)
+    set(${out} "shadow: the leader rule ${n} times, the arrival line ${m} times in GroupGatherPolicy.h (2 each: ArrivedForGroup, ArrivedAtAnchor)" PARENT_SCOPE)
     return()
   endif()
   foreach(needle
@@ -455,6 +473,54 @@ function(check_shadow gather_h shadow_h mgr_cpp all_sources out)
   set(${out} "" PARENT_SCOPE)
 endfunction()
 
+# ---- (d2) T33-0b: ADHOC anchor counters ---------------------------------------------------------------------------------------
+set(ANCHOR_BRANCH "            if (g.type == GroupType::Adhoc)\n            {\n                AnchorPass(g, in);\n                continue;\n            }\n            if (g.type != GroupType::Quest)\n                continue;")
+set(ANCHOR_SIG "    void AnchorPass(ManagedGroup const& g, ShadowInput const& in)\n    {")
+set(ANCHOR_ENDING "        if (g.state == GroupState::Ending)\n            return;\n        verdicts_.clear();\n        for (Member const& m : g.m)\n            if (m.state == MemberState::Acked)\n            {\n                MemberVerdict v;\n                v.low = m.low;\n                verdicts_.push_back(v);\n            }")
+set(ANCHOR_ARGS "        (unsigned long long)d.linesDropped, (unsigned long long)d.adhocFormed, (unsigned long long)d.adhocArrived,\n        (unsigned long long)d.adhocAll, (unsigned long long)d.adhocNever, (unsigned long long)adhocOpen);")
+set(ANCHOR_DELTA "    d.adhocFormed = now.adhocFormed - seen.adhocFormed;\n    d.adhocArrived = now.adhocArrived - seen.adhocArrived;\n    d.adhocAll = now.adhocAll - seen.adhocAll;\n    d.adhocNever = now.adhocNever - seen.adhocNever;")
+# The last occurrence of needle replaced (a probe that mutates only the ArrivedAtAnchor copy of a shared line).
+function(replace_last text needle repl out)
+  string(FIND "${text}" "${needle}" at REVERSE)
+  string(SUBSTRING "${text}" 0 ${at} head)
+  string(LENGTH "${needle}" len)
+  math(EXPR tail "${at} + ${len}")
+  string(SUBSTRING "${text}" ${tail} -1 rest)
+  set(${out} "${head}${repl}${rest}" PARENT_SCOPE)
+endfunction()
+set(ANCHOR_CALL "        GroupVerdict const v = ArrivedAtAnchor(g.mapId, g.anchorX, g.anchorY, g.leaderLow, verdicts_, *in.status, *in.places,\n            in.nowMs, in.rules);")
+set(ANCHOR_NEVER "            counts_.adhocNever += it->second.open ? 1 : 0;\n            it = anchors_.erase(it);")
+set(ANCHOR_OFF "        meetings_.clear();\n        anchors_.clear();")
+set(ANCHOR_INSTANCE "    g.instanceId = leader && leader->place.mapId == mapId && leader->place.instanceable ? leader->place.instanceId : 0u;")
+set(ANCHOR_GATHERED "    v.gathered = v.judged > 0 && v.arrived == v.judged;")
+function(check_anchor gather_h shadow_h all_sources out)
+  foreach(needle "${ANCHOR_INSTANCE}" "    g.zBand = kZUnknown;\n    g.deadlineMs = 0;" "${ANCHOR_GATHERED}"
+      "    v.pointKnown = true;   // the anchor is fixed at creation"
+      "    GatherPoint const point = AnchorPointFor(mapId, x, y, leader, r.radius);")
+    string(FIND "${gather_h}" "${needle}" at)
+    if(at EQUAL -1)
+      set(${out} "anchor: GroupGatherPolicy.h missing ${needle}" PARENT_SCOPE)
+      return()
+    endif()
+  endforeach()
+  foreach(needle "${ANCHOR_BRANCH}" "${ANCHOR_SIG}" "${ANCHOR_ENDING}" "${ANCHOR_CALL}" "${ANCHOR_NEVER}" "${ANCHOR_OFF}"
+      "${ANCHOR_ARGS}" "${ANCHOR_DELTA}")
+    string(FIND "${shadow_h}" "${needle}" at)
+    if(at EQUAL -1)
+      set(${out} "anchor: GroupGatherShadow.h missing ${needle}" PARENT_SCOPE)
+      return()
+    endif()
+  endforeach()
+  # One rule, one caller (the definition + AnchorPass); AnchorPass has no line sink, so it writes no line.
+  count_text("${all_sources}" "ArrivedAtAnchor(" n)
+  count_text("${all_sources}" "AnchorPass(" m)
+  if(NOT n EQUAL 2 OR NOT m EQUAL 2)
+    set(${out} "anchor: ArrivedAtAnchor( ${n} times (2), AnchorPass( ${m} times (2) in the module" PARENT_SCOPE)
+    return()
+  endif()
+  set(${out} "" PARENT_SCOPE)
+endfunction()
+
 # The engine's swept list for the shadow: cleared at every pass start, one entry per group Sweep erases (serial and end
 # reason), read through a const accessor only; the engine never reads it back (no behaviour depends on it).
 function(check_swept directive_h out)
@@ -474,26 +540,28 @@ function(check_swept directive_h out)
   set(${out} "" PARENT_SCOPE)
 endfunction()
 
-# ---- (e) T33-1 absent, no movement -------------------------------------------------------------------------------------------
+# ---- (e) the later T33 steps absent, no movement ---------------------------------------------------------------------------
 function(check_absent mgr_h mgr_cpp facts_cpp gather_h shadow_h all_sources out)
-  foreach(bad "MaskRendezvous" "ReanchorDue" "kReanchorMs" "PackUpdateVerb" "GatherApplies" "rungSentMs")
+  # T33-1 (lever) added MaskRendezvous/GatherApplies and the one NextFallback caller (NextRung, GroupManagerPolicy.h); the
+  # re-anchor and the Update verb stay later steps.
+  foreach(bad "ReanchorDue" "kReanchorMs" "PackUpdateVerb" "rungSentMs")
     string(FIND "${all_sources}" "${bad}" at)
     if(NOT at EQUAL -1)
-      set(${out} "absent: T33-1 name ${bad} in the module" PARENT_SCOPE)
+      set(${out} "absent: later T33 name ${bad} in the module" PARENT_SCOPE)
       return()
     endif()
   endforeach()
   # kAckReasonGatherOtherMap 4 and kAckReasonNoOpenGroup 4 = definition and name in GroupDirectivePolicy.h (2 each) plus the
   # bot-side handler A3 step 3 T02-GROUP (#1026/#1027, SupervisorGroupPolicy.h: the Update acks 3/19 and 3/20 in ChangeCheck
-  # and their counters in ReasonField, 2 each). A manager use (T33-1) makes it 5 and fails here.
-  foreach(pair "NextFallback(@1" "Verb::Update@1" "kAckReasonGatherOtherMap@4" "kAckReasonNoOpenGroup@4" "supervisor::Post(@1" "->Tick(@1")
+  # and their counters in ReasonField, 2 each). A manager use makes it 5 and fails here.
+  foreach(pair "NextFallback(@2" "Verb::Update@1" "kAckReasonGatherOtherMap@4" "kAckReasonNoOpenGroup@4" "supervisor::Post(@1" "->Tick(@1")
     string(FIND "${pair}" "@" cut)
     string(SUBSTRING "${pair}" 0 ${cut} needle)
     math(EXPR cut "${cut} + 1")
     string(SUBSTRING "${pair}" ${cut} -1 want)
     count_text("${all_sources}" "${needle}" n)
     if(NOT n EQUAL want)
-      set(${out} "absent: ${needle} appears ${n} times in the module (${want} expected: no T33-1 use)" PARENT_SCOPE)
+      set(${out} "absent: ${needle} appears ${n} times in the module (${want} expected: no use beyond T33-1)" PARENT_SCOPE)
       return()
     endif()
   endforeach()
@@ -520,7 +588,8 @@ function(check_unit tests_cmake unit_test out)
   endforeach()
   foreach(needle "    TestSwitch();" "    TestPack();" "    TestJump();" "    TestPlaceOf();" "    TestGatherPoint();" "    TestArrivedForGroup();"
       "    TestAdvanceClock();" "    TestShadowVerdicts();" "    TestShadowDeadline();" "    TestShadowScope();" "    TestShadowMinute();"
-      "    TestShadowEnd();" "    TestShadowSecondSlack();" "    TestShadowSwept();" "    TestPlaceJumpStale();")
+      "    TestShadowEnd();" "    TestShadowSecondSlack();" "    TestShadowSwept();" "    TestPlaceJumpStale();"
+      "    TestArrivedAtAnchor();" "    TestShadowAnchor();")
     string(FIND "${unit_test}" "${needle}" at)
     if(at EQUAL -1)
       set(${out} "unit: t/group_gather_policy_tests.cpp main misses ${needle}" PARENT_SCOPE)
@@ -541,6 +610,8 @@ check_shadow("${gather_h}" "${shadow_h}" "${mgr_cpp}" "${all_sources}" r)
 fail_if("${r}")
 check_swept("${directive_h}" r)
 fail_if("${r}")
+check_anchor("${gather_h}" "${shadow_h}" "${all_sources}" r)
+fail_if("${r}")
 check_absent("${mgr_h}" "${mgr_cpp}" "${facts_cpp}" "${gather_h}" "${shadow_h}" "${all_sources}" r)
 fail_if("${r}")
 check_unit("${tests_cmake}" "${unit_test}" r)
@@ -560,8 +631,8 @@ expect_reason("Gather on without manager types" "${r}" "does not read Gather")
 string(REPLACE "    return raw <= cohort::ModeOnlyA;" "    return true;" m "${gather_h}")
 check_switch("${config_h}" "${config_cpp}" "${conf_dist}" "${m}" r)
 expect_reason("any value valid" "${r}" "GroupGatherPolicy.h missing")
-string(REPLACE "            {\"BotGroups.Manager.Gather\", Value(botGroupsManagerGather)},\n            {\"BotGroups.Manager.StatusSeconds\", Value(botGroupsManagerStatusSeconds)},\n"
-  "            {\"BotGroups.Manager.StatusSeconds\", Value(botGroupsManagerStatusSeconds)},\n            {\"BotGroups.Manager.Gather\", Value(botGroupsManagerGather)},\n" m "${config_cpp}")
+string(REPLACE "            {\"BotGroups.Manager.Gather\", Value(botGroupsManagerGather)},\n            {\"BotGroups.Manager.Gather.Lever\", Value(botGroupsManagerGatherLever)},\n"
+  "            {\"BotGroups.Manager.Gather.Lever\", Value(botGroupsManagerGatherLever)},\n            {\"BotGroups.Manager.Gather\", Value(botGroupsManagerGather)},\n" m "${config_cpp}")
 check_switch("${config_h}" "${m}" "${conf_dist}" "${gather_h}" r)
 expect_reason("echo unsorted" "${r}" "sorted place")
 string(REPLACE "AiPlayerbot.BotGroups.Manager.Gather = 0" "AiPlayerbot.BotGroups.Manager.Gather = 1" m "${conf_dist}")
@@ -624,7 +695,7 @@ string(REPLACE "std::unordered_map<std::uint32_t, ManagedGroup> const& groups" "
 check_shadow("${gather_h}" "${m}" "${mgr_cpp}" "${all_sources}" r)
 expect_reason("a writable registry view" "${r}" "const view")
 check_shadow("${gather_h}" "${shadow_h}" "${mgr_cpp}\n    bool a = Arrived(p, g);" "${all_sources}" r)
-expect_reason("the arrival rule in the manager" "${r}" "Arrived\\( 1 times in GroupGatherPolicy.h \\(1\\), 1 in")
+expect_reason("the arrival rule in the manager" "${r}" "Arrived\\( 2 times in GroupGatherPolicy.h \\(2\\), 1 in")
 string(REPLACE "        if (!in.resumed && LegExpired(in.mgrMs, leg))" "        if (LegExpired(in.mgrMs, leg))" m "${shadow_h}")
 check_shadow("${gather_h}" "${m}" "${mgr_cpp}" "${all_sources}" r)
 expect_reason("a deadline in a resumed pass" "${r}" "GroupGatherShadow.h missing")
@@ -670,17 +741,61 @@ expect_reason("a shadow_end line past the budget" "${r}" "bypass the budget")
 string(REPLACE "        if (linesThisMinute_ >= kLinesPerMinute)\n" "        if (false)\n" m "${shadow_h}")
 check_shadow("${gather_h}" "${m}" "${mgr_cpp}" "${all_sources}" r)
 expect_reason("phase lines without the budget" "${r}" "GroupGatherShadow.h missing")
-# (e) a T33-1 lever piece, the reason codes used, a teleport in the manager, a new NextFallback caller, a second supervisor post.
-check_absent("${mgr_h}" "${mgr_cpp}" "${facts_cpp}" "${gather_h}" "${shadow_h}" "${all_sources}\ninline std::uint32_t MaskRendezvous(std::uint32_t b) { return b; }" r)
-expect_reason("MaskRendezvous added" "${r}" "T33-1 name MaskRendezvous")
+# (d2) ADHOC not counted, a line sink in AnchorPass, an ending group judged, a second anchor caller, the instance rule
+#      dropped, an empty group counted as all there, the never count lost, Off keeping the anchors, the adhoc fields moved.
+string(REPLACE "${ANCHOR_BRANCH}" "            if (g.type != GroupType::Quest)\n                continue;" m "${shadow_h}")
+check_anchor("${gather_h}" "${m}" "${all_sources}" r)
+expect_reason("ADHOC not counted" "${r}" "GroupGatherShadow.h missing")
+string(REPLACE "${ANCHOR_SIG}" "    template <typename Sink>\n    void AnchorPass(ManagedGroup const& g, ShadowInput const& in, Sink const& line)\n    {" m "${shadow_h}")
+check_anchor("${gather_h}" "${m}" "${all_sources}" r)
+expect_reason("AnchorPass with a line sink" "${r}" "GroupGatherShadow.h missing")
+string(REPLACE "        if (g.state == GroupState::Ending)\n            return;\n        verdicts_.clear();" "        verdicts_.clear();" m "${shadow_h}")
+check_anchor("${gather_h}" "${m}" "${all_sources}" r)
+expect_reason("an ending group judged" "${r}" "GroupGatherShadow.h missing")
+string(REPLACE "            return;\n        verdicts_.clear();\n        for (Member const& m : g.m)\n            if (m.state == MemberState::Acked)\n"
+  "            return;\n        verdicts_.clear();\n        for (Member const& m : g.m)\n            if (true)\n" m "${shadow_h}")
+check_anchor("${gather_h}" "${m}" "${all_sources}" r)
+expect_reason("AnchorPass judges every member state" "${r}" "GroupGatherShadow.h missing")
+replace_last("${gather_h}" "        m.judged = m.low != leaderLow;" "        m.judged = true;" m)
+check_shadow("${m}" "${shadow_h}" "${mgr_cpp}" "${all_sources}" r)
+expect_reason("the anchor rule judges the leader" "${r}" "the leader rule 1 times")
+replace_last("${gather_h}" "        m.arrived = Arrived(place, point);" "        m.arrived = Arrived(place, point) || place.inWorld;" m)
+check_shadow("${m}" "${shadow_h}" "${mgr_cpp}" "${all_sources}" r)
+expect_reason("the anchor arrival rule widened" "${r}" "the arrival line 1 times")
+string(REPLACE "(unsigned long long)d.adhocAll, (unsigned long long)d.adhocNever," "(unsigned long long)d.adhocNever, (unsigned long long)d.adhocAll," m "${shadow_h}")
+check_anchor("${gather_h}" "${m}" "${all_sources}" r)
+expect_reason("adhoc_all and adhoc_never swapped" "${r}" "GroupGatherShadow.h missing")
+string(REPLACE "    d.adhocAll = now.adhocAll - seen.adhocAll;" "    d.adhocAll = now.adhocNever - seen.adhocNever;" m "${shadow_h}")
+check_anchor("${gather_h}" "${m}" "${all_sources}" r)
+expect_reason("a crossed adhoc delta" "${r}" "GroupGatherShadow.h missing")
+check_anchor("${gather_h}" "${shadow_h}" "${all_sources}\n    ArrivedAtAnchor(0, 0.0f, 0.0f, 1, v, s, p, 0, r);" r)
+expect_reason("a second anchor caller" "${r}" "ArrivedAtAnchor\\( 3 times")
+string(REPLACE "${ANCHOR_INSTANCE}" "    g.instanceId = 0u;" m "${gather_h}")
+check_anchor("${m}" "${shadow_h}" "${all_sources}" r)
+expect_reason("the instance rule dropped" "${r}" "GroupGatherPolicy.h missing")
+string(REPLACE "${ANCHOR_GATHERED}" "    v.gathered = v.arrived == v.judged;" m "${gather_h}")
+check_anchor("${m}" "${shadow_h}" "${all_sources}" r)
+expect_reason("an empty group counted as all there" "${r}" "GroupGatherPolicy.h missing")
+string(REPLACE "            counts_.adhocNever += it->second.open ? 1 : 0;\n" "" m "${shadow_h}")
+check_anchor("${gather_h}" "${m}" "${all_sources}" r)
+expect_reason("the never count lost" "${r}" "GroupGatherShadow.h missing")
+string(REPLACE "${ANCHOR_OFF}" "        meetings_.clear();" m "${shadow_h}")
+check_anchor("${gather_h}" "${m}" "${all_sources}" r)
+expect_reason("Off keeps the anchors" "${r}" "GroupGatherShadow.h missing")
+string(REPLACE " shadow_lines_dropped=%llu adhoc_formed=%llu" " adhoc_formed=%llu shadow_lines_dropped=%llu" m "${shadow_h}")
+check_shadow("${gather_h}" "${m}" "${mgr_cpp}" "${all_sources}" r)
+expect_reason("adhoc fields not last" "${r}" "GroupGatherShadow.h missing")
+# (e) a later T33 piece (re-anchor), the reason codes used, a teleport in the manager, a new NextFallback caller, a second supervisor post.
+check_absent("${mgr_h}" "${mgr_cpp}" "${facts_cpp}" "${gather_h}" "${shadow_h}" "${all_sources}\ninline std::uint32_t ReanchorDue(std::uint32_t b) { return b; }" r)
+expect_reason("ReanchorDue added" "${r}" "later T33 name ReanchorDue")
 check_absent("${mgr_h}" "${mgr_cpp}" "${facts_cpp}" "${gather_h}" "${shadow_h}" "${all_sources}\n    a.reason = kAckReasonGatherOtherMap;" r)
 expect_reason("reason 19 used" "${r}" "kAckReasonGatherOtherMap appears 5 times")
 check_absent("${mgr_h}" "${mgr_cpp}" "${facts_cpp}" "${gather_h}" "${shadow_h}" "${all_sources}\n    a.reason = kAckReasonNoOpenGroup;" r)
 expect_reason("reason 20 used" "${r}" "kAckReasonNoOpenGroup appears 5 times")
 check_absent("${mgr_h}" "${mgr_cpp}" "${facts_cpp}" "${gather_h}" "${shadow_h}" "${all_sources}\n    d.verb = Verb::Update;" r)
 expect_reason("the Update verb sent" "${r}" "Verb::Update appears 2 times")
-check_absent("${mgr_h}" "${mgr_cpp}" "${facts_cpp}" "${gather_h}" "${shadow_h}" "${all_sources}\n    f = NextFallback(f, true, false);" r)
-expect_reason("a NextFallback caller" "${r}" "NextFallback\\( appears 2 times")
+check_absent("${mgr_h}" "${mgr_cpp}" "${facts_cpp}" "${gather_h}" "${shadow_h}" "${all_sources}\n    f = NextFallback(f, true, true);" r)
+expect_reason("a NextFallback caller" "${r}" "NextFallback\\( appears 3 times")
 check_absent("${mgr_h}" "${mgr_cpp}\n    bot->TeleportTo(map, x, y, z, 0.0f);" "${facts_cpp}" "${gather_h}" "${shadow_h}" "${all_sources}" r)
 expect_reason("a teleport in the manager" "${r}" "movement or action TeleportTo")
 check_absent("${mgr_h}" "${mgr_cpp}" "${facts_cpp}" "${gather_h}" "${shadow_h}" "${all_sources}\n    ai::supervisor::Post(1, ev);" r)

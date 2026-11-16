@@ -488,11 +488,20 @@ inline AdoptKind AdoptCheck(bool& adoptDue, LiveClass live, bool groupOwns)
 
 // ---- move kind (design 7.6, Q8 (a)) -----------------------------------------------------------------------------------------
 // b13-14 gatherKind: 0 kind a (follow), 1 kind b (point at the leader's place), 2 kind c (meeting point); 3 is not defined and
-// counts as kind a (UNVERIFIED against T33-0: CLI-GRP owns the values). b15 gatherFlag 0: the leader travels by the quest book to
-// c, the others follow the leader (T30, until T33-0).
+// moves as kind a with no ack 3 (an ack 3 would end the group by ack_refused), counted gather_kind3 (T33 design v1.3 Nachtrag 2,
+// CLI-GRP 11.11.: the manager never packs kind 3). b15 gatherFlag 0: the leader travels by the quest book to c, the others follow
+// the leader (T30, until T33-0).
 constexpr std::uint8_t kGatherFollow = 0;
 constexpr std::uint8_t kGatherAtLeader = 1;
 constexpr std::uint8_t kGatherMeet = 2;
+constexpr std::uint8_t kGatherUndefined = 3;
+
+// gather_kind3: a taken Enter or Change (an Exit packs no kind) whose kind is 3, any gather flag. Counted in HandleMail, once per
+// directive, superseded or not; the kind still moves as kind a (ChooseMove).
+inline bool GatherKindUndefined(VerbClass v, std::uint8_t gatherKind)
+{
+    return (v == VerbClass::Enter || v == VerbClass::Change) && gatherKind == kGatherUndefined;
+}
 
 enum class MoveKind : std::uint8_t
 {

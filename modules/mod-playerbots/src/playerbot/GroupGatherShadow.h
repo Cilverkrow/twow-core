@@ -16,10 +16,11 @@
 // T30 leaves the pass with) and runs a virtual deadline on the manager clock (anchor = formed, F16 (a); RendezvousMinutes).
 // It reads the engine's registry after the pass and never writes it: no directive, no op, no end, no phase change. The world
 // thread runs it after the directive pass (GroupManager.cpp RunGather), only while Gather != 0; the lines go through the
-// manager's one log line (Io::Line). ADHOC groups are not measured (design 7 T33-0 row; 2.1 also names an ADHOC counter).
+// manager's one log line (Io::Line). T33-0b (design v1.2 7, 2.1, F2 (a)): manager ADHOC groups get no meeting, only counters of
+// who is at their formation anchor (ArrivedAtAnchor; minute3 adhoc_* fields).
 namespace ai::group_mgr
 {
-using PlaceTable = std::unordered_map<std::uint32_t, PlaceSnapshot>;
+// PlaceTable (guid low -> latest GatherPlace) lives in GroupDirectivePolicy.h since T33-1 (the engine reads it for the lever).
 
 // Totals since the shadow was switched on; the minute line prints their increments (5.3).
 struct GatherCounts
@@ -39,6 +40,11 @@ struct GatherCounts
     std::uint64_t legExpired = 0;       // meetings whose virtual deadline on the manager clock passed before T33 saw them gathered
     std::uint64_t t30Cut = 0;           // meetings T30 ended with rendezvous_timeout before the virtual deadline (wall clock)
     std::uint64_t linesDropped = 0;     // shadow event lines over the minute cap
+    // T33-0b (F2 (a)): manager ADHOC groups at their formation anchor, counters only.
+    std::uint64_t adhocFormed = 0;      // ADHOC groups first seen forming that formed (measured from formed)
+    std::uint64_t adhocArrived = 0;     // members judged at the anchor, once per member and group
+    std::uint64_t adhocAll = 0;         // groups with a pass in which every judged member was at the anchor (once per group)
+    std::uint64_t adhocNever = 0;       // measured groups that left the registry without such a pass
 };
 
 inline GatherCounts GatherDelta(GatherCounts const& now, GatherCounts const& seen)
@@ -59,25 +65,80 @@ inline GatherCounts GatherDelta(GatherCounts const& now, GatherCounts const& see
     d.legExpired = now.legExpired - seen.legExpired;
     d.t30Cut = now.t30Cut - seen.t30Cut;
     d.linesDropped = now.linesDropped - seen.linesDropped;
+    d.adhocFormed = now.adhocFormed - seen.adhocFormed;
+    d.adhocArrived = now.adhocArrived - seen.adhocArrived;
+    d.adhocAll = now.adhocAll - seen.adhocAll;
+    d.adhocNever = now.adhocNever - seen.adhocNever;
     return d;
 }
 
-// "[GroupMgr] minute3 ...": the T33-0 fields of design 5.3 in its order (T33-1 inserts its lever fields after gather=, as in
-// 5.3), then the T33-0 additions; fixed. Increments except gather (the switch), places (fresh entries of the table) and open
-// (open shadow meetings). shadow_disagree and shadow_compared count passes, shadow_t33_first / shadow_t30_first meetings.
+// "[GroupMgr] minute3 ...": the T33-0 fields of design 5.3 in its order, then the T33-0 additions; fixed (T33-1 appends its
+// lever fields after these, FormatLeverMinute). Increments except gather (the switch), places (fresh entries of the table) and
+// open (open shadow meetings). shadow_disagree and shadow_compared count passes, shadow_t33_first / shadow_t30_first meetings.
+// T33-0b appends the ADHOC anchor fields last (adhoc_open = measured ADHOC groups without an all-at-anchor pass yet).
 inline int FormatGatherMinute(char* buf, std::size_t size, std::uint32_t gather, GatherCounts const& d, std::uint64_t places,
-    std::uint64_t open)
+    std::uint64_t open, std::uint64_t adhocOpen)
 {
     return std::snprintf(buf, size, "[GroupMgr] minute3 gather=%u region_mismatch=%llu z_out=%llu place_jump_same=%llu"
         " place_jump_other=%llu gather_resume=%llu shadow_arrived=%llu shadow_disagree=%llu shadow_leg_expired=%llu places=%llu"
         " open=%llu shadow_gathered=%llu shadow_compared=%llu shadow_t33_first=%llu shadow_t30_first=%llu shadow_t30_cut=%llu"
-        " dead_at_point=%llu shadow_lines_dropped=%llu",
+        " dead_at_point=%llu shadow_lines_dropped=%llu adhoc_formed=%llu adhoc_arrived=%llu adhoc_all=%llu adhoc_never=%llu"
+        " adhoc_open=%llu",
         gather, (unsigned long long)d.regionMismatch, (unsigned long long)d.zOut, (unsigned long long)d.jumpSame,
         (unsigned long long)d.jumpOther, (unsigned long long)d.resume, (unsigned long long)d.arrived,
         (unsigned long long)d.disagree, (unsigned long long)d.legExpired, (unsigned long long)places, (unsigned long long)open,
         (unsigned long long)d.gathered, (unsigned long long)d.compared, (unsigned long long)d.t33First,
         (unsigned long long)d.t30First, (unsigned long long)d.t30Cut, (unsigned long long)d.deadAtPoint,
-        (unsigned long long)d.linesDropped);
+        (unsigned long long)d.linesDropped, (unsigned long long)d.adhocFormed, (unsigned long long)d.adhocArrived,
+        (unsigned long long)d.adhocAll, (unsigned long long)d.adhocNever, (unsigned long long)adhocOpen);
+}
+
+// ---- T33-1: the lever's part of minute3 --------------------------------------------------------------------------------------
+inline GatherLeverCounts GatherLeverDelta(GatherLeverCounts const& now, GatherLeverCounts const& seen)
+{
+    GatherLeverCounts d;
+    d.open = now.open - seen.open;
+    d.gathered = now.gathered - seen.gathered;
+    d.arrived = now.arrived - seen.arrived;
+    d.arrivedLate = now.arrivedLate - seen.arrivedLate;
+    d.arrivedLost = now.arrivedLost - seen.arrivedLost;
+    d.ended = now.ended - seen.ended;
+    d.endTimeout = now.endTimeout - seen.endTimeout;
+    d.memberTimeout = now.memberTimeout - seen.memberTimeout;
+    d.switchOff = now.switchOff - seen.switchOff;
+    d.joinHeld = now.joinHeld - seen.joinHeld;
+    d.resume = now.resume - seen.resume;
+    return d;
+}
+
+// Appended after the T33-0 fields (design 5.3 placed them after gather=; appended instead, so the T33-0 fields keep their
+// places for the evaluators), each prefixed lever_ (unique as a substring: no evaluator match on " arrived=" can hit them).
+// Increments except lever (the effective Gather.Lever) and lever_meetings (open meetings now). lever_end counts every
+// meeting that ended without gathered (any reason), lever_end_timeout those by the deadline: lever_open = lever_gathered +
+// lever_end + the open ones (8.1).
+inline int FormatLeverMinute(char* buf, std::size_t size, std::uint32_t lever, GatherLeverCounts const& d, std::uint64_t meetings)
+{
+    return std::snprintf(buf, size, " lever=%u lever_open=%llu lever_gathered=%llu lever_arrived=%llu lever_arrived_late=%llu"
+        " lever_arrived_lost=%llu lever_end=%llu lever_end_timeout=%llu lever_gather_timeout=%llu lever_switch_off=%llu"
+        " lever_join_held=%llu lever_resume=%llu lever_meetings=%llu",
+        lever, (unsigned long long)d.open, (unsigned long long)d.gathered, (unsigned long long)d.arrived,
+        (unsigned long long)d.arrivedLate, (unsigned long long)d.arrivedLost, (unsigned long long)d.ended,
+        (unsigned long long)d.endTimeout, (unsigned long long)d.memberTimeout, (unsigned long long)d.switchOff,
+        (unsigned long long)d.joinHeld, (unsigned long long)d.resume, (unsigned long long)meetings);
+}
+
+// The whole minute3 line: the T33-0 fields, then the lever's. kGatherMinuteBuf holds the worst case (every counter at its
+// maximum, unit test TestMinute3MaxFits; OB-10 on #1032: the old 768 could cut a worst-case line); a cut stays safe (snprintf).
+constexpr std::size_t kGatherMinuteBuf = 1536;
+
+inline int FormatGatherMinuteAll(char* buf, std::size_t size, std::uint32_t gather, GatherCounts const& d, std::uint64_t places,
+    std::uint64_t open, std::uint64_t adhocOpen, std::uint32_t lever, GatherLeverCounts const& ld, std::uint64_t meetings)
+{
+    int const n = FormatGatherMinute(buf, size, gather, d, places, open, adhocOpen);
+    if (n < 0 || std::size_t(n) >= size)
+        return n;
+    int const m = FormatLeverMinute(buf + n, size - std::size_t(n), lever, ld, meetings);
+    return m < 0 ? m : n + m;
 }
 
 // "[GroupMgr] event=phase ...": one line per phase a manager QUEST group enters (rendezvous at formed), in both arms (K1-5);
@@ -148,6 +209,10 @@ struct ShadowInput
     StatusTable const* status = nullptr;
     PlaceTable const* places = nullptr;
     std::vector<SweptGroup> const* swept = nullptr;   // the groups the directive pass ended and swept (Engine::Swept)
+    // T33-1: the lever's part of minute3 (read only): the effective Gather.Lever, the engine's totals, its open meetings.
+    std::uint32_t gatherLever = 0;
+    GatherLeverCounts const* lever = nullptr;
+    std::uint64_t leverMeetings = 0;
 };
 
 // One shadow meeting per manager QUEST group the shadow saw forming.
@@ -164,6 +229,16 @@ struct ShadowMeeting
     std::uint64_t deadlineMs = 0;  // formed + RendezvousMinutes; a resume restarts it
     quest_groups::Phase phase = quest_groups::Phase::Rendezvous;   // T30's phase after the last pass
     std::vector<std::uint32_t> arrived;   // members already counted arrived in this meeting
+    std::uint64_t seenPass = 0;
+};
+
+// T33-0b: one anchor count per manager ADHOC group the shadow saw forming (no deadline, no line of its own).
+struct AnchorMeeting
+{
+    bool tracked = false;          // first seen forming
+    bool formed = false;
+    bool open = false;             // formed, no all-at-anchor pass yet
+    std::vector<std::uint32_t> arrived;   // members already counted at the anchor in this group
     std::uint64_t seenPass = 0;
 };
 
@@ -213,6 +288,11 @@ public:
         for (auto const& entry : groups)
         {
             ManagedGroup const& g = entry.second;
+            if (g.type == GroupType::Adhoc)
+            {
+                AnchorPass(g, in);
+                continue;
+            }
             if (g.type != GroupType::Quest)
                 continue;
             auto const ins = meetings_.emplace(g.serial, ShadowMeeting());
@@ -262,6 +342,17 @@ public:
             }
             it = meetings_.erase(it);
         }
+        // T33-0b: an ADHOC group the registry no longer holds; never all at its anchor -> adhoc_never.
+        for (auto it = anchors_.begin(); it != anchors_.end();)
+        {
+            if (it->second.seenPass == passNo_)
+            {
+                it = std::next(it);
+                continue;
+            }
+            counts_.adhocNever += it->second.open ? 1 : 0;
+            it = anchors_.erase(it);
+        }
         MinuteLine(in, line);
     }
 
@@ -272,6 +363,7 @@ public:
             return;
         on_ = false;
         meetings_.clear();
+        anchors_.clear();
         counts_ = GatherCounts();
         seen_ = GatherCounts();
         minuteStarted_ = false;
@@ -281,6 +373,7 @@ public:
     // Tests.
     GatherCounts const& Totals() const { return counts_; }
     std::unordered_map<std::uint32_t, ShadowMeeting> const& Meetings() const { return meetings_; }
+    std::unordered_map<std::uint32_t, AnchorMeeting> const& Anchors() const { return anchors_; }
 
 private:
     // The T33 verdict of this pass and, where T30 judged the rendezvous in the same pass, the comparison with it.
@@ -359,6 +452,51 @@ private:
         }
     }
 
+    // T33-0b (F2 (a)): who of a manager ADHOC group is at its formation anchor, from formed on; acked members, the leader not
+    // judged; an ending group is not judged any more. Counters only: no directive, no deadline, no event line.
+    void AnchorPass(ManagedGroup const& g, ShadowInput const& in)
+    {
+        auto const ins = anchors_.emplace(g.serial, AnchorMeeting());
+        AnchorMeeting& a = ins.first->second;
+        if (ins.second)
+            a.tracked = g.state == GroupState::Forming;
+        a.seenPass = passNo_;
+        if (!a.tracked)
+            return;
+        if (!a.formed)
+        {
+            if (!g.formedSec)
+                return;
+            a.formed = true;
+            a.open = true;
+            ++counts_.adhocFormed;
+        }
+        if (g.state == GroupState::Ending)
+            return;
+        verdicts_.clear();
+        for (Member const& m : g.m)
+            if (m.state == MemberState::Acked)
+            {
+                MemberVerdict v;
+                v.low = m.low;
+                verdicts_.push_back(v);
+            }
+        GroupVerdict const v = ArrivedAtAnchor(g.mapId, g.anchorX, g.anchorY, g.leaderLow, verdicts_, *in.status, *in.places,
+            in.nowMs, in.rules);
+        for (MemberVerdict const& m : verdicts_)
+        {
+            if (!m.arrived || std::find(a.arrived.begin(), a.arrived.end(), m.low) != a.arrived.end())
+                continue;
+            a.arrived.push_back(m.low);
+            ++counts_.adhocArrived;
+        }
+        if (a.open && v.gathered)
+        {
+            a.open = false;
+            ++counts_.adhocAll;
+        }
+    }
+
     void CountEnd(ShadowEnd r)
     {
         counts_.legExpired += r == ShadowEnd::Expired ? 1 : 0;
@@ -405,6 +543,7 @@ private:
             minuteStarted_ = true;
             minuteStartMs_ = in.nowMs;
             seen_ = counts_;
+            leverSeen_ = in.lever ? *in.lever : GatherLeverCounts();   // T33-1: the first line counts only its own window
             return;
         }
         if (std::uint32_t(in.nowMs - minuteStartMs_) < 60000)
@@ -419,16 +558,24 @@ private:
         if (in.places)
             for (auto const& entry : *in.places)
                 places += manager_inbox::Fresh(entry.second.receivedMs, in.nowMs, in.rules.maxAgeMs) ? 1 : 0;
-        char buf[768];
-        FormatGatherMinute(buf, sizeof(buf), in.gather, GatherDelta(counts_, seen_), places, open);
+        std::uint64_t adhocOpen = 0;
+        for (auto const& entry : anchors_)
+            adhocOpen += entry.second.open ? 1 : 0;
+        GatherLeverCounts const leverNow = in.lever ? *in.lever : GatherLeverCounts();
+        char buf[kGatherMinuteBuf];
+        FormatGatherMinuteAll(buf, sizeof(buf), in.gather, GatherDelta(counts_, seen_), places, open, adhocOpen, in.gatherLever,
+            GatherLeverDelta(leverNow, leverSeen_), in.leverMeetings);
         seen_ = counts_;
+        leverSeen_ = leverNow;
         line(buf);
     }
 
     std::unordered_map<std::uint32_t, ShadowMeeting> meetings_;
+    std::unordered_map<std::uint32_t, AnchorMeeting> anchors_;   // T33-0b
     std::vector<MemberVerdict> verdicts_;   // reused per group
     GatherCounts counts_;
     GatherCounts seen_;                     // counts_ at the last minute line
+    GatherLeverCounts leverSeen_;           // T33-1: the engine's lever totals at the last minute line
     bool on_ = false;
     std::uint64_t passNo_ = 0;
     bool minuteStarted_ = false;

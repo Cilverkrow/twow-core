@@ -1,15 +1,19 @@
 cmake_policy(VERSION 3.16)
 # twow-repo#710 (HARM-RACE, OB-00 order 11.11.2026; CLI project finding; same class as #707 / #697 / #563 part 4):
 # Continents are split into regions; every region is its own Map object (same map id, own instance id) updated on its own pool thread.
-# PlayerbotAI::IsSafe compares map id, instance id and the teleport flag only: a group member in the NEIGHBOURING region passes it. A bot
-# must not read that member's quest map / group / AiObjectContext (a lazy GetValue is an insert = a write) from its own thread.
+# A bot must not read that member's quest map / group / AiObjectContext (a lazy GetValue is an insert = a write) from its own thread.
+# CORRECTION 11.11.2026 (OB-10 confirmed): PlayerbotAI::IsSafe compares map id AND instance id, and every continent region Map has its own
+# instance id, so a member in the neighbouring region already fails IsSafe in steady state; the explicit SameMapObject tests below are defence
+# in depth (the thread rule of #697), not the closing of a measured gap. A region switch runs on the world thread after continents.wait().
+# E3 (OB-10 design, 11.11.2026): CheckStatus no longer reads member->GetGroup() at all: the membership test is the bot's own group list with the
+# guid stored in the copy, so a copy of a member who left expires at once, also across regions / maps.
 #
 # Neighbour table (each named, changed or deliberately left):
 #   CHANGED   TravelTarget::IsDestinationActive   (TravelMgr.cpp)  group copy: GetBotAI(member), PlayerTravelInfo(member) (quest map, group, AI)
 #   CHANGED   TravelTarget::IsConditionsActive    (TravelMgr.cpp)  group copy: member's AiObjectContext, ClearValues, GetValue (insert)
-#   CHANGED   TravelTarget::CheckStatus           (TravelMgr.cpp)  group copy: member->GetGroup()
+#   CHANGED   TravelTarget::CheckStatus           (TravelMgr.cpp)  group copy: member->GetGroup() -> the bot's own group list + the stored guid (E3)
 #   CHANGED   ai::zone_keep follow-leave loop     (TravelMgr.cpp)  GetBotAI(member)->IsRealPlayer() for every group member; unknown = fail closed
-#   LEFT      TravelMgr::Clear()                  manager / reload path: SetNullTravelTarget(plr) for all players; judged separately
+#   LEFT      TravelMgr::Clear()                  SetNullTravelTarget(plr) for all players: world thread only, pinned by travel_mgr_clear_world_only (E3)
 #   LEFT      PlayerbotAI.cpp group copy debug text: GetGroupmember().GetPlayer()->GetName() (name scalar only)
 #   LEFT      reads of the bot's OWN quest map / group (TravelMgr.cpp): own thread
 # Negative probes: the same checkers must reject the old (IsSafe-only / GetBotAI(member)) texts and a reordered guard.
@@ -80,7 +84,16 @@ endfunction()
 
 function(check_status_violations out fn_text)
   set(errors "")
-  guard_before_reads(errors "${fn_text}" "SameMapObject(bot, member)" "member->GetGroup()" "TravelTarget::CheckStatus")
+  # E3: the group test is the bot's own (its group list + the guid stored in the copy); the member's own group pointer is never read
+  string(FIND "${fn_text}" "botGroup->IsMember(groupMember)" own_at)
+  if(own_at EQUAL -1)
+    list(APPEND errors "TravelTarget::CheckStatus: missing the bot-side test 'botGroup->IsMember(groupMember)'")
+  endif()
+  string(FIND "${fn_text}" "bot->GetGroup()" bot_group_at)
+  if(bot_group_at EQUAL -1)
+    list(APPEND errors "TravelTarget::CheckStatus: the bot's own group 'bot->GetGroup()' is not read")
+  endif()
+  forbid(errors "${fn_text}" "member->GetGroup()" "TravelTarget::CheckStatus (the member's own group pointer is a foreign read)")
   set(${out} "${errors}" PARENT_SCOPE)
 endfunction()
 
@@ -139,12 +152,19 @@ group_copy_violations(e3 "${probe_dest_late}" "TravelTarget::IsDestinationActive
 expect_rejected("IsDestinationActive guard behind GetBotAI(player)" "${e3}")
 
 # 4. CheckStatus: the old group read on the raw member
-string(REPLACE "ai->IsSafe(member) && SameMapObject(bot, member) && member->GetGroup()" "ai->IsSafe(member) && member->GetGroup()" probe_status_old "${status_fn}")
+string(REPLACE "!member || !botGroup || !botGroup->IsMember(groupMember)" "!member || (ai->IsSafe(member) && member->GetGroup() != bot->GetGroup())" probe_status_old "${status_fn}")
 if("${probe_status_old}" STREQUAL "${status_fn}")
   message(FATAL_ERROR "${TAG}: probe 4 did not change the text (layout moved?)")
 endif()
 check_status_violations(e4 "${probe_status_old}")
-expect_rejected("CheckStatus reads member->GetGroup() without the Map object test" "${e4}")
+expect_rejected("CheckStatus reads the member's own group pointer (the pre-E3 text)" "${e4}")
+# 4b. a copy of a member who left would never expire: the bot-side test dropped altogether
+string(REPLACE " || !botGroup->IsMember(groupMember)" "" probe_status_none "${status_fn}")
+if("${probe_status_none}" STREQUAL "${status_fn}")
+  message(FATAL_ERROR "${TAG}: probe 4b did not change the text (layout moved?)")
+endif()
+check_status_violations(e4b "${probe_status_none}")
+expect_rejected("CheckStatus without any group membership test" "${e4b}")
 
 # 5. zone_keep loop: the old GetBotAI(member)
 string(REPLACE "GetBotAIOnMapOf(bot, member)" "GetBotAI(member)" probe_zone_old "${zone_fn}")

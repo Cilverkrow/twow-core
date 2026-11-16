@@ -29,6 +29,11 @@ cmake_policy(VERSION 3.16)
 #       word) handled before the seq match, only with seq 0 and the serial of the bot's current group; the end reasons
 #       bot_left_done/lost/off appended before Count; the ack reason names 21-27; osc (kOscSec 900) and self_left at the end
 #       of minute2 (the minute line's loop stops at lines_dropped), skip_unknown_30m last on minute2; the dist text;
+#   (h8) T30-1d (OB-10 review of R9, B4; CLI-Projekt 11.11.): a QUEST follower on another map than its leader - the counters
+#       appended after left_stale, the minute2 tail (max, open and open age last), the base accrued for acked followers only,
+#       an episode opened / closed only on fresh snapshots of both in QuestRules and counted only once confirmed (else
+#       follow_other_map_short), closed as end=ended in EndMember and MarkLeft (so switch_off and disarm close it), end=gone in
+#       ForgetGone, end=resume at the last pass before a gap, the write census, kOtherMapLongMs 600000, the line, the dist text;
 #   (i) the unit tests registered and run.
 # Pure rules: t/group_directive_policy_tests.cpp, t/group_manager_policy_tests.cpp, t/adhoc_group_policy_tests.cpp. Every
 # check_* reads the source texts from the variables below and returns "" when it holds, else the reason; the negative probes
@@ -206,15 +211,30 @@ function(check_noop out)
       "        bool const any = !bots.empty();"
       "    std::atomic<bool> any_{ false };"
       "        return queueUsed_.load(std::memory_order_acquire) ? questQueue_.QueuedAge(low, questId, nowSec) : 0u;"
-      "        if (r.types || HasGroups())")
+      "        if (r.types || HasGroups() || finalFlush)"
+      # T30-1e (R9 P5): the one extra print is the pass that empties the registry with Types 0 (nothing held = no line).
+      "        bool const finalFlush = !r.types && heldAtPassStart_ && !HasGroups();\n        if (!finalFlush && in.nowMs - minuteStartMs_ < 60000)\n            return;"
+      "        heldAtPassStart_ = HasGroups();"
+      "        minute_ = MinuteCounts();\n        if (finalFlush)\n            minuteStarted_ = false;")
     string(FIND "${dpol}" "${needle}" at)
     if(at EQUAL -1)
       set(${out} "no-op: GroupDirectivePolicy.h fast path missing ${needle}" PARENT_SCOPE)
       return()
     endif()
   endforeach()
+  count_text("${dpol}" "        heldAtPassStart_ = " n)
+  if(NOT n EQUAL 1)
+    set(${out} "no-op: heldAtPassStart_ is set ${n} times (1 expected: the start of Pass)" PARENT_SCOPE)
+    return()
+  endif()
+  region("${dpol}" "    void Pass(PassInput const& in, Rules const& r, Io& io)" "        ApplyOutcomes(in, io);" pass)
+  string(FIND "${pass}" "        heldAtPassStart_ = HasGroups();" at)
+  if(at EQUAL -1)
+    set(${out} "no-op: heldAtPassStart_ is not taken before the pass changes the registry" PARENT_SCOPE)
+    return()
+  endif()
   foreach(needle
-      "bool OwnsBot(std::uint32_t guidLow)\n{\n    // T30-1c: below arbiter 2 the manager owns no bot (Types acts like 0), so the legacy paths stay open for the cohort.\n    return Owns(sPlayerbotAIConfig.botGroupsManager, LiveTypesNow(), guidLow);\n}"
+      "bool OwnsBot(std::uint32_t guidLow)\n{\n    // T30-1c: below arbiter 2 the manager owns no bot (Types acts like 0), so the legacy paths stay open for the cohort.\n    // SupervisorOn trap: a bot without the supervisor gets no directive, so the manager does not own it either.\n    return OwnsLive(sPlayerbotAIConfig.botGroupsManager, LiveTypesNow(), sPlayerbotAIConfig.supervisor, guidLow);\n}"
       "bool IsManaged(std::uint32_t guidLow)\n{\n    ViewEntry v;\n    return WorldManager().Directives().View().Find(guidLow, v);\n}"
       "bool Blocks(std::uint32_t guidLow)\n{\n    return OwnsBot(guidLow) || IsManaged(guidLow);\n}"
       "    return WorldManager().Directives().View().Find(guidLow, v) ? v.questRole : std::uint8_t(0);"
@@ -289,7 +309,7 @@ endfunction()
 function(check_pure out)
   string(REGEX MATCHALL "#include [<\"][^>\"]+[>\"]" includes "${dpol}")
   foreach(inc IN LISTS includes)
-    if(NOT inc MATCHES "^#include (\"(GroupManagerPolicy|ManagerInboxPolicy|AdhocGroupPolicy|QuestGroupPolicy|SupervisorPolicy|GroupOpPolicy)\\.h\"|<(algorithm|atomic|cstddef|cstdint|cstdio|iterator|mutex|unordered_map|vector)>)$")
+    if(NOT inc MATCHES "^#include (\"(GroupManagerPolicy|ManagerInboxPolicy|GroupGatherPolicy|AdhocGroupPolicy|QuestGroupPolicy|SupervisorPolicy|GroupOpPolicy)\\.h\"|<(algorithm|atomic|cstddef|cstdint|cstdio|iterator|mutex|unordered_map|vector)>)$")
       set(${out} "pure: GroupDirectivePolicy.h has a non-pure include: ${inc}" PARENT_SCOPE)
       return()
     endif()
@@ -683,7 +703,7 @@ function(check_t30_1b out)
       "dpol|\"[GroupMgr] event=self_left group=%u bot=%u reason=%s\""
       "dpol|        EndMember(*g, *m, FromLeftReason(a.reason), io, true);"
       "dpol|        case manager_inbox::kAckLeft: return \"left\";"
-      "dpol|    BotLeftDone,   // left reason 26 goal_done: a natural end\n    BotLeftLost,   // left reason 27 goal_lost: the manager's own (retry cooldown only)\n    BotLeftOff,    // left reason 22 arbiter_off (or any other): the manager's own (retry cooldown only)\n    Count,\n};"
+      "dpol|    BotLeftDone,   // left reason 26 goal_done: a natural end\n    BotLeftLost,   // left reason 27 goal_lost: the manager's own (retry cooldown only)\n    BotLeftOff,    // left reason 22 arbiter_off (or any other): the manager's own (retry cooldown only)\n"
       "dpol|static_assert(kEndReasons <= 128,"
       "dpol|        case EndReason::BotLeftDone: return \"bot_left_done\";"
       "dpol|        case EndReason::BotLeftLost: return \"bot_left_lost\";"
@@ -735,7 +755,7 @@ function(check_t30_1b out)
   string(FIND "${m2}" "\" leave_%s=%llu\"" leave)
   string(FIND "${m2}" "    for (std::size_t i = kCountsMinuteLoop; i < kCountsMinute2Loop && n > 0" cnt)
   string(FIND "${m2}" "\" skip_unknown_30m=%llu\", (unsigned long long)m.skipUnknown30m);\n" skip)
-  string(FIND "${m2}" "    for (std::size_t i = kCountsMinute2Loop; i < kCounts && n > 0 && std::size_t(n) < size; ++i)\n        n += std::snprintf(buf + n, size - std::size_t(n), \" %s=%llu\", CntName(Cnt(i)), (unsigned long long)m.c[i]);\n    return n;" last)
+  string(FIND "${m2}" "    for (std::size_t i = kCountsMinute2Loop; i < kCounts && n > 0 && std::size_t(n) < size; ++i)\n        n += std::snprintf(buf + n, size - std::size_t(n), \" %s=%llu\", CntName(Cnt(i)), (unsigned long long)m.c[i]);\n" last)
   if(leave EQUAL -1 OR cnt EQUAL -1 OR skip EQUAL -1 OR last EQUAL -1 OR NOT leave LESS cnt OR NOT cnt LESS skip OR NOT skip LESS last)
     set(${out} "t30-1b: minute2 does not end with osc, self_left, skip_unknown_30m and then the T30-1c counters" PARENT_SCOPE)
     return()
@@ -744,13 +764,13 @@ function(check_t30_1b out)
 endfunction()
 
 # ---- (h7) T30-1c: the arbiter gate (Types acts like 0 below arbiter 2) and left_stale ----------------------------------------
-set(LIVE_NOW "std::uint32_t LiveTypesNow()\n{\n    return LiveTypes(sPlayerbotAIConfig.botGroupsManagerTypes, sPlayerbotAIConfig.botGroupsManagerStatusSeconds,\n        ai::supervisor::ArbiterValue(sPlayerbotAIConfig.supervisorArbiter));\n}")
+set(LIVE_NOW "std::uint32_t LiveTypesNow()\n{\n    return LiveTypes(sPlayerbotAIConfig.botGroupsManagerTypes, sPlayerbotAIConfig.botGroupsManagerStatusSeconds,\n        ai::supervisor::ArbiterValue(sPlayerbotAIConfig.supervisorArbiter), sPlayerbotAIConfig.supervisor);\n}")
 function(check_t30_1c out)
   foreach(pair "gm_policy|constexpr std::uint32_t kManagerArbiter = 2;"
-      "gm_policy|    return arbiter == kManagerArbiter ? EffectiveTypes(types, statusSeconds) : 0u;"
+      "gm_policy|    return (arbiter == kManagerArbiter && SupervisorAny(supervisorMode)) ? EffectiveTypes(types, statusSeconds) : 0u;"
       "mgr_cpp|#include \"playerbot/SupervisorShadow.h\""
       "mgr_cpp|${LIVE_NOW}"
-      "dpol|    SelfLeft,\n    // T30-1c (OB-10 note on #992): appended after skip_unknown_30m, at the very end of minute2 (kCountsMinute2Loop).\n    LeftStale,\n    Count,\n};"
+      "dpol|    SelfLeft,\n    // T30-1c (OB-10 note on #992): appended after skip_unknown_30m, at the very end of minute2 (kCountsMinute2Loop).\n    LeftStale,\n"
       "dpol|        case Cnt::LeftStale: return \"left_stale\";"
       "dpol|constexpr std::size_t kCountsMinute2Loop = std::size_t(Cnt::SelfLeft) + 1;"
       "gm_test|    TestLiveTypes();"
@@ -781,6 +801,151 @@ function(check_t30_1c out)
   set(${out} "" PARENT_SCOPE)
 endfunction()
 
+# ---- (h8) T30-1d: a QUEST follower on another map than its leader (follow_other_map) ---------------------------------------------
+set(OM_ENUM "    LeftStale,\n    // T30-1d (OB-10 review of R9, B4): a QUEST follower on another map than its leader, appended after left_stale.\n    FollowOtherMap,\n    FollowOtherMap600,\n    FollowOtherMapMs,\n    FollowQuestMs,\n    FollowOtherMapShort,\n    Count,\n};")
+set(OM_TAIL "(unsigned long long)m.c[i]);\n    if (n > 0 && std::size_t(n) < size)\n        n += std::snprintf(buf + n, size - std::size_t(n), \" follow_other_map_max_ms=%llu follow_other_map_open=%llu\"\n            \" follow_other_map_open_max_ms=%llu\", (unsigned long long)m.otherMapMaxMs, (unsigned long long)m.otherMapOpen,\n            (unsigned long long)m.otherMapOpenMaxMs);\n    return n;\n}")
+set(OM_BASE "            if (m.state == MemberState::Acked && m.low != g.leaderLow)\n                Count(Cnt::FollowQuestMs, passDeltaMs_);\n            if (m.state != MemberState::Acked || m.silent || m.bgWait)\n                continue;")
+set(OM_CALL "            TrackProgress(g, m, k);\n            // T30-1d: an episode opens or closes only on fresh snapshots of the follower and its leader (no old map after a\n            // teleport); without them it stays as it is.\n            if (m.low != g.leaderLow && ls && Fresh(ls->receivedMs) && Fresh(s->receivedMs))\n                OtherMapEpisode(g, m, ls->mapId != s->mapId, ls->receivedMs, s->receivedMs, io);")
+set(OM_EPISODE "        if (otherMap && !m.otherMapSinceMs)\n        {\n            m.otherMapSinceMs = manager_inbox::PostStamp(now_);\n            m.otherMapConfirmed = false;\n        }\n        else if (otherMap && !m.otherMapConfirmed && !After(m.otherMapSinceMs, leaderRcvMs) && !After(m.otherMapSinceMs, memberRcvMs))\n            m.otherMapConfirmed = true;\n        else if (!otherMap && m.otherMapSinceMs)\n            CloseOtherMap(g, m, \"back\", \"-\", now_, &io);")
+set(OM_CLOSE "        if (!m.otherMapSinceMs)\n            return;\n        std::uint32_t const ms = After(atMs, m.otherMapSinceMs) ? atMs - m.otherMapSinceMs : 0u;\n        bool const confirmed = m.otherMapConfirmed;\n        m.otherMapSinceMs = 0;\n        m.otherMapConfirmed = false;\n        if (!confirmed)\n        {\n            Count(Cnt::FollowOtherMapShort);\n            return;\n        }\n        Count(Cnt::FollowOtherMap);\n        Count(Cnt::FollowOtherMapMs, ms);\n        if (ms >= kOtherMapLongMs)\n            Count(Cnt::FollowOtherMap600);\n        minute_.otherMapMaxMs = std::max<std::uint64_t>(minute_.otherMapMaxMs, ms);\n        if (io)\n            OtherMapLine(*io, g.serial, m.low, ms, end, reason);\n        else\n            goneEpisodes_.push_back(GoneEpisode{ g.serial, m.low, ms });")
+set(OM_OPEN "                    if (m.otherMapSinceMs)\n                    {\n                        ++minute_.otherMapOpen;\n                        minute_.otherMapOpenMaxMs = std::max<std::uint64_t>(minute_.otherMapOpenMaxMs,\n                            After(now_, m.otherMapSinceMs) ? now_ - m.otherMapSinceMs : 0u);\n                    }")
+set(OM_GONE_LINES "        for (GoneEpisode const& ge : goneEpisodes_)          // T30-1d: the episodes ForgetGone closed before this pass\n            OtherMapLine(io, ge.serial, ge.low, ge.ms, \"gone\", \"-\");\n        goneEpisodes_.clear();")
+function(check_t30_1d out)
+  foreach(pair "dpol|constexpr std::uint32_t kOtherMapLongMs = 600000;"
+      "dpol|${OM_ENUM}"
+      "dpol|        case Cnt::FollowOtherMap: return \"follow_other_map\";"
+      "dpol|        case Cnt::FollowOtherMap600: return \"follow_other_map_600\";"
+      "dpol|        case Cnt::FollowOtherMapMs: return \"follow_other_map_ms\";"
+      "dpol|        case Cnt::FollowQuestMs: return \"follow_quest_ms\";"
+      "dpol|        case Cnt::FollowOtherMapShort: return \"follow_other_map_short\";"
+      "dpol|    std::uint32_t otherMapSinceMs = 0;"
+      "dpol|    bool otherMapConfirmed = false;"
+      "dpol|        passDeltaMs_ = passed_ ? now_ - lastPassMs_ : 0u;"
+      "dpol|${OM_GONE_LINES}"
+      "dpol|${OM_EPISODE}"
+      "dpol|${OM_CLOSE}"
+      "dpol|\"[GroupMgr] event=other_map group=%u bot=%u ms=%u end=%s reason=%s\", serial, low, ms, end,\n            reason);\n        Emit(io, line);"
+      "dpol|${OM_OPEN}"
+      "conf_dist|\"[GroupMgr] event=other_map group= bot= ms= end= reason=\""
+      "conf_dist|follow_other_map_short= (episodes closed before they"
+      "conf_dist|follow_other_map_open_max_ms= (the oldest open one's age), levels."
+      "unit_test|    TestFollowOtherMap();")
+    string(FIND "${pair}" "|" bar)
+    string(SUBSTRING "${pair}" 0 ${bar} var)
+    math(EXPR bar "${bar} + 1")
+    string(SUBSTRING "${pair}" ${bar} -1 needle)
+    string(FIND "${${var}}" "${needle}" at)
+    if(at EQUAL -1)
+      set(${out} "t30-1d: ${var} missing ${needle}" PARENT_SCOPE)
+      return()
+    endif()
+  endforeach()
+  # minute2 ends with the T30-1d levels (max, open, open age), after the counter loop (left_stale, then the T30-1d counters).
+  region("${dpol}" "inline int FormatMinute2(" "\n}\n" m2)
+  string(FIND "${m2}" "${OM_TAIL}" tail)
+  if(tail EQUAL -1)
+    set(${out} "t30-1d: minute2 does not end with follow_other_map_max_ms, follow_other_map_open and follow_other_map_open_max_ms" PARENT_SCOPE)
+    return()
+  endif()
+  # QuestRules: the base before the acked filter (silent and bg_wait followers count), the one episode call after it.
+  region("${dpol}" "    void QuestRules(ManagedGroup& g, PassInput const& in, Rules const& r, Io& io)" "        f.members = members;" qr)
+  string(FIND "${qr}" "${OM_BASE}" base)
+  string(FIND "${qr}" "${OM_CALL}" call)
+  if(base EQUAL -1 OR call EQUAL -1 OR NOT base LESS call)
+    set(${out} "t30-1d: QuestRules does not accrue the base and then open/close on fresh snapshots" PARENT_SCOPE)
+    return()
+  endif()
+  # The census: one episode call, one base count, the open and close writes only in OtherMapEpisode / CloseOtherMap, and the
+  # closes: back (OtherMapEpisode), ended (EndMember, MarkLeft), gone (ForgetGone), resume (GapRule).
+  foreach(pair "OtherMapEpisode(@2" "Count(Cnt::FollowQuestMs@1" "m.otherMapSinceMs = @2" "m.otherMapConfirmed = @3"
+      "CloseOtherMap(@6" "CloseOtherMap(g, m, \"ended\", @2" "goneEpisodes_.push_back(@1")
+    string(FIND "${pair}" "@" at)
+    string(SUBSTRING "${pair}" 0 ${at} needle)
+    math(EXPR at "${at} + 1")
+    string(SUBSTRING "${pair}" ${at} -1 want)
+    count_text("${dpol}" "${needle}" n)
+    if(NOT n EQUAL want)
+      set(${out} "t30-1d: ${needle} appears ${n} times (${want} expected)" PARENT_SCOPE)
+      return()
+    endif()
+  endforeach()
+  # Every end closes the episode first: EndMember (its reason), MarkLeft (the member's reason), ForgetGone (gone, the line at
+  # the next pass), the resume (at the last pass before the gap).
+  region("${dpol}" "    void EndMember(ManagedGroup& g, Member& m, EndReason why, Io& io, bool mayBeGrouped)" "        m.reason = why;" em)
+  string(FIND "${em}" "            return;\n        CloseOtherMap(g, m, \"ended\", EndReasonName(why), now_, &io);\n        m.reason = why;" emc)
+  region("${dpol}" "    void MarkLeft(ManagedGroup& g, Member& m, Io& io)" "        m.state = MemberState::Left;" ml)
+  string(FIND "${ml}" "            return;\n        CloseOtherMap(g, m, \"ended\", EndReasonName(m.reason), now_, &io);\n        m.state = MemberState::Left;" mlc)
+  region("${dpol}" "    void ForgetGone(Present const& present)" "                    m.state = MemberState::Left;" fg)
+  string(FIND "${fg}" "                    CloseOtherMap(entry.second, m, \"gone\", \"-\", now_, nullptr);" fgc)
+  region("${dpol}" "        if (in.resumed)\n        {" "                    m.lastProgressSec = nowSec_;" rs)
+  string(FIND "${rs}" "                    CloseOtherMap(g, m, \"resume\", \"-\", lastPassMs_, &io);" rsc)
+  if(emc EQUAL -1 OR mlc EQUAL -1 OR fgc EQUAL -1 OR rsc EQUAL -1)
+    set(${out} "t30-1d: EndMember, MarkLeft, ForgetGone or the resume does not close the episode" PARENT_SCOPE)
+    return()
+  endif()
+  set(${out} "" PARENT_SCOPE)
+endfunction()
+
+# ---- (h9) T30-1f (R9 V3, OB-10 12.11.2026): BotGroups.Manager.AckTimeoutSeconds, default 10 = the old fixed deadline, 10..20 --
+set(AT_CLAMP "inline std::uint32_t ClampAckTimeoutSeconds(std::int64_t seconds)\n{\n    if (seconds < std::int64_t(kAckTimeoutSecondsMin))\n        return kAckTimeoutSecondsMin;\n    if (seconds > std::int64_t(kAckTimeoutSecondsMax))\n        return kAckTimeoutSecondsMax;\n    return std::uint32_t(seconds);\n}")
+set(AT_READ "    botGroupsManagerAckTimeoutSeconds = uint32(config.GetIntDefault(\"AiPlayerbot.BotGroups.Manager.AckTimeoutSeconds\",\n        int32(ai::group_mgr::kAckTimeoutSecondsDefault)));\n    int32 const ackTimeoutRaw = int32(botGroupsManagerAckTimeoutSeconds);   // the configured value, sign included\n    botGroupsManagerAckTimeoutSeconds = ai::group_mgr::ClampAckTimeoutSeconds(ackTimeoutRaw);\n    if (int64(ackTimeoutRaw) != int64(botGroupsManagerAckTimeoutSeconds))")
+function(check_t30_1f out)
+  foreach(pair "gm_policy|constexpr std::uint32_t kAckTimeoutSecondsDefault = 10;"
+      "gm_policy|constexpr std::uint32_t kAckTimeoutSecondsMin = 10;"
+      "gm_policy|constexpr std::uint32_t kAckTimeoutSecondsMax = 20;"
+      "gm_policy|static_assert(2u * kAckTimeoutSecondsMax * 1000u + 20000u <= kOrphanGraceMs, "
+      "gm_policy|constexpr std::uint32_t kOrphanGraceMs = 60000;"
+      "gm_policy|${AT_CLAMP}"
+      "gm_policy|    return ClampAckTimeoutSeconds(std::int64_t(seconds)) * 1000u;"
+      "dpol|static_assert(kAckTimeoutMs == kAckTimeoutSecondsDefault * 1000u, "
+      "dpol|    std::uint32_t ackTimeoutSeconds = kAckTimeoutSecondsDefault;"
+      "dpol|    std::uint32_t ackTimeoutMs_ = kAckTimeoutMs;"
+      "dpol|                else if (m.state == MemberState::Directed && now_ - m.sentMs > ackTimeoutMs_)"
+      "dpol|            else if (entry.second.exitOpen && now_ - entry.second.exitSentMs > ackTimeoutMs_)"
+      "config_h|    uint32 botGroupsManagerAckTimeoutSeconds = 10;"
+      "config_cpp|${AT_READ}"
+      "config_cpp|            {\"BotGroups.Manager\", Value(botGroupsManager)},\n            {\"BotGroups.Manager.AckTimeoutSeconds\", Value(botGroupsManagerAckTimeoutSeconds)},\n            {\"BotGroups.Manager.Gather\", "
+      "mgr_cpp|    rules.ackTimeoutSeconds = sPlayerbotAIConfig.botGroupsManagerAckTimeoutSeconds;"
+      "conf_dist|AiPlayerbot.BotGroups.Manager.AckTimeoutSeconds = 10\n"
+      "unit_test|    TestAckTimeoutKey();\n    TestAckTimeoutOrphanGrace();")
+    string(FIND "${pair}" "|" bar)
+    string(SUBSTRING "${pair}" 0 ${bar} var)
+    math(EXPR bar "${bar} + 1")
+    string(SUBSTRING "${pair}" ${bar} -1 needle)
+    string(FIND "${${var}}" "${needle}" at)
+    if(at EQUAL -1)
+      set(${out} "t30-1f: ${var} missing ${needle}" PARENT_SCOPE)
+      return()
+    endif()
+  endforeach()
+  # The deadline of the pass is set once, at the start of Pass, before the deadlines run; the fixed constant is only the default
+  # (its definition, the static_assert, the member's initial value) and no deadline reads it.
+  region("${dpol}" "    void Pass(PassInput const& in, Rules const& r, Io& io)\n    {" "\n    }\n" body)
+  string(FIND "${body}" "        ackTimeoutMs_ = AckTimeoutMs(r.ackTimeoutSeconds);" set_at)
+  string(FIND "${body}" "            Deadlines(r, io);" dl_at)
+  if(set_at EQUAL -1 OR dl_at EQUAL -1 OR NOT set_at LESS dl_at)
+    set(${out} "t30-1f: Pass does not set ackTimeoutMs_ before the deadlines" PARENT_SCOPE)
+    return()
+  endif()
+  foreach(pair "dpol|kAckTimeoutMs@3" "dpol|ackTimeoutMs_ = @2" "dpol|> ackTimeoutMs_)@2" "dpol|AckTimeoutMs(r.@1"
+      "config_cpp|AiPlayerbot.BotGroups.Manager.AckTimeoutSeconds@1" "config_cpp|botGroupsManagerAckTimeoutSeconds = @2")
+    string(FIND "${pair}" "|" bar)
+    string(SUBSTRING "${pair}" 0 ${bar} var)
+    math(EXPR bar "${bar} + 1")
+    string(SUBSTRING "${pair}" ${bar} -1 rest)
+    string(FIND "${rest}" "@" at)
+    string(SUBSTRING "${rest}" 0 ${at} needle)
+    math(EXPR at "${at} + 1")
+    string(SUBSTRING "${rest}" ${at} -1 want)
+    count_text("${${var}}" "${needle}" n)
+    if(NOT n EQUAL want)
+      set(${out} "t30-1f: ${var} ${needle} appears ${n} times (${want} expected)" PARENT_SCOPE)
+      return()
+    endif()
+  endforeach()
+  set(${out} "" PARENT_SCOPE)
+endfunction()
+
 # ---- (i) the unit tests ----------------------------------------------------------------------------------------------------------
 function(check_unit out)
   foreach(needle "add_executable(group_directive_policy_tests\n  \"\${PB_MODULE_DIR}/t/group_directive_policy_tests.cpp\")"
@@ -796,7 +961,7 @@ function(check_unit out)
       "    TestQuestAttempts();" "    TestWishLeftover();" "    TestMinuteLine();" "    TestWrap();" "    TestFormingNoAttempt();" "    TestQuestViewKey();"
       "    TestLeaveEdgeLag();" "    TestGapSameMs();" "    TestGapStaleAnchor();" "    TestExitNoSupervisor();" "    TestEndWhileJoinQueued();"
       "    TestCohort();" "    TestSilentMember();" "    TestRealPlayerLeaving();" "    TestSerialAcrossOffOn();" "    TestSerialLow16();"
-      "    TestAckStale();" "    TestSwitchOffExits();" "    TestManagedSerialView();" "    TestLeftReasons();" "    TestAckWord();"
+      "    TestAckStale();" "    TestSwitchOffExits();" "    TestFinalFlush();" "    TestManagedSerialView();" "    TestLeftReasons();" "    TestAckWord();"
       "    TestSelfLeft();" "    TestLeftAckStale();" "    TestOsc();" "    TestLeftQuest();" "    TestSkipUnknownLong();")
     string(FIND "${unit_test}" "${needle}" at)
     if(at EQUAL -1)
@@ -853,6 +1018,10 @@ function(run_check check out)
     check_t30_1b(r)
   elseif(check STREQUAL "check_t30_1c")
     check_t30_1c(r)
+  elseif(check STREQUAL "check_t30_1d")
+    check_t30_1d(r)
+  elseif(check STREQUAL "check_t30_1f")
+    check_t30_1f(r)
   elseif(check STREQUAL "check_unit")
     check_unit(r)
   else()
@@ -863,7 +1032,7 @@ endfunction()
 
 # ---- the real sources ----------------------------------------------------------------------------------------------------------
 foreach(check check_switch check_noop check_post check_ops check_pure check_gates check_mirrors check_order check_minute check_cohort
-    check_resume_drain check_wish check_serial check_view check_t30_1b check_t30_1c check_unit)
+    check_resume_drain check_wish check_serial check_view check_t30_1b check_t30_1c check_t30_1d check_t30_1f check_unit)
   run_check(${check} r)
   fail_if("${r}")
 endforeach()
@@ -899,7 +1068,15 @@ probe(rpm "        if (sPlayerbotAIConfig.botGroupsManager || ai::group_mgr::Wor
 probe(dpol "        if (!Any())\n            return false;\n        std::lock_guard<std::mutex> lock(mutex_);\n        auto const it = bots_.find(low);"
   "        std::lock_guard<std::mutex> lock(mutex_);\n        auto const it = bots_.find(low);" check_noop "no-op: GroupDirectivePolicy.h fast path" "a lock on every gate read")
 probe(mgr_cpp "    return OwnsBot(guidLow) || IsManaged(guidLow);" "    return IsManaged(guidLow);" check_noop "no-op: GroupManager.cpp read view" "Blocks without OwnsBot")
-probe(dpol "        if (r.types || HasGroups())" "        if (true)" check_noop "no-op: GroupDirectivePolicy.h fast path" "the minute line with Types 0")
+probe(dpol "        if (r.types || HasGroups() || finalFlush)" "        if (true)" check_noop "no-op: GroupDirectivePolicy.h fast path" "the minute line with Types 0")
+# T30-1e (R9 P5): the final flush only in the pass that empties the registry with Types 0, and once.
+probe(dpol "        bool const finalFlush = !r.types && heldAtPassStart_ && !HasGroups();" "        bool const finalFlush = !r.types && !HasGroups();"
+  check_noop "no-op: GroupDirectivePolicy.h fast path" "a minute line on every idle pass with Types 0")
+probe(dpol "        bool const finalFlush = !r.types && heldAtPassStart_ && !HasGroups();" "        bool const finalFlush = heldAtPassStart_ && !HasGroups();"
+  check_noop "no-op: GroupDirectivePolicy.h fast path" "the flush with Types on")
+probe(dpol "        heldAtPassStart_ = HasGroups();   // T30-1e" "        // T30-1e" check_noop "no-op: GroupDirectivePolicy.h fast path missing +heldAtPassStart_" "the flag never taken")
+probe(dpol "        if (finalFlush)\n            minuteStarted_ = false;" "" check_noop "no-op: GroupDirectivePolicy.h fast path" "a restart counts its first minute from the flush")
+probe(unit_test "    TestFinalFlush();\n" "" check_unit "unit: t/group_directive_policy_tests.cpp does not run" "the final flush test not run")
 probe(ops_cpp "    if (op.reason & kJoinManager)\n    {\n        if (group->GetMembersCount() == 2)" "    if (true)\n    {\n        if (group->GetMembersCount() == 2)" check_noop "no-op: RunJoin" "every join takes the manager branch")
 # (c) the post.
 probe(mgr_cpp "        if (sPlayerbotAIConfig.supervisor && ai::supervisor::Applies(sPlayerbotAIConfig.supervisor, low))\n            return ai::supervisor::Post(" "            return ai::supervisor::Post(" check_post "post: supervisor::Post" "the post without the R10 gate")
@@ -1022,8 +1199,8 @@ probe(dpol "        if (!g || std::uint16_t(g->serial) != a.serial || m->state" 
 probe(dpol " || (entry && entry->exitOpen))\n        {\n            Count(Cnt::LeftStale);" ")\n        {\n            Count(Cnt::LeftStale);" check_t30_1b "t30-1b: dpol missing" "a left ack while an Exit is open accepted")
 probe(dpol "${LEFT_BRANCH}\n" "" check_t30_1b "t30-1b: ApplyAcks does not handle the left ack before" "the left branch dropped (left acks seq-matched)")
 probe(dpol "        case EndReason::BotLeftLost: return \"bot_left_lost\";" "        case EndReason::BotLeftLost: return \"bot_left\";" check_t30_1b "t30-1b: dpol missing" "an end reason renamed")
-probe(dpol "    BotLeftOff,    // left reason 22 arbiter_off (or any other): the manager's own (retry cooldown only)\n    Count,"
-  "    Count,\n    BotLeftOff,    // left reason 22 arbiter_off (or any other): the manager's own (retry cooldown only)" check_t30_1b "t30-1b: dpol missing" "a bot_left reason after Count")
+probe(dpol "(retry cooldown only)\n    BotLeftOff,    // left reason 22"
+  "(retry cooldown only)\n    Count,\n    BotLeftOff,    // left reason 22" check_t30_1b "t30-1b: dpol missing" "a bot_left reason after Count")
 probe(dpol "            if (why == EndReason::TurnedIn || why == EndReason::BotLeftDone || m.turnedIn)" "            if (why == EndReason::TurnedIn || m.turnedIn)" check_t30_1b "t30-1b: dpol missing" "bot_left_done charges the S7 entry")
 probe(dpol "        case kAckReasonFocusConflict: return \"focus_conflict\";\n" "" check_t30_1b "t30-1b: dpol missing" "ack reason 25 unnamed")
 probe(dpol "constexpr std::uint8_t kAckReasonGoalLost = 27;" "constexpr std::uint8_t kAckReasonGoalLost = 28;" check_t30_1b "t30-1b: dpol missing" "goal_lost renumbered")
@@ -1037,18 +1214,90 @@ probe(dpol "constexpr std::uint32_t kSkipUnknownLongSec = 1800;" "constexpr std:
 probe(conf_dist "skip_unknown_30m= (a level, not an increment" "skip_unknown_30m= (an increment" check_t30_1b "t30-1b: conf_dist missing" "the dist text calls the level an increment")
 probe(unit_test "    TestSelfLeft();\n" "" check_unit "unit: t/group_directive_policy_tests.cpp does not run" "the self-left test not run")
 # (h7) T30-1c: the gate off, shadow counted as enforce, the pass or the view back on EffectiveTypes, left_stale back to ack_stale.
-probe(gm_policy "    return arbiter == kManagerArbiter ? EffectiveTypes(types, statusSeconds) : 0u;" "    return EffectiveTypes(types, statusSeconds);"
+probe(gm_policy "    return (arbiter == kManagerArbiter && SupervisorAny(supervisorMode)) ? EffectiveTypes(types, statusSeconds) : 0u;" "    return EffectiveTypes(types, statusSeconds);"
   check_t30_1c "t30-1c: gm_policy missing" "LiveTypes ignores the arbiter")
 probe(gm_policy "constexpr std::uint32_t kManagerArbiter = 2;" "constexpr std::uint32_t kManagerArbiter = 1;" check_t30_1c "t30-1c: gm_policy missing" "the shadow (1) counted as enforce")
-probe(mgr_cpp "        ai::supervisor::ArbiterValue(sPlayerbotAIConfig.supervisorArbiter));" "        sPlayerbotAIConfig.supervisorArbiter);"
+probe(gm_policy "(arbiter == kManagerArbiter && SupervisorAny(supervisorMode))" "(arbiter == kManagerArbiter)" check_t30_1c "t30-1c: gm_policy missing" "LiveTypes without the SupervisorOn trap")
+probe(mgr_cpp "        ai::supervisor::ArbiterValue(sPlayerbotAIConfig.supervisorArbiter), sPlayerbotAIConfig.supervisor);" "        sPlayerbotAIConfig.supervisorArbiter, sPlayerbotAIConfig.supervisor);"
   check_t30_1c "t30-1c: mgr_cpp missing" "the key read without the console override")
 probe(mgr_cpp "    std::uint32_t const types = LiveTypesNow();" "    std::uint32_t const types = EffectiveTypes(sPlayerbotAIConfig.botGroupsManagerTypes, sPlayerbotAIConfig.botGroupsManagerStatusSeconds);"
   check_t30_1c "t30-1c: GroupManager.cpp reads Types without the arbiter gate" "the manager pass without the gate")
-probe(mgr_cpp "    return Owns(sPlayerbotAIConfig.botGroupsManager, LiveTypesNow(), guidLow);" "    return Owns(sPlayerbotAIConfig.botGroupsManager, sPlayerbotAIConfig.botGroupsManagerTypes, guidLow);"
+probe(mgr_cpp "    return OwnsLive(sPlayerbotAIConfig.botGroupsManager, LiveTypesNow(), sPlayerbotAIConfig.supervisor, guidLow);" "    return Owns(sPlayerbotAIConfig.botGroupsManager, sPlayerbotAIConfig.botGroupsManagerTypes, guidLow);"
   check_t30_1c "t30-1c: LiveTypesNow\\(\\) appears 2 times" "the bot-thread view without the gate")
 probe(dpol "        {\n            Count(Cnt::LeftStale);\n            return;\n        }\n        Count(Cnt::SelfLeft);" "        {\n            Count(Cnt::AckStale);\n            return;\n        }\n        Count(Cnt::SelfLeft);"
   check_t30_1b "t30-1b: dpol missing" "a stale left ack counted as ack_stale again")
 probe(gm_test "    TestLiveTypes();\n" "" check_t30_1c "t30-1c: gm_test missing" "the live-types test not run")
+# (h8) T30-1d: follow_other_map.
+probe(dpol " && ls && Fresh(ls->receivedMs) && Fresh(s->receivedMs))\n                OtherMapEpisode(" " && ls)\n                OtherMapEpisode("
+  check_t30_1d "t30-1d: QuestRules does not accrue" "an episode opened on stale snapshots")
+probe(dpol " && Fresh(s->receivedMs))\n                OtherMapEpisode(" ")\n                OtherMapEpisode(" check_t30_1d "t30-1d: QuestRules does not accrue" "the follower's snapshot not checked")
+probe(dpol "            if (m.state == MemberState::Acked && m.low != g.leaderLow)\n                Count(Cnt::FollowQuestMs"
+  "            if (m.state == MemberState::Acked)\n                Count(Cnt::FollowQuestMs" check_t30_1d "t30-1d: QuestRules does not accrue" "the leader counted in the base")
+probe(dpol "${OM_BASE}" "            if (m.state != MemberState::Acked || m.silent || m.bgWait)\n                continue;\n            if (m.state == MemberState::Acked && m.low != g.leaderLow)\n                Count(Cnt::FollowQuestMs, passDeltaMs_);"
+  check_t30_1d "t30-1d: QuestRules does not accrue" "silent and bg_wait followers left out of the base")
+probe(dpol "            return;\n        CloseOtherMap(g, m, \"ended\", EndReasonName(why), now_, &io);\n        m.reason = why;" "            return;\n        m.reason = why;"
+  check_t30_1d "t30-1d: CloseOtherMap\\( appears 5 times" "switch_off leaves the episode open (EndMember)")
+probe(dpol "            return;\n        CloseOtherMap(g, m, \"ended\", EndReasonName(m.reason), now_, &io);\n        m.state = MemberState::Left;" "            return;\n        m.state = MemberState::Left;"
+  check_t30_1d "t30-1d: CloseOtherMap\\( appears 5 times" "MarkLeft leaves the episode open")
+probe(dpol "                    CloseOtherMap(entry.second, m, \"gone\", \"-\", now_, nullptr);   // T30-1d" "                    // T30-1d"
+  check_t30_1d "t30-1d: CloseOtherMap\\( appears 5 times" "a logout drops the open episode (ForgetGone)")
+probe(dpol "                    CloseOtherMap(g, m, \"resume\", \"-\", lastPassMs_, &io);\n" ""
+  check_t30_1d "t30-1d: CloseOtherMap\\( appears 5 times" "the resume keeps the open episode (the gap counted)")
+probe(dpol "                    CloseOtherMap(g, m, \"resume\", \"-\", lastPassMs_, &io);" "                    CloseOtherMap(g, m, \"resume\", \"-\", now_, &io);"
+  check_t30_1d "t30-1d: EndMember, MarkLeft, ForgetGone or the resume" "the resume close counts the gap")
+probe(dpol "        else if (otherMap && !m.otherMapConfirmed && !After(m.otherMapSinceMs, leaderRcvMs) && !After(m.otherMapSinceMs, memberRcvMs))\n            m.otherMapConfirmed = true;\n"
+  "" check_t30_1d "t30-1d: dpol missing" "an episode never confirmed")
+probe(dpol " && !After(m.otherMapSinceMs, leaderRcvMs) && !After(m.otherMapSinceMs, memberRcvMs))" ")" check_t30_1d "t30-1d: dpol missing"
+  "confirmed on the snapshots that opened it (joint map change counts)")
+probe(dpol "        if (!confirmed)\n        {\n            Count(Cnt::FollowOtherMapShort);\n            return;\n        }\n" "" check_t30_1d "t30-1d: dpol missing"
+  "unconfirmed episodes counted")
+probe(dpol "constexpr std::uint32_t kOtherMapLongMs = 600000;" "constexpr std::uint32_t kOtherMapLongMs = 300000;" check_t30_1d "t30-1d: dpol missing" "follow_other_map_600 on 5 minutes")
+probe(dpol "        if (ms >= kOtherMapLongMs)\n" "        if (ms > kOtherMapLongMs)\n" check_t30_1d "t30-1d: dpol missing" "an episode of exactly 600 s not counted")
+probe(dpol "    FollowOtherMap,\n    FollowOtherMap600,\n" "    FollowOtherMap600,\n    FollowOtherMap,\n" check_t30_1d "t30-1d: dpol missing" "the minute2 counters reordered")
+probe(dpol "    LeftStale,\n    // T30-1d" "    // T30-1d" check_t30_1d "t30-1d: dpol missing" "the T30-1d counters not after left_stale")
+probe(dpol "                        ++minute_.otherMapOpen;\n" "" check_t30_1d "t30-1d: dpol missing" "the open level never set")
+probe(dpol " (unsigned long long)m.otherMapMaxMs, (unsigned long long)m.otherMapOpen,\n" " (unsigned long long)m.otherMapOpen, (unsigned long long)m.otherMapMaxMs,\n"
+  check_t30_1d "t30-1d: minute2 does not end" "max and open swapped")
+probe(dpol "        passDeltaMs_ = passed_ ? now_ - lastPassMs_ : 0u;" "        passDeltaMs_ = 1000u;" check_t30_1d "t30-1d: dpol missing" "the base on a fixed pass length")
+probe(dpol "        else if (!otherMap && m.otherMapSinceMs)\n            CloseOtherMap(g, m, \"back\", \"-\", now_, &io);" "" check_t30_1d "t30-1d: dpol missing" "an episode never closes as back")
+probe(dpol "            OtherMapLine(io, ge.serial, ge.low, ge.ms, \"gone\", \"-\");\n" "" check_t30_1d "t30-1d: dpol missing" "the gone lines never written")
+probe(dpol "                    m.leaderOtherMapSince = 0;\n" "                    m.leaderOtherMapSince = 0;\n                    m.otherMapSinceMs = 0;\n" check_t30_1d
+  "t30-1d: m.otherMapSinceMs = +appears 3 times" "an extra reset of the episode clock")
+probe(conf_dist "follow_other_map_open_max_ms= (the oldest open one's age), levels." "follow_other_map_open_max_ms= (an increment)." check_t30_1d
+  "t30-1d: conf_dist missing" "the dist text calls the levels increments")
+probe(unit_test "    TestFollowOtherMap();\n" "" check_t30_1d "t30-1d: unit_test missing" "the T30-1d test not run")
+# T30-1f (R9 V3): the ack deadline key, default 10 (unchanged), 10..20, tied to the orphan grace.
+probe(config_h "    uint32 botGroupsManagerAckTimeoutSeconds = 10;" "    uint32 botGroupsManagerAckTimeoutSeconds = 15;" check_t30_1f
+  "t30-1f: config_h missing" "member default 15")
+probe(conf_dist "AiPlayerbot.BotGroups.Manager.AckTimeoutSeconds = 10\n" "AiPlayerbot.BotGroups.Manager.AckTimeoutSeconds = 15\n" check_t30_1f
+  "t30-1f: conf_dist missing" "dist default 15")
+probe(gm_policy "constexpr std::uint32_t kAckTimeoutSecondsDefault = 10;" "constexpr std::uint32_t kAckTimeoutSecondsDefault = 15;" check_t30_1f
+  "t30-1f: gm_policy missing" "loader default 15")
+probe(gm_policy "constexpr std::uint32_t kAckTimeoutSecondsMax = 20;" "constexpr std::uint32_t kAckTimeoutSecondsMax = 30;" check_t30_1f
+  "t30-1f: gm_policy missing" "max 30 (the Exit chain past the orphan grace)")
+probe(gm_policy "static_assert(2u * kAckTimeoutSecondsMax * 1000u + 20000u <= kOrphanGraceMs, " "static_assert(true, " check_t30_1f
+  "t30-1f: gm_policy missing" "the max no longer tied to the orphan grace")
+probe(gm_policy "    if (seconds < std::int64_t(kAckTimeoutSecondsMin))\n        return kAckTimeoutSecondsMin;\n" "" check_t30_1f
+  "t30-1f: gm_policy missing" "no lower bound (a 0 deadline times out every Enter)")
+probe(dpol "                else if (m.state == MemberState::Directed && now_ - m.sentMs > ackTimeoutMs_)"
+  "                else if (m.state == MemberState::Directed && now_ - m.sentMs > kAckTimeoutMs)" check_t30_1f "t30-1f: dpol missing"
+  "the Enter deadline on the fixed constant")
+probe(dpol "            else if (entry.second.exitOpen && now_ - entry.second.exitSentMs > ackTimeoutMs_)"
+  "            else if (entry.second.exitOpen && now_ - entry.second.exitSentMs > kAckTimeoutMs)" check_t30_1f "t30-1f: dpol missing"
+  "the Exit deadline on the fixed constant")
+probe(dpol "        ackTimeoutMs_ = AckTimeoutMs(r.ackTimeoutSeconds);   // T30-1f: the Enter/Exit ack deadline of this pass\n" "" check_t30_1f
+  "t30-1f: Pass does not set ackTimeoutMs_" "the key never reaches the engine")
+probe(dpol "                    CloseOtherMap(g, m, \"resume\", \"-\", lastPassMs_, &io);"
+  "                    CloseOtherMap(g, m, \"resume\", \"-\", lastPassMs_, &io);\n                    m.sentMs = now_ - kAckTimeoutMs;" check_t30_1f
+  "t30-1f: dpol kAckTimeoutMs appears 4 times" "another reader of the fixed constant")
+probe(mgr_cpp "    rules.ackTimeoutSeconds = sPlayerbotAIConfig.botGroupsManagerAckTimeoutSeconds;   // T30-1f\n" "" check_t30_1f
+  "t30-1f: mgr_cpp missing" "the config never reaches the rules")
+probe(config_cpp "            {\"BotGroups.Manager.AckTimeoutSeconds\", Value(botGroupsManagerAckTimeoutSeconds)},\n" "" check_t30_1f
+  "t30-1f: config_cpp missing" "echo entry dropped")
+probe(config_cpp "    botGroupsManagerAckTimeoutSeconds = ai::group_mgr::ClampAckTimeoutSeconds(ackTimeoutRaw);"
+  "    botGroupsManagerAckTimeoutSeconds = uint32(ackTimeoutRaw);" check_t30_1f "t30-1f: config_cpp missing" "the key read without the clamp")
+probe(unit_test "    TestAckTimeoutKey();\n" "" check_t30_1f "t30-1f: unit_test missing" "the key test not run")
+probe(unit_test "    TestAckTimeoutOrphanGrace();\n" "" check_t30_1f "t30-1f: unit_test missing" "the orphan grace test not run")
 # (i) the unit tests.
 probe(tests_cmake "add_test(NAME group_directive_policy\n" "add_test(NAME other\n" check_unit "unit: tests.cmake missing" "the unit test not registered")
 probe(unit_test "    TestTypesZero();\n" "" check_unit "unit: t/group_directive_policy_tests.cpp does not run" "the Types 0 test not run")
