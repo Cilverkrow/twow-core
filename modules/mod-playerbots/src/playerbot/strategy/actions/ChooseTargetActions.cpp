@@ -21,6 +21,15 @@
 #include "Formulas.h"
 #include <algorithm>
 
+// A3-HARM-UPSTREAM T40 follow-up (OB-00 (a) 16.11.; AiPlayerbot.ActivityTrace.StuckReason, log only, default 0): the bot's
+// "attack anything" record and the clock of this evaluation, or none. Off: one config read, nothing is stored.
+static ai::stuck_reason::AaSlot StuckReasonSlot(PlayerbotAI* ai)
+{
+    if (!sPlayerbotAIConfig.activityTraceStuckReason)
+        return ai::stuck_reason::AaSlot{ nullptr, 0 };
+    return ai::stuck_reason::AaSlot{ &ai->StuckReasonAa(), WorldTimer::getMSTime() };
+}
+
 bool DpsAssistAction::isUseful()
 {
     // if carry flag, do not start fight
@@ -32,20 +41,28 @@ bool DpsAssistAction::isUseful()
 
 bool AttackAnythingAction::isUseful()
 {
+    // A3-HARM-UPSTREAM T40 follow-up (OB-00 (a) 16.11.; ActivityTrace.StuckReason, log only, default 0): each marker line below names
+    // the gate tested next; when this body ends, the note stores the last one (on_sight / ok = true, all others false) for the
+    // [StuckReason] line. No test and no result changes. Off: nothing is stored.
+    ai::stuck_reason::AaNote stuckNote(StuckReasonSlot(ai), ai::stuck_reason::AaStage::Useful, ai::stuck_reason::AaGate::Activity, relevance);
     if (!ai->AllowActivity(GRIND_ACTIVITY)) //Bot not allowed to be active
         return false;
 
+    stuckNote.gate = ai::stuck_reason::AaGate::RealMaster;
     if (ai->HasRealPlayerMaster())
         return false;
 
+    stuckNote.gate = ai::stuck_reason::AaGate::CannotMove;
     if (!AI_VALUE(bool, "can move around"))
         return false;
 
     Unit* target = GetTarget();
+    stuckNote.gate = target ? ai::stuck_reason::AaGate::Unsafe : ai::stuck_reason::AaGate::NoTarget;
 
     if (!target || !ai->IsSafe(target))
         return false;
 
+    stuckNote.gate = ai::stuck_reason::AaGate::TripNoGrind;
     // twow-repo#333 Berufe P1-aa (AiPlayerbot.ProfessionTraining.TripNoGrind, OB-00 04.11.2026 after M1r run 8): on an open profession
     // trip (trainer or tool, ai::ProfessionTripOpenKind) a roster bot on its own starts no grind fight - not even through the "attack
     // before being attacked" rule below - so the walk, "rpg buy" and the trainer win. Self-defence stays: a creature that has the bot as
@@ -59,6 +76,7 @@ bool AttackAnythingAction::isUseful()
             return false;
     }
 
+    stuckNote.gate = ai::stuck_reason::AaGate::HealerOrPull;
     if (!ai::combat_rule::HealerMayAttack(ai))   // A3 step 5: the healer gate (CombatRule.HealerStart, default 0 = the old rule)
         return false;
 
@@ -67,23 +85,34 @@ bool AttackAnythingAction::isUseful()
     if (!ai::combat_rule::MayPull(ai, target))
         return false;
 
+    stuckNote.gate = ai::stuck_reason::AaGate::OnSight;
     if(!target->IsPlayer() && bot->isInFront(target,target->GetAttackDistance(bot)*1.5f, M_PI_F*0.5f) && target->CanAttackOnSight(bot) && target->GetLevel() < bot->GetLevel() + 3.0) //Attack before being attacked.
         return true;
 
+    stuckNote.gate = ai::stuck_reason::AaGate::Travelling;
     if (AI_VALUE(bool, "travel target traveling") && CanFreeMoveValue::CanFreeMoveTo(ai, *AI_VALUE(TravelTarget*,"travel target")->GetPosition())) //Bot is traveling
         return false;
 
+    stuckNote.gate = ai::stuck_reason::AaGate::Ok;
     return true;
 }
 
 bool ai::AttackAnythingAction::isPossible()
 {
-    return AttackAction::isPossible() && GetTarget();
+    // A3-HARM-UPSTREAM T40 follow-up (OB-00 (a) 16.11.; ActivityTrace.StuckReason, log only, default 0): the unchanged test (same
+    // operands, same short-circuit) in a local, its result noted for the [StuckReason] line.
+    ai::stuck_reason::AaNote stuckNote(StuckReasonSlot(ai), ai::stuck_reason::AaStage::Possible, ai::stuck_reason::AaGate::NotPossible, relevance);
+    bool const possible = AttackAction::isPossible() && GetTarget();
+    stuckNote.gate = possible ? ai::stuck_reason::AaGate::Ok : ai::stuck_reason::AaGate::NotPossible;
+    return possible;
 }
 
 bool ai::AttackAnythingAction::Execute(Event& event)
 {
     ai::combat_rule::CountPull(ai);   // A3 step 5 (CombatRule.RestBeforePull): pulls and their HP / mana, only with the part on
+    // A3-HARM-UPSTREAM T40 follow-up (OB-00 (a) 16.11.; ActivityTrace.StuckReason, log only, default 0): this execution's outcome
+    // (ok / failed) for the [StuckReason] line, set once the attack result is known. Off: nothing is stored.
+    ai::stuck_reason::AaNote stuckNote(StuckReasonSlot(ai), ai::stuck_reason::AaStage::Executed, ai::stuck_reason::AaGate::Failed, relevance);
     // twow-repo#601 S2 diagnostic ([GrindPick], AiPlayerbot.BotUpdateTrace; OB-10 / OB-00 18.10.): the source of this
     // engagement as it was BEFORE the attack starts - AttackAction::Execute puts the bot on the target's attacker list at
     // once, so afterwards a plain grind or quest pull could look like attacker / victim (OB-10 re-check). Off: only this test.
@@ -183,6 +212,7 @@ bool ai::AttackAnythingAction::Execute(Event& event)
         if (needStale)
             needLog->stats.picksStale++;
     }
+    stuckNote.gate = result ? ai::stuck_reason::AaGate::Ok : ai::stuck_reason::AaGate::Failed;
     if (result)
     {
         Unit* grindTarget = GetTarget();

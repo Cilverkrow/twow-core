@@ -548,6 +548,7 @@ bool PlayerbotAIConfig::Initialize()
     worldBotsTrace = config.GetBoolDefault("AiPlayerbot.WorldBotsTrace", false);
     activityTrace = config.GetBoolDefault("AiPlayerbot.ActivityTrace", false);   // twow-repo#601 R01 L1
     activityTraceStuckDetail = config.GetBoolDefault("AiPlayerbot.ActivityTrace.StuckDetail", false);   // twow-repo#601 (OB-00 26.10.2026)
+    activityTraceStuckReason = config.GetBoolDefault("AiPlayerbot.ActivityTrace.StuckReason", false);   // A3-HARM-UPSTREAM T40 follow-up (OB-00 (a) 16.11.; log only, default 0)
     activityTraceIdleDetail = config.GetBoolDefault("AiPlayerbot.ActivityTrace.IdleDetail", false);   // twow-repo#601 (OB-00 28.10.2026)
     botUpdateTrace = config.GetBoolDefault("AiPlayerbot.BotUpdateTrace", false);
     // twow-repo#597 (TICK-01): log-only extensions of [BotUpdateSlow] and [WorldBots], default 0.
@@ -2226,6 +2227,7 @@ bool PlayerbotAIConfig::Initialize()
             {"ActivityTrace", Value(activityTrace)},
             {"ActivityTrace.IdleDetail", Value(activityTraceIdleDetail)},
             {"ActivityTrace.StuckDetail", Value(activityTraceStuckDetail)},
+            {"ActivityTrace.StuckReason", Value(activityTraceStuckReason)},
             {"BotCheats", Value(botCheatMask)},
             {"BotGroups.AdHoc.HelpUntilDone", Value(botGroupsAdhocHelpUntilDone)},
             {"BotGroups.AdHoc.ScanBudgetUs", Value(botGroupsAdhocScanBudgetUs)},
