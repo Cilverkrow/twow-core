@@ -737,7 +737,41 @@ void PlayerbotAI::QuestNeedOnItemUse(uint32 itemId, uint64 targetRaw, uint32 cre
     if (!state)
         return;
     state->stats.uses++;
-    state->cap.NoteUse(itemId, targetRaw, creditKey, WorldTimer::getMSTime());
+    // The open quests this use can serve (OB-60 16.11. item 3): the item is the quest's source item, or an open objective names the
+    // target's entry. Any progress of one of them within the window credits the use, not only a kill credit of the target's entry.
+    bool const gameObject = (creditKey & 0x80000000u) != 0;
+    uint32 const entry = creditKey & 0x7FFFFFFFu;
+    ai::quest_need::UseQuests quests{};
+    std::size_t n = 0;
+    for (auto const& questStatus : bot->getQuestStatusMap())
+    {
+        if (n >= quests.size())
+            break;
+        if (questStatus.second.m_status != QUEST_STATUS_INCOMPLETE)
+            continue;
+        Quest const* quest = sObjectMgr.GetQuestTemplate(questStatus.first);
+        if (!quest || !quest->IsActive())
+            continue;
+        bool serves = quest->GetSrcItemId() == itemId;
+        for (uint32 i = 0; i < QUEST_SOURCE_ITEM_IDS_COUNT && !serves; ++i)
+            serves = quest->ReqSourceId[i] == itemId;
+        for (uint32 objective = 0; objective < QUEST_OBJECTIVES_COUNT && !serves; ++objective)
+        {
+            int32 const req = quest->ReqCreatureOrGOId[objective];
+            bool const target = (req > 0 && !gameObject && uint32(req) == entry) || (req < 0 && gameObject && uint32(-req) == entry);
+            serves = target && questStatus.second.m_creatureOrGOcount[objective] < quest->ReqCreatureOrGOCount[objective];
+        }
+        if (serves)
+            quests[n++] = questStatus.first;
+    }
+    state->cap.NoteUse(itemId, targetRaw, creditKey, WorldTimer::getMSTime(), quests);
+}
+
+void PlayerbotAI::QuestNeedOnQuestProgress(uint32 questId)
+{
+    if (!questNeed_)
+        return;
+    questNeed_->stats.credited += questNeed_->cap.NoteQuestCredit(questId, WorldTimer::getMSTime());
 }
 
 void PlayerbotAI::QuestNeedWriteHour(uint32 hourStart)

@@ -1378,6 +1378,8 @@ public:
     void QuestNeedOnKillCredit(uint32 creditEntry);
     // A quest item use on an rpg target: counted ([QuestItemUse] uses) and held 15 s for its credit (the cap). No state: nothing.
     void QuestNeedOnItemUse(uint32 itemId, uint64 targetRaw, uint32 creditKey);
+    // Progress of a quest (kill, item or complete update): credits the open quest item uses that serve this quest.
+    void QuestNeedOnQuestProgress(uint32 questId);
     // Once per update: writes the [QuestNeed] / [QuestItemUse] lines of the past clock hour (.Log = 1).
     void QuestNeedHourTick(uint32 nowSec);
     // Switch first, then a band trip runs (travel target with a band end, active) - the idle quest rescue waits for it.

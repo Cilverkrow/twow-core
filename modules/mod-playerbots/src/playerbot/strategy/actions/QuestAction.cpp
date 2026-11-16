@@ -288,9 +288,10 @@ bool QuestUpdateAddKillAction::Execute(Event& event)
     if (ai::questbook::QuestBook* book = ai->ActiveQuestBook())
         book->OnCredit(questId);
     // A3 step 2 H5 (AiPlayerbot.QuestBook.NeedPerObjective, default 0): with part (a) the need set is read fresh; with .Log / .ItemUse the
-    // quest item uses waiting for this entry (raw: game objects with the high bit) are credited. Off: config reads only.
+    // quest item uses waiting for this entry (raw: game objects with the high bit) or serving this quest are credited. Off: config reads only.
     ai->QuestNeedOnCredit(questId);
     ai->QuestNeedOnKillCredit(entry);
+    ai->QuestNeedOnQuestProgress(questId);
 
     Player* requester = event.getOwner() ? event.getOwner() : GetMaster();
 
@@ -363,8 +364,10 @@ bool QuestUpdateAddItemAction::Execute(Event& event)
             // A3 step 2 (AiPlayerbot.QuestBook, default 0): the item credit is the quest's progress in the book (credit_seq).
             if (ai::questbook::QuestBook* book = ai->ActiveQuestBook())
                 book->OnCredit(pair.first->GetQuestId());
-            // A3 step 2 H5 (QuestBook.NeedPerObjective, default 0): with part (a) the need set is read fresh, as at a kill credit.
+            // A3 step 2 H5 (QuestBook.NeedPerObjective, default 0): with part (a) the need set is read fresh, as at a kill credit; the
+            // quest item uses serving this quest are credited (a source-item / script credit arrives as an item update).
             ai->QuestNeedOnCredit(pair.first->GetQuestId());
+            ai->QuestNeedOnQuestProgress(pair.first->GetQuestId());
             placeholders["%quest_link"] = chat->formatQuest(pair.first);
             uint32 requiredItemsCount = pair.second;
             placeholders["%quest_obj_required"] = std::to_string(requiredItemsCount);
@@ -448,6 +451,9 @@ bool QuestUpdateCompleteAction::Execute(Event& event)
     // A3 step 2 (AiPlayerbot.QuestBook, default 0): quest complete is progress in the book (credit_seq).
     if (ai::questbook::QuestBook* book = ai->ActiveQuestBook())
         book->OnCredit(questId);
+    // A3 step 2 H5 (QuestBook.NeedPerObjective .Log / .ItemUse, default 0): a script / event completion credits the quest item uses
+    // serving this quest. No state: nothing.
+    ai->QuestNeedOnQuestProgress(questId);
 
     Player* requester = event.getOwner() ? event.getOwner() : GetMaster();
 
