@@ -1145,6 +1145,24 @@ void PlayerbotAI::SampleActivity(uint32 now)
     }
 }
 
+// A3-HARM-UPSTREAM T40 follow-up (OB-00 (a) 16.11.; ActivityTrace.StuckReason, log only, default 0): a value's cached result, if one
+// exists - never creates, calculates, resets or writes. fresh: checked within FreshSeconds.
+template<class T>
+static bool StuckReasonPeek(AiObjectContext* context, std::string const& name, T& out, bool& fresh)
+{
+    if (!context->HasValue(name))
+        return false;
+    UntypedValue* const untyped = context->GetUntypedValue(name);
+    if (!untyped || untyped->Expired(uint32(time(nullptr))))
+        return false;
+    Value<T>* const value = dynamic_cast<Value<T>*>(untyped);
+    if (!value)
+        return false;
+    out = value->LazyGet();
+    fresh = !untyped->Expired(ai::stuck_reason::FreshSeconds);
+    return true;
+}
+
 // twow-repo#601 (AiPlayerbot.ActivityTrace.StuckDetail, OB-00 26.10.2026): what a stuck bot is doing - its target (kind, quest,
 // entry, yards to the target point), the travel status and how long it has held it, the move retries, the movement generator,
 // and the engine's newest executed action with the trigger that pushed it (BotActivityPolicy.h PickFromTrail).
@@ -1186,6 +1204,46 @@ void PlayerbotAI::ReportStuckDetail(ai::bot_activity::State const& state)
         uint32(bot->GetMotionMaster()->GetCurrentMovementGeneratorType()), bot->IsMoving() ? 1u : 0u, uint32(currentState),
         pick.action.c_str(), pick.trigger.c_str(), ai::bot_activity::StuckDetailGlobal().TakeDropped(),
         ai::far_move::WaitStateName(FarMoveWaitState()), curTargetGuid.GetEntry(), curTargetVisible);
+    // A3-HARM-UPSTREAM T40 follow-up (OB-00 (a) 16.11.; AiPlayerbot.ActivityTrace.StuckReason, log only, default 0): the companion
+    // line - where "attack anything" last ended, the newest non-combat pass, the strategies whose multiplier can zero it, the old
+    // no-target rule and the leader. Reads cached values only (never creates or calculates one), the bot's own data and class,
+    // its group (leader guid, member count), and the leader's position only when the leader shares the bot's Map object
+    // (SameMapObject).
+    // Off: nothing is read or written.
+    if (sPlayerbotAIConfig.activityTraceStuckReason)
+    {
+        uint32 const nowMs = WorldTimer::getMSTime();
+        ai::stuck_reason::Line line;
+        line.bot = bot->GetGUIDLow();
+        line.cls = bot->getClass();
+        line.aa = stuckReasonAa;
+        line.aaAgeMs = ai::stuck_reason::AgeMs(nowMs, stuckReasonAa.ms, stuckReasonAa.stage != 0);
+        line.passAgeMs = ai::stuck_reason::AgeMs(nowMs, stuckReasonPass.ms, stuckReasonPass.seen != 0);
+        line.passMinimal = stuckReasonPass.seen ? int32(stuckReasonPass.minimal) : -1;
+        line.grind = HasStrategy("grind", BotState::BOT_STATE_NON_COMBAT) ? 1 : 0;
+        line.ncMult = ai::stuck_reason::NcMultOf(HasStrategy("passive", BotState::BOT_STATE_NON_COMBAT),
+            HasStrategy("wbuff travel", BotState::BOT_STATE_NON_COMBAT), HasStrategy("dungeon clear", BotState::BOT_STATE_NON_COMBAT),
+            HasStrategy("pull", BotState::BOT_STATE_NON_COMBAT), HasStrategy("stealthed", BotState::BOT_STATE_NON_COMBAT));
+        bool invalid = false, invalidFresh = false;
+        bool const invalidCached = StuckReasonPeek<bool>(aiObjectContext, "invalid target::current target", invalid, invalidFresh);
+        line.oldRule = ai::stuck_reason::OldRuleOf(!curTargetGuid.IsEmpty(), curTargetValue && curTargetValue->Get() != nullptr,
+            invalidCached, invalid, invalidFresh);
+        bool cfmMax = false, cfmFresh = false;
+        if (StuckReasonPeek<bool>(aiObjectContext, "can free move::wandermax", cfmMax, cfmFresh))
+        {
+            line.cfmMax = cfmMax ? 1 : 0;
+            line.cfmFresh = cfmFresh ? 1 : 0;
+        }
+        Group* const group = bot->GetGroup();
+        ObjectGuid const leaderGuid = group ? group->GetLeaderGuid() : ObjectGuid();
+        Player* const leaderPlayer = leaderGuid && leaderGuid != bot->GetObjectGuid() ? sObjectMgr.GetPlayer(leaderGuid) : nullptr;
+        bool const leaderSameMap = leaderPlayer && SameMapObject(bot, leaderPlayer);
+        line.leaderGuid = leaderGuid.GetCounter();
+        line.groupSize = group ? group->GetMembersCount() : 0;
+        line.leader = ai::stuck_reason::LeaderOf(group != nullptr, leaderGuid == bot->GetObjectGuid(), leaderPlayer != nullptr, leaderSameMap);
+        line.leaderDist = leaderSameMap ? bot->GetDistance2dToCenter(leaderPlayer) : -1.0f;
+        sLog.outBasic("%s", ai::stuck_reason::FormatLine(line).c_str());
+    }
 }
 
 ai::far_move::WaitState PlayerbotAI::FarMoveWaitState() const
@@ -4707,6 +4765,11 @@ void PlayerbotAI::DoNextAction(bool min)
     }
 
     bool minimal = !AllowActivity();
+
+    // A3-HARM-UPSTREAM T40 follow-up (OB-00 (a) 16.11.; AiPlayerbot.ActivityTrace.StuckReason, log only, default 0): the start of
+    // this bot's newest non-combat pass and whether it is minimal, read only by the [StuckReason] line. Off: one config read.
+    if (sPlayerbotAIConfig.activityTraceStuckReason && currentEngine == engines[(uint8)BotState::BOT_STATE_NON_COMBAT])
+        stuckReasonPass = ai::stuck_reason::PassRecord{ WorldTimer::getMSTime(), uint8((minimal || min) ? 1 : 0), 1 };
 
     SC_PHASE("DoNextAction.engineDoNextAction", bot ? bot->GetName() : "(null)");
     Engine* const engine = currentEngine;
