@@ -102,7 +102,7 @@ int main()
     ItemSpell const bread = Slot(433, 11, Spell(0, 11, 85, 1, 6, 0, 0, 84, 0, 0));
     ItemSpell const water = Slot(430, 59, Spell(0, 59, 85, 1, 6, 0, 0, 85, 0, 0));
     ItemSpell pie = Slot(5005, 11, Spell(0, 11, 86, 1, 6, 6, 0, 84, 23, 0));
-    pie.trigger[0] = Spell(0, 0, 347, 1, 6, 6, 0, 29, 29, 0);
+    pie.trigger[1] = Spell(0, 0, 347, 1, 6, 6, 0, 29, 29, 0); // 19706 Well Fed, the trigger of effect 1 (aura 23)
     Require(DeriveB(bread) == kSubClassConsumable && DeriveA(bread) == kSubClassConsumable, "bread stays 0");
     Require(DeriveB(water) == kSubClassConsumable && DeriveA(water) == kSubClassConsumable, "water stays 0");
     Require(DeriveB(pie) == kSubClassConsumable && DeriveA(pie) == kSubClassConsumable, "Goretusk Liver Pie stays 0 (buff food)");
