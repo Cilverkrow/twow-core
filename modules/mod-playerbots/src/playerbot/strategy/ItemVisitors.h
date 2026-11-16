@@ -373,17 +373,20 @@ namespace ai
     private:
         bool AcceptsVanillaPotion(const ItemPrototype* proto) const
         {
+            static_assert(ai::potion_find::kMaxEffects == MAX_EFFECT_INDEX, "PotionFindPolicy.h kMaxEffects must equal MAX_EFFECT_INDEX");
             ai::potion_find::SlotFacts slots[MAX_ITEM_PROTO_SPELLS];
             for (int j = 0; j < MAX_ITEM_PROTO_SPELLS; j++)
             {
                 slots[j].itemCategory = proto->Spells[j].SpellCategory;
+                slots[j].itemCooldown = proto->Spells[j].SpellCooldown;
+                slots[j].itemCategoryCooldown = proto->Spells[j].SpellCategoryCooldown;
                 const SpellEntry* const spellInfo = sServerFacade.LookupSpellInfo(proto->Spells[j].SpellId);
                 if (!spellInfo)
                     continue;
 
                 slots[j].known = true;
                 slots[j].spellCategory = spellInfo->Category;
-                for (int i = 0; i < 3; i++)
+                for (std::size_t i = 0; i < ai::potion_find::kMaxEffects; i++)
                 {
                     slots[j].effect[i] = spellInfo->Effect[i];
                     slots[j].misc[i] = spellInfo->EffectMiscValue[i];
