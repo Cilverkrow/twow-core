@@ -4,6 +4,7 @@
 #include "ChooseRpgTargetAction.h"
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/CohortPolicy.h"   // twow-repo#601 A3 step 1 (Rpg.TurnInFirst)
+#include "playerbot/QuestNeedPolicy.h"   // A3 step 2 H5: the credit key of an item use
 #include "playerbot/strategy/values/PossibleRpgTargetsValue.h"
 #include "playerbot/strategy/values/Formations.h"
 #include "playerbot/strategy/values/SharedValueContext.h"
@@ -957,6 +958,10 @@ bool RpgItemAction::Execute(Event& event)
             {
                 used = UseItem(requester, item->GetEntry(), unitTarget);
             }
+            // A3 step 2 H5 (QuestBook.NeedPerObjective .Log / .ItemUse, default 0): the use waits 15 s for a kill / cast credit of the
+            // target's entry ([QuestItemUse] uses / credited, the cap). Off: config reads only.
+            if (used)
+                ai->QuestNeedOnItemUse(item->GetEntry(), guidP.GetRawValue(), ai::quest_need::CreditKey(guidP.GetEntry(), guidP.IsGameObject()));
         }
     }
 

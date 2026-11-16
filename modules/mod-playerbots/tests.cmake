@@ -1949,6 +1949,20 @@ add_test(NAME questbundle_policy
   COMMAND questbundle_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# A3 step 2 H5 need per open objective + quest item use by need (QuestNeedPolicy.h, AiPlayerbot.QuestBook.NeedPerObjective).
+add_executable(questneed_policy_tests
+  "${PB_MODULE_DIR}/t/questneed_policy_tests.cpp")
+
+target_include_directories(questneed_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(questneed_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME questneed_policy
+  COMMAND questneed_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 add_executable(planner_policy_tests
   "${PB_MODULE_DIR}/t/planner_policy_tests.cpp")
 
