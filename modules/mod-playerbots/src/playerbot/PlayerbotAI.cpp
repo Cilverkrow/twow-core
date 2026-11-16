@@ -10735,11 +10735,22 @@ std::list<Item*> PlayerbotAI::InventoryParseItems(std::string text, IterateItems
     {
         FindPotionVisitor visitor(bot, SPELL_EFFECT_ENERGIZE);
         VISIT;
+        // twow-repo#333 T24 POTFIX (AiPlayerbot.PotionFind.BySpell): the visitor decides alone. No name fallback below,
+        // which also returned recipes and Craftsman's Writs ("Recipe: Major Mana Potion") and potions the bot cannot use.
+        if (visitor.BySpell())
+        {
+            RETURN_SORT_FOUND;
+        }
     }
     else if (text == "healing potion")
     {
         FindPotionVisitor visitor(bot, SPELL_EFFECT_HEAL);
         VISIT;
+        // twow-repo#333 T24 POTFIX (AiPlayerbot.PotionFind.BySpell): as for "mana potion".
+        if (visitor.BySpell())
+        {
+            RETURN_SORT_FOUND;
+        }
     }
     else if (text == "mount")
     {

@@ -2054,6 +2054,21 @@ add_test(NAME ammo_stock_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/ammo_stock_source_contract_tests.cmake")
 
+# twow-repo#333 T24 POTFIX (AiPlayerbot.PotionFind.BySpell, bug fix): subclass-0 potions by spell (PotionFindPolicy.h);
+# source contract in t/contracts.d.
+add_executable(potion_find_policy_tests
+  "${PB_MODULE_DIR}/t/potion_find_policy_tests.cpp")
+
+target_include_directories(potion_find_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(potion_find_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME potion_find_policy
+  COMMAND potion_find_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # twow-repo#295: riding in four stages - bots train riding and buy their mounts with
 # gold like players (mount budget, vendor trip, mount choice, travel budget). The rules
 # are the core's FunserverRidingStages.h, hence the core's src/game on the path.

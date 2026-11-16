@@ -302,6 +302,9 @@ bool PlayerbotAIConfig::Initialize()
         thrownUsageFix = 1;
     randomBotRpgChance = config.GetFloatDefault("AiPlayerbot.RandomBotRpgChance", 0.35f);
     usePotionChance = config.GetFloatDefault("AiPlayerbot.UsePotionChance", 1.0f);
+    potionFindBySpell = config.GetIntDefault("AiPlayerbot.PotionFind.BySpell", 0);
+    if (potionFindBySpell > 3)
+        potionFindBySpell = 0;
     attackEmoteChance = config.GetFloatDefault("AiPlayerbot.AttackEmoteChance", 0.0f);
 
     jumpNoCombatChance = config.GetFloatDefault("AiPlayerbot.JumpNoCombatChance", 0.5f);
@@ -2296,6 +2299,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Perf.BindAreaFromHomebind", Value(perfBindAreaFromHomebind)},
             {"Perf.DispatchPrecomputedPath", Value(perfDispatchPrecomputedPath)},
             {"Perf.RouteTimeTrace", Value(perfRouteTimeTrace)},
+            {"PotionFind.BySpell", Value(potionFindBySpell)},
             {"ProfessionTraining.NearRadius", Value(professionTrainingNearRadius)},
             {"ProfessionTraining.Travel", Value(professionTrainingTravel)},
             {"ProfessionTraining.TripDoneAtTarget", Value(professionTrainingTripDoneAtTarget)},
