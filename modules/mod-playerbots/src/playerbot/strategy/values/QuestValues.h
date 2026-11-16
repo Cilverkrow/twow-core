@@ -224,6 +224,8 @@ namespace ai
     {
     public:
         CanUseItemOn(PlayerbotAI* ai) : BoolCalculatedValue(ai, "can use item on"), Qualified() {}
+        // A3 step 2 H5 part (b) (QuestBook.NeedPerObjective.ItemUse): use only on a target an open objective links to the item.
+        bool UseByNeed(uint32 itemId, uint32 spellId, GuidPosition const& guidP);
         virtual bool Calculate() override;
     };
 
