@@ -255,14 +255,76 @@ void UseConsumableAction::CollectPossibleAuraIds(uint32 spellId, std::vector<uin
     }
 }
 
+// twow-repo#333 T24 CLSFIX (AiPlayerbot.Consumables.KindFromSpell, default 0): the one read of the switch; true when it applies to this
+// bot (1 every bot, 2 cohort B, 3 cohort A). It gates the derived subclass and the three guards of Execute / ScoreSpellStats.
+bool UseConsumableAction::KindFromSpellFor() const
+{
+    return sPlayerbotAIConfig.consumablesKindFromSpell &&
+        ai::cohort::Applies(sPlayerbotAIConfig.consumablesKindFromSpell, bot->GetGUIDLow());
+}
+
+// twow-repo#333 T24 CLSFIX review (switch on only): true when an aura of the candidate would not land on the bot because a more
+// powerful spell of its POWERFULL_CHAIN spell group is active (Power Word: Fortitude over a Scroll of Stamina, a higher scroll rank,
+// Greater Arcane Elixir over Arcane Elixir). A scroll then fails with SPELL_FAILED_AURA_BOUNCED and stays in the bags, so the same
+// candidate was picked again every tick; an elixir targeting the caster is consumed without effect. The same aura ids as
+// HasAnyCandidateAura; the cast of this action always lands on the bot (UseItemIdAction without a target).
+bool UseConsumableAction::IsCandidateOutranked(const ConsumableCandidate& candidate) const
+{
+    std::vector<uint32> auraIds;
+    CollectPossibleAuraIds(candidate.spellId, auraIds);
+
+    const ItemPrototype* proto = candidate.item->GetProto();
+    if (proto)
+    {
+        for (int i = 0; i < MAX_ITEM_PROTO_SPELLS; ++i)
+        {
+            if (proto->Spells[i].SpellId)
+                CollectPossibleAuraIds(proto->Spells[i].SpellId, auraIds);
+        }
+    }
+
+    for (uint32 id : auraIds)
+    {
+        SpellEntry const* spellInfo = sServerFacade.LookupSpellInfo(id);
+        if (spellInfo && bot->HasMorePowerfulSpellActive(spellInfo))
+            return true;
+    }
+
+    return false;
+}
+
+// twow-repo#333 T24 CLSFIX review (switch on only): true when a quest in the bot's log asks for this item (Elixir of Minor Fortitude for
+// quest 1073, Elixir of Fortitude for 3842). The log holds incomplete and complete, not yet rewarded quests, so this also keeps the
+// items of a quest that is ready to turn in.
+bool UseConsumableAction::IsQuestDeliveryItem(uint32 itemId) const
+{
+    for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+    {
+        uint32 const questId = bot->GetQuestSlotQuestId(slot);
+        if (!questId)
+            continue;
+
+        Quest const* quest = sObjectMgr.GetQuestTemplate(questId);
+        if (!quest)
+            continue;
+
+        for (int i = 0; i < QUEST_ITEM_OBJECTIVES_COUNT; ++i)
+        {
+            if (quest->ReqItemCount[i] && quest->ReqItemId[i] == itemId)
+                return true;
+        }
+    }
+
+    return false;
+}
+
 // twow-repo#333 T24 CLSFIX (OB-00 16.11.2026, bug fix; AiPlayerbot.Consumables.KindFromSpell, default 0): every consumable of the
 // vanilla world data has subclass 0, so the potion / elixir / flask / scroll branches of ClassifyConsumable never ran. For a bot the
 // switch applies to, a subclass-0 consumable gets the subclass derived from its item spells (ConsumableKindPolicy.h, rules R0-R5);
 // everything else keeps proto->SubClass.
 uint32 UseConsumableAction::ConsumableSubClass(ItemPrototype const* proto) const
 {
-    if (!sPlayerbotAIConfig.consumablesKindFromSpell || proto->SubClass != ITEM_SUBCLASS_CONSUMABLE ||
-        !ai::cohort::Applies(sPlayerbotAIConfig.consumablesKindFromSpell, bot->GetGUIDLow()))
+    if (!KindFromSpellFor() || proto->SubClass != ITEM_SUBCLASS_CONSUMABLE)
         return proto->SubClass;
 
     // The facts of one spell (after spell_mod / spell_effect_mod); nullptr and known = false when there is no such spell.
@@ -682,11 +744,19 @@ float UseConsumableAction::ScoreSpellStats(uint32 spellId) const
 
     const BotConsumableRole role = GetBotRole();
     float score = 0.0f;
+    bool const kindFromSpell = KindFromSpellFor();
 
     for (int i = 0; i < 3; ++i)
     {
         float amount = (float)spellInfo->EffectBasePoints[i];
         if (amount <= 0)
+            continue;
+
+        // twow-repo#333 T24 CLSFIX review (switch on only): a larger pool of a power the bot does not have is worth nothing (Flask of
+        // Distilled Wisdom, +2000 mana, outranked Flask of the Titans for warriors and rogues).
+        if (kindFromSpell && spellInfo->EffectApplyAuraName[i] == SPELL_AURA_MOD_INCREASE_ENERGY &&
+            (spellInfo->EffectMiscValue[i] < 0 || spellInfo->EffectMiscValue[i] >= MAX_POWERS ||
+             !bot->GetMaxPower(Powers(spellInfo->EffectMiscValue[i]))))
             continue;
 
         switch (spellInfo->EffectApplyAuraName[i])
@@ -895,10 +965,15 @@ bool UseConsumableAction::Execute(Event& event)
 
     bool hasFlask = HasActiveFlask();
     bool hasFoodBuff = HasActiveFoodBuff();
+    bool const kindFromSpell = KindFromSpellFor();
 
     for (const auto& c : candidates)
     {
         if (HasAnyCandidateAura(c))
+            continue;
+
+        // twow-repo#333 T24 CLSFIX review (switch on only): skip what would bounce or be wasted, and what a quest in the log asks for.
+        if (kindFromSpell && (IsCandidateOutranked(c) || IsQuestDeliveryItem(c.item->GetProto()->ItemId)))
             continue;
 
         switch (c.type)

@@ -56,6 +56,13 @@ namespace ai
         // twow-repo#333 T24 CLSFIX (Consumables.KindFromSpell, default 0): the subclass ClassifyConsumable branches on.
         uint32 ConsumableSubClass(ItemPrototype const* proto) const;
 
+        // twow-repo#333 T24 CLSFIX: the switch applies to this bot; the review guards of Execute (switch on only).
+        bool KindFromSpellFor() const;
+
+        bool IsCandidateOutranked(const ConsumableCandidate& candidate) const;
+
+        bool IsQuestDeliveryItem(uint32 itemId) const;
+
         bool IsProtectionConsumable(const ItemPrototype* proto) const;
 
         bool IsPotionLike(const ItemPrototype* proto) const;

@@ -5,13 +5,15 @@
 # consumable_kind_policy: Flask of the Titans -> flask, Elixir of Fortitude -> elixir, Scroll of Strength II -> scroll, healing
 # potions -> potion) and runs the unchanged branches with it.
 # This contract pins:
-#   0. the switch: dist key, member, read with > 3 = off, sorted [ConfigEcho] entry;
+#   0. the switch: dist key, member, read with > 3 = off, sorted [ConfigEcho] entry; read in the action only by KindFromSpellFor;
 #   1. ClassifyConsumable: every subclass test reads the derived subclass, nothing else of the function changed;
-#   2. the off path: config first, then subclass 0 and cohort, else proto->SubClass unchanged;
+#   2. the off path: switch (config, then cohort) first, then subclass 0, else proto->SubClass unchanged; every copied spell fact;
 #   3. knownFlaskAuras unchanged (the one flask list, also for the derived flask);
 #   4. the policy header stays std only and its constants match the core enums;
 #   5. the keep block in ItemUsageValue.cpp does not read the switch; the unit test keeps the four contract cases;
-#   6. negative probes: every mutation must make the contract fail.
+#   6. the review guards (switch on only): Execute skips a candidate a more powerful active spell would refuse and one a quest in the
+#      log asks for; ScoreSpellStats gives no score to a pool of a power the bot does not have;
+#   7. negative probes: every mutation must make the contract fail.
 
 cmake_policy(VERSION 3.16)
 
@@ -98,7 +100,15 @@ function(mirror core_text name value core_name)
   endif()
 endfunction()
 
-set(off_path "uint32 UseConsumableAction::ConsumableSubClass(ItemPrototype const* proto) const\n{\n    if (!sPlayerbotAIConfig.consumablesKindFromSpell || proto->SubClass != ITEM_SUBCLASS_CONSUMABLE ||\n        !ai::cohort::Applies(sPlayerbotAIConfig.consumablesKindFromSpell, bot->GetGUIDLow()))\n        return proto->SubClass;\n")
+set(kind_for "bool UseConsumableAction::KindFromSpellFor() const\n{\n    return sPlayerbotAIConfig.consumablesKindFromSpell &&\n        ai::cohort::Applies(sPlayerbotAIConfig.consumablesKindFromSpell, bot->GetGUIDLow());\n}\n")
+set(off_path "uint32 UseConsumableAction::ConsumableSubClass(ItemPrototype const* proto) const\n{\n    if (!KindFromSpellFor() || proto->SubClass != ITEM_SUBCLASS_CONSUMABLE)\n        return proto->SubClass;\n")
+set(facts_glue "        facts.known = true;\n        facts.family = spellInfo->SpellFamilyName;\n        facts.category = spellInfo->Category;\n        facts.durationIndex = spellInfo->DurationIndex;\n        facts.targetA0 = spellInfo->EffectImplicitTargetA[0];\n        for (int j = 0; j < 3; ++j)\n        {\n            facts.effect[j] = spellInfo->Effect[j];\n            facts.aura[j] = spellInfo->EffectApplyAuraName[j];\n        }\n")
+set(slot_glue "        uint32 const spellId = proto->Spells[i].SpellId;\n        if (!spellId)\n            continue;\n\n        ai::consumable_kind::ItemSpell& slot = spells[n++];\n        slot.spellId = spellId;\n        slot.itemCategory = proto->Spells[i].SpellCategory;\n        SpellEntry const* spellInfo = fill(spellId, slot.spell);\n        if (!spellInfo)\n            continue;\n")
+set(trigger_glue "        for (int j = 0; j < 3; ++j)\n        {\n            uint32 const trigger = spellInfo->EffectTriggerSpell[j];\n            if (trigger && trigger != spellId)\n                fill(trigger, slot.trigger[j]);\n        }\n")
+set(guard_line "        if (kindFromSpell && (IsCandidateOutranked(c) || IsQuestDeliveryItem(c.item->GetProto()->ItemId)))\n            continue;\n")
+set(mana_guard "        if (kindFromSpell && spellInfo->EffectApplyAuraName[i] == SPELL_AURA_MOD_INCREASE_ENERGY &&\n            (spellInfo->EffectMiscValue[i] < 0 || spellInfo->EffectMiscValue[i] >= MAX_POWERS ||\n             !bot->GetMaxPower(Powers(spellInfo->EffectMiscValue[i]))))\n            continue;\n")
+set(null_check "    if (!proto || proto->Class != ITEM_CLASS_CONSUMABLE)\n        return false;\n")
+set(subclass_line "    uint32 const subClass = ConsumableSubClass(proto);\n")
 set(echo_entry "            {\"Consumables.KindFromSpell\", Value(consumablesKindFromSpell)},\n")
 set(echo_before "            {\"CombatRule.TargetRule\", Value(combatRuleTargetRule)},\n")
 set(echo_after "            {\"Crafting.Consumables\", Value(craftingConsumables)},\n")
@@ -117,12 +127,16 @@ function(check out_var)
   count("${config_cpp}" "${echo_entry}" 1 "(0) [ConfigEcho] entry")
   order("${config_cpp}" "${echo_before}" "${echo_entry}" "(0) [ConfigEcho] after CombatRule.TargetRule")
   order("${config_cpp}" "${echo_entry}" "${echo_after}" "(0) [ConfigEcho] before Crafting.Consumables")
+  need("${use_cpp}" "${kind_for}" "(0) KindFromSpellFor: config, then cohort")
+  count("${use_cpp}" "sPlayerbotAIConfig.consumablesKindFromSpell" 2 "(0) switch reads in the action (only KindFromSpellFor)")
+  count("${use_cpp}" "KindFromSpellFor()" 4 "(0) KindFromSpellFor: definition, ConsumableSubClass, ScoreSpellStats, Execute")
+  need("${use_h}" "        bool KindFromSpellFor() const;\n" "(0) KindFromSpellFor declared")
 
   # 1. ClassifyConsumable: the derived subclass once, after the null / class check; seven tests read it, none reads proto->SubClass.
   region("${use_cpp}" "bool UseConsumableAction::ClassifyConsumable(" "\n}\n" classify)
-  need("${classify}" "    if (!proto || proto->Class != ITEM_CLASS_CONSUMABLE)\n        return false;\n" "(1) null / class check")
-  count("${classify}" "uint32 const subClass = ConsumableSubClass(proto);" 1 "(1) the derived subclass, once")
-  order("${classify}" "if (!proto || proto->Class != ITEM_CLASS_CONSUMABLE)" "uint32 const subClass = ConsumableSubClass(proto);" "(1) after the null / class check")
+  need("${classify}" "${null_check}" "(1) null / class check")
+  count("${classify}" "${subclass_line}" 1 "(1) the derived subclass, once")
+  order("${classify}" "${null_check}" "${subclass_line}" "(1) after the null / class check")
   order("${classify}" "uint32 const subClass = ConsumableSubClass(proto);" "subClass ==" "(1) before the first subclass test")
   count("${classify}" "proto->SubClass ==" 0 "(1) subclass tests on proto->SubClass")
   count("${classify}" "subClass ==" 7 "(1) subclass tests on the derived subclass")
@@ -133,11 +147,13 @@ function(check out_var)
 
   # 2. ConsumableSubClass: the off path first, the policy with the facts of the core spell data and the one flask list.
   count("${use_cpp}" "ConsumableSubClass(" 2 "(2) definition and the one call")
-  need("${use_cpp}" "${off_path}" "(2) off path first: config, subclass 0, cohort, else proto->SubClass")
+  need("${use_cpp}" "${off_path}" "(2) off path first: switch, subclass 0, else proto->SubClass")
   region("${use_cpp}" "uint32 UseConsumableAction::ConsumableSubClass(" "\n}\n" derive)
   need("${derive}" "\n    return ai::consumable_kind::DeriveSubClass(spells, n);" "(2) the policy decides")
   need("${derive}" "        for (uint32 flaskAura : UseConsumableAction::knownFlaskAuras)\n        {\n            if (flaskAura == spellId)\n                facts.flaskAura = true;\n        }\n" "(2) flask aura from knownFlaskAuras")
-  need("${derive}" "            if (trigger && trigger != spellId)\n" "(2) triggers as CollectPossibleAuraIds (not 0, not the spell itself)")
+  need("${derive}" "${facts_glue}" "(2) every spell fact copied from the core spell data")
+  need("${derive}" "${slot_glue}" "(2) one slot per item spell with its id and slot category")
+  need("${derive}" "${trigger_glue}" "(2) trigger facts as CollectPossibleAuraIds (not 0, not the spell itself)")
   count("${derive}" "sLog" 0 "(2) no log line")
   need("${use_cpp}" "#include \"playerbot/ConsumableKindPolicy.h\"\n" "(2) policy include")
   need("${use_h}" "        uint32 ConsumableSubClass(ItemPrototype const* proto) const;\n" "(2) declared")
@@ -187,6 +203,29 @@ function(check out_var)
     need("${unit}" "${case}" "(5) unit test contract case")
   endforeach()
 
+  # 6. The review guards, all behind KindFromSpellFor.
+  region("${use_cpp}" "bool UseConsumableAction::Execute(" "\n}\n" execute)
+  need("${execute}" "    bool const kindFromSpell = KindFromSpellFor();\n" "(6) Execute reads the switch once")
+  need("${execute}" "${guard_line}" "(6) Execute skips an outranked candidate and a quest delivery item, switch on only")
+  order("${execute}" "if (HasAnyCandidateAura(c))" "${guard_line}" "(6) the guard after the aura check")
+  order("${execute}" "${guard_line}" "switch (c.type)" "(6) the guard before the choice")
+  region("${use_cpp}" "bool UseConsumableAction::IsCandidateOutranked(" "\n}\n" outranked)
+  need("${outranked}" "    CollectPossibleAuraIds(candidate.spellId, auraIds);\n" "(6) outranked: the candidate's aura ids")
+  need("${outranked}" "                CollectPossibleAuraIds(proto->Spells[i].SpellId, auraIds);\n" "(6) outranked: every item spell's aura ids")
+  need("${outranked}" "        if (spellInfo && bot->HasMorePowerfulSpellActive(spellInfo))\n            return true;\n" "(6) outranked: the core bounce check")
+  region("${use_cpp}" "bool UseConsumableAction::IsQuestDeliveryItem(" "\n}\n" questitem)
+  need("${questitem}" "    for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)\n" "(6) quest item: every quest log slot")
+  need("${questitem}" "            if (quest->ReqItemCount[i] && quest->ReqItemId[i] == itemId)\n                return true;\n" "(6) quest item: a required item, any status in the log")
+  count("${questitem}" "m_status" 0 "(6) quest item: no status filter (a complete quest still needs the item)")
+  region("${use_cpp}" "float UseConsumableAction::ScoreSpellStats(" "\n}\n" score)
+  need("${score}" "    bool const kindFromSpell = KindFromSpellFor();\n" "(6) ScoreSpellStats reads the switch once")
+  need("${score}" "${mana_guard}" "(6) no score for a pool of a power the bot does not have, switch on only")
+  order("${score}" "if (amount <= 0)" "${mana_guard}" "(6) the power guard after the amount check")
+  order("${score}" "${mana_guard}" "switch (spellInfo->EffectApplyAuraName[i])" "(6) the power guard before the aura switch")
+  foreach(decl "        bool IsCandidateOutranked(const ConsumableCandidate& candidate) const;\n" "        bool IsQuestDeliveryItem(uint32 itemId) const;\n")
+    need("${use_h}" "${decl}" "(6) guard declared")
+  endforeach()
+
   set(${out_var} "${errors}" PARENT_SCOPE)
 endfunction()
 
@@ -196,7 +235,7 @@ if(errs)
   message(FATAL_ERROR "${TAG}:${errs}")
 endif()
 
-# ---- 6. negative probes ----------------------------------------------------------------------------------------------
+# ---- 7. negative probes ----------------------------------------------------------------------------------------------
 set(probes 0)
 function(probe label var from to)
   string(REPLACE "${from}" "${to}" mut "${${var}}")
@@ -218,9 +257,28 @@ probe("no clamp" config_cpp "    if (consumablesKindFromSpell > 3)\n" "    if (c
 probe("echo missing" config_cpp "${echo_entry}" "")
 probe("echo out of order" config_cpp "${echo_before}${echo_entry}" "${echo_entry}${echo_before}")
 probe("a test on proto->SubClass" use_cpp "    if (subClass == ITEM_SUBCLASS_ELIXIR)\n" "    if (proto->SubClass == ITEM_SUBCLASS_ELIXIR)\n")
-probe("derived before the null check" use_cpp "    if (!proto || proto->Class != ITEM_CLASS_CONSUMABLE)\n        return false;\n\n" "")
-probe("off path without config check" use_cpp "    if (!sPlayerbotAIConfig.consumablesKindFromSpell || proto->SubClass" "    if (proto->SubClass")
-probe("derived for every subclass" use_cpp " || proto->SubClass != ITEM_SUBCLASS_CONSUMABLE ||" " ||")
+probe("null check dropped" use_cpp "${null_check}\n" "")
+# Swap the two lines: only the order check can catch this one (the null check and the derived line are both still there).
+string(FIND "${use_cpp}" "${null_check}" swap_a)
+string(FIND "${use_cpp}" "${subclass_line}" swap_b)
+math(EXPR swap_len "${swap_b} - ${swap_a}")
+string(LENGTH "${subclass_line}" subclass_len)
+math(EXPR swap_len "${swap_len} + ${subclass_len}")
+string(SUBSTRING "${use_cpp}" ${swap_a} ${swap_len} swap_from)
+probe("derived before the null check" use_cpp "${swap_from}" "${subclass_line}${null_check}")
+probe("off path without the switch" use_cpp "    if (!KindFromSpellFor() || proto->SubClass" "    if (proto->SubClass")
+probe("derived for every subclass" use_cpp " || proto->SubClass != ITEM_SUBCLASS_CONSUMABLE)\n        return proto->SubClass;" ")\n        return proto->SubClass;")
+probe("switch without cohort" use_cpp "${kind_for}" "bool UseConsumableAction::KindFromSpellFor() const\n{\n    return sPlayerbotAIConfig.consumablesKindFromSpell;\n}\n")
+probe("second switch read" use_cpp "${subclass_line}" "${subclass_line}    if (sPlayerbotAIConfig.consumablesKindFromSpell == 1)\n        return false;\n")
+probe("trigger facts dropped" use_cpp "                fill(trigger, slot.trigger[j]);\n" "                (void)trigger;\n")
+probe("duration fact dropped" use_cpp "        facts.durationIndex = spellInfo->DurationIndex;\n" "")
+probe("aura facts dropped" use_cpp "            facts.aura[j] = spellInfo->EffectApplyAuraName[j];\n" "")
+probe("slot category 0" use_cpp "        slot.itemCategory = proto->Spells[i].SpellCategory;\n" "        slot.itemCategory = 0;\n")
+probe("guard for every bot" use_cpp "        if (kindFromSpell && (IsCandidateOutranked(c)" "        if ((IsCandidateOutranked(c)")
+probe("guard dropped" use_cpp "${guard_line}" "")
+probe("bounce check dropped" use_cpp "        if (spellInfo && bot->HasMorePowerfulSpellActive(spellInfo))\n" "        if (spellInfo && false)\n")
+probe("quest item check dropped" use_cpp "            if (quest->ReqItemCount[i] && quest->ReqItemId[i] == itemId)\n" "            if (false)\n")
+probe("power guard for every bot" use_cpp "        if (kindFromSpell && spellInfo->EffectApplyAuraName[i] == SPELL_AURA_MOD_INCREASE_ENERGY" "        if (spellInfo->EffectApplyAuraName[i] == SPELL_AURA_MOD_INCREASE_ENERGY")
 probe("flask list changed" use_cpp "    17624,  // Flask of Petrification\n" "")
 probe("log in the classifier" use_cpp "    uint32 const subClass = ConsumableSubClass(proto);\n" "    uint32 const subClass = ConsumableSubClass(proto);\n    sLog.outBasic(\"x\");\n")
 probe("game header in the policy" policy "#include <cstdint>\n" "#include <cstdint>\n#include \"SpellMgr.h\"\n")
