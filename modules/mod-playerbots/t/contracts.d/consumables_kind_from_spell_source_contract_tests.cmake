@@ -12,7 +12,8 @@
 #   4. the policy header stays std only and its constants match the core enums;
 #   5. the keep block in ItemUsageValue.cpp does not read the switch; the unit test keeps the four contract cases;
 #   6. the review guards (switch on only): Execute skips a candidate a more powerful active spell would refuse and one a quest in the
-#      log asks for; ScoreSpellStats gives no score to a pool of a power the bot does not have;
+#      log asks for; ScoreSpellStats gives no score to a pool of a power the bot does not have; Execute skips a candidate whose
+#      every effect is a mana effect for a bot without mana (lead 16.11.: Flask of Distilled Wisdom for warriors and rogues);
 #   7. negative probes: every mutation must make the contract fail.
 
 cmake_policy(VERSION 3.16)
@@ -105,7 +106,10 @@ set(off_path "uint32 UseConsumableAction::ConsumableSubClass(ItemPrototype const
 set(facts_glue "        facts.known = true;\n        facts.family = spellInfo->SpellFamilyName;\n        facts.category = spellInfo->Category;\n        facts.durationIndex = spellInfo->DurationIndex;\n        facts.targetA0 = spellInfo->EffectImplicitTargetA[0];\n        for (int j = 0; j < 3; ++j)\n        {\n            facts.effect[j] = spellInfo->Effect[j];\n            facts.aura[j] = spellInfo->EffectApplyAuraName[j];\n        }\n")
 set(slot_glue "        uint32 const spellId = proto->Spells[i].SpellId;\n        if (!spellId)\n            continue;\n\n        ai::consumable_kind::ItemSpell& slot = spells[n++];\n        slot.spellId = spellId;\n        slot.itemCategory = proto->Spells[i].SpellCategory;\n        SpellEntry const* spellInfo = fill(spellId, slot.spell);\n        if (!spellInfo)\n            continue;\n")
 set(trigger_glue "        for (int j = 0; j < 3; ++j)\n        {\n            uint32 const trigger = spellInfo->EffectTriggerSpell[j];\n            if (trigger && trigger != spellId)\n                fill(trigger, slot.trigger[j]);\n        }\n")
-set(guard_line "        if (kindFromSpell && (IsCandidateOutranked(c) || IsQuestDeliveryItem(c.item->GetProto()->ItemId)))\n            continue;\n")
+set(guard_line "        if (kindFromSpell && (IsCandidateOutranked(c) || IsQuestDeliveryItem(c.item->GetProto()->ItemId) ||\n            IsManaOnlyWithoutManaPool(c.spellId)))\n            continue;\n")
+set(mana_pool_test "    if (bot->GetMaxPower(POWER_MANA))\n        return false;\n")
+set(mana_effect "        bool const manaEffect = (spellInfo->EffectApplyAuraName[i] == SPELL_AURA_MOD_INCREASE_ENERGY ||\n            spellInfo->Effect[i] == SPELL_EFFECT_ENERGIZE) && spellInfo->EffectMiscValue[i] == int32(POWER_MANA);\n        if (!manaEffect)\n            return false;\n")
+set(mana_amount "        if (spellInfo->EffectBasePoints[i] > 0)\n            manaAmount = true;\n    }\n\n    return manaAmount;")
 set(mana_guard "        if (kindFromSpell && spellInfo->EffectApplyAuraName[i] == SPELL_AURA_MOD_INCREASE_ENERGY &&\n            (spellInfo->EffectMiscValue[i] < 0 || spellInfo->EffectMiscValue[i] >= MAX_POWERS ||\n             !bot->GetMaxPower(Powers(spellInfo->EffectMiscValue[i]))))\n            continue;\n")
 set(null_check "    if (!proto || proto->Class != ITEM_CLASS_CONSUMABLE)\n        return false;\n")
 set(subclass_line "    uint32 const subClass = ConsumableSubClass(proto);\n")
@@ -225,6 +229,15 @@ function(check out_var)
   foreach(decl "        bool IsCandidateOutranked(const ConsumableCandidate& candidate) const;\n" "        bool IsQuestDeliveryItem(uint32 itemId) const;\n")
     need("${use_h}" "${decl}" "(6) guard declared")
   endforeach()
+  need("${use_h}" "        bool IsManaOnlyWithoutManaPool(uint32 spellId) const;\n" "(6) mana-only guard declared")
+  count("${use_cpp}" "IsManaOnlyWithoutManaPool(" 2 "(6) mana-only: definition and the one call in Execute")
+  region("${use_cpp}" "bool UseConsumableAction::IsManaOnlyWithoutManaPool(" "\n}\n" manaonly)
+  need("${manaonly}" "${mana_pool_test}" "(6) mana-only: only a bot without a mana pool")
+  order("${manaonly}" "${mana_pool_test}" "LookupSpellInfo(spellId)" "(6) mana-only: the pool test first")
+  need("${manaonly}" "        if (!spellInfo->Effect[i])\n            continue;\n" "(6) mana-only: every present effect")
+  need("${manaonly}" "${mana_effect}" "(6) mana-only: any other effect keeps the candidate")
+  need("${manaonly}" "${mana_amount}" "(6) mana-only: at least one positive mana amount")
+  count("${manaonly}" "sPlayerbotAIConfig" 0 "(6) mana-only: no switch read (Execute gates it)")
 
   set(${out_var} "${errors}" PARENT_SCOPE)
 endfunction()
@@ -278,6 +291,9 @@ probe("guard for every bot" use_cpp "        if (kindFromSpell && (IsCandidateOu
 probe("guard dropped" use_cpp "${guard_line}" "")
 probe("bounce check dropped" use_cpp "        if (spellInfo && bot->HasMorePowerfulSpellActive(spellInfo))\n" "        if (spellInfo && false)\n")
 probe("quest item check dropped" use_cpp "            if (quest->ReqItemCount[i] && quest->ReqItemId[i] == itemId)\n" "            if (false)\n")
+probe("mana-only skip dropped" use_cpp " ||\n            IsManaOnlyWithoutManaPool(c.spellId)))\n" "))\n")
+probe("mana-only for bots with mana" use_cpp "${mana_pool_test}" "")
+probe("mana-only with other effects" use_cpp "        if (!manaEffect)\n            return false;\n" "")
 probe("power guard for every bot" use_cpp "        if (kindFromSpell && spellInfo->EffectApplyAuraName[i] == SPELL_AURA_MOD_INCREASE_ENERGY" "        if (spellInfo->EffectApplyAuraName[i] == SPELL_AURA_MOD_INCREASE_ENERGY")
 probe("flask list changed" use_cpp "    17624,  // Flask of Petrification\n" "")
 probe("log in the classifier" use_cpp "    uint32 const subClass = ConsumableSubClass(proto);\n" "    uint32 const subClass = ConsumableSubClass(proto);\n    sLog.outBasic(\"x\");\n")

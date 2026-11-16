@@ -256,7 +256,7 @@ void UseConsumableAction::CollectPossibleAuraIds(uint32 spellId, std::vector<uin
 }
 
 // twow-repo#333 T24 CLSFIX (AiPlayerbot.Consumables.KindFromSpell, default 0): the one read of the switch; true when it applies to this
-// bot (1 every bot, 2 cohort B, 3 cohort A). It gates the derived subclass and the three guards of Execute / ScoreSpellStats.
+// bot (1 every bot, 2 cohort B, 3 cohort A). It gates the derived subclass and the review guards of Execute / ScoreSpellStats.
 bool UseConsumableAction::KindFromSpellFor() const
 {
     return sPlayerbotAIConfig.consumablesKindFromSpell &&
@@ -316,6 +316,37 @@ bool UseConsumableAction::IsQuestDeliveryItem(uint32 itemId) const
     }
 
     return false;
+}
+
+// twow-repo#333 T24 CLSFIX lead decision 16.11.2026 (switch on only): true when the bot has no mana pool and every effect of the scored
+// spell is a mana effect (SPELL_AURA_MOD_INCREASE_ENERGY or SPELL_EFFECT_ENERGIZE of POWER_MANA), at least one with a positive amount.
+// Flask of Distilled Wisdom (+2000 mana) scores no stat value for a warrior or rogue, but the flask base score of 1000 still picked
+// it, and it then blocked every other flask for 2 h (HasActiveFlask). A spell with any other effect is left to the score.
+bool UseConsumableAction::IsManaOnlyWithoutManaPool(uint32 spellId) const
+{
+    if (bot->GetMaxPower(POWER_MANA))
+        return false;
+
+    SpellEntry const* spellInfo = sServerFacade.LookupSpellInfo(spellId);
+    if (!spellInfo)
+        return false;
+
+    bool manaAmount = false;
+    for (int i = 0; i < 3; ++i)
+    {
+        if (!spellInfo->Effect[i])
+            continue;
+
+        bool const manaEffect = (spellInfo->EffectApplyAuraName[i] == SPELL_AURA_MOD_INCREASE_ENERGY ||
+            spellInfo->Effect[i] == SPELL_EFFECT_ENERGIZE) && spellInfo->EffectMiscValue[i] == int32(POWER_MANA);
+        if (!manaEffect)
+            return false;
+
+        if (spellInfo->EffectBasePoints[i] > 0)
+            manaAmount = true;
+    }
+
+    return manaAmount;
 }
 
 // twow-repo#333 T24 CLSFIX (OB-00 16.11.2026, bug fix; AiPlayerbot.Consumables.KindFromSpell, default 0): every consumable of the
@@ -972,8 +1003,10 @@ bool UseConsumableAction::Execute(Event& event)
         if (HasAnyCandidateAura(c))
             continue;
 
-        // twow-repo#333 T24 CLSFIX review (switch on only): skip what would bounce or be wasted, and what a quest in the log asks for.
-        if (kindFromSpell && (IsCandidateOutranked(c) || IsQuestDeliveryItem(c.item->GetProto()->ItemId)))
+        // twow-repo#333 T24 CLSFIX review (switch on only): skip what would bounce or be wasted, what a quest in the log asks for, and
+        // a mana-only candidate for a bot without mana.
+        if (kindFromSpell && (IsCandidateOutranked(c) || IsQuestDeliveryItem(c.item->GetProto()->ItemId) ||
+            IsManaOnlyWithoutManaPool(c.spellId)))
             continue;
 
         switch (c.type)
