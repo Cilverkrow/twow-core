@@ -63,6 +63,8 @@ namespace ai
 
         bool IsQuestDeliveryItem(uint32 itemId) const;
 
+        bool IsManaOnlyWithoutManaPool(uint32 spellId) const;
+
         bool IsProtectionConsumable(const ItemPrototype* proto) const;
 
         bool IsPotionLike(const ItemPrototype* proto) const;
