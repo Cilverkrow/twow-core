@@ -2,6 +2,7 @@
 
 #include "CohortPolicy.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -93,7 +94,7 @@ inline std::uint32_t CreditKey(std::uint32_t entry, bool gameObject)
 // ---- (b) the attempt cap ----------------------------------------------------------------------------------------------------
 struct CapParams
 {
-    std::uint32_t creditWindowMs = 15000;   // a use without a credit for the target's entry within this is a miss
+    std::uint32_t creditWindowMs = 15000;   // a use without a credit for the target's entry or of a quest it serves within this is a miss
     std::uint32_t targetMisses = 2;         // misses on one target guid ...
     std::uint32_t targetRefuseMs = 600000;  // ... refuse that guid this long
     std::uint32_t itemMisses = 6;           // misses of one item within itemWindowMs ...
@@ -107,6 +108,10 @@ inline bool Before(std::uint32_t a, std::uint32_t b)
 {
     return std::int32_t(a - b) < 0;
 }
+
+// The open quests a use can serve (quest ids, 0 = unused), held with the use for the quest credit.
+std::size_t const MaxUseQuests = 4;
+using UseQuests = std::array<std::uint32_t, MaxUseQuests>;
 
 enum class CapVerdict : std::uint8_t
 {
@@ -133,8 +138,10 @@ public:
         return CapVerdict::Allowed;
     }
 
-    // A use happened: it waits creditWindowMs for a credit of `creditKey`.
-    void NoteUse(std::uint32_t item, std::uint64_t target, std::uint32_t creditKey, std::uint32_t nowMs)
+    // A use happened: it waits creditWindowMs for a credit of `creditKey` (kill / cast credit of the target's entry) or for any
+    // progress of one of `quests` (the bot's open quests the use can serve: a script or source-item credit comes as an item or
+    // complete update, not as a kill credit of the target; OB-60 pre-review 16.11. item 3). 0 entries are unused.
+    void NoteUse(std::uint32_t item, std::uint64_t target, std::uint32_t creditKey, std::uint32_t nowMs, UseQuests const& quests = UseQuests{})
     {
         Expire(nowMs);
         if (pending_.size() >= params_.maxPending)
@@ -142,7 +149,31 @@ public:
             Judge(pending_.front(), nowMs);
             pending_.erase(pending_.begin());
         }
-        pending_.push_back(PendingUse{item, target, creditKey, nowMs});
+        pending_.push_back(PendingUse{item, target, creditKey, nowMs, quests});
+    }
+
+    // Progress of quest `questId` arrived (kill, item or complete update): every open use that names this quest is credited.
+    // Returns the number of uses credited.
+    std::uint32_t NoteQuestCredit(std::uint32_t questId, std::uint32_t nowMs)
+    {
+        Expire(nowMs);
+        if (!questId)
+            return 0;
+        std::uint32_t n = 0;
+        for (std::size_t i = 0; i < pending_.size();)
+        {
+            bool named = false;
+            for (std::uint32_t const q : pending_[i].quests)
+                named = named || q == questId;
+            if (named)
+            {
+                ++n;
+                pending_.erase(pending_.begin() + std::ptrdiff_t(i));
+            }
+            else
+                ++i;
+        }
+        return n;
     }
 
     // A kill / cast credit for `creditKey` arrived: every open use with that key within the window is credited (no miss).
@@ -185,6 +216,7 @@ private:
         std::uint64_t target;
         std::uint32_t creditKey;
         std::uint32_t at;
+        UseQuests quests;
     };
 
     struct TargetState

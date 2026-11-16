@@ -135,6 +135,34 @@ int main()
             "across the wrap: refused 600 s from the judging, then free");
     }
 
+    // ---- (b) the cap: a credit of a quest the use serves counts too (OB-60 16.11. item 3: script / source-item credits) ------------
+    {
+        ItemUseCap cap;
+        std::uint32_t t = 2000;
+        UseQuests const serves{{1001u, 1002u, 0u, 0u}};
+        cap.NoteUse(5, 900, 77, t, serves);
+        Require(cap.NoteQuestCredit(1003, t + 1000) == 0, "another quest's progress credits nothing");
+        Require(cap.NoteQuestCredit(0, t + 1000) == 0, "quest 0 never credits");
+        Require(cap.PendingCount() == 1, "still open");
+        Require(cap.NoteQuestCredit(1002, t + 14999) == 1, "progress of a served quest inside 15 s credits the use");
+        Require(cap.PendingCount() == 0, "credited use is done");
+        Require(cap.NoteCredit(77, t + 15000) == 0, "no double credit by the entry key");
+
+        cap.NoteUse(5, 900, 77, t + 20000, serves);
+        Require(cap.NoteCredit(77, t + 21000) == 1 && cap.NoteQuestCredit(1001, t + 21001) == 0, "entry credit first: no double credit");
+
+        cap.NoteUse(5, 900, 77, t + 40000, serves);
+        Require(cap.NoteQuestCredit(1001, t + 40000 + 15000) == 0, "a quest credit after 15 s is late: a miss");
+        cap.NoteUse(5, 900, 77, t + 60000);   // no served quests: only the entry credit can count
+        Require(cap.NoteQuestCredit(1001, t + 61000) == 0, "a use without served quests ignores quest progress");
+        Require(cap.Check(5, 900, t + 60000 + 15000) == CapVerdict::RefusedTarget, "two misses: target refused");
+
+        ItemUseCap two;
+        two.NoteUse(6, 1, 0, t, UseQuests{{7u, 0u, 0u, 0u}});
+        two.NoteUse(6, 2, 0, t + 1, UseQuests{{7u, 0u, 0u, 0u}});
+        Require(two.NoteQuestCredit(7, t + 2) == 2, "one progress credits every open use serving that quest");
+    }
+
     // ---- the hour clock and the lines -----------------------------------------------------------------------------------------
     {
         HourClock c;
