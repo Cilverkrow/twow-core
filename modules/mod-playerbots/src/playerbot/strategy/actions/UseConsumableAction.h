@@ -53,6 +53,9 @@ namespace ai
 
         bool ClassifyConsumable(const ItemPrototype* proto, ConsumableType& outType, uint32& outSpellId) const;
 
+        // twow-repo#333 T24 CLSFIX (Consumables.KindFromSpell, default 0): the subclass ClassifyConsumable branches on.
+        uint32 ConsumableSubClass(ItemPrototype const* proto) const;
+
         bool IsProtectionConsumable(const ItemPrototype* proto) const;
 
         bool IsPotionLike(const ItemPrototype* proto) const;

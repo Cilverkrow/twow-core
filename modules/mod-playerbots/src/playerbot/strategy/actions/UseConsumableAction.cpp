@@ -4,6 +4,7 @@
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/AiFactory.h"
 #include "playerbot/CohortPolicy.h"
+#include "playerbot/ConsumableKindPolicy.h"
 #include "playerbot/strategy/triggers/ProfessionUseTriggers.h"
 
 using namespace ai;
@@ -254,12 +255,77 @@ void UseConsumableAction::CollectPossibleAuraIds(uint32 spellId, std::vector<uin
     }
 }
 
+// twow-repo#333 T24 CLSFIX (OB-00 16.11.2026, bug fix; AiPlayerbot.Consumables.KindFromSpell, default 0): every consumable of the
+// vanilla world data has subclass 0, so the potion / elixir / flask / scroll branches of ClassifyConsumable never ran. For a bot the
+// switch applies to, a subclass-0 consumable gets the subclass derived from its item spells (ConsumableKindPolicy.h, rules R0-R5);
+// everything else keeps proto->SubClass.
+uint32 UseConsumableAction::ConsumableSubClass(ItemPrototype const* proto) const
+{
+    if (!sPlayerbotAIConfig.consumablesKindFromSpell || proto->SubClass != ITEM_SUBCLASS_CONSUMABLE ||
+        !ai::cohort::Applies(sPlayerbotAIConfig.consumablesKindFromSpell, bot->GetGUIDLow()))
+        return proto->SubClass;
+
+    // The facts of one spell (after spell_mod / spell_effect_mod); nullptr and known = false when there is no such spell.
+    auto const fill = [](uint32 spellId, ai::consumable_kind::SpellFacts& facts) -> SpellEntry const*
+    {
+        SpellEntry const* spellInfo = sServerFacade.LookupSpellInfo(spellId);
+        if (!spellInfo)
+            return nullptr;
+
+        facts.known = true;
+        facts.family = spellInfo->SpellFamilyName;
+        facts.category = spellInfo->Category;
+        facts.durationIndex = spellInfo->DurationIndex;
+        facts.targetA0 = spellInfo->EffectImplicitTargetA[0];
+        for (int j = 0; j < 3; ++j)
+        {
+            facts.effect[j] = spellInfo->Effect[j];
+            facts.aura[j] = spellInfo->EffectApplyAuraName[j];
+        }
+        for (uint32 flaskAura : UseConsumableAction::knownFlaskAuras)
+        {
+            if (flaskAura == spellId)
+                facts.flaskAura = true;
+        }
+        return spellInfo;
+    };
+
+    ai::consumable_kind::ItemSpell spells[MAX_ITEM_PROTO_SPELLS];
+    std::size_t n = 0;
+    for (int i = 0; i < MAX_ITEM_PROTO_SPELLS; ++i)
+    {
+        uint32 const spellId = proto->Spells[i].SpellId;
+        if (!spellId)
+            continue;
+
+        ai::consumable_kind::ItemSpell& slot = spells[n++];
+        slot.spellId = spellId;
+        slot.itemCategory = proto->Spells[i].SpellCategory;
+        SpellEntry const* spellInfo = fill(spellId, slot.spell);
+        if (!spellInfo)
+            continue;
+
+        for (int j = 0; j < 3; ++j)
+        {
+            uint32 const trigger = spellInfo->EffectTriggerSpell[j];
+            if (trigger && trigger != spellId)
+                fill(trigger, slot.trigger[j]);
+        }
+    }
+
+    return ai::consumable_kind::DeriveSubClass(spells, n);
+}
+
 bool UseConsumableAction::ClassifyConsumable(const ItemPrototype* proto, ConsumableType& outType, uint32& outSpellId) const
 {
     if (!proto || proto->Class != ITEM_CLASS_CONSUMABLE)
         return false;
 
-    if (proto->SubClass == ITEM_SUBCLASS_POTION)
+    // twow-repo#333 T24 CLSFIX (Consumables.KindFromSpell, default 0): the subclass the tests below read; with the switch off it is
+    // proto->SubClass, so every decision stays the old one.
+    uint32 const subClass = ConsumableSubClass(proto);
+
+    if (subClass == ITEM_SUBCLASS_POTION)
         return false;
 
     for (uint32 id : excludedItemIds)
@@ -285,7 +351,7 @@ bool UseConsumableAction::ClassifyConsumable(const ItemPrototype* proto, Consuma
         }
     }
 
-    if (proto->SubClass == ITEM_SUBCLASS_FLASK)
+    if (subClass == ITEM_SUBCLASS_FLASK)
     {
         bool isRealFlask = false;
         uint32 firstSpellId = 0;
@@ -338,7 +404,7 @@ bool UseConsumableAction::ClassifyConsumable(const ItemPrototype* proto, Consuma
         return true;
     }
 
-    if (proto->SubClass == ITEM_SUBCLASS_ELIXIR)
+    if (subClass == ITEM_SUBCLASS_ELIXIR)
     {
         if (IsProtectionConsumable(proto))
             return false;
@@ -356,9 +422,9 @@ bool UseConsumableAction::ClassifyConsumable(const ItemPrototype* proto, Consuma
         return false;
     }
 
-    if (proto->SubClass == ITEM_SUBCLASS_FOOD ||
-        proto->SubClass == ITEM_SUBCLASS_CONSUMABLE ||
-        proto->SubClass == ITEM_SUBCLASS_CONSUMABLE_OTHER)
+    if (subClass == ITEM_SUBCLASS_FOOD ||
+        subClass == ITEM_SUBCLASS_CONSUMABLE ||
+        subClass == ITEM_SUBCLASS_CONSUMABLE_OTHER)
     {
         if (IsProtectionConsumable(proto))
             return false;
@@ -397,7 +463,7 @@ bool UseConsumableAction::ClassifyConsumable(const ItemPrototype* proto, Consuma
         return false;
     }
 
-    if (proto->SubClass == ITEM_SUBCLASS_SCROLL)
+    if (subClass == ITEM_SUBCLASS_SCROLL)
     {
         for (int i = 0; i < MAX_ITEM_PROTO_SPELLS; ++i)
         {
