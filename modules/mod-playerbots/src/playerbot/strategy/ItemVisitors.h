@@ -4,6 +4,8 @@
 #include "values/MountValues.h"
 
 #include "playerbot/BotSlots.h"
+#include "playerbot/CohortPolicy.h"
+#include "playerbot/PotionFindPolicy.h"
 char * strstri (const char* str1, const char* str2);
 
 namespace ai
@@ -325,10 +327,20 @@ namespace ai
     };
 
 
+    // twow-repo#333 T24 POTFIX: AiPlayerbot.PotionFind.BySpell (mode 0 off, 1 all, 2 cohort B, 3 cohort A) applies to this bot.
+    // The config check first, so the default costs nothing.
+    inline bool PotionFindBySpellApplies(Player* bot)
+    {
+        return sPlayerbotAIConfig.potionFindBySpell && bot && ai::cohort::Applies(sPlayerbotAIConfig.potionFindBySpell, bot->GetGUIDLow());
+    }
+
     class FindPotionVisitor : public FindUsableItemVisitor
     {
     public:
-        FindPotionVisitor(Player* bot, uint32 effectId) : FindUsableItemVisitor(bot), effectId(effectId) {}
+        FindPotionVisitor(Player* bot, uint32 effectId) : FindUsableItemVisitor(bot), effectId(effectId), bySpell(PotionFindBySpellApplies(bot)) {}
+
+        // twow-repo#333 T24 POTFIX: the switch applies to this bot; InventoryParseItems then skips its name fallback.
+        bool BySpell() const { return bySpell; }
 
         virtual bool Accept(const ItemPrototype* proto) override
         {
@@ -347,11 +359,43 @@ namespace ai
                     }
                 }
             }
+
+            // twow-repo#333 T24 POTFIX (AiPlayerbot.PotionFind.BySpell, bug fix, default 0): vanilla consumables all have subclass 0.
+            // Such an item is a potion when an item spell shares the potion cooldown and has the effect (ENERGIZE: mana); a slot
+            // without a known spell, or a battleground-only spell outside a battleground, is skipped (PotionFindPolicy.h).
+            // Subclass 1 and 3 keep the old loop above.
+            if (bySpell && proto->Class == ITEM_CLASS_CONSUMABLE && proto->SubClass == ITEM_SUBCLASS_CONSUMABLE)
+                return AcceptsVanillaPotion(proto);
+
             return false;
         }
 
     private:
+        bool AcceptsVanillaPotion(const ItemPrototype* proto) const
+        {
+            ai::potion_find::SlotFacts slots[MAX_ITEM_PROTO_SPELLS];
+            for (int j = 0; j < MAX_ITEM_PROTO_SPELLS; j++)
+            {
+                slots[j].itemCategory = proto->Spells[j].SpellCategory;
+                const SpellEntry* const spellInfo = sServerFacade.LookupSpellInfo(proto->Spells[j].SpellId);
+                if (!spellInfo)
+                    continue;
+
+                slots[j].known = true;
+                slots[j].spellCategory = spellInfo->Category;
+                for (int i = 0; i < 3; i++)
+                {
+                    slots[j].effect[i] = spellInfo->Effect[i];
+                    slots[j].misc[i] = spellInfo->EffectMiscValue[i];
+                }
+                slots[j].battlegroundOnly = spellInfo->HasAttribute(SPELL_ATTR_EX3_ONLY_BATTLEGROUNDS);
+            }
+            return ai::potion_find::AcceptsVanillaPotion(proto->Class, proto->SubClass, slots, MAX_ITEM_PROTO_SPELLS, effectId,
+                bot->InBattleGround());
+        }
+
         uint32 effectId;
+        bool bySpell;
     };
 
     class FindFoodVisitor : public FindUsableItemVisitor
