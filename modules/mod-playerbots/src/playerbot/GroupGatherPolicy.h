@@ -38,6 +38,30 @@ inline bool GatherArm(std::uint32_t gather, std::uint32_t leaderLow)
     return GatherValid(gather) && cohort::Applies(gather, leaderLow);
 }
 
+// ---- T33-1: the lever (5.1; OB-00 13.11.2026 (a): its own key) -------------------------------------------------------------
+// AiPlayerbot.BotGroups.Manager.Gather.Lever: 0 off (default), 1 on. The lever acts ONLY with Lever = 1: then a manager QUEST
+// group whose leader is in the Gather arm (GatherArm, F8 (a)) gets the meeting (GroupDirectivePolicy.h Engine, design 2.3).
+// Gather stays the measurement switch and the arm cohort: Gather != 0 with Lever 0 is the T33-0 shadow alone, everything else
+// as T30. Any other value is 0 (one error line); it needs Gather != 0 (else 0, one error line).
+inline bool GatherLeverValid(std::uint32_t raw)
+{
+    return raw <= 1u;
+}
+
+inline std::uint32_t EffectiveGatherLever(std::uint32_t lever, std::uint32_t gather)
+{
+    return gather && lever == 1u ? 1u : 0u;
+}
+
+inline bool GatherApplies(std::uint32_t gather, std::uint32_t lever, GroupType type, std::uint32_t leaderLow)
+{
+    return EffectiveGatherLever(lever, gather) && type == GroupType::Quest && GatherArm(gather, leaderLow);
+}
+
+// F1 (a): the Enter of a meeting group carries b15 = 1 and kind a (follow the leader, like S7); the manager never packs
+// another kind in v1 (kind b / c and kind 3 never, design v1.3 Nachtrag 2).
+constexpr std::uint8_t kGatherKindFollow = 0;
+
 // ---- the bot's place (3.2; Kind::GatherPlace) --------------------------------------------------------------------------------
 // Event layout: level b0 = the map is instanceable (b1-7 = 0; b4/b5 reserved for the hearthstone appendix), mapOrDungeon = map
 // id, seq = the raw instance id of the bot's map (continent regions included), hpPct10 = the group serial's low 16 bits of the

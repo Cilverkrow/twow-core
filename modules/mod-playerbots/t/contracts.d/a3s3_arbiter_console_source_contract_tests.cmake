@@ -176,9 +176,10 @@ function(check_switch shadow_h shadow_cpp policy ai_cpp config_h all_sources out
     set(${out} "SetArbiterOverride( ${w} (3: decl, def, console), ArbiterValue( ${r} (6: decl, def, ArbiterOn, gate, group manager, GateOffThread), ArbiterOn( ${o} (2: decl, def), g_arbiterOverride ${g} (4: atomic, ArbiterValue, the refusal read, the exchange)" PARENT_SCOPE)
     return()
   endif()
-  string(FIND "${config_h}" "    uint32 supervisorArbiter = 0;" at)
+  # T02-a default pair (OB-00 12.11.2026): the config key is the start value, default 2 (0 = rollback).
+  string(FIND "${config_h}" "    uint32 supervisorArbiter = 2;" at)
   if(at EQUAL -1)
-    set(${out} "PlayerbotAIConfig.h: Supervisor.Arbiter member not default 0" PARENT_SCOPE)
+    set(${out} "PlayerbotAIConfig.h: Supervisor.Arbiter member not default 2" PARENT_SCOPE)
     return()
   endif()
   set(${out} "" PARENT_SCOPE)

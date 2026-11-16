@@ -965,6 +965,15 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[GroupMgr] config key=Manager.Types value=%u result=0 (needs Manager.StatusSeconds > 0)", botGroupsManagerTypes);
         botGroupsManagerTypes = ai::group_mgr::EffectiveTypes(botGroupsManagerTypes, botGroupsManagerStatusSeconds);
     }
+    // A3 step 6 T30-1f (R9 V3, OB-10 12.11.2026): the Enter/Exit ack deadline, 10..20 s (GroupManagerPolicy.h); outside = the
+    // nearest bound + one error line.
+    botGroupsManagerAckTimeoutSeconds = uint32(config.GetIntDefault("AiPlayerbot.BotGroups.Manager.AckTimeoutSeconds",
+        int32(ai::group_mgr::kAckTimeoutSecondsDefault)));
+    int32 const ackTimeoutRaw = int32(botGroupsManagerAckTimeoutSeconds);   // the configured value, sign included
+    botGroupsManagerAckTimeoutSeconds = ai::group_mgr::ClampAckTimeoutSeconds(ackTimeoutRaw);
+    if (int64(ackTimeoutRaw) != int64(botGroupsManagerAckTimeoutSeconds))
+        sLog.outError("[GroupMgr] config key=Manager.AckTimeoutSeconds value=%d result=%u (%u..%u s)", ackTimeoutRaw,
+            botGroupsManagerAckTimeoutSeconds, ai::group_mgr::kAckTimeoutSecondsMin, ai::group_mgr::kAckTimeoutSecondsMax);
     // A3 step 6 T33-0 (design T33 v1.1 5.1, measurement only): the meeting shadow. An unknown or negative value is off; without
     // a manager group type there is nothing to measure, so Types 0 turns it off too. One error line each.
     botGroupsManagerGather = uint32(config.GetIntDefault("AiPlayerbot.BotGroups.Manager.Gather", 0));
@@ -978,6 +987,20 @@ bool PlayerbotAIConfig::Initialize()
     {
         sLog.outError("[GroupMgr] config key=Manager.Gather value=%u result=0 (needs Manager.Types > 0)", botGroupsManagerGather);
         botGroupsManagerGather = ai::group_mgr::EffectiveGather(botGroupsManagerGather, botGroupsManagerTypes);
+    }
+    // A3 step 6 T33-1 (OB-00 13.11.2026 (a)): the meeting lever, its own key. It acts only with 1, and only on the QUEST groups
+    // of the Gather arm; it needs Gather != 0 (read after Gather). An unknown or negative value is 0. One error line each.
+    botGroupsManagerGatherLever = uint32(config.GetIntDefault("AiPlayerbot.BotGroups.Manager.Gather.Lever", 0));
+    if (!ai::group_mgr::GatherLeverValid(botGroupsManagerGatherLever))
+    {
+        sLog.outError("[GroupMgr] config key=Manager.Gather.Lever value=%d result=0 (0 off, 1 on)", int32(botGroupsManagerGatherLever));
+        botGroupsManagerGatherLever = 0;
+    }
+    if (botGroupsManagerGatherLever && !botGroupsManagerGather)
+    {
+        sLog.outError("[GroupMgr] config key=Manager.Gather.Lever value=%u result=0 (needs Manager.Gather > 0)",
+            botGroupsManagerGatherLever);
+        botGroupsManagerGatherLever = ai::group_mgr::EffectiveGatherLever(botGroupsManagerGatherLever, botGroupsManagerGather);
     }
     // L1 (owner 07.11.2026): code default 1; only "0" is off, any other value is 1. Read as a string: GetIntDefault is atoi,
     // which would turn a non-numeric value such as "on" into 0 (rollback).
@@ -997,11 +1020,12 @@ bool PlayerbotAIConfig::Initialize()
         supervisor = 0;
     }
     // A3 step 3 behaviour pair 1 (SupervisorShadow.cpp): the arbiter shadow; A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2,
-    // default 0): 2 = enforcement on the travel target (SupervisorEnforce.cpp, the shadow stays on). Above 2 is off.
-    supervisorArbiter = uint32(config.GetIntDefault("AiPlayerbot.Supervisor.Arbiter", 0));
+    // default 2 since the C-unit ADOPT, OB-00 12.11.2026; 0 = rollback): 2 = enforcement on the travel target
+    // (SupervisorEnforce.cpp, the shadow stays on). Only where AiPlayerbot.Supervisor runs (default 0). Above 2 is off.
+    supervisorArbiter = uint32(config.GetIntDefault("AiPlayerbot.Supervisor.Arbiter", 2));
     if (!ai::supervisor::ValidArbiter(supervisorArbiter))
     {
-        sLog.outError("[Supervisor] config key=Supervisor.Arbiter value=%u result=off (0 off, 1 shadow, 2 enforce)", supervisorArbiter);
+        sLog.outError("[Supervisor] config key=Supervisor.Arbiter value=%u result=off (0 off, 1 shadow, 2 enforce; default 2)", supervisorArbiter);
         supervisorArbiter = 0;
     }
     // A3 step 3 T02-a: the arbiter probe (Supervisor::ProbeTick, SupervisorEnforce.cpp) on the probe bots; above 1 is off.
@@ -2192,7 +2216,9 @@ bool PlayerbotAIConfig::Initialize()
             {"BotGroups.LeaderOtherMap", Value(botGroupsLeaderOtherMap)},
             {"BotGroups.LeaderOtherMapSeconds", Value(botGroupsLeaderOtherMapSeconds)},
             {"BotGroups.Manager", Value(botGroupsManager)},
+            {"BotGroups.Manager.AckTimeoutSeconds", Value(botGroupsManagerAckTimeoutSeconds)},
             {"BotGroups.Manager.Gather", Value(botGroupsManagerGather)},
+            {"BotGroups.Manager.Gather.Lever", Value(botGroupsManagerGatherLever)},
             {"BotGroups.Manager.StatusSeconds", Value(botGroupsManagerStatusSeconds)},
             {"BotGroups.Manager.Types", Value(botGroupsManagerTypes)},
             {"BotGroups.OpQueue", Value(botGroupsOpQueue)},
