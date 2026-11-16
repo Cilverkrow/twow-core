@@ -8,6 +8,7 @@
 #include "playerbot/RandomPlayerbotMgr.h"
 #include "playerbot/QuestBook.h"   // A3 step 2 K2 (AiPlayerbot.QuestBook): the one level window and the QB5 list
 #include "playerbot/LootChancePolicy.h"   // OB-00 08.11.: QuestRelation.GameObjectChanceDrops
+#include "playerbot/RepeatableTurnInPolicy.h"   // twow-repo#716 BOT-16: QuestTurnIn.RepeatableAutoComplete
 #include "Formulas.h"
 #include "playerbot/strategy/deathknight/DKActions.h"
 
@@ -609,6 +610,43 @@ uint32 DialogStatusValue::getDialogStatus(Player* bot, int32 questgiver, uint32 
 	}
 
 	return dialogStatus;
+}
+
+bool CanTurnInQuestValue::Calculate()
+{
+	uint32 dialogStatus = AI_VALUE2(uint32, "dialog status", getQualifier());
+#ifdef MANGOSBOT_ZERO
+	bool const byDialogStatus = dialogStatus == DIALOG_STATUS_REWARD2;
+#else
+	bool const byDialogStatus = dialogStatus == DIALOG_STATUS_REWARD2 || dialogStatus == DIALOG_STATUS_REWARD;
+#endif
+	// twow-repo#716 BOT-16 (AiPlayerbot.QuestTurnIn.RepeatableAutoComplete, default 0 = the dialog status rule alone): a complete
+	// quest that is auto-complete AND repeatable only marks its taker REWARD_REP (the Blood Shard quests 889, 5042-5046), and an
+	// AVAILABLE quest of the same NPC hides even that. Where the switch applies, the taker also counts while this bot holds such a
+	// quest complete in its log and the core would reward it now (CanRewardQuest). Only the bot's own quest map, static templates.
+	if (byDialogStatus || !ai::repeatable_turnin::Applies(sPlayerbotAIConfig.questTurnInRepeatableAutoComplete, bot->GetGUIDLow()))
+		return byDialogStatus;
+
+	int32 const questgiver = stoi(getQualifier());
+	QuestRelationsMapBounds const irbounds = questgiver > 0 ? sObjectMgr.GetCreatureQuestInvolvedRelationsMapBounds(questgiver) :
+		sObjectMgr.GetGOQuestInvolvedRelationsMapBounds(questgiver * -1);
+	for (QuestRelationsMap::const_iterator itr = irbounds.first; itr != irbounds.second; ++itr)
+	{
+		Quest const* quest = sObjectMgr.GetQuestTemplate(itr->second);
+		if (!quest)
+			continue;
+
+		ai::repeatable_turnin::EnderQuest held;
+		held.active = quest->IsActive();
+		held.complete = bot->GetQuestStatus(itr->second) == QUEST_STATUS_COMPLETE;
+		held.rewarded = bot->GetQuestRewardStatus(itr->second);
+		held.autoComplete = quest->IsAutoComplete();
+		held.repeatable = quest->IsRepeatable();
+		if (ai::repeatable_turnin::HeldForTurnIn(held) && bot->CanRewardQuest(quest, false))
+			return true;
+	}
+
+	return false;
 }
 
 bool NeedQuestRewardValue::Calculate()
