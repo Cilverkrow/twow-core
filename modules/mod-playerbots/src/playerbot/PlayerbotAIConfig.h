@@ -826,6 +826,10 @@ public:
     uint32 questLoopRelationWorkNoGrind = 0;
     uint32 questLoopRelationArriveRpgTarget = 0;
     uint32 questLoopTurnInWorkDeathNotRoute = 0;
+    // twow-repo#716 BOT-16 (bug fix; 1 after the acceptance unit, 0 = rollback): "can turn in quest npc" also while the bot holds a
+    // complete repeatable auto-complete quest of that taker (RepeatableTurnInPolicy.h). Cohort mode 0 off (default), 1 all,
+    // 2 cohort B, 3 cohort A; other values act like 0.
+    uint32 questTurnInRepeatableAutoComplete = 0;
     // twow-repo#601 (CLI-Deep 25.10.2026): an inactive objective whose count grew since the target was set is progress, not an
     // emptied camp - no QL-1, no QL-2, a 1 s cooldown. Mode 0 off (default), 1 all, 2 cohort B.
     uint32 questLoopInactiveAfterProgress = 0;

@@ -57,6 +57,7 @@
 #include "playerbot/RescueHubPolicy.h"   // twow-repo#575 RG-a (QuestRescue.HomeHubs): the mode clamp
 #include "playerbot/QuestRescueSlotPolicy.h"   // twow-repo#703 item 1 (QuestRescue.NoTargetFreeSlot): the mode clamp
 #include "playerbot/ResurrectDelayPolicy.h"   // twow-repo#575 H3 (Revive.DelayResurrectRequest): the mode clamp
+#include "playerbot/RepeatableTurnInPolicy.h"   // twow-repo#716 BOT-16 (QuestTurnIn.RepeatableAutoComplete): the mode clamp
 
 #include <iostream>
 #include <numeric>
@@ -798,6 +799,14 @@ bool PlayerbotAIConfig::Initialize()
     {
         sLog.outError("[QuestLoop] config key=TurnInWorkDeathNotRoute value=%u result=off (0 off, 1 all, 2 cohort B)", questLoopTurnInWorkDeathNotRoute);
         questLoopTurnInWorkDeathNotRoute = 0;
+    }
+    // twow-repo#716 BOT-16 (QuestTurnIn.RepeatableAutoComplete): an unknown mode is off (RepeatableTurnInPolicy.h: 0 off, 1 all,
+    // 2 cohort B, 3 cohort A).
+    questTurnInRepeatableAutoComplete = uint32(config.GetIntDefault("AiPlayerbot.QuestTurnIn.RepeatableAutoComplete", 0));
+    if (!ai::repeatable_turnin::ValidMode(questTurnInRepeatableAutoComplete))
+    {
+        sLog.outError("[QuestTurnIn] config key=RepeatableAutoComplete value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", questTurnInRepeatableAutoComplete);
+        questTurnInRepeatableAutoComplete = 0;
     }
     // twow-repo#601 InactiveAfterProgress: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B).
     questLoopInactiveAfterProgress = config.GetIntDefault("AiPlayerbot.QuestLoop.InactiveAfterProgress", 0);
@@ -2376,6 +2385,7 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestRescue.HomeHubs.L5OwnHub", Value(questRescueHomeHubsL5OwnHub)},
             {"QuestRescue.KeepRequestWhenFull", Value(questRescueKeepRequestWhenFull)},
             {"QuestRescue.NoTargetFreeSlot", Value(questRescueNoTargetFreeSlot)},
+            {"QuestTurnIn.RepeatableAutoComplete", Value(questTurnInRepeatableAutoComplete)},
             {"Rescue.RepopDeadOnly", Value(rescueRepopDeadOnly)},
             {"Revive.CorpseRunFirst", Value(reviveCorpseRunFirst)},
             {"Revive.CorpseRunFirst.MaxSeconds", Value(reviveCorpseRunFirstMaxSeconds)},
