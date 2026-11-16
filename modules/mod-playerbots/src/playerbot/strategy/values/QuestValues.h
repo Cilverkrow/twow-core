@@ -187,15 +187,9 @@ namespace ai
     public:
         CanTurnInQuestValue(PlayerbotAI* ai) : BoolCalculatedValue(ai, "can turn in quest npc"), Qualified() {}
 
-        virtual bool Calculate() override
-        {
-            uint32 dialogStatus = AI_VALUE2(uint32, "dialog status", getQualifier());
-#ifdef MANGOSBOT_ZERO  
-            return dialogStatus == DIALOG_STATUS_REWARD2;
-#else
-            return dialogStatus == DIALOG_STATUS_REWARD2 || dialogStatus == DIALOG_STATUS_REWARD;
-#endif  
-        };
+        // twow-repo#716 BOT-16: QuestValues.cpp - the dialog status rule, plus (AiPlayerbot.QuestTurnIn.RepeatableAutoComplete,
+        // RepeatableTurnInPolicy.h) a held repeatable auto-complete quest of this taker.
+        virtual bool Calculate() override;
     };
 
     //Repeatable in quest to npc

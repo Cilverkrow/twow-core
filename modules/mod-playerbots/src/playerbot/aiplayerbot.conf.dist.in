@@ -1136,6 +1136,14 @@ AiPlayerbot.QuestLoop.InactiveReselect = 0
 # when the hold is longer than the old mark.
 #   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid); other values act like 0.
 AiPlayerbot.QuestLoop.EmptyCampHold = 0
+# twow-repo#716 BOT-16 (BUG FIX, CLI-Deep 16.11.2026; default 0 until its acceptance unit, then 1; 0 = rollback): a quest that is
+# auto-complete (QuestMethod 0) AND repeatable marks its taker only "repeatable" (DIALOG_STATUS_REWARD_REP) when it is complete in
+# the log, and "can turn in quest npc" took only the turn-in mark - no quest-taker route (not_active_reasons no_turnin), no rpg
+# turn-in, the bots held these quests complete forever (Mangletooth's Blood Shard quests 889, 5042-5046: 30 % of the QB-K
+# complete_stale lines). With the switch a taker also counts while the bot holds such a quest of it complete in its log and the core
+# would reward it now; the turn-in at the NPC is the old one ("talk to quest giver"). Quests the bot could only take again are no
+# turn-in. Cohort mode: 0 = off (default), 1 = all bots, 2 = cohort B (odd guid), 3 = cohort A (even guid); other values act like 0.
+AiPlayerbot.QuestTurnIn.RepeatableAutoComplete = 0
 
 # twow-repo#485: with 1, quest givers and takers that are game objects spawned
 # only by a script (gameobject.spawntimesecsmin < 0, e.g. GO 270, the taker of

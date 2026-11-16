@@ -4857,6 +4857,22 @@ add_test(NAME lockout_policy
   COMMAND lockout_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#716 BOT-16 (AiPlayerbot.QuestTurnIn.RepeatableAutoComplete, default 0): a held complete repeatable auto-complete quest
+# gives its taker a turn-in (RepeatableTurnInPolicy.h; no game header). The game side is pinned by
+# t/contracts.d/bot16_repeatable_turnin_source_contract_tests.cmake.
+add_executable(repeatable_turnin_policy_tests
+  "${PB_MODULE_DIR}/t/repeatable_turnin_policy_tests.cpp")
+
+target_include_directories(repeatable_turnin_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(repeatable_turnin_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME repeatable_turnin_policy
+  COMMAND repeatable_turnin_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # --------------------------------------------------------------------------
 # t/contracts.d -- source contracts that register themselves (OB-00 25.10.2026).
 #
