@@ -975,4 +975,23 @@ inline std::size_t FormatArbiterGrp(char* buf, std::size_t n, char cohort, Arbit
         len += Sanitize(buf + len, std::snprintf(buf + len, n - len, " %s=%u", GrpFieldName(GrpField(i)), g.v[i]), n - len);
     return len;
 }
+
+// T33-1 3:Y (17.11.2026): the minute roll of [ArbiterMin] / [ArbiterGrp]. The bot tick reads time() before it takes the shadow
+// mutex, so a thread that waited for the lock can bring a minute older than the one another thread already rolled. Only a
+// later minute rolls; the same or an older one changes nothing. (With "==" the older minute rolled back and the next tick rolled
+// forward again: two empty [ArbiterMin] lines of the same cohort and minute, INVALID 1 ArbiterMin_duplicate_cohort_minute.)
+// lastMinute 0 = not started: the first minute only starts the count. A clock that steps back pauses the minute lines until it
+// passes the last rolled minute again. Pure: the caller holds the mutex.
+inline bool ArbiterMinuteRoll(std::uint32_t& lastMinute, std::uint32_t minute)
+{
+    if (lastMinute == 0)
+    {
+        lastMinute = minute;
+        return false;
+    }
+    if (minute <= lastMinute)
+        return false;
+    lastMinute = minute;
+    return true;
+}
 }

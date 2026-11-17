@@ -590,6 +590,26 @@ void TestArbiterGrp()
     Require(GrpSilent(m.grp) && m.gateOffWorld == 0 && m.gateOffNone == 0 && m.gateOffBot == 0, "new minute fields start at 0");
 }
 
+// T33-1 3:Y (17.11.2026): the [ArbiterMin] minute rolls only forward; a stale minute (time() read before the mutex) never rolls.
+void TestArbiterMinuteRoll()
+{
+    std::uint32_t last = 0;
+    Require(!ArbiterMinuteRoll(last, 100) && last == 100, "the first minute only starts the count");
+    Require(!ArbiterMinuteRoll(last, 100) && last == 100, "the same minute does not roll");
+    Require(ArbiterMinuteRoll(last, 101) && last == 101, "a later minute rolls");
+    Require(!ArbiterMinuteRoll(last, 100) && last == 101, "an older minute does not roll back");
+    Require(!ArbiterMinuteRoll(last, 101) && last == 101, "after a stale minute the current one does not roll again");
+    Require(ArbiterMinuteRoll(last, 104) && last == 104, "a skipped minute rolls once");
+
+    // The 3:Y order at a minute change: start M-1, M, a stale M-1, M, M+1. "==" gave four rolls (two empty lines); now two.
+    std::uint32_t const order[] = {100, 101, 100, 101, 102};
+    int rolls = 0;
+    last = 0;
+    for (std::uint32_t minute : order)
+        rolls += ArbiterMinuteRoll(last, minute) ? 1 : 0;
+    Require(rolls == 2 && last == 102, "M-1, M, stale M-1, M, M+1: exactly two rolls");
+}
+
 int main()
 {
     TestSwitch();
@@ -606,6 +626,7 @@ int main()
     TestArbiter();
     TestArbiterLanes();
     TestArbiterGrp();
+    TestArbiterMinuteRoll();
     std::cout << "supervisor_policy_tests: OK\n";
     return 0;
 }
