@@ -1145,6 +1145,21 @@ add_test(NAME consumables_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/consumables_source_contract_tests.cmake")
 
+# twow-repo#333 T24 CLSFIX (Consumables.KindFromSpell, bug fix): the derived subclass of a subclass-0 consumable from its item
+# spells (ConsumableKindPolicy.h); source contract in t/contracts.d.
+add_executable(consumable_kind_policy_tests
+  "${PB_MODULE_DIR}/t/consumable_kind_policy_tests.cpp")
+
+target_include_directories(consumable_kind_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(consumable_kind_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME consumable_kind_policy
+  COMMAND consumable_kind_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # twow-repo#610 BOT-REST-01 item 1 (bug fix): eating / drinking no longer leaves a melee-attacking unit state behind.
 add_test(NAME rest_sit_state_source_contract
   COMMAND "${CMAKE_COMMAND}"

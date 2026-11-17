@@ -2644,6 +2644,23 @@ AiPlayerbot.ProfessionTraining.TurnInGateSkipGrindFallback = 0
 #   [Crafting] kind=consumables event=imbue type=stone|oil slot=mainhand|offhand item= bot= level= cohort=
 #   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid); other values act like 0.
 AiPlayerbot.Crafting.Consumables = 0
+# twow-repo#333 T24 CLSFIX (OB-00 16.11.2026, bug fix). On this vanilla world data every consumable (item class 0) has subclass 0,
+# so "use consumable" (strategy "consumables", see Crafting.Consumables above) never saw a potion, elixir, flask or scroll: its
+# subclass branches were dead, it only knew buff food (219 items) and one alcohol. KindFromSpell, for the bots it applies to: a
+# subclass-0 consumable gets a subclass derived from its item spells (first match wins), and the old branches run with it:
+#   R0 food or drink (an item spell of category 11 or 59): stays 0, the buff food path as before;
+#   R1 a known flask aura (Titans, Distilled Wisdom, Supreme Power, Chromatic Resistance) with a buff aura: flask;
+#   R2 potion-like (item spell or spell category 4): potion - never used or kept, as before;
+#   R3 a potion-family spell with a lasting buff aura: elixir (the elixir branch still rejects protection elixirs);
+#   R4 a generic spell with one effect, a stat or resistance aura on a friendly target: scroll;
+#   R5 anything else: stays 0, as before.
+# Item names are not used. The keep block of Crafting.Consumables keeps what the classifier accepts, so newly classified items are
+# kept too. No new line: the use line of Crafting.Consumables shows type=flask|elixir|scroll now.
+# For the same bots "use consumable" skips an item whose aura a more powerful active spell of its stacking chain would refuse (a
+# scroll bounces and stays in the bags, a weaker elixir is used up for nothing) and an item a quest in the log asks for, and a larger
+# pool of a power the bot does not have (Distilled Wisdom for a warrior) adds nothing to the ranking.
+#   0 = off (default), 1 = every bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid); other values act like 0.
+AiPlayerbot.Consumables.KindFromSpell = 0
 # twow-repo#333 M2 Crafting.Cooking (owner list 07.11.2026, item 2, M2-ENTWURF §7; inventory A3-AKTIONS-VERDRAHTUNG §4: cooking
 # dead in operation - learned only at a random local trainer, the craft loop skips fire recipes, no campfire). For a roster bot on
 # its own:

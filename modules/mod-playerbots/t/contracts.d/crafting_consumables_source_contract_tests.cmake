@@ -115,7 +115,7 @@ count_text("${usage}" "craftingConsumables" 1 "(3) one switch read in ItemUsageV
 require_text("${use_cpp}" "    if (ai->HasCheat(BotCheatMask::item))\n        return false;" "(4) useless under the item cheat")
 require_text("${use_h}" "bool IsBuffConsumable(ItemPrototype const* proto) const;" "(4) public classification")
 between("${use_cpp}" "bool UseConsumableAction::IsBuffConsumable(ItemPrototype const* proto) const" "\n}\n" isbuff)
-require_text("${isbuff}" "return proto && bot->CanUseItem(proto) == EQUIP_ERR_OK && ClassifyConsumable(proto, type, spellId);" "(4) same classification, usable")
+require_text("${isbuff}" "return proto && bot->CanUseItem(proto) == EQUIP_ERR_OK && ClassifyConsumable(proto, type, spellId) &&\n        !(KindFromSpellFor() && IsManaOnlyWithoutManaPool(spellId));" "(4) same classification, usable; with Consumables.KindFromSpell not the mana-only skip of Execute (twow-repo#333 T24 CLSFIX)")
 require_text("${use_cpp}" "    bool const used = UseItemIdAction::Execute(event);\n" "(4) the use first")
 require_text("${use_cpp}" "    if (used && CraftingConsumablesFor(ai))\n        sLog.outBasic(\"[Crafting] kind=consumables event=use type=%s item=%u bot=%u level=%u cohort=%c\", ConsumableTypeName(selectedType),\n            selectedItemId, bot->GetGUIDLow(), bot->GetLevel(), ai::cohort::Letter(bot->GetGUIDLow()));\n    return used;" "(4) use line, switch's bots only")
 require_text("${use_cpp}" "            selectedType = c.type;\n            break;" "(4) the type of the chosen item")
