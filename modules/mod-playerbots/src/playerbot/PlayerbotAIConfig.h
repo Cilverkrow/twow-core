@@ -564,6 +564,10 @@ public:
     // main hand instead of selling them; 0 off (default), 1 all, 2 cohort B (odd guid), 3 cohort A (even guid). No effect under the
     // item cheat (use consumable is useless there, nothing is kept).
     uint32 craftingConsumables = 0;
+    // twow-repo#333 T24 CLSFIX (OB-00 16.11.2026, bug fix): "use consumable" derives the subclass of a subclass-0 consumable (all of
+    // them on vanilla data) from its item spells - flask, elixir, scroll, potion - instead of seeing only buff food; 0 = the old
+    // classifier (default), 1 all, 2 cohort B (odd guid), 3 cohort A (even guid).
+    uint32 consumablesKindFromSpell = 0;
     // twow-repo#333 M2 Crafting.Cooking (owner list 07.11.2026, item 2; M2-ENTWURF §7): a roster bot on its own also learns cooking by
     // the profession trips, cooks the fire recipes (spell focus 4) of the craft loop and lights its own campfire (spell 818) for them;
     // 0 off (default), 1 all, 2 cohort B (odd guid), 3 cohort A (even guid). The craft part needs ProfessionUse.RealReagents.

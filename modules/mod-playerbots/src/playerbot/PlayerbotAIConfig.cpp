@@ -1898,6 +1898,13 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[Crafting] config key=Consumables value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", craftingConsumables);
         craftingConsumables = 0;
     }
+    // twow-repo#333 T24 CLSFIX (OB-00 16.11.2026): an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B, 3 cohort A).
+    consumablesKindFromSpell = config.GetIntDefault("AiPlayerbot.Consumables.KindFromSpell", 0);
+    if (consumablesKindFromSpell > 3)
+    {
+        sLog.outError("[Consumables] config key=KindFromSpell value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", consumablesKindFromSpell);
+        consumablesKindFromSpell = 0;
+    }
     // twow-repo#333 M2 Crafting.Cooking (owner list 07.11.2026, item 2): an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B, 3 cohort A).
     craftingCooking = config.GetIntDefault("AiPlayerbot.Crafting.Cooking", 0);
     if (craftingCooking > 3)
@@ -2254,6 +2261,7 @@ bool PlayerbotAIConfig::Initialize()
             {"CombatRule.RestStartMana", Value(combatRuleRestStartMana)},
             {"CombatRule.TargetBackoffMs", Value(combatRuleTargetBackoffMs)},
             {"CombatRule.TargetRule", Value(combatRuleTargetRule)},
+            {"Consumables.KindFromSpell", Value(consumablesKindFromSpell)},
             {"Crafting.Consumables", Value(craftingConsumables)},
             {"Crafting.Cooking", Value(craftingCooking)},
             {"Crafting.Fishing", Value(craftingFishing)},
