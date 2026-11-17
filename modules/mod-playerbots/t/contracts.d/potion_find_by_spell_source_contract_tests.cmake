@@ -7,14 +7,16 @@
 # potion_find_policy; the two lookups then skip the name fallback.
 # This contract pins:
 #   0. the switch: dist key and modes, member, read with > 3 = off, sorted [ConfigEcho] entry;
-#   1. the switch-off path: the old subclass 1/3 loop byte for byte (with its early return), the new branch after it, behind bySpell;
-#      bySpell only from PotionFindBySpellApplies (config, then cohort), the one switch read;
+#   1. the switch-off path: the whole Accept body byte for byte - the old subclass 1/3 loop (with its early return) first, nothing
+#      before it or between it and the new branch, the new branch behind bySpell; bySpell only from PotionFindBySpellApplies (config,
+#      then cohort), the one switch read;
 #   2. the fact copy from the core spell data into the policy, with the battleground-only attribute and the bot's battleground state
 #      (the draughts cast only in a battleground);
 #   3. the two lookups in InventoryParseItems return before the name fallback only when the switch applies; the fallback unchanged;
 #   4. the policy header: std only, its rule lines, constants equal to the core enums, the cooldown category chosen as the core
 #      chooses it (Unit.cpp), kMaxEffects equal to MAX_EFFECT_INDEX (static_assert in the visitor);
-#   5. the unit test registered with its DB fixtures and its exit on failure; the other FindPotionVisitor user unchanged;
+#   5. the unit test registered with its DB fixtures and its exit on failure; the source of the other FindPotionVisitor user
+#      (PlayerbotFactory::InitPotions) unchanged - with the switch on its visitor also finds subclass-0 potions;
 #   6. negative probes: every mutation must make the contract fail.
 
 cmake_policy(VERSION 3.16)
@@ -113,6 +115,13 @@ set(applies "    inline bool PotionFindBySpellApplies(Player* bot)\n    {\n     
 set(ctor "        FindPotionVisitor(Player* bot, uint32 effectId) : FindUsableItemVisitor(bot), effectId(effectId), bySpell(PotionFindBySpellApplies(bot)) {}\n")
 set(old_loop "            if (proto->Class == ITEM_CLASS_CONSUMABLE && (proto->SubClass == ITEM_SUBCLASS_POTION || proto->SubClass == ITEM_SUBCLASS_FLASK))\n            {\n                for (int j = 0; j < MAX_ITEM_PROTO_SPELLS; j++)\n                {\n                    const SpellEntry* const spellInfo = sServerFacade.LookupSpellInfo(proto->Spells[j].SpellId);\n                    if (!spellInfo)\n                        return false;\n\n                    for (int i = 0 ; i < 3; i++)\n                    {\n                        if (spellInfo->Effect[i] == effectId)\n                            return true;\n                    }\n                }\n            }\n")
 set(new_branch "            if (bySpell && proto->Class == ITEM_CLASS_CONSUMABLE && proto->SubClass == ITEM_SUBCLASS_CONSUMABLE)\n                return AcceptsVanillaPotion(proto);\n\n            return false;\n        }\n")
+# The whole Accept body, signature to closing brace: the old loop first, then only the comment, then the new branch.
+set(accept_head "        virtual bool Accept(const ItemPrototype* proto) override\n        {\n")
+set(accept_body "${accept_head}${old_loop}\n            // twow-repo#333 T24 POTFIX (AiPlayerbot.PotionFind.BySpell, bug fix, default 0): vanilla consumables all have subclass 0.\n            // Such an item is a potion when an item spell shares the potion cooldown and has the effect (ENERGIZE: mana); a slot\n            // without a known spell, or a battleground-only spell outside a battleground, is skipped (PotionFindPolicy.h).\n            // Subclass 1 and 3 keep the old loop above.\n${new_branch}")
+# A statement without the switch gate, for the two probes below.
+set(ungated "            if (proto->Class == ITEM_CLASS_CONSUMABLE) return true;\n")
+# The old loop's early return, mutated only inside the old loop (FindPetVisitor has the same two lines).
+string(REPLACE "                        return false;\n" "                        continue;\n" old_loop_continue "${old_loop}")
 set(max_effects_assert "            static_assert(ai::potion_find::kMaxEffects == MAX_EFFECT_INDEX, \"PotionFindPolicy.h kMaxEffects must equal MAX_EFFECT_INDEX\");\n")
 set(fact_copy "${max_effects_assert}            ai::potion_find::SlotFacts slots[MAX_ITEM_PROTO_SPELLS];\n            for (int j = 0; j < MAX_ITEM_PROTO_SPELLS; j++)\n            {\n                slots[j].itemCategory = proto->Spells[j].SpellCategory;\n                slots[j].itemCooldown = proto->Spells[j].SpellCooldown;\n                slots[j].itemCategoryCooldown = proto->Spells[j].SpellCategoryCooldown;\n                const SpellEntry* const spellInfo = sServerFacade.LookupSpellInfo(proto->Spells[j].SpellId);\n                if (!spellInfo)\n                    continue;\n\n                slots[j].known = true;\n                slots[j].spellCategory = spellInfo->Category;\n                for (std::size_t i = 0; i < ai::potion_find::kMaxEffects; i++)\n                {\n                    slots[j].effect[i] = spellInfo->Effect[i];\n                    slots[j].misc[i] = spellInfo->EffectMiscValue[i];\n                }\n                slots[j].battlegroundOnly = spellInfo->HasAttribute(SPELL_ATTR_EX3_ONLY_BATTLEGROUNDS);\n            }\n            return ai::potion_find::AcceptsVanillaPotion(proto->Class, proto->SubClass, slots, MAX_ITEM_PROTO_SPELLS, effectId,\n                bot->InBattleGround());\n")
 set(early_return "        if (visitor.BySpell())\n        {\n            RETURN_SORT_FOUND;\n        }\n")
@@ -157,6 +166,7 @@ function(check out_var)
   need("${potion}" "${old_loop}" "(1) the old subclass 1/3 loop byte for byte (early return included)")
   need("${potion}" "${new_branch}" "(1) the new branch: bySpell, class 0, subclass 0, then the policy")
   order("${potion}" "${old_loop}" "${new_branch}" "(1) the old loop before the new branch")
+  need("${potion}" "${accept_body}" "(1) the whole Accept body byte for byte: nothing before the old loop or between it and the new branch")
   count("${potion}" "bySpell &&" 1 "(1) one gate on bySpell")
   count("${potion}" "sLog" 0 "(1) no log line in the visitor (it runs per bag item)")
   need("${potion}" "        uint32 effectId;\n        bool bySpell;" "(1) members, in init order")
@@ -215,7 +225,7 @@ function(check out_var)
       "SlotFacts slots[5] = { Slot(120000, 4, 120000, 4, kAura), Slot(0, 0, 0, 0, kHeal) };\n        Require(!AcceptsVanillaPotion(0, 0, slots, 5, kHeal, false), \"category on slot 1, HEAL on slot 2\");")
     need("${unit}" "${case}" "(5) unit test case")
   endforeach()
-  need("${factory}" "        FindPotionVisitor visitor(bot, effect);\n        ai->InventoryIterateItems(&visitor, IterateItemsMask::ITERATE_ITEMS_IN_BAGS);\n" "(5) InitPotions unchanged")
+  need("${factory}" "        FindPotionVisitor visitor(bot, effect);\n        ai->InventoryIterateItems(&visitor, IterateItemsMask::ITERATE_ITEMS_IN_BAGS);\n" "(5) InitPotions source unchanged")
 
   set(${out_var} "${errors}" PARENT_SCOPE)
 endfunction()
@@ -251,7 +261,9 @@ probe("echo out of order" config_cpp "${echo_before}${echo_entry}" "${echo_entry
 probe("switch without cohort" visitors "return sPlayerbotAIConfig.potionFindBySpell && bot && ai::cohort::Applies(sPlayerbotAIConfig.potionFindBySpell, bot->GetGUIDLow());" "return sPlayerbotAIConfig.potionFindBySpell;")
 probe("new branch without the switch" visitors "            if (bySpell && proto->Class == ITEM_CLASS_CONSUMABLE && proto->SubClass == ITEM_SUBCLASS_CONSUMABLE)\n" "            if (proto->Class == ITEM_CLASS_CONSUMABLE && proto->SubClass == ITEM_SUBCLASS_CONSUMABLE)\n")
 probe("new branch for every subclass" visitors " && proto->SubClass == ITEM_SUBCLASS_CONSUMABLE)\n                return AcceptsVanillaPotion(proto);" ")\n                return AcceptsVanillaPotion(proto);")
-probe("old early return changed" visitors "                    if (!spellInfo)\n                        return false;\n" "                    if (!spellInfo)\n                        continue;\n")
+probe("old early return changed" visitors "${old_loop}" "${old_loop_continue}")
+probe("ungated statement before the old loop" visitors "${accept_head}${old_loop}" "${accept_head}${ungated}${old_loop}")
+probe("ungated statement after the old loop" visitors "${old_loop}\n            // twow-repo#333 T24 POTFIX" "${old_loop}${ungated}\n            // twow-repo#333 T24 POTFIX")
 probe("old loop widened to subclass 0" visitors "(proto->SubClass == ITEM_SUBCLASS_POTION || proto->SubClass == ITEM_SUBCLASS_FLASK)" "(proto->SubClass == ITEM_SUBCLASS_POTION || proto->SubClass == ITEM_SUBCLASS_FLASK || proto->SubClass == ITEM_SUBCLASS_CONSUMABLE)")
 probe("misc fact dropped" visitors "                    slots[j].misc[i] = spellInfo->EffectMiscValue[i];\n" "")
 probe("slot category 0" visitors "                slots[j].itemCategory = proto->Spells[j].SpellCategory;\n" "                slots[j].itemCategory = 0;\n")
