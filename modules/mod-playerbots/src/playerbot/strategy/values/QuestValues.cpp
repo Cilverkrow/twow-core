@@ -433,6 +433,21 @@ bool NeedForQuestValue::Calculate()
 	return std::binary_search(needed.begin(), needed.end(), entry);
 }
 
+// A3 step 2 H5 (a): the creature drops an item of an item requirement of the quest that is still open (the global "item drop list",
+// the same source as the [QuestNeed] stale check in ChooseTargetActions.cpp).
+static bool SourceOfOpenItem(Quest const* quest, QuestStatusData const& status, int32 entry)
+{
+	for (uint32 objective = 0; objective < QUEST_OBJECTIVES_COUNT; objective++)
+	{
+		if (!quest->ReqItemId[objective] || status.m_itemcount[objective] >= quest->ReqItemCount[objective])
+			continue;
+		std::list<int32> const dropList = GAI_VALUE2(std::list<int32>, "item drop list", quest->ReqItemId[objective]);
+		if (std::find(dropList.begin(), dropList.end(), entry) != dropList.end())
+			return true;
+	}
+	return false;
+}
+
 std::vector<int32> NeededQuestEntriesValue::Calculate()
 {
 	std::vector<int32> needed;
@@ -479,8 +494,25 @@ std::vector<int32> NeededQuestEntriesValue::Calculate()
 
 			DestinationList destinations = sTravelMgr.GetDestinations(info, openMask, {int32(questId)}, false, 0);
 
+			// a slot can carry a kill AND an item requirement and stays open for its item after the kills are done (H5 smoke
+			// 17.11., quest 843): its finished kill target leaves the set unless it still drops an open item of the quest
+			std::array<ai::quest_need::SlotKill, 4> slots{};
+			for (uint32 objective = 0; objective < QUEST_OBJECTIVES_COUNT && objective < 4; objective++)
+			{
+				if (!quest->ReqCreatureOrGOCount[objective])
+					continue;
+				slots[objective].target = quest->ReqCreatureOrGOId[objective];
+				slots[objective].open = statusData.m_creatureOrGOcount[objective] < quest->ReqCreatureOrGOCount[objective];
+			}
+
 			for (auto destination : destinations)
-				needed.push_back(destination->GetEntry());
+			{
+				int32 const entry = destination->GetEntry();
+				bool const finishedKill = ai::quest_need::FinishedKillTarget(entry, slots);
+				if (finishedKill && ai::quest_need::DropFromNeedSet(finishedKill, SourceOfOpenItem(quest, statusData, entry)))
+					continue;
+				needed.push_back(entry);
+			}
 
 			continue;
 		}
