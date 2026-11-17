@@ -154,19 +154,13 @@ struct MinuteOut
     ArbiterMinute sums[2];
 };
 
-// Under g_mutex: at the first tick after a minute change, takes the sums of the minute before and clears them.
+// Under g_mutex: at the first tick in a later minute, takes the sums of the minute before and clears them. nowSec was read
+// before the lock, so it can be older than the minute already rolled: SupervisorPolicy.h ArbiterMinuteRoll rolls only forward.
 MinuteOut RollLocked(std::uint32_t nowSec)
 {
     MinuteOut out;
-    std::uint32_t const minute = nowSec / 60;
-    if (g_minute == 0)
-    {
-        g_minute = minute;
+    if (!ArbiterMinuteRoll(g_minute, nowSec / 60))
         return out;
-    }
-    if (minute == g_minute)
-        return out;
-    g_minute = minute;
     out.due = true;
     // A3 step 3 T02-a: the WriterScope overflow count is process-wide (no bot, no cohort); it is reported once, in cohort B's
     // minute when B ticked in it, else in A's.
