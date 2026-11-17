@@ -56,6 +56,41 @@ inline bool StalePick(bool servesOpen, bool servesDone)
     return !servesOpen && servesDone;
 }
 
+// ---- (a) a finished kill requirement in a slot kept open by its item part --------------------------------------------------
+// H5 smoke 17.11.2026 (bot 2075, quest 843 slot 0 = kill 15 x 3374 AND item 5006): "need quest objective" and so the open mask
+// are per slot, so a slot whose kills are done stays open for its item and the fetch kept the finished kill target in the set.
+// One kill requirement per slot (the quest template); target 0 = the slot has none.
+struct SlotKill
+{
+    std::int32_t target = 0;   // ReqCreatureOrGOId[j]: > 0 creature, < 0 game object
+    bool open = false;         // count < required
+};
+
+// FinishedKillTarget: a creature entry (> 0) that a slot names with a met kill requirement and no slot names with an open one.
+// Game objects (< 0) never: a used object can still be where the slot's item comes from.
+inline bool FinishedKillTarget(std::int32_t entry, std::array<SlotKill, 4> const& slots)
+{
+    if (entry <= 0)
+        return false;
+    bool done = false;
+    for (SlotKill const& slot : slots)
+    {
+        if (slot.target != entry)
+            continue;
+        if (slot.open)
+            return false;
+        done = true;
+    }
+    return done;
+}
+
+// DropFromNeedSet: the entry leaves the quest's part of the set only as a finished kill target that is no source of an open item
+// requirement of the quest (the caller's drop-list check; OB-00 17.11.: that case is the negative probe, nothing more is removed).
+inline bool DropFromNeedSet(bool finishedKillTarget, bool sourceOfOpenItem)
+{
+    return finishedKillTarget && !sourceOfOpenItem;
+}
+
 // ---- (b) the link rule ------------------------------------------------------------------------------------------------------
 // One open objective j of an incomplete quest, seen from the item and the target.
 struct ObjectiveLink

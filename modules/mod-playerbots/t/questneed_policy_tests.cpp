@@ -64,6 +64,31 @@ int main()
         Require(!StalePick(true, false) && !StalePick(false, false), "open only / none: not stale");
     }
 
+    // ---- (a) the finished kill target of a slot kept open by its item (H5 smoke 17.11., quest 843) ----------------------------
+    {
+        // quest 843: slot 0 = kill 15 x 3374 (done) AND item 5006 (open, from 3392); slot 1 = kill 5 x 3375 (open)
+        std::array<SlotKill, 4> slots{};
+        slots[0].target = 3374; slots[0].open = false;
+        slots[1].target = 3375; slots[1].open = true;
+        Require(FinishedKillTarget(3374, slots), "843: the finished kill target 3374");
+        Require(!FinishedKillTarget(3375, slots), "843: the open kill target 3375 stays");
+        Require(!FinishedKillTarget(3392, slots), "843: the item source 3392 is named by no kill slot");
+        Require(!FinishedKillTarget(0, slots), "entry 0: never");
+        Require(DropFromNeedSet(true, false), "finished kill target, no open item source: dropped");
+        // negative probe (OB-00 17.11.): the kill target still drops an open item of the quest -> it stays in the set
+        Require(!DropFromNeedSet(true, true), "finished kill target that is still a source of an open item: kept");
+        Require(!DropFromNeedSet(false, false) && !DropFromNeedSet(false, true), "no finished kill target: kept");
+        // the same creature in a done and an open slot: still needed
+        slots[2].target = 3374; slots[2].open = true;
+        Require(!FinishedKillTarget(3374, slots), "named by an open kill requirement too: kept");
+        // game objects (< 0) are never dropped: a used object can still be the source of the slot's item
+        std::array<SlotKill, 4> go{};
+        go[0].target = -1731; go[0].open = false;
+        Require(!FinishedKillTarget(-1731, go), "game object: never a finished kill target");
+        std::array<SlotKill, 4> none{};
+        Require(!FinishedKillTarget(3374, none), "no kill requirement: never");
+    }
+
     // ---- (b) the link rule ----------------------------------------------------------------------------------------------------
     {
         ObjectiveLink o;
