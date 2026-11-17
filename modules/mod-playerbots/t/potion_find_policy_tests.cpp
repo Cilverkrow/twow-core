@@ -157,7 +157,8 @@ int main()
     }
 
     // Battleground-only spells (the draughts 17348/17349 heal, 17351/17352 mana; spells 21393-21396 with AttributesEx3 0x800,
-    // slot 120000 / 4 / 300000): a potion only inside a battleground, elsewhere the cast fails (SPELL_FAILED_ONLY_BATTLEGROUNDS).
+    // slot 120000 / 4 / 300000 for the Major draughts 17348/17351, 120000 / 4 / 120000 for the Superior ones 17349/17352; the
+    // fixtures use the Major values): a potion only inside a battleground, elsewhere the cast fails (SPELL_FAILED_ONLY_BATTLEGROUNDS).
     {
         SlotFacts majorHealingDraught = Slot(120000, 4, 300000, 4, kHeal);
         majorHealingDraught.battlegroundOnly = true;
