@@ -507,6 +507,18 @@ AiPlayerbot.RandomBotRpgChance = 0.8
 # Chance for bot to use potions
 #AiPlayerbot.UsePotionChance = 1.0
 
+# twow-repo#333 T24 POTFIX (bug fix, CLI-BERUFE 16.11.2026): on vanilla world data every consumable has subclass 0, so the
+# "healing potion" / "mana potion" lookup (potion actions, RosterConsumables.UseReal, ready check, keep/sell stacks) never
+# accepted a potion and fell back to a name match: only items named "... Healing Potion" / "... Mana Potion", usable or not,
+# plus recipes and Craftsman's Writs of that name (sorted first). With the fix a subclass-0 consumable is a potion when an item
+# spell is cast on the potion cooldown (category 4, as the core picks the cooldown category) and heals (healing potion) or
+# restores mana (mana potion): 15 healing and 16 mana items on this DB, incl. rejuvenation potions and draughts (the draughts only
+# inside a battleground); no healthstones, mana gems, items on their cooldown (Whipper Root Tuber, Night Dragon's Breath, Lily
+# Root), rage potions, teas, bandages, food, drink, elixirs or flasks. The name fallback is skipped then. No log line.
+# Mode: 0 = as before (default, rollback), 1 = every bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid) -
+# the second arm of a crossover unit. Any other value acts like 0.
+AiPlayerbot.PotionFind.BySpell = 0
+
 # Bots will speed up when following to stay close.
 # AiPlayerbot.BoostFollow = 1
 
