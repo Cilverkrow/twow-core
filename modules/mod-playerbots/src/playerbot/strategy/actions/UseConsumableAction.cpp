@@ -1072,5 +1072,8 @@ bool UseConsumableAction::IsBuffConsumable(ItemPrototype const* proto) const
 {
     ConsumableType type;
     uint32 spellId;
-    return proto && bot->CanUseItem(proto) == EQUIP_ERR_OK && ClassifyConsumable(proto, type, spellId);
+    // twow-repo#333 T24 CLSFIX review (switch on only): not kept when Execute skips it as mana-only for a bot without mana (Flask of
+    // Distilled Wisdom on a warrior or rogue); else the keep block would hold an item that is never used.
+    return proto && bot->CanUseItem(proto) == EQUIP_ERR_OK && ClassifyConsumable(proto, type, spellId) &&
+        !(KindFromSpellFor() && IsManaOnlyWithoutManaPool(spellId));
 }

@@ -10,10 +10,12 @@
 #   2. the off path: switch (config, then cohort) first, then subclass 0, else proto->SubClass unchanged; every copied spell fact;
 #   3. knownFlaskAuras unchanged (the one flask list, also for the derived flask);
 #   4. the policy header stays std only and its constants match the core enums;
-#   5. the keep block in ItemUsageValue.cpp does not read the switch; the unit test keeps the four contract cases;
+#   5. the keep block in ItemUsageValue.cpp does not read the switch; the unit test keeps the four contract cases of the design and
+#      the review cases (Scroll of Protection II, Flask of Distilled Wisdom, Toasting Goblet);
 #   6. the review guards (switch on only): Execute skips a candidate a more powerful active spell would refuse and one a quest in the
 #      log asks for; ScoreSpellStats gives no score to a pool of a power the bot does not have; Execute skips a candidate whose
-#      every effect is a mana effect for a bot without mana (lead 16.11.: Flask of Distilled Wisdom for warriors and rogues);
+#      every effect is a mana effect for a bot without mana (lead 16.11.: Flask of Distilled Wisdom for warriors and rogues), and
+#      IsBuffConsumable (the keep block) does not keep it (review 17.11.);
 #   7. negative probes: every mutation must make the contract fail.
 
 cmake_policy(VERSION 3.16)
@@ -110,6 +112,7 @@ set(guard_line "        if (kindFromSpell && (IsCandidateOutranked(c) || IsQuest
 set(mana_pool_test "    if (bot->GetMaxPower(POWER_MANA))\n        return false;\n")
 set(mana_effect "        bool const manaEffect = (spellInfo->EffectApplyAuraName[i] == SPELL_AURA_MOD_INCREASE_ENERGY ||\n            spellInfo->Effect[i] == SPELL_EFFECT_ENERGIZE) && spellInfo->EffectMiscValue[i] == int32(POWER_MANA);\n        if (!manaEffect)\n            return false;\n")
 set(mana_amount "        if (spellInfo->EffectBasePoints[i] > 0)\n            manaAmount = true;\n    }\n\n    return manaAmount;")
+set(keep_guard "    return proto && bot->CanUseItem(proto) == EQUIP_ERR_OK && ClassifyConsumable(proto, type, spellId) &&\n        !(KindFromSpellFor() && IsManaOnlyWithoutManaPool(spellId));")
 set(mana_guard "        if (kindFromSpell && spellInfo->EffectApplyAuraName[i] == SPELL_AURA_MOD_INCREASE_ENERGY &&\n            (spellInfo->EffectMiscValue[i] < 0 || spellInfo->EffectMiscValue[i] >= MAX_POWERS ||\n             !bot->GetMaxPower(Powers(spellInfo->EffectMiscValue[i]))))\n            continue;\n")
 set(null_check "    if (!proto || proto->Class != ITEM_CLASS_CONSUMABLE)\n        return false;\n")
 set(subclass_line "    uint32 const subClass = ConsumableSubClass(proto);\n")
@@ -133,7 +136,7 @@ function(check out_var)
   order("${config_cpp}" "${echo_entry}" "${echo_after}" "(0) [ConfigEcho] before Crafting.Consumables")
   need("${use_cpp}" "${kind_for}" "(0) KindFromSpellFor: config, then cohort")
   count("${use_cpp}" "sPlayerbotAIConfig.consumablesKindFromSpell" 2 "(0) switch reads in the action (only KindFromSpellFor)")
-  count("${use_cpp}" "KindFromSpellFor()" 4 "(0) KindFromSpellFor: definition, ConsumableSubClass, ScoreSpellStats, Execute")
+  count("${use_cpp}" "KindFromSpellFor()" 5 "(0) KindFromSpellFor: definition, ConsumableSubClass, ScoreSpellStats, Execute, IsBuffConsumable")
   need("${use_h}" "        bool KindFromSpellFor() const;\n" "(0) KindFromSpellFor declared")
 
   # 1. ClassifyConsumable: the derived subclass once, after the null / class check; seven tests read it, none reads proto->SubClass.
@@ -203,7 +206,10 @@ function(check out_var)
   foreach(case "Require(DeriveSubClass(&titans, 1) == kSubClassFlask, \"Flask of the Titans -> flask\");"
       "Require(DeriveSubClass(&fortitude, 1) == kSubClassElixir, \"Elixir of Fortitude -> elixir\");"
       "Require(DeriveSubClass(&strength, 1) == kSubClassScroll, \"Scroll of Strength II -> scroll\");"
-      "Require(DeriveSubClass(&majorHealing, 1) == kSubClassPotion, \"Major Healing Potion -> potion\");")
+      "Require(DeriveSubClass(&majorHealing, 1) == kSubClassPotion, \"Major Healing Potion -> potion\");"
+      "ItemSpell const protection = Slot(8094, 0, Spell(0, 0, 30, 21, 6, 0, 0, 22, 0, 0));\n    Require(DeriveB(protection) == kSubClassScroll && DeriveA(protection) == kSubClassScroll, \"Scroll of Protection II -> scroll\");"
+      "ItemSpell const wisdom = Slot(17627, 79, Spell(13, 0, 367, 1, 6, 0, 0, 35, 0, 0, true));\n    Require(DeriveB(wisdom) == kSubClassFlask, \"Flask of Distilled Wisdom -> flask\");"
+      "ItemSpell const toast = Slot(26008, 0, Spell(0, 0, 30, 21, 6, 100, 0, 29, 0, 0));\n    Require(DeriveB(toast) == kSubClassConsumable && DeriveA(toast) == kSubClassConsumable, \"Toasting Goblet (second effect) stays 0\");")
     need("${unit}" "${case}" "(5) unit test contract case")
   endforeach()
 
@@ -230,7 +236,9 @@ function(check out_var)
     need("${use_h}" "${decl}" "(6) guard declared")
   endforeach()
   need("${use_h}" "        bool IsManaOnlyWithoutManaPool(uint32 spellId) const;\n" "(6) mana-only guard declared")
-  count("${use_cpp}" "IsManaOnlyWithoutManaPool(" 2 "(6) mana-only: definition and the one call in Execute")
+  count("${use_cpp}" "IsManaOnlyWithoutManaPool(" 3 "(6) mana-only: definition, the call in Execute and the one in IsBuffConsumable")
+  region("${use_cpp}" "bool UseConsumableAction::IsBuffConsumable(" "\n}\n" isbuff)
+  need("${isbuff}" "${keep_guard}" "(6) mana-only: IsBuffConsumable (the keep block) skips what Execute skips, switch on only")
   region("${use_cpp}" "bool UseConsumableAction::IsManaOnlyWithoutManaPool(" "\n}\n" manaonly)
   need("${manaonly}" "${mana_pool_test}" "(6) mana-only: only a bot without a mana pool")
   order("${manaonly}" "${mana_pool_test}" "LookupSpellInfo(spellId)" "(6) mana-only: the pool test first")
@@ -298,6 +306,8 @@ probe("mana-only for bots with mana" use_cpp "${mana_pool_test}" "")
 probe("mana-only with other effects" use_cpp "        if (!manaEffect)\n            return false;\n" "")
 probe("mana-only unknown spell skipped" use_cpp "    if (!spellInfo)\n        return false;\n\n    bool manaAmount" "    if (!spellInfo)\n        return true;\n\n    bool manaAmount")
 probe("mana-only third effect ignored" use_cpp "    bool manaAmount = false;\n    for (int i = 0; i < 3; ++i)\n" "    bool manaAmount = false;\n    for (int i = 0; i < 2; ++i)\n")
+probe("keep side mana-only skip dropped" use_cpp " &&\n        !(KindFromSpellFor() && IsManaOnlyWithoutManaPool(spellId));\n" ";\n")
+probe("keep side mana-only skip for every bot" use_cpp "        !(KindFromSpellFor() && IsManaOnlyWithoutManaPool(spellId));\n" "        !IsManaOnlyWithoutManaPool(spellId);\n")
 probe("power guard for every bot" use_cpp "        if (kindFromSpell && spellInfo->EffectApplyAuraName[i] == SPELL_AURA_MOD_INCREASE_ENERGY" "        if (spellInfo->EffectApplyAuraName[i] == SPELL_AURA_MOD_INCREASE_ENERGY")
 probe("flask list changed" use_cpp "    17624,  // Flask of Petrification\n" "")
 probe("log in the classifier" use_cpp "    uint32 const subClass = ConsumableSubClass(proto);\n" "    uint32 const subClass = ConsumableSubClass(proto);\n    sLog.outBasic(\"x\");\n")
@@ -306,5 +316,6 @@ probe("mirror drift" policy "constexpr std::uint32_t kTargetUnitFriend = 21;\n" 
 probe("variant A by default" policy "constexpr bool kBuffAuraFilter = true;\n" "constexpr bool kBuffAuraFilter = false;\n")
 probe("keep block reads the switch" usage "sPlayerbotAIConfig.craftingConsumables" "sPlayerbotAIConfig.consumablesKindFromSpell && sPlayerbotAIConfig.craftingConsumables")
 probe("contract case dropped" unit "Require(DeriveSubClass(&titans, 1) == kSubClassFlask" "Require(DeriveSubClass(&titans, 1) != kSubClassFlask")
+probe("review case changed" unit "Slot(8094, 0, Spell(0, 0, 30, 21, 6, 0, 0, 22, 0, 0))" "Slot(8094, 0, Spell(0, 0, 30, 21, 6, 0, 0, 29, 0, 0))")
 
 message(STATUS "consumables_kind_from_spell_source_contract: passed (${probes} negative probes caught)")
