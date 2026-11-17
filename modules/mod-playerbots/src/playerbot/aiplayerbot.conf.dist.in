@@ -3724,6 +3724,19 @@ AiPlayerbot.ActivityTrace = 0
 # (0 = none or a player) and 1 = the bot sees it, 0 = gone or unseen, -1 = no target.
 # Log only, no behaviour change. 0 = off (default).
 AiPlayerbot.ActivityTrace.StuckDetail = 0
+# A3-HARM-UPSTREAM T40 follow-up (OB-00 (a) 16.11.2026, log only, default 0): 1 = with ActivityTrace and
+# ActivityTrace.StuckDetail on, every [StuckDetail] line of a roster bot without a real master is followed by one line
+# "[StuckReason] bot= cls= aa_stage=never|useful|possible|executed aa_gate=none|activity|real_master|cannot_move|no_target|
+# unsafe|trip_no_grind|healer_or_pull|on_sight|travelling|ok|not_possible|failed aa_age_ms= aa_rel= pass_age_ms= pass_min=
+# grind= nc_mult= old_rule=none|unseen|invalid|valid|stale|nc cfm_max= cfm_fresh= leader=none|self|offline|other_map|same_map
+# leader_guid= group_size= leader_dist=" - where the bot's last "attack anything" evaluation ended (the gate of isUseful,
+# isPossible, or the Execute result) and how many ms ago, the start of its newest non-combat pass (ms ago, 1 = minimal),
+# whether the grind strategy is on, the non-combat strategies whose multiplier can zero "attack anything" (nc_mult= bits:
+# 1 passive, 2 wbuff travel, 4 dungeon clear, 8 pull, 16 stealthed), the old "no target" rule, the cached
+# "can free move::wandermax", and its group leader. cls= is the bot's class id: bit 16 zeroes "attack anything" only for a
+# druid (11), not for a rogue (4). Same thread and minute budget as [StuckDetail]; -1 = never / unknown.
+# Log only, no behaviour change: the recorded codes are read by this line only. 0 = off (default).
+AiPlayerbot.ActivityTrace.StuckReason = 0
 # twow-repo#601 (OB-00 28.10.2026): 1 = with ActivityTrace on, a roster bot that is idle (no active travel target) two samples in
 # a row writes one line for the episode: "[IdleDetail] state=start bot= level= map= zone= x= y= why=no_target|null_dest|none|
 # cooldown|expired|other dest=quest|grind|other|none quest= entry= status= status_s= left_s= reselect= purpose='' fetch=none|pending|ready

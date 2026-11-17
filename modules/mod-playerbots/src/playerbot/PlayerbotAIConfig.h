@@ -672,6 +672,7 @@ public:
     bool worldBotsTrace = false;  // twow-repo#541: [WorldBots] per-minute world-thread cost line
     bool activityTrace = false;  // twow-repo#601 R01 L1: AiPlayerbot.ActivityTrace - [BotActivity] per roster bot and hour, [BotActivityMin]
     bool activityTraceStuckDetail = false;  // twow-repo#601: AiPlayerbot.ActivityTrace.StuckDetail - [StuckDetail] per stuck episode
+    bool activityTraceStuckReason = false;  // A3-HARM-UPSTREAM T40 follow-up (OB-00 (a) 16.11.): AiPlayerbot.ActivityTrace.StuckReason - [StuckReason] after each [StuckDetail] (log only, default 0)
     bool activityTraceIdleDetail = false;  // twow-repo#601: AiPlayerbot.ActivityTrace.IdleDetail - [IdleDetail] per idle episode (start, end)
     bool botUpdateTrace = false;  // twow-repo#541: [BotUpdate] per-minute distribution of PlayerbotAI::UpdateAI wall time
     bool botUpdateTraceTick = false;  // twow-repo#597 (TICK-01): [BotUpdateSlow] ends with " tick=<world loop> region=<map>.<inst>"

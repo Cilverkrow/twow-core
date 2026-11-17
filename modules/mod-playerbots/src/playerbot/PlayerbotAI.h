@@ -36,6 +36,7 @@
 #include "playerbot/QuestSearchPolicy.h"
 #include "playerbot/QuestFeasibilityPolicy.h"
 #include "playerbot/BotActivityPolicy.h"
+#include "playerbot/StuckReasonPolicy.h"   // A3-HARM-UPSTREAM T40 follow-up: the [StuckReason] records (plain data)
 #include "playerbot/FarMovePolicy.h"
 #include "playerbot/GatherPurposePolicy.h"
 #include "playerbot/StuckCombatPolicy.h"
@@ -514,6 +515,9 @@ public:
     void RequestTeleportAck() { teleportAckRequested.store(true, std::memory_order_release); }
     void ChangeEngine(BotState type);
     void DoNextAction(bool minimal = false);
+    // A3-HARM-UPSTREAM T40 follow-up (OB-00 (a) 16.11.; ActivityTrace.StuckReason, log only, default 0): the "attack anything" record
+    // slot (AttackAnythingAction only).
+    ai::stuck_reason::AaRecord& StuckReasonAa() { return stuckReasonAa; }
     bool CanDoSpecificAction(const std::string& name, bool isUseful = true, bool isPossible = true);
     virtual bool DoSpecificAction(const std::string& name, Event event = Event(), bool silent = false);
     void ChangeStrategy(const std::string& name, BotState type);
@@ -1100,6 +1104,11 @@ protected:
     // twow-repo#601 (AiPlayerbot.ActivityTrace.StuckDetail): one [StuckDetail] line per stuck episode.
     ai::bot_activity::StuckEpisode stuckEpisode;
     void ReportStuckDetail(ai::bot_activity::State const& state);
+    // A3-HARM-UPSTREAM T40 follow-up (OB-00 (a) 16.11.; AiPlayerbot.ActivityTrace.StuckReason, log only, default 0): where "attack
+    // anything" last ended and the newest non-combat pass; written only with the switch on, read only by the [StuckReason] line
+    // (bot thread).
+    ai::stuck_reason::AaRecord stuckReasonAa;
+    ai::stuck_reason::PassRecord stuckReasonPass;
     // twow-repo#601 (AiPlayerbot.ActivityTrace.IdleDetail): one [IdleDetail] start and end line per idle episode.
     ai::bot_activity::IdleEpisode idleEpisode;
     void ReportIdleDetail(ai::bot_activity::State const& state, ai::bot_activity::Kind kind, ai::bot_activity::IdleNote note, uint32 now);
