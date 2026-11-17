@@ -9,6 +9,8 @@ cmake_policy(VERSION 3.16)
 #     first, then H5Applies with the bot's level, then InQuestBookScope (the unit test pins L9 off / L10 on in every mode);
 #   - (a): NeededQuestEntriesValue keeps the old walk (QuestAllObjective fetch + break) for every bot the part does not apply to,
 #     and the new walk fetches once per quest with the open-objective mask; both quest credit actions call QuestNeedOnCredit;
+#     the new walk drops the finished kill target of a slot kept open by its item (H5 smoke 17.11., quest 843) unless it still
+#     drops an open item of the quest (SourceOfOpenItem; OB-00 17.11. negative probe), game objects never;
 #   - (b): both CanCastSpell returns of CanUseItemOn keep the dice for every other bot and use UseByNeed only where ItemUse
 #     applies; the dice line stays where it was (mode 0 = the same calls); UseByNeed refuses without a link and checks the cap;
 #   - the hour tick runs only with .Log or .ItemUse on; the [QuestNeed] pick count only with .Log;
@@ -144,12 +146,82 @@ set(A_NEW "		if (perObjective)
 
 			DestinationList destinations = sTravelMgr.GetDestinations(info, openMask, {int32(questId)}, false, 0);
 
+			// a slot can carry a kill AND an item requirement and stays open for its item after the kills are done (H5 smoke
+			// 17.11., quest 843): its finished kill target leaves the set unless it still drops an open item of the quest
+			std::array<ai::quest_need::SlotKill, 4> slots{};
+			for (uint32 objective = 0; objective < QUEST_OBJECTIVES_COUNT && objective < 4; objective++)
+			{
+				if (!quest->ReqCreatureOrGOCount[objective])
+					continue;
+				slots[objective].target = quest->ReqCreatureOrGOId[objective];
+				slots[objective].open = statusData.m_creatureOrGOcount[objective] < quest->ReqCreatureOrGOCount[objective];
+			}
+
 			for (auto destination : destinations)
-				needed.push_back(destination->GetEntry());
+			{
+				int32 const entry = destination->GetEntry();
+				bool const finishedKill = ai::quest_need::FinishedKillTarget(entry, slots);
+				if (finishedKill && ai::quest_need::DropFromNeedSet(finishedKill, SourceOfOpenItem(quest, statusData, entry)))
+					continue;
+				needed.push_back(entry);
+			}
 
 			continue;
 		}
 ")
+# the finished kill target of a slot kept open by its item (H5 smoke 17.11., quest 843): pure helpers + the caller's drop-list check
+set(A_SLOT_FN "inline bool FinishedKillTarget(std::int32_t entry, std::array<SlotKill, 4> const& slots)
+{
+    if (entry <= 0)
+        return false;
+    bool done = false;
+    for (SlotKill const& slot : slots)
+    {
+        if (slot.target != entry)
+            continue;
+        if (slot.open)
+            return false;
+        done = true;
+    }
+    return done;
+}")
+set(A_DROP_FN "inline bool DropFromNeedSet(bool finishedKillTarget, bool sourceOfOpenItem)
+{
+    return finishedKillTarget && !sourceOfOpenItem;
+}")
+set(A_SRC "static bool SourceOfOpenItem(Quest const* quest, QuestStatusData const& status, int32 entry)
+{
+	for (uint32 objective = 0; objective < QUEST_OBJECTIVES_COUNT; objective++)
+	{
+		if (!quest->ReqItemId[objective] || status.m_itemcount[objective] >= quest->ReqItemCount[objective])
+			continue;
+		std::list<int32> const dropList = GAI_VALUE2(std::list<int32>, \"item drop list\", quest->ReqItemId[objective]);
+		if (std::find(dropList.begin(), dropList.end(), entry) != dropList.end())
+			return true;
+	}
+	return false;
+}")
+
+function(check_slot policy values_cpp out)
+  require_all("${policy}" "QuestNeedPolicy.h" r A_SLOT_FN A_DROP_FN)
+  if(r)
+    set(${out} "${r}" PARENT_SCOPE)
+    return()
+  endif()
+  require_all("${values_cpp}" "QuestValues.cpp" r A_SRC)
+  if(r)
+    set(${out} "${r}" PARENT_SCOPE)
+    return()
+  endif()
+  # the helper is defined before the value that calls it
+  string(FIND "${values_cpp}" "${A_SRC}" at_src)
+  string(FIND "${values_cpp}" "std::vector<int32> NeededQuestEntriesValue::Calculate()" at_calc)
+  if(NOT at_src LESS at_calc)
+    set(${out} "QuestValues.cpp: SourceOfOpenItem must come before NeededQuestEntriesValue::Calculate" PARENT_SCOPE)
+    return()
+  endif()
+  set(${out} "" PARENT_SCOPE)
+endfunction()
 set(A_OLD "			// The destinations are those of the whole quest (all objectives): one walk per quest is enough.
 			DestinationList destinations = sTravelMgr.GetDestinations(info, uint32(TravelDestinationPurpose::QuestAllObjective), {int32(questId)}, false, 0);
 
@@ -292,6 +364,10 @@ check_need("${values_cpp}" "${quest_action_cpp}" "${ai_cpp}" r)
 if(r)
   list(APPEND failures "${r}")
 endif()
+check_slot("${policy}" "${values_cpp}" r)
+if(r)
+  list(APPEND failures "${r}")
+endif()
 check_item("${values_cpp}" "${rpg_cpp}" r)
 if(r)
   list(APPEND failures "${r}")
@@ -359,6 +435,26 @@ expect_caught("${r}" "the whole quest's mask in the new walk")
 string(REPLACE "uint32(TravelDestinationPurpose::QuestAllObjective), {int32(questId)}" "openMask, {int32(questId)}" m "${values_cpp}")
 check_need("${m}" "${quest_action_cpp}" "${ai_cpp}" r)
 expect_caught("${r}" "the old walk changed")
+
+string(REPLACE "DropFromNeedSet(finishedKill, SourceOfOpenItem(quest, statusData, entry))" "DropFromNeedSet(finishedKill, false)" m "${values_cpp}")
+check_need("${m}" "${quest_action_cpp}" "${ai_cpp}" r)
+expect_caught("${r}" "kill target still a source of an open item dropped (caller)")
+
+string(REPLACE "    return finishedKillTarget && !sourceOfOpenItem;" "    return finishedKillTarget;" m "${policy}")
+check_slot("${m}" "${values_cpp}" r)
+expect_caught("${r}" "kill target still a source of an open item dropped (policy)")
+
+string(REPLACE " || status.m_itemcount[objective] >= quest->ReqItemCount[objective])" ")" m "${values_cpp}")
+check_slot("${policy}" "${m}" r)
+expect_caught("${r}" "a finished item requirement still keeps its source")
+
+string(REPLACE "    if (entry <= 0)\n        return false;\n    bool done = false;" "    bool done = false;" m "${policy}")
+check_slot("${m}" "${values_cpp}" r)
+expect_caught("${r}" "game objects dropped as finished kill targets")
+
+string(REPLACE "				if (finishedKill && ai::quest_need::DropFromNeedSet(" "				if (false && ai::quest_need::DropFromNeedSet(" m "${values_cpp}")
+check_need("${m}" "${quest_action_cpp}" "${ai_cpp}" r)
+expect_caught("${r}" "finished kill target kept in the new walk")
 
 string(REPLACE "    ai->QuestNeedOnCredit(questId);\n" "" m "${quest_action_cpp}")
 check_need("${values_cpp}" "${m}" "${ai_cpp}" r)
