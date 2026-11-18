@@ -895,8 +895,8 @@ bool PlayerbotAIConfig::Initialize()
     grindCapLowLevelMargin = config.GetIntDefault("AiPlayerbot.GrindCap.LowLevelMargin", 2);
     questRescueIdleMinutes = config.GetIntDefault("AiPlayerbot.QuestRescue.IdleMinutes", 30);
     questRescueKeepRequestWhenFull = config.GetBoolDefault("AiPlayerbot.QuestRescue.KeepRequestWhenFull", false);
-    // twow-repo#703 item 1 (QuestRescue.NoTargetFreeSlot): 0 off, 1 on; any other value is off (logged).
-    questRescueNoTargetFreeSlot = config.GetIntDefault("AiPlayerbot.QuestRescue.NoTargetFreeSlot", 0);
+    // twow-repo#703 item 1 (QuestRescue.NoTargetFreeSlot): 0 off (rollback), 1 on (default since the 703G acceptance unit); any other value is off (logged).
+    questRescueNoTargetFreeSlot = config.GetIntDefault("AiPlayerbot.QuestRescue.NoTargetFreeSlot", 1);
     if (!ai::rescue_slot::ModeValid(int32(questRescueNoTargetFreeSlot)))
     {
         sLog.outError("[QuestRescue] config key=NoTargetFreeSlot value=%d result=off (0 off, 1 on)", int32(questRescueNoTargetFreeSlot));
