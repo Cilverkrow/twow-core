@@ -255,7 +255,7 @@ void UseConsumableAction::CollectPossibleAuraIds(uint32 spellId, std::vector<uin
     }
 }
 
-// twow-repo#333 T24 CLSFIX (AiPlayerbot.Consumables.KindFromSpell, default 0): the one read of the switch; true when it applies to this
+// twow-repo#333 T24 CLSFIX (AiPlayerbot.Consumables.KindFromSpell, default 1): the one read of the switch; true when it applies to this
 // bot (1 every bot, 2 cohort B, 3 cohort A). It gates the derived subclass and the review guards of Execute / ScoreSpellStats.
 bool UseConsumableAction::KindFromSpellFor() const
 {
@@ -349,7 +349,7 @@ bool UseConsumableAction::IsManaOnlyWithoutManaPool(uint32 spellId) const
     return manaAmount;
 }
 
-// twow-repo#333 T24 CLSFIX (OB-00 16.11.2026, bug fix; AiPlayerbot.Consumables.KindFromSpell, default 0): every consumable of the
+// twow-repo#333 T24 CLSFIX (OB-00 16.11.2026, bug fix; AiPlayerbot.Consumables.KindFromSpell, default 1): every consumable of the
 // vanilla world data has subclass 0, so the potion / elixir / flask / scroll branches of ClassifyConsumable never ran. For a bot the
 // switch applies to, a subclass-0 consumable gets the subclass derived from its item spells (ConsumableKindPolicy.h, rules R0-R5);
 // everything else keeps proto->SubClass.
@@ -414,7 +414,7 @@ bool UseConsumableAction::ClassifyConsumable(const ItemPrototype* proto, Consuma
     if (!proto || proto->Class != ITEM_CLASS_CONSUMABLE)
         return false;
 
-    // twow-repo#333 T24 CLSFIX (Consumables.KindFromSpell, default 0): the subclass the tests below read; with the switch off it is
+    // twow-repo#333 T24 CLSFIX (Consumables.KindFromSpell, default 1): the subclass the tests below read; with the switch off it is
     // proto->SubClass, so every decision stays the old one.
     uint32 const subClass = ConsumableSubClass(proto);
 

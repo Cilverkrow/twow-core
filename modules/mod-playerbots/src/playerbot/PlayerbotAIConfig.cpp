@@ -1903,7 +1903,7 @@ bool PlayerbotAIConfig::Initialize()
         craftingConsumables = 0;
     }
     // twow-repo#333 T24 CLSFIX (OB-00 16.11.2026): an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B, 3 cohort A).
-    consumablesKindFromSpell = config.GetIntDefault("AiPlayerbot.Consumables.KindFromSpell", 0);
+    consumablesKindFromSpell = config.GetIntDefault("AiPlayerbot.Consumables.KindFromSpell", 1);
     if (consumablesKindFromSpell > 3)
     {
         sLog.outError("[Consumables] config key=KindFromSpell value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", consumablesKindFromSpell);
