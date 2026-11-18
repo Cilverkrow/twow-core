@@ -1,6 +1,7 @@
 # twow-repo#333 T24 CLSFIX (OB-00 16.11.2026, bug fix): on this vanilla world data all 1587 consumables (item class 0) have
 # subclass 0, so the potion / elixir / flask / scroll branches of UseConsumableAction::ClassifyConsumable never ran ("use
-# consumable" knew only buff food and one alcohol). AiPlayerbot.Consumables.KindFromSpell (default 0; 1 all, 2 cohort B, 3 cohort A)
+# consumable" knew only buff food and one alcohol). AiPlayerbot.Consumables.KindFromSpell (default 1 = all bots since the
+# ABN-CONS acceptance unit 18.11.2026; 0 off = rollback, 2 cohort B, 3 cohort A)
 # derives the subclass of a subclass-0 consumable from its item spells (ConsumableKindPolicy.h, unit test
 # consumable_kind_policy: Flask of the Titans -> flask, Elixir of Fortitude -> elixir, Scroll of Strength II -> scroll, healing
 # potions -> potion) and runs the unchanged branches with it.
@@ -126,11 +127,11 @@ function(check out_var)
   set(errors "")
 
   # 0. The switch.
-  need("${dist}" "#   0 = off (default), 1 = every bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid); other values act like 0.\nAiPlayerbot.Consumables.KindFromSpell = 0\n" "(0) dist key, default 0, modes")
-  order("${dist}" "\nAiPlayerbot.Crafting.Consumables = 0\n" "\nAiPlayerbot.Consumables.KindFromSpell = 0\n" "(0) dist key after Crafting.Consumables")
+  need("${dist}" "#   0 = off (rollback), 1 = every bot (default since the ABN-CONS acceptance unit, 18.11.2026), 2 = only cohort B (odd low guid),\n#   3 = only cohort A (even low guid); other values act like 0.\nAiPlayerbot.Consumables.KindFromSpell = 1\n" "(0) dist key, default 1, modes")
+  order("${dist}" "\nAiPlayerbot.Crafting.Consumables = 0\n" "\nAiPlayerbot.Consumables.KindFromSpell = 1\n" "(0) dist key after Crafting.Consumables")
   need("${dist}" "#   [Crafting] kind=consumables event=use type=flask|elixir|scroll|food_buff|alcohol item= bot= level= cohort=\n" "(0) the use line stays the proof")
-  need("${config_h}" "    uint32 consumablesKindFromSpell = 0;\n" "(0) member, default 0")
-  need("${config_cpp}" "    consumablesKindFromSpell = config.GetIntDefault(\"AiPlayerbot.Consumables.KindFromSpell\", 0);\n    if (consumablesKindFromSpell > 3)\n    {\n        sLog.outError(\"[Consumables] config key=KindFromSpell value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)\", consumablesKindFromSpell);\n        consumablesKindFromSpell = 0;\n    }\n" "(0) config read, > 3 = off")
+  need("${config_h}" "    uint32 consumablesKindFromSpell = 1;\n" "(0) member, default 1")
+  need("${config_cpp}" "    consumablesKindFromSpell = config.GetIntDefault(\"AiPlayerbot.Consumables.KindFromSpell\", 1);\n    if (consumablesKindFromSpell > 3)\n    {\n        sLog.outError(\"[Consumables] config key=KindFromSpell value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)\", consumablesKindFromSpell);\n        consumablesKindFromSpell = 0;\n    }\n" "(0) config read, > 3 = off")
   count("${config_cpp}" "${echo_entry}" 1 "(0) [ConfigEcho] entry")
   order("${config_cpp}" "${echo_before}" "${echo_entry}" "(0) [ConfigEcho] after CombatRule.TargetRule")
   order("${config_cpp}" "${echo_entry}" "${echo_after}" "(0) [ConfigEcho] before Crafting.Consumables")
@@ -274,8 +275,9 @@ function(probe label var from to)
   set(probes "${probes}" PARENT_SCOPE)
 endfunction()
 
-probe("default on" dist "\nAiPlayerbot.Consumables.KindFromSpell = 0\n" "\nAiPlayerbot.Consumables.KindFromSpell = 1\n")
-probe("member default on" config_h "    uint32 consumablesKindFromSpell = 0;\n" "    uint32 consumablesKindFromSpell = 1;\n")
+probe("default off" dist "\nAiPlayerbot.Consumables.KindFromSpell = 1\n" "\nAiPlayerbot.Consumables.KindFromSpell = 0\n")
+probe("member default off" config_h "    uint32 consumablesKindFromSpell = 1;\n" "    uint32 consumablesKindFromSpell = 0;\n")
+probe("read default off" config_cpp "\"AiPlayerbot.Consumables.KindFromSpell\", 1);" "\"AiPlayerbot.Consumables.KindFromSpell\", 0);")
 probe("no clamp" config_cpp "    if (consumablesKindFromSpell > 3)\n" "    if (consumablesKindFromSpell > 4)\n")
 probe("echo missing" config_cpp "${echo_entry}" "")
 probe("echo out of order" config_cpp "${echo_before}${echo_entry}" "${echo_entry}${echo_before}")

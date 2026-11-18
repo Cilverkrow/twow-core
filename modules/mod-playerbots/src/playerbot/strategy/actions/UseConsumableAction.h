@@ -53,7 +53,7 @@ namespace ai
 
         bool ClassifyConsumable(const ItemPrototype* proto, ConsumableType& outType, uint32& outSpellId) const;
 
-        // twow-repo#333 T24 CLSFIX (Consumables.KindFromSpell, default 0): the subclass ClassifyConsumable branches on.
+        // twow-repo#333 T24 CLSFIX (Consumables.KindFromSpell, default 1): the subclass ClassifyConsumable branches on.
         uint32 ConsumableSubClass(ItemPrototype const* proto) const;
 
         // twow-repo#333 T24 CLSFIX: the switch applies to this bot; the review guards of Execute (switch on only).

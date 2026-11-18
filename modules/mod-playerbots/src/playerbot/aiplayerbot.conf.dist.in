@@ -2671,8 +2671,9 @@ AiPlayerbot.Crafting.Consumables = 0
 # For the same bots "use consumable" skips an item whose aura a more powerful active spell of its stacking chain would refuse (a
 # scroll bounces and stays in the bags, a weaker elixir is used up for nothing) and an item a quest in the log asks for, and a larger
 # pool of a power the bot does not have (Distilled Wisdom for a warrior) adds nothing to the ranking.
-#   0 = off (default), 1 = every bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid); other values act like 0.
-AiPlayerbot.Consumables.KindFromSpell = 0
+#   0 = off (rollback), 1 = every bot (default since the ABN-CONS acceptance unit, 18.11.2026), 2 = only cohort B (odd low guid),
+#   3 = only cohort A (even low guid); other values act like 0.
+AiPlayerbot.Consumables.KindFromSpell = 1
 # twow-repo#333 M2 Crafting.Cooking (owner list 07.11.2026, item 2, M2-ENTWURF §7; inventory A3-AKTIONS-VERDRAHTUNG §4: cooking
 # dead in operation - learned only at a random local trainer, the craft loop skips fire recipes, no campfire). For a roster bot on
 # its own:
