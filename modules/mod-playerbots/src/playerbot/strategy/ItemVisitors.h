@@ -360,7 +360,7 @@ namespace ai
                 }
             }
 
-            // twow-repo#333 T24 POTFIX (AiPlayerbot.PotionFind.BySpell, bug fix, default 0): vanilla consumables all have subclass 0.
+            // twow-repo#333 T24 POTFIX (AiPlayerbot.PotionFind.BySpell, bug fix, default 1): vanilla consumables all have subclass 0.
             // Such an item is a potion when an item spell shares the potion cooldown and has the effect (ENERGIZE: mana); a slot
             // without a known spell, or a battleground-only spell outside a battleground, is skipped (PotionFindPolicy.h).
             // Subclass 1 and 3 keep the old loop above.
