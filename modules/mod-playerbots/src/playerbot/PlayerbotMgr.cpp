@@ -2707,7 +2707,7 @@ std::string PlayerbotHolder::HandleBotSummon(Player* bot, Player* master, const 
         return "Bot is in combat — wait for it to settle.";
     if (bot->InBattleGround() || bot->InBattleGroundQueue())
         return "Bot is in BG / BG queue.";
-    if (bot->GetMap() && bot->GetMap()->Instanceable() && bot->GetMap() != master->GetMap())
+    if (bot->FindMap() && bot->FindMap()->Instanceable() && bot->FindMap() != master->FindMap())
         return "Bot is in an instance — can't pull cross-instance.";
     // L1 (owner 07.11.2026): S3 - no pull into another copy of a raid the bot is perm-bound to (the master's map and
     // instance id only; the core would put the bot into its own copy).

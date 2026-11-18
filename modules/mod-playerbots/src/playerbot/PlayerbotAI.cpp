@@ -2158,7 +2158,7 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
                 }
                 // Hotfix 8.14: still on the same spot at the rescue step - go home like a hearthstone
                 // (which cannot be cast in combat). The quest rescue teleports the same way.
-                if (step == ai::stuck_combat::Step::Rescue && bot->GetMap() && bot->GetMap()->IsContinent() &&
+                if (step == ai::stuck_combat::Step::Rescue && bot->FindMap() && bot->FindMap()->IsContinent() &&
                     !bot->IsTaxiFlying() && !bot->GetTransport() && !bot->IsBeingTeleported() &&
                     stuckCombat.HomeDue(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), now))
                 {
@@ -2210,7 +2210,7 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
             }
             else if (sPlayerbotAIConfig.questFirstProgressionEnabled && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) &&
                 !bot->GetGroup() && !HasRealPlayerMaster() && bot->IsAlive() && (!bot->IsInCombat() || rescueInCombat) &&
-                bot->GetMap() && bot->GetMap()->IsContinent() && !bot->IsTaxiFlying() && !bot->GetTransport() && !bot->IsBeingTeleported() &&
+                bot->FindMap() && bot->FindMap()->IsContinent() && !bot->IsTaxiFlying() && !bot->GetTransport() && !bot->IsBeingTeleported() &&
                 !BandTripRunning())   // twow-repo#601 S5a: a running band trip is not cut by the idle rescue (switch first)
             {
                 uint32 const stage = uint32(std::max(0, aiObjectContext->GetValue<int>("manual int", "quest search stage")->Get()));

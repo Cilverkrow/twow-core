@@ -3918,7 +3918,7 @@ bool RandomPlayerbotMgr::IsBgFillCandidate(Player* bot) const
     if (bot->GetGroup())
         return false;
     // Not in a dungeon, raid, battleground or arena map.
-    if (bot->InBattleGround() || !bot->GetMap() || bot->GetMap()->Instanceable())
+    if (bot->InBattleGround() || !bot->FindMap() || bot->FindMap()->Instanceable())
         return false;
     if (bot->IsTaxiFlying() || bot->GetTransport() || bot->IsInCombat() || bot->IsBeingTeleportedFar())
         return false;
@@ -7790,7 +7790,7 @@ std::vector<WorldLocation> RandomPlayerbotMgr::QuestRescueTargets(Player* bot)
     // twow-repo#587 (Z1a, AiPlayerbot.ZoneExit.RescueHomeContinent): only targets on one continent - the bot's own, or its home
     // continent when it is off it (then its own race counts too: the way home). The cross-continent quest route rule
     // (#544) is untouched: the rescue is a teleport.
-    bool const homeContinent = sPlayerbotAIConfig.zoneExitRescueHomeContinent && own && bot->GetMap() && bot->GetMap()->IsContinent();
+    bool const homeContinent = sPlayerbotAIConfig.zoneExitRescueHomeContinent && own && bot->FindMap() && bot->FindMap()->IsContinent();
     uint32 const rescueMap = homeContinent ? ai::zone_exit::RescueContinent(bot->GetMapId(), own->mapId) : bot->GetMapId();
     bool const offHome = homeContinent && rescueMap != bot->GetMapId();
 
@@ -7867,6 +7867,9 @@ void RandomPlayerbotMgr::ProcessQuestRescues()
     for (auto const& [guid, bot] : GetAllBots())
     {
         PlayerbotAI* ai = bot ? GetBotAI(bot) : nullptr;
+        // twow-repo#722: a bot between maps (far teleport, login or logout) has no map to read; its request stays for the next scan.
+        if (bot && (!bot->IsInWorld() || bot->IsBeingTeleportedFar()))
+            continue;
         // twow-repo#587 (AiPlayerbot.QuestRescue.KeepRequestWhenFull, soak 17.10.: 20 of 21 stranded not served promptly):
         // with the global limit used up a pending request stays with the bot for the next scan instead of being taken and
         // dropped - a stranded bot (Z1b) only asks again after StrandedRescueAfter more empty searches.
