@@ -808,7 +808,7 @@ void PlayerbotAI::OnBandExpired(uint32 now, uint32 rung, bool cooldown, float di
         return;
     }
     // The idle rescue's gate: alive, out of combat, on a continent, not on a taxi or a transport, not teleporting.
-    if (!bot->IsAlive() || bot->IsInCombat() || !bot->GetMap() || !bot->GetMap()->IsContinent() || bot->IsTaxiFlying() ||
+    if (!bot->IsAlive() || bot->IsInCombat() || !bot->FindMap() || !bot->FindMap()->IsContinent() || bot->IsTaxiFlying() ||
         bot->GetTransport() || bot->IsBeingTeleported())
     {
         PlayerbotAI::NoteBand(uint8(qb::EvRescueBlocked), cohortB);

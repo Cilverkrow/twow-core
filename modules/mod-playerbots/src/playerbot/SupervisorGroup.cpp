@@ -667,7 +667,7 @@ bool Supervisor::PointWrite()
     if (!bot || !target)
         return false;
     float z = bot->GetPositionZ();
-    if (Map* const map = bot->GetMap())
+    if (Map* const map = bot->FindMap())
     {
         float const ground = map->GetHeight(groupX_, groupY_, z);
         if (ground > INVALID_HEIGHT)

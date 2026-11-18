@@ -370,7 +370,7 @@ bool RollAction::HumansStillDeciding(ObjectGuid lootGuid, uint32 slot, bool& hum
 // player who walked away cannot make the whole group wait out the timer.
 bool RollAction::RollAboutToExpire(ObjectGuid lootGuid)
 {
-    Creature* target = bot->GetMap() ? bot->GetMap()->GetCreature(lootGuid) : nullptr;
+    Creature* target = bot->FindMap() ? bot->FindMap()->GetCreature(lootGuid) : nullptr;
     if (!target)
         return true;
 
