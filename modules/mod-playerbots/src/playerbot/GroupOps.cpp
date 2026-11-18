@@ -982,7 +982,7 @@ bool QueueInvite(PlayerbotAI* ai, Player* invitee, bool raidConvert)
     // The invitee's pending mark only on this map (its AI is touched from this thread; "invite guild"/"invite <name>" can name a
     // bot on another map thread that logs out meanwhile). A real player invitee or another map: no mark - the queue still holds
     // the invitee (dedup through latest), the mark is only the producers' hint.
-    PlayerbotAI* inviteeAi = invitee->FindMap() == bot->FindMap() ? GetBotAI(invitee) : nullptr;
+    PlayerbotAI* inviteeAi = invitee->GetMap() == bot->GetMap() ? GetBotAI(invitee) : nullptr;
     return Enqueue(op, ai, inviteeAi && !inviteeAi->IsRealPlayer() ? inviteeAi : nullptr) == Pushed::Queued;
 }
 
