@@ -296,7 +296,7 @@ static long long RosterSummonCooldownUntil(Player* bot)
 
 ai::roster_control::SummonBlock CheckRosterSummon(Player* issuer, Player* bot)
 {
-    auto unsafeMap = [](Player* p) { return p->GetMap() && p->GetMap()->Instanceable(); };
+    auto unsafeMap = [](Player* p) { return p->FindMap() && p->FindMap()->Instanceable(); };
 
     ai::roster_control::SummonState state;
     state.teleporting = issuer->IsBeingTeleported() || bot->IsBeingTeleported();
