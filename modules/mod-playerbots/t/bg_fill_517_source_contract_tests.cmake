@@ -298,7 +298,7 @@ foreach(filter
     "!bot->IsAlive()"
     "IsParkedBot(guid) || ai->IsParked()"
     "if (bot->GetGroup())\n        return false;"
-    "bot->InBattleGround() || !bot->GetMap() || bot->GetMap()->Instanceable()"
+    "bot->InBattleGround() || !bot->FindMap() || bot->FindMap()->Instanceable()"
     "bot->IsTaxiFlying() || bot->GetTransport() || bot->IsInCombat() || bot->IsBeingTeleportedFar()"
     "if (ai->IsQuestRescueBusy())\n        return false;"
     "if (ai->HasRealPlayerMaster())\n        return false;"

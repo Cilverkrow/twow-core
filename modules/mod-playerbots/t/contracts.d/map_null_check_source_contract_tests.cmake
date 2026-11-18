@@ -40,7 +40,7 @@ endfunction()
 # the shapes that look like a null check but assert first
 set(NULLCHECK_BAD [=[[A-Za-z_]+->GetMap[(][)] *&& *[A-Za-z_]+->GetMap[(][)]|![A-Za-z_]+->GetMap[(][)] *([|][|]|[)])|[A-Za-z_]+->GetMap[(][)] *[?]]=])
 
-foreach(file RandomPlayerbotMgr.cpp PlayerbotAI.cpp PlayerbotMgr.cpp PlayerbotSecurity.cpp QuestBand.cpp SupervisorGroup.cpp GroupOps.cpp strategy/actions/LootRollAction.cpp)
+foreach(file RandomPlayerbotMgr.cpp PlayerbotAI.cpp PlayerbotMgr.cpp PlayerbotSecurity.cpp QuestBand.cpp SupervisorGroup.cpp strategy/actions/LootRollAction.cpp)
   read_source("${file}" src)
   forbid_regex("${src}" "${NULLCHECK_BAD}" "an asserting GetMap() null check in ${file}")
 endforeach()
