@@ -210,7 +210,7 @@ public:
     float randomBotRaceVariantChance;
     float randomBotRpgChance;
     float usePotionChance;
-    uint32 potionFindBySpell = 0;  // twow-repo#333 T24 POTFIX: "healing potion" / "mana potion" find subclass-0 potions by spell (modes 0/1/2/3)
+    uint32 potionFindBySpell = 1;  // twow-repo#333 T24 POTFIX: "healing potion" / "mana potion" find subclass-0 potions by spell (modes 0/1/2/3)
     float attackEmoteChance;
     bool randomBotAutoCreate;
     uint32 minRandomBots, maxRandomBots;

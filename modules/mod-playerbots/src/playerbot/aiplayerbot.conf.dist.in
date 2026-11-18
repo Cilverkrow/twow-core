@@ -515,9 +515,9 @@ AiPlayerbot.RandomBotRpgChance = 0.8
 # restores mana (mana potion): 15 healing and 16 mana items on this DB, incl. rejuvenation potions and draughts (the draughts only
 # inside a battleground); no healthstones, mana gems, items on their cooldown (Whipper Root Tuber, Night Dragon's Breath, Lily
 # Root), rage potions, teas, bandages, food, drink, elixirs or flasks. The name fallback is skipped then. No log line.
-# Mode: 0 = as before (default, rollback), 1 = every bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid) -
-# the second arm of a crossover unit. Any other value acts like 0.
-AiPlayerbot.PotionFind.BySpell = 0
+# Mode: 0 = as before (rollback), 1 = every bot (default since the ABN-CONS acceptance unit, 18.11.2026), 2 = only cohort B
+# (odd low guid), 3 = only cohort A (even low guid) - the second arm of a crossover unit. Any other value acts like 0.
+AiPlayerbot.PotionFind.BySpell = 1
 
 # Bots will speed up when following to stay close.
 # AiPlayerbot.BoostFollow = 1

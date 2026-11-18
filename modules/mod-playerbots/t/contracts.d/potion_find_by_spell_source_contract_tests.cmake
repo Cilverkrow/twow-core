@@ -1,9 +1,10 @@
 # twow-repo#333 T24 POTFIX (OB-00 16.11.2026, bug fix): on this vanilla world data all consumables (item class 0) have subclass 0,
 # so FindPotionVisitor ("healing potion" / "mana potion": potion actions, RosterConsumables.UseReal twow-repo#485, ready check, BetterStacks)
 # accepted nothing and InventoryParseItems fell back to a name match ("Recipe: Major Healing Potion" and Craftsman's Writs included,
-# sorted first, no CanUseItem). AiPlayerbot.PotionFind.BySpell (default 0; 1 all, 2 cohort B, 3 cohort A) accepts a subclass-0
-# consumable whose item spell is cast on the potion cooldown (category 4: the slot category when the slot sets a cooldown, else the
-# spell Category, as Unit::AddSpellAndCategoryCooldowns) and has the effect (ENERGIZE: mana), PotionFindPolicy.h, unit test
+# sorted first, no CanUseItem). AiPlayerbot.PotionFind.BySpell (default 1 = all bots since the ABN-CONS acceptance unit
+# 18.11.2026; 0 = rollback, 2 cohort B, 3 cohort A) accepts a subclass-0 consumable whose item spell is cast on the potion
+# cooldown (category 4: the slot category when the slot sets a cooldown, else the spell Category, as
+# Unit::AddSpellAndCategoryCooldowns) and has the effect (ENERGIZE: mana), PotionFindPolicy.h, unit test
 # potion_find_policy; the two lookups then skip the name fallback.
 # This contract pins:
 #   0. the switch: dist key and modes, member, read with > 3 = off, sorted [ConfigEcho] entry;
@@ -105,9 +106,9 @@ function(mirror core_text type name value core_name)
   endif()
 endfunction()
 
-set(dist_key "# Mode: 0 = as before (default, rollback), 1 = every bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid) -\n# the second arm of a crossover unit. Any other value acts like 0.\nAiPlayerbot.PotionFind.BySpell = 0\n")
-set(member "    uint32 potionFindBySpell = 0;  // twow-repo#333 T24 POTFIX:")
-set(config_read "    potionFindBySpell = config.GetIntDefault(\"AiPlayerbot.PotionFind.BySpell\", 0);\n    if (potionFindBySpell > 3)\n        potionFindBySpell = 0;\n")
+set(dist_key "# Mode: 0 = as before (rollback), 1 = every bot (default since the ABN-CONS acceptance unit, 18.11.2026), 2 = only cohort B\n# (odd low guid), 3 = only cohort A (even low guid) - the second arm of a crossover unit. Any other value acts like 0.\nAiPlayerbot.PotionFind.BySpell = 1\n")
+set(member "    uint32 potionFindBySpell = 1;  // twow-repo#333 T24 POTFIX:")
+set(config_read "    potionFindBySpell = config.GetIntDefault(\"AiPlayerbot.PotionFind.BySpell\", 1);\n    if (potionFindBySpell > 3)\n        potionFindBySpell = 0;\n")
 set(echo_entry "            {\"PotionFind.BySpell\", Value(potionFindBySpell)},\n")
 set(echo_before "            {\"Perf.RouteTimeTrace\", Value(perfRouteTimeTrace)},\n")
 set(echo_after "            {\"ProfessionTraining.NearRadius\", Value(professionTrainingNearRadius)},\n")
@@ -117,7 +118,7 @@ set(old_loop "            if (proto->Class == ITEM_CLASS_CONSUMABLE && (proto->S
 set(new_branch "            if (bySpell && proto->Class == ITEM_CLASS_CONSUMABLE && proto->SubClass == ITEM_SUBCLASS_CONSUMABLE)\n                return AcceptsVanillaPotion(proto);\n\n            return false;\n        }\n")
 # The whole Accept body, signature to closing brace: the old loop first, then only the comment, then the new branch.
 set(accept_head "        virtual bool Accept(const ItemPrototype* proto) override\n        {\n")
-set(accept_body "${accept_head}${old_loop}\n            // twow-repo#333 T24 POTFIX (AiPlayerbot.PotionFind.BySpell, bug fix, default 0): vanilla consumables all have subclass 0.\n            // Such an item is a potion when an item spell shares the potion cooldown and has the effect (ENERGIZE: mana); a slot\n            // without a known spell, or a battleground-only spell outside a battleground, is skipped (PotionFindPolicy.h).\n            // Subclass 1 and 3 keep the old loop above.\n${new_branch}")
+set(accept_body "${accept_head}${old_loop}\n            // twow-repo#333 T24 POTFIX (AiPlayerbot.PotionFind.BySpell, bug fix, default 1): vanilla consumables all have subclass 0.\n            // Such an item is a potion when an item spell shares the potion cooldown and has the effect (ENERGIZE: mana); a slot\n            // without a known spell, or a battleground-only spell outside a battleground, is skipped (PotionFindPolicy.h).\n            // Subclass 1 and 3 keep the old loop above.\n${new_branch}")
 # A statement without the switch gate, for the two probes below.
 set(ungated "            if (proto->Class == ITEM_CLASS_CONSUMABLE) return true;\n")
 # The old loop's early return, mutated only inside the old loop (FindPetVisitor has the same two lines).
@@ -145,10 +146,10 @@ function(check out_var)
   set(errors "")
 
   # 0. The switch.
-  need("${dist}" "${dist_key}" "(0) dist key, default 0, modes 0/1/2/3")
+  need("${dist}" "${dist_key}" "(0) dist key, default 1, modes 0/1/2/3")
   order("${dist}" "\n#AiPlayerbot.UsePotionChance = 1.0\n" "${dist_key}" "(0) dist key next to UsePotionChance")
   count("${dist}" "\nAiPlayerbot.PotionFind.BySpell = " 1 "(0) dist key once")
-  need("${config_h}" "${member}" "(0) member, default 0")
+  need("${config_h}" "${member}" "(0) member, default 1")
   need("${config_cpp}" "${config_read}" "(0) config read, > 3 = off")
   count("${config_cpp}" "${echo_entry}" 1 "(0) [ConfigEcho] entry")
   order("${config_cpp}" "${echo_before}" "${echo_entry}" "(0) [ConfigEcho] after Perf.RouteTimeTrace")
@@ -252,9 +253,9 @@ function(probe label var from to)
   set(probes "${probes}" PARENT_SCOPE)
 endfunction()
 
-probe("default on" dist "\nAiPlayerbot.PotionFind.BySpell = 0\n" "\nAiPlayerbot.PotionFind.BySpell = 1\n")
-probe("member default on" config_h "    uint32 potionFindBySpell = 0;" "    uint32 potionFindBySpell = 1;")
-probe("read default on" config_cpp "\"AiPlayerbot.PotionFind.BySpell\", 0);" "\"AiPlayerbot.PotionFind.BySpell\", 1);")
+probe("default off" dist "\nAiPlayerbot.PotionFind.BySpell = 1\n" "\nAiPlayerbot.PotionFind.BySpell = 0\n")
+probe("member default off" config_h "    uint32 potionFindBySpell = 1;" "    uint32 potionFindBySpell = 0;")
+probe("read default off" config_cpp "\"AiPlayerbot.PotionFind.BySpell\", 1);" "\"AiPlayerbot.PotionFind.BySpell\", 0);")
 probe("no clamp" config_cpp "    if (potionFindBySpell > 3)\n" "    if (potionFindBySpell > 4)\n")
 probe("echo missing" config_cpp "${echo_entry}" "")
 probe("echo out of order" config_cpp "${echo_before}${echo_entry}" "${echo_entry}${echo_before}")
