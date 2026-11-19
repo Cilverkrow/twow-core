@@ -48,6 +48,7 @@
 #include "playerbot/strategy/values/RestGateValue.h"
 #include "playerbot/strategy/values/QuestValues.h"   // twow-repo#601 S5a: DialogStatusValue::getDialogStatus (band giver filter F)
 #include "playerbot/QuestBand.h"   // twow-repo#601 S5a (BandLadder): the band trip hooks, the ladder loader
+#include "playerbot/BandTable.h"   // A3 step 3 planner P-1: the band table loader (default off)
 #include "playerbot/ProfessionTravelPolicy.h"   // twow-repo#333 P1-aa: the open profession trip on arrival (TripNoGrind)
 #include "playerbot/CohortPolicy.h"   // mode 2 = cohort B: twow-repo#601 QuestLoop.InactiveAfterProgress, re-deaths at camps (DestinationDeaths.CampBlock)
 
@@ -4062,7 +4063,10 @@ void TravelMgr::LoadQuestTravelTable()
 
     // twow-repo#601 S5a (AiPlayerbot.QuestFirstProgression.BandLadder, default 0): boot only, after the travel nodes are final.
     ai::quest_band::LoadLadder();
-   
+
+    // A3 step 3 planner P-1 (AiPlayerbot.Planner.BandTable, default ""): boot only, world thread, before any bot update.
+    ai::band_table::Load();
+
     //Creature/gos/zone export.
     if (sPlayerbotAIConfig.hasLog("creatures.csv"))
     {

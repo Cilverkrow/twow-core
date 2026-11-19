@@ -983,6 +983,9 @@ public:
     // guid pair; ArbiterLanePolicy.h IsProbeBot). 0 off, 1 probe (at arbiter 2 three refused writes every 10 minutes, at 1 only
     // the paired count); other = 0 + error line.
     uint32 supervisorArbiterProbe = 0;
+    // A3 step 3 planner P-1 (AiPlayerbot.Planner.BandTable, default ""): path of the planner's band table (BandTable.cpp). Read
+    // once at boot, fail closed; "" = no file I/O, no line, no table (the planner then has no zone term).
+    std::string plannerBandTable;
     // A3 step 5 (ADR-0041, OB-00 07.11.2026): the combat rule (CombatRulePolicy.h, CombatRule.cpp), one switch per part.
     // HealerStart: a holy paladin / restoration druid may attack like a healer with "offdps" (their contexts have no offdps
     // creator, so the healer gate refused every attack). 0 off (default, the old rule), 1 all, 2 cohort B, 3 cohort A; other = 0.
