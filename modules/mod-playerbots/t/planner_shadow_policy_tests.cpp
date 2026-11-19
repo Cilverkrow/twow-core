@@ -5,6 +5,7 @@
 // calls it yet (P-2b wires it); t/contracts.d/a3s3_planner_shadow_policy_source_contract_tests.cmake pins the pure header.
 
 #include "PlannerShadowPolicy.h"
+#include "PlannerShadow.h"   // P-2b: RewardNotes, UpdateComplete
 
 #include <cstdlib>
 #include <iostream>
@@ -279,19 +280,98 @@ void TestMinute()
     b.plans = 1;
     b.msMax = 9;
     b.naPurpose = 5;
+    b.passiveTicks = 7;
+    b.agreeGrind = 1;
+    b.backToBandWouldGrind = 1;
     Add(a, b);
     Require(a.plans == 4 && a.msMax == 9 && a.naPurpose == 5 && a.backToBandWould == 1, "sums and the max");
-    char buf[1024];
+    char buf[1280];
     std::size_t const n = FormatPlanMin(buf, sizeof(buf), 'B', 42, a);
     std::string const line(buf);
     Require(n == line.size(), "length");
     Require(line.rfind("[PlanMin] cohort=B min=42 plans=4 keeps=0 switches=0 ", 0) == 0, "head");
     Require(line.find(" agree=2 disagree=0 ") != std::string::npos, "agree");
     Require(line.find(" back_to_band_would=1 back_to_band_repeat=0 expire_work_override_would=0 overwritten_shadow=0 "
-        "na_purpose=5 na_stale=0") != std::string::npos && line.back() == '0', "tail");
-    Require(line.size() < 900, "fits the buffer");
+        "na_purpose=5 na_stale=0") != std::string::npos && line.back() == '1', "tail");
+    Require(line.find(" overwritten_neutral=0 switch_ms=0 passive_ticks=7 agree_grind=1 disagree_grind=0 back_to_band_would_quest=0 "
+        "back_to_band_would_grind=1") != std::string::npos, "the P-2b fields at the end (B4, B6, B7)");
+    Require(line.size() < 1000, "fits the buffer");
     char small[16];
     Require(FormatPlanMin(small, sizeof(small), 'A', 1, a) == sizeof(small) - 1, "cut at the buffer");
+}
+
+// P-2b (OB-10 B2): the planner's own reward note - no duplicates, the oldest drops when full, Take removes; and the complete marks
+// keep the first time a quest turned complete.
+void TestNotesAndComplete()
+{
+    RewardNotes notes;
+    notes.Note(0);
+    Require(notes.n == 0, "quest 0 is no note");
+    notes.Note(10);
+    notes.Note(10);
+    Require(notes.n == 1, "no duplicate");
+    notes.Note(11);
+    notes.Note(12);
+    notes.Note(13);
+    notes.Note(14);
+    Require(notes.n == RewardNotes::kSlots && !notes.Take(10) && notes.Take(14) && notes.n == 3, "full: the oldest drops");
+    Require(!notes.Take(14) && notes.Take(11), "Take removes");
+    notes.Clear();
+    Require(notes.n == 0 && !notes.Take(12), "clear");
+
+    CompleteMark marks[kQuestSlots];
+    Snapshot s;
+    s.valid = true;
+    s.quests[0] = {5, QuestState::Complete};
+    s.quests[1] = {6, QuestState::Incomplete};
+    UpdateComplete(marks, s, 1000);
+    Require(CompleteSince(marks, 5) == 1000 && CompleteSince(marks, 6) == 0, "a new complete quest gets now");
+    UpdateComplete(marks, s, 5000);
+    Require(CompleteSince(marks, 5) == 1000, "the first time stays");
+    s.quests[0].state = QuestState::Incomplete;
+    UpdateComplete(marks, s, 6000);
+    Require(CompleteSince(marks, 5) == 0, "no longer complete: no mark");
+    UpdateComplete(marks, s, 0);
+    s.quests[1].state = QuestState::Complete;
+    UpdateComplete(marks, s, 0);
+    Require(CompleteSince(marks, 6) == 1, "time 0 is stored as 1");
+
+    // overwritten_shadow (B1 proxy): only an open target, a questbook writer and inside the bind time.
+    AgreeMark agree;
+    agree.destKey = 77;
+    agree.atMs = 1000;
+    Snapshot prev;
+    prev.valid = true;
+    prev.travelDest = 77;
+    prev.travel = TravelPhase::Travel;
+    Snapshot next = prev;
+    Require(CheckAgree(agree, prev, next, 2000, 120000, true) == AgreeEnd::Keep, "same target: keep");
+    next.travelDest = 78;
+    Require(CheckAgree(agree, prev, next, 2000, 120000, true) == AgreeEnd::Overwritten, "open target replaced by the lane");
+    Require(CheckAgree(agree, prev, next, 2000, 120000, false) == AgreeEnd::Ended, "a group or neutral writer: no count");
+    prev.travel = TravelPhase::Cooldown;
+    Require(CheckAgree(agree, prev, next, 2000, 120000, true) == AgreeEnd::Ended, "a finished trip: succession");
+    prev.travel = TravelPhase::Work;
+    Require(CheckAgree(agree, prev, next, 121000, 120000, true) == AgreeEnd::Ended, "after the bind time: no count");
+    Require(CheckAgree(AgreeMark(), prev, next, 2000, 120000, true) == AgreeEnd::Keep, "no mark");
+
+
+    // OB-60 (P-2a pre-review): a quest that only leaves the log sets no bit in Diff; the adapter's label makes the plan due.
+    Snapshot before;
+    before.valid = true;
+    before.atMs = 1000;
+    before.quests[0] = {9, QuestState::Incomplete};
+    Snapshot after = before;
+    after.atMs = 2000;
+    after.quests[0] = QuestSlot();
+    GoneList gone;
+    std::uint32_t ev = Diff(before, after, gone, 60.0f, 1.5f);
+    Require(ev == EvNone && gone.n == 1 && gone.ids[0] == 9, "a gone quest alone sets no bit");
+    Require(!PlanDue(ev, true, 2000, 1000, 300000), "no label: no plan");
+    ev |= LabelGone(false, false, false);
+    Require(PlanDue(ev, true, 2000, 1000, 300000), "the label makes the plan due");
+    // W8: an unknown respawn waits the full maximum.
+    Require(DeadWaitFor(0, 600) == 600000u && DeadWaitFor(60, 600) == 120000u && DeadWaitFor(500, 600) == 600000u, "dead wait");
 }
 }
 
@@ -308,6 +388,7 @@ int main()
     TestExpireAndCompare();
     TestDeadAndMemory();
     TestMinute();
+    TestNotesAndComplete();
     std::cout << "planner_shadow_policy_tests: OK\n";
     return 0;
 }

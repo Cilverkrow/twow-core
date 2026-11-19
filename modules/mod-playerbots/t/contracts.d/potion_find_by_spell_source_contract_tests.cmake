@@ -258,7 +258,9 @@ probe("member default off" config_h "    uint32 potionFindBySpell = 1;" "    uin
 probe("read default off" config_cpp "\"AiPlayerbot.PotionFind.BySpell\", 1);" "\"AiPlayerbot.PotionFind.BySpell\", 0);")
 probe("no clamp" config_cpp "    if (potionFindBySpell > 3)\n" "    if (potionFindBySpell > 4)\n")
 probe("echo missing" config_cpp "${echo_entry}" "")
-probe("echo out of order" config_cpp "${echo_before}${echo_entry}" "${echo_entry}${echo_before}")
+# A3 step 3 planner P-2b: the Planner.* echo entries sort between Perf.RouteTimeTrace and PotionFind.BySpell, so the probe moves
+# the entry in front of Perf.RouteTimeTrace instead of swapping two neighbours.
+probe("echo out of order" config_cpp "${echo_before}" "${echo_entry}${echo_before}")
 probe("switch without cohort" visitors "return sPlayerbotAIConfig.potionFindBySpell && bot && ai::cohort::Applies(sPlayerbotAIConfig.potionFindBySpell, bot->GetGUIDLow());" "return sPlayerbotAIConfig.potionFindBySpell;")
 probe("new branch without the switch" visitors "            if (bySpell && proto->Class == ITEM_CLASS_CONSUMABLE && proto->SubClass == ITEM_SUBCLASS_CONSUMABLE)\n" "            if (proto->Class == ITEM_CLASS_CONSUMABLE && proto->SubClass == ITEM_SUBCLASS_CONSUMABLE)\n")
 probe("new branch for every subclass" visitors " && proto->SubClass == ITEM_SUBCLASS_CONSUMABLE)\n                return AcceptsVanillaPotion(proto);" ")\n                return AcceptsVanillaPotion(proto);")
