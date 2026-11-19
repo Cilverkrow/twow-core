@@ -478,8 +478,9 @@ void AddSC_playerbot_hooks()
     new PlayerbotWorldScript();
     new PlayerbotServerScript();
     new PlayerbotPlayerScript();
+    // T30 v1.1 V2 (OB-00 19.11.2026): one [GroupHook] line per group membership change (GroupHookLog.cpp). Placed before the
+    // BOT-12 observer: its contract pins AddGroupOpsObserver as the last statement.
+    ai::group_hook::AddGroupHookObserver();
     // BOT-12 (twow-repo#677): counts group creates/disbands off the world thread for the [GroupOps] minute line.
     ai::group_ops::AddGroupOpsObserver();
-    // T30 v1.1 V2 (OB-00 19.11.2026): one [GroupHook] line per group membership change (GroupHookLog.cpp).
-    ai::group_hook::AddGroupHookObserver();
 }
