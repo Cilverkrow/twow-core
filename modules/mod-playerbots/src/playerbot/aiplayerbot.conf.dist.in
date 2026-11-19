@@ -1329,6 +1329,11 @@ AiPlayerbot.FollowDiagnostics = 0
 # BotGroups.Enabled does not change behaviour yet. BotGroups.Diagnostics logs a
 # [BotGroup] line (members, bots, level spread, verdict, quest-log overlap with
 # the leader) whenever a free bot joins or leaves a group.
+# T30 v1.1 (OB-00 19.11.2026): with Diagnostics = 1 the core's group hooks also
+# write one "[GroupHook] ev=add|remove|leader|snapshot seq= bot= group= members=
+# leader= other= cause=" line per membership change of any non-battleground group
+# (founder, disband and every other path included; ev=snapshot once at start for
+# groups loaded from the database). Format: GroupHookLine.h.
 AiPlayerbot.BotGroups.Enabled = 0
 AiPlayerbot.BotGroups.MaxBots = 3
 AiPlayerbot.BotGroups.LevelWindow = 3

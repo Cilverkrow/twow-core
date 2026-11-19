@@ -34,6 +34,7 @@
 #include "BotDiagnostics.h"
 #include "playerbot/BotSlots.h"
 #include "playerbot/GroupOps.h"
+#include "playerbot/GroupHookLog.h"
 #include "playerbot/PacketTracePolicy.h"
 #include "playerbot/LockoutGuard.h"   // L1 (owner 07.11.2026): the [Lockout] minute line
 #include "playerbot/LockoutCarry.h"   // leader_bind_carry (OB-00 07.11.2026): count only
@@ -111,6 +112,7 @@ class PlayerbotWorldScript : public WorldScript
                 return;
 
             ai::lockout_guard::MinuteTick(diff);   // L1 (owner 07.11.2026): [Lockout] minute line, world thread
+            ai::group_hook::SnapshotOnce();        // T30 v1.1 V2: [GroupHook] ev=snapshot once, world thread, maps idle
 
             // Remote admin commands, handed over by PlayerbotCommandServer
             // connection threads. This is the world thread, which is the whole
@@ -478,4 +480,6 @@ void AddSC_playerbot_hooks()
     new PlayerbotPlayerScript();
     // BOT-12 (twow-repo#677): counts group creates/disbands off the world thread for the [GroupOps] minute line.
     ai::group_ops::AddGroupOpsObserver();
+    // T30 v1.1 V2 (OB-00 19.11.2026): one [GroupHook] line per group membership change (GroupHookLog.cpp).
+    ai::group_hook::AddGroupHookObserver();
 }
