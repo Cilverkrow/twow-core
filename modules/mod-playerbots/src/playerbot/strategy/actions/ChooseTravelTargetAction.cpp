@@ -3479,8 +3479,14 @@ bool RequestQuestTravelTargetAction::Execute(Event& event)
     // routable one may make this request turn-in-only. Not for a bot led by a real player (unchanged).
     bool const failureClasses = sPlayerbotAIConfig.questFirstProgressionFailureClasses && sPlayerbotAIConfig.S1For(bot->GetGUIDLow()) &&
         UsesQuestFirstProgression(bot) && !ai->HasRealPlayerMaster();
+    // A3 step 2 K5 (AiPlayerbot.QuestBook, default 0; QBK2 finding 19.11.2026): a bot with an active quest book checks its open
+    // turn-ins too - the checked / validated lists are what the book's grind yield (TravelValues.cpp, K5) reads; without them
+    // every open complete turn-in, also one with no taker, counted as routable. Parking of a structural turn-in comes with
+    // the check; the turn-in-only rule (TakerOnlyOffer) and the abandon stay S1's.
+    bool const bookCheck = !failureClasses && ai->ActiveQuestBook() != nullptr && UsesQuestFirstProgression(bot) &&
+        !ai->HasRealPlayerMaster();
     std::set<uint32> validatedTurnIns;
-    if (failureClasses)
+    if (failureClasses || bookCheck)
         validatedTurnIns = PreValidateTurnIns(ai, bot, parkTarget);
 
     for (ObjectGuid guid : AI_VALUE(std::list<ObjectGuid>, "group members"))
