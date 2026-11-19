@@ -10,6 +10,8 @@ cmake_policy(VERSION 3.16)
 #   - the K sites (K1 accept, K2 giver value + giver travel, K3 objective travel, K4 progress, K5 turn-in yield) ask
 #     ActiveQuestBook() and keep the old rule in the else path; the async travel search never calls ActiveQuestBook (only the
 #     PlayerTravelInfo constructor on the bot thread does); ActiveQuestBook() has exactly the listed callers;
+#   - the K5 check (QBK2 finding 19.11.2026): RequestQuestTravelTargetAction runs PreValidateTurnIns for a bot with an active book
+#     too (only without S1), so the checked / validated lists K5 reads exist; TakerOnlyOffer keeps reading S1's failureClasses;
 #   - OnCredit only from the three quest packet actions (kill, item, complete);
 #   - QuestBookPolicy.h names no game header and reads no config (comments aside);
 #   - the line formats [QuestBook] state=left_log / complete_stale and [QuestBookMin], the minute report wired once and silent
@@ -50,6 +52,7 @@ read_source("strategy/actions/DropQuestAction.cpp" drop_cpp)
 read_source("strategy/actions/QuestAction.cpp" quest_action_cpp)
 read_source("strategy/values/QuestValues.cpp" quest_values_cpp)
 read_source("strategy/values/TravelValues.cpp" travel_values_cpp)
+read_source("strategy/actions/ChooseTravelTargetAction.cpp" choose_cpp)
 file(READ "${PB_MODULE_DIR}/tests.cmake" tests_cmake)
 string(REPLACE "\r" "" tests_cmake "${tests_cmake}")
 
@@ -236,11 +239,38 @@ function(check_sites accept drop values travel_cpp travel_values all_sources out
     set(${out} "TravelMgr.cpp: ActiveQuestBook() ${n} times (1 expected: the PlayerTravelInfo constructor)" PARENT_SCOPE)
     return()
   endif()
-  # The callers: K1, K4, K2 value, travel bit, K5, three credits, QB-S NotePick, QB-B NotePick, plus the declaration and the
-  # definition.
+  # The callers: K1, K4, K2 value, travel bit, K5, the K5 check (check_k5_check), three credits, QB-S NotePick, QB-B NotePick,
+  # plus the declaration and the definition.
   count_regex("${all_sources}" "ActiveQuestBook\\(\\)" n)
-  if(NOT n EQUAL 12)
-    set(${out} "ActiveQuestBook() appears ${n} times in the module (12 expected); a new caller belongs in this contract" PARENT_SCOPE)
+  if(NOT n EQUAL 13)
+    set(${out} "ActiveQuestBook() appears ${n} times in the module (13 expected); a new caller belongs in this contract" PARENT_SCOPE)
+    return()
+  endif()
+  set(${out} "" PARENT_SCOPE)
+endfunction()
+
+# The K5 check (QBK2 finding 19.11.2026): without it K5 counted every open complete turn-in as routable when S1 is off (the
+# lists are written by PreValidateTurnIns only). One call site; the book check only when S1's own check does not run; the
+# turn-in-only rule reads failureClasses alone (S1's, unchanged).
+set(K5_CHECK "    bool const bookCheck = !failureClasses && ai->ActiveQuestBook() != nullptr && UsesQuestFirstProgression(bot) &&
+        !ai->HasRealPlayerMaster();
+    std::set<uint32> validatedTurnIns;
+    if (failureClasses || bookCheck)
+        validatedTurnIns = PreValidateTurnIns(ai, bot, parkTarget);")
+function(check_k5_check choose out)
+  string(FIND "${choose}" "${K5_CHECK}" at)
+  if(at EQUAL -1)
+    set(${out} "ChooseTravelTargetAction.cpp: the K5 check (PreValidateTurnIns for an active book without S1) is missing" PARENT_SCOPE)
+    return()
+  endif()
+  count_regex("${choose}" "PreValidateTurnIns\\(ai, bot, parkTarget\\)" n)
+  if(NOT n EQUAL 1)
+    set(${out} "ChooseTravelTargetAction.cpp: PreValidateTurnIns called ${n} times (1 expected)" PARENT_SCOPE)
+    return()
+  endif()
+  string(FIND "${choose}" "TakerOnlyOffer(failureClasses, " at)
+  if(at EQUAL -1)
+    set(${out} "ChooseTravelTargetAction.cpp: TakerOnlyOffer must keep reading failureClasses (S1) only" PARENT_SCOPE)
     return()
   endif()
   set(${out} "" PARENT_SCOPE)
@@ -349,6 +379,10 @@ if(r)
   list(APPEND failures "${r}")
 endif()
 check_sites("${accept_cpp}" "${drop_cpp}" "${quest_values_cpp}" "${travel_cpp}" "${travel_values_cpp}" "${all_sources}" r)
+if(r)
+  list(APPEND failures "${r}")
+endif()
+check_k5_check("${choose_cpp}" r)
 if(r)
   list(APPEND failures "${r}")
 endif()
@@ -466,6 +500,15 @@ expect_caught("${r}" "K5 yield not counted")
 
 check_sites("${accept_cpp}" "${drop_cpp}" "${quest_values_cpp}" "${travel_cpp}" "${travel_values_cpp}" "${all_sources}\nif (ai->ActiveQuestBook())" r)
 expect_caught("${r}" "an unlisted ActiveQuestBook caller")
+string(REPLACE "    if (failureClasses || bookCheck)\n" "    if (failureClasses)\n" m "${choose_cpp}")
+check_k5_check("${m}" r)
+expect_caught("${r}" "K5 check dropped (S1 only again)")
+string(REPLACE "TakerOnlyOffer(failureClasses, " "TakerOnlyOffer(failureClasses || bookCheck, " m "${choose_cpp}")
+check_k5_check("${m}" r)
+expect_caught("${r}" "the book check widens the turn-in-only rule")
+string(REPLACE "validatedTurnIns = PreValidateTurnIns(ai, bot, parkTarget);" "validatedTurnIns = PreValidateTurnIns(ai, bot, parkTarget);\n    PreValidateTurnIns(ai, bot, parkTarget);" m "${choose_cpp}")
+check_k5_check("${m}" r)
+expect_caught("${r}" "a second PreValidateTurnIns call")
 
 check_credits("${quest_action_cpp}" "${all_sources}\nbook->OnCredit(1);" r)
 expect_caught("${r}" "a credit outside the quest packet actions")
