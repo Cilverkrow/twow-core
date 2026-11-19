@@ -243,8 +243,9 @@ AiPlayerbot.Loot.HoldTravelWhileLootable.MaxSeconds = 60
 # between two tries starts again): the loot target is reset and the object stays out of the bot's loot list for 600 s
 # (every loot kind: corpse, herb, ore, chest; at most 16 objects per bot). One [LootGiveUp] bot= guid= entry= dist_start=
 # dist_best= tries= waited_s= mode= line per give-up; [LootGiveUpMin] mode= loot_giveup= loot_blocked= once a minute.
-# Cohort mode: 0 = off, as before (default until its A/B); 1 = all bots; 2 = cohort B (odd guid); 3 = cohort A; other = 0.
-AiPlayerbot.Loot.MoveGiveUp = 0
+# Cohort mode: 0 = off, as before (rollback); 1 = all bots (default since the 703H u3 ADOPT, 19.11.2026); 2 = cohort B (odd
+# guid); 3 = cohort A; other = 0.
+AiPlayerbot.Loot.MoveGiveUp = 1
 # OB-00 08.11.2026 (BUG FIX: code default 1, 0 = rollback): the "loot chance" value of a game object. The drop map keeps a
 # game object entry negated; the value put that negative entry into the game object guid as it was, the entry ran into the
 # high guid bits, the guid was no game object guid and every game object had loot chance 0. With 1 it reads the game object's
