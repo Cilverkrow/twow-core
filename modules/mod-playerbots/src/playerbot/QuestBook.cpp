@@ -179,7 +179,7 @@ void QuestBook::OnCredit(std::uint32_t questId)
 
 void QuestBook::OnRewarded(std::uint32_t questId)
 {
-    dirty_ = true;
+    // twow-repo#724: no dirty_ here (logging only: the snapshot keeps its old timing; the note waits for the next one).
     nRewarded_ = NoteQuestId(rewarded_, nRewarded_, kLog, questId);
 }
 }
