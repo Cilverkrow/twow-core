@@ -1784,6 +1784,21 @@ add_test(NAME adhoc_group_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/adhoc_group_source_contract_tests.cmake")
 
+# T30 v1.1 V2 (OB-00 19.11.2026): the pure [GroupHook] membership line (GroupHookLine.h; no game header). The game side is
+# pinned by t/contracts.d/t30v2_group_hook_source_contract_tests.cmake.
+add_executable(group_hook_line_tests
+  "${PB_MODULE_DIR}/t/group_hook_line_tests.cpp")
+
+target_include_directories(group_hook_line_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(group_hook_line_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME group_hook_line
+  COMMAND group_hook_line_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # BOT-12 (twow-repo#677, #628; AiPlayerbot.BotGroups.OpQueue): the world-thread group-operation queue and its pure rules
 # (GroupOpQueue.h, GroupOpPolicy.h; no game header). The game side is pinned by
 # t/contracts.d/bot12_group_op_queue_source_contract_tests.cmake.
