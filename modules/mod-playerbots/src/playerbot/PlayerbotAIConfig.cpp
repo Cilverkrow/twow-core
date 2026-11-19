@@ -1048,6 +1048,8 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[Supervisor] config key=Supervisor.ArbiterProbe value=%u result=off (0 off, 1 probe)", supervisorArbiterProbe);
         supervisorArbiterProbe = 0;
     }
+    // A3 step 3 planner P-1: the band table path (BandTable.cpp); "" = off.
+    plannerBandTable = config.GetStringDefault("AiPlayerbot.Planner.BandTable", "");
     // A3 step 5 (ADR-0041): the combat rule, parts HealerStart, PriestOverlay, RestBeforePull and ProgressGuard (CombatRulePolicy.h); an unknown
     // mode is off.
     combatRuleHealerStart = uint32(config.GetIntDefault("AiPlayerbot.CombatRule.HealerStart", 0));
