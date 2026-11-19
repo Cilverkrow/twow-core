@@ -1627,6 +1627,15 @@ AiPlayerbot.Supervisor.Arbiter = 2
 # nothing and only counts probe_shadow (the paired control). 0 = off (default), 1 = probe. Any other value acts like 0
 # (one error line at load).
 AiPlayerbot.Supervisor.ArbiterProbe = 0
+# A3 step 3 planner P-1 (A3-S3-PLANER-ENTWURF.md §6): path of the planner's band table, a TSV file. Line 1 "# version=2", line 2
+# "# source=...", line 3 the header with the columns (by name, extra columns ignored) key, min_level, max_level, zone_id,
+# rank, hub_map, hub_x, hub_y, hub_z, mob_level, z2_sec, r1_min_level. key "1".."10" = race (levels 1-12), "A0" "A1" "H0" "H1"
+# = faction + continent (levels 13+); rank 1 or 2; z2_sec 0 = band target time not set yet; r1_min_level 0 = no start-zone
+# rule. Read once at boot (a new table needs a restart); above 1 MiB or 2000 lines, a wrong version or header, or no usable
+# row: no table and one "[BandTable] off reason=" line. Loaded: "[BandTable] loaded sha=<first 8 hex of the file's SHA-256>
+# lines= rows= skipped= ..." (the kit pins the file by this sha). Loaded with the quest travel table, so only with
+# AiPlayerbot.AutoDoQuests on (otherwise no line at all). Nothing reads the table before the planner pair; "" = off (default).
+AiPlayerbot.Planner.BandTable = ""
 # A3 step 5 (ADR-0041, OB-00 07.11.2026): the combat rule - one module that owns the combat decisions (who may start a fight,
 # rest before the pull, target choice, flee point, loop guard), one switch per part. Design: A3-S5-KAMPFREGEL-ENTWURF.md.
 # Part HealerStart (A3-AKTIONS-VERDRAHTUNG F2 (a)): the healer gate of attack my target / attack RTI target / attack anything
