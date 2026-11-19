@@ -163,7 +163,10 @@ require_text("${park_now}" "entry->parkedUntil = nowMs + (parkMs < MaxParkMs ? p
 # ---- 4. Taker-only only with a pre-validated taker; grind yields to routable open turn-ins ---------
 region("${choose}" "bool RequestQuestTravelTargetAction::Execute(Event& event)" "bool RequestQuestTravelTargetAction::isAllowed() const" request)
 require_text("${request}" "bool const failureClasses = sPlayerbotAIConfig.questFirstProgressionFailureClasses && sPlayerbotAIConfig.S1For(bot->GetGUIDLow()) &&\n        UsesQuestFirstProgression(bot) && !ai->HasRealPlayerMaster();" "pre-validation only with the switch")
-require_text("${request}" "    if (failureClasses)\n        validatedTurnIns = PreValidateTurnIns(ai, bot, parkTarget);" "pre-validation call")
+# A3 step 2 K5 (QBK2 finding 19.11.2026): a bot with an active quest book runs the same check (the lists the book's grind
+# yield reads); TakerOnlyOffer and the abandon still read failureClasses / S1For only.
+require_text("${request}" "    bool const bookCheck = !failureClasses && ai->ActiveQuestBook() != nullptr && UsesQuestFirstProgression(bot) &&\n        !ai->HasRealPlayerMaster();" "book check only without S1, for an active book")
+require_text("${request}" "    if (failureClasses || bookCheck)\n        validatedTurnIns = PreValidateTurnIns(ai, bot, parkTarget);" "pre-validation call (S1 or an active book)")
 require_order("${request}" "validatedTurnIns = PreValidateTurnIns(ai, bot, parkTarget);" "for (ObjectGuid guid : AI_VALUE(std::list<ObjectGuid>, \"group members\"))" "checked (and structural ones parked) before the taker fetches are built")
 require_text("${request}" "if ((std::get<0>(fetch) & (uint32)TravelDestinationPurpose::QuestTaker) &&\n                    ai::quest_failure_class::TakerOnlyOffer(failureClasses, validatedTurnIns.count(uint32(std::get<1>(fetch))) > 0))\n                    handInOnly.push_back(fetch);" "turn-in-only offers validated takers only")
 require_text("${policy}" "inline bool TakerOnlyOffer(bool enabled, bool validated)\n{\n    return !enabled || validated;\n}" "switch off: every taker fetch kept")
