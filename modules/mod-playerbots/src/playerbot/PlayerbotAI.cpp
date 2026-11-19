@@ -676,6 +676,12 @@ ai::questbook::QuestBook* PlayerbotAI::ActiveQuestBook() const
     return questBook_ && !questBook_->Shadow() ? questBook_.get() : nullptr;
 }
 
+void PlayerbotAI::NoteQuestRewarded(uint32 questId)
+{
+    if (questBook_)
+        questBook_->OnRewarded(questId);
+}
+
 bool PlayerbotAI::InQuestBookScope()
 {
     return bot && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !HasRealPlayerMaster();
@@ -1411,6 +1417,7 @@ bool PlayerbotAI::WantsBotOutgoingPacket(uint16 opcode) const
     case SMSG_EMOTE:
     case SMSG_MESSAGECHAT:
     case SMSG_MOVE_KNOCK_BACK:
+    case SMSG_QUESTGIVER_QUEST_COMPLETE:   // twow-repo#724: the quest book's turn-in label (HandleBotOutgoingPacket)
         return true;
     default:
         return botOutgoingPacketHandlers.HasHandler(opcode);
@@ -4200,6 +4207,21 @@ void PlayerbotAI::HandleBotOutgoingPacket(const WorldPacket& packet)
 
 	switch (packet.GetOpcode())
 	{
+	case SMSG_QUESTGIVER_QUEST_COMPLETE:
+	{
+		// twow-repo#724 (logging only): Player::SendQuestReward writes the quest id first. Read here on the bot's thread (packet
+		// inbox, before the quest book's snapshot); the book labels the quest turned_in when it left the log (repeatable quests are
+		// never "rewarded" by Player::GetQuestRewardStatus).
+		if (questBook_ && packet.size() >= 4)
+		{
+			WorldPacket p(packet);
+			p.rpos(0);
+			uint32 questId;
+			p >> questId;
+			questBook_->OnRewarded(questId);
+		}
+		return;
+	}
 	case SMSG_SPELL_FAILURE:
 	{
 		WorldPacket p(packet);

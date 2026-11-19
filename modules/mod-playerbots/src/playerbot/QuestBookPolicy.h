@@ -529,6 +529,49 @@ inline char const* LeftReasonName(LeftReason reason)
     return "unknown";
 }
 
+// twow-repo#724 (logging only, no switch): Player::GetQuestRewardStatus is false for every repeatable quest (RewardQuest
+// sets a repeatable quest to status NONE), so a repeatable turn-in was logged "dropped" (BOT-16 unit 1, 18.11.2026: Blood Shard
+// turn-ins). The per-event proof is a reward note on the bot's thread before the snapshot, from two sources:
+// - RewardQuest with announce = true sends SMSG_QUESTGIVER_QUEST_COMPLETE (Player::SendQuestReward); it is read from the bot's
+//   packet inbox;
+// - the bot's own RewardQuest calls with announce = false send no packet, so they note the quest directly:
+//   TalkToQuestGiverAction::RewardNoItem (every quest without a reward choice, the Blood Shard quests) and RewardAction.
+// Not covered: the core's QUEST_FLAGS_AUTO_REWARDED path in Player::CompleteQuest (announce = false), which stays "dropped" for a
+// repeatable quest. The raw m_rewarded flag is no proof: the abandon handler sets status NONE and keeps it.
+inline LeftReason ClassifyLeft(bool rewardStatus, bool rewardNote, bool failed)
+{
+    if (rewardStatus || rewardNote)
+        return LeftReason::TurnedIn;
+    return failed ? LeftReason::Failed : LeftReason::Dropped;
+}
+
+// The reward notes since the last snapshot: at most `cap` quest ids, a repeat is kept once, a full list drops its oldest.
+// Returns the new count.
+inline std::size_t NoteQuestId(std::uint32_t* ids, std::size_t n, std::size_t cap, std::uint32_t questId)
+{
+    if (!ids || !questId || !cap)
+        return n;
+    for (std::size_t i = 0; i < n; ++i)
+        if (ids[i] == questId)
+            return n;
+    if (n >= cap)
+    {
+        for (std::size_t i = 1; i < cap; ++i)
+            ids[i - 1] = ids[i];
+        n = cap - 1;
+    }
+    ids[n++] = questId;
+    return n;
+}
+
+inline bool HasQuestId(std::uint32_t const* ids, std::size_t n, std::uint32_t questId)
+{
+    for (std::size_t i = 0; ids && i < n; ++i)
+        if (ids[i] == questId)
+            return true;
+    return false;
+}
+
 // ---- QB4 KPI: complete but not turned in ----------------------------------------------------------------------------------
 // completeSinceMs 0 = not complete. Report once per quest when it has been complete for at least staleMs.
 inline bool ShouldReportStale(std::uint32_t completeSinceMs, std::uint32_t nowMs, std::uint32_t staleMs, bool reported)
