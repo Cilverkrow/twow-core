@@ -61,7 +61,11 @@ require_text("${ai_cpp}" "void PlayerbotAI::NoteQuestRewarded(uint32 questId)
 {
     if (questBook_)
         questBook_->OnRewarded(questId);
-}" "NoteQuestRewarded feeds the book, active or shadow")
+    // A3 step 3 planner P-2b (AiPlayerbot.Planner, default 0; OB-10 B2, OB-60 K1): the planner's own note, outside the book's if
+    // (no book, no note there). Off: one config read.
+    if (sPlayerbotAIConfig.planner)
+        plannerRewardNotes_.Note(questId);
+}" "NoteQuestRewarded feeds the book, active or shadow, and the planner's note (A3 step 3 planner P-2b)")
 require_text("${talk_cpp}" "        bot->RewardQuest(quest, 0, questGiver, false);
         ai->NoteQuestRewarded(quest->GetQuestId());" "RewardNoItem notes the quest right after RewardQuest")
 require_text("${reward_cpp}" "                    bot->RewardQuest(pQuest, rewardIdx, questGiver ? ToWorldObject(questGiver) : nullptr, false);

@@ -1637,6 +1637,46 @@ AiPlayerbot.Supervisor.ArbiterProbe = 0
 # lines= rows= skipped= ..." (the kit pins the file by this sha). Loaded with the quest travel table, so only with
 # AiPlayerbot.AutoDoQuests on (otherwise no line at all). Nothing reads the table before the planner pair; "" = off (default).
 AiPlayerbot.Planner.BandTable = ""
+# A3 step 3 planner P-2b (A3-S3-PLANER-ENTWURF.md v0.3, frozen d6e51878): the activity planner in the supervisor tick. It finds
+# its own events by comparing a small snapshot of the bot each tick (level, quest log, death, map/zone, position jump, mode and
+# lane), plans on an event or after MaxIdleSec, ranks the candidates (turn-ins, objectives, pickups in the plan zone; grind at
+# the zone hub) by value, keeps its pick with Margin and MinBindSec, and writes "[Plan]" lines (300 per minute, own budget) and
+# "[PlanMin]" counter lines per cohort and minute. Acts only where the supervisor runs (AiPlayerbot.Supervisor) and in QUEST or
+# GRIND mode (AiPlayerbot.Supervisor.Arbiter = 2 moves a bot out of PASSIVE). 0 off (default), 1 shadow: plans and counts,
+# writes nothing of the bot; 2 the plan pick acts (pair P-3; until then 2 works as 1). Above 2 is off.
+AiPlayerbot.Planner = 0
+# The planner's parameters (the PREREG sets them; the defaults are the draft's proposals). Margin: percent a new pick must beat
+# the current one by. MinBindSec: a new pick is kept at least this long. MaxIdleSec: plan again after this long without an
+# event (0 = never). MinDwellSec: QUEST/GRIND switch dwell (pair P-3; read, unused before). MaxCandidates: candidates per plan (turn-ins, then objectives, then pickups by distance; at most 64).
+# BudgetMs: compute time per plan; the list ends there (over_budget). DeadWaitMaxSec / DeadProbeYards: wait at a dead target
+# at most min(2 x respawn, this) seconds, probing this radius. RouteFactor: route seconds = straight distance / run speed x
+# this. DangerCells: danger = cells on the line / this, capped at 1; DangerTopN: only the best N ask the danger map.
+# DangerPenalty, SwitchCost, BrainBonusMax, TurnInWorkSec: the value weights (planner::Weights). GrindKillsPerMin: kills per
+# minute of the grind candidate. MaxHoldSec: a complete quest with a routable turn-in wins after this long (0 = off).
+# RepeatableRetakeSec / RepeatableMaxPerHour: a repeatable quest is taken again only this long after its turn-in and at most
+# this often per bot hour. RelocMinYards / RelocSlack: a position jump is a relocation above max(yards, run speed x seconds x
+# slack).
+AiPlayerbot.Planner.Margin = 15
+AiPlayerbot.Planner.MinBindSec = 120
+AiPlayerbot.Planner.MinDwellSec = 120
+AiPlayerbot.Planner.MaxIdleSec = 300
+AiPlayerbot.Planner.MaxCandidates = 32
+AiPlayerbot.Planner.BudgetMs = 2
+AiPlayerbot.Planner.DeadWaitMaxSec = 600
+AiPlayerbot.Planner.DeadProbeYards = 40
+AiPlayerbot.Planner.RouteFactor = 1.3
+AiPlayerbot.Planner.DangerCells = 8
+AiPlayerbot.Planner.DangerTopN = 6
+AiPlayerbot.Planner.DangerPenalty = 0
+AiPlayerbot.Planner.SwitchCost = 0
+AiPlayerbot.Planner.BrainBonusMax = 0
+AiPlayerbot.Planner.TurnInWorkSec = 0
+AiPlayerbot.Planner.GrindKillsPerMin = 2
+AiPlayerbot.Planner.MaxHoldSec = 1800
+AiPlayerbot.Planner.RepeatableRetakeSec = 1800
+AiPlayerbot.Planner.RepeatableMaxPerHour = 1
+AiPlayerbot.Planner.RelocMinYards = 60
+AiPlayerbot.Planner.RelocSlack = 1.5
 # A3 step 5 (ADR-0041, OB-00 07.11.2026): the combat rule - one module that owns the combat decisions (who may start a fight,
 # rest before the pull, target choice, flee point, loop guard), one switch per part. Design: A3-S5-KAMPFREGEL-ENTWURF.md.
 # Part HealerStart (A3-AKTIONS-VERDRAHTUNG F2 (a)): the healer gate of attack my target / attack RTI target / attack anything

@@ -672,8 +672,18 @@ struct PlanMinCounts
     std::uint32_t planDropped = 0;
     std::uint32_t msP50 = 0;
     std::uint32_t msMax = 0;
+    // P-2b (P2-BUILD-LOG B6, B7, section 14 B4): ticks in PASSIVE (the planner plans only in QUEST or GRIND, so a shadow without
+    // Arbiter 2 shows 0 plans and these ticks), the grind comparison by zone (a planner hub never matches a mob target by entry),
+    // and back_to_band_would by the purpose of the failed choice (quest, grind; the rest = total - quest - grind).
+    std::uint32_t passiveTicks = 0;
+    std::uint32_t agreeGrind = 0;
+    std::uint32_t disagreeGrind = 0;
+    std::uint32_t backToBandWouldQuest = 0;
+    std::uint32_t backToBandWouldGrind = 0;
 };
 
+// msP50 is not added: a median is not additive. The minute aggregator (PlannerShadow.cpp) takes it from the plan times of the
+// minute when the minute rolls; msMax is the maximum.
 inline void Add(PlanMinCounts& into, PlanMinCounts const& c)
 {
     into.plans += c.plans;
@@ -712,6 +722,11 @@ inline void Add(PlanMinCounts& into, PlanMinCounts const& c)
     into.relocate += c.relocate;
     into.relocUnknown += c.relocUnknown;
     into.planDropped += c.planDropped;
+    into.passiveTicks += c.passiveTicks;
+    into.agreeGrind += c.agreeGrind;
+    into.disagreeGrind += c.disagreeGrind;
+    into.backToBandWouldQuest += c.backToBandWouldQuest;
+    into.backToBandWouldGrind += c.backToBandWouldGrind;
     if (c.msMax > into.msMax)
         into.msMax = c.msMax;
 }
@@ -724,12 +739,14 @@ inline std::size_t FormatPlanMin(char* buf, std::size_t n, char cohort, std::uin
         "dead_wait=%u dead_close=%u zone_change=%u zone_change_dead=%u cut=%u skip=%u timer=%u over_budget=%u overwritten=%u "
         "overwritten_group=%u agree=%u disagree=%u r1_mismatch=%u max_hold=%u repeat_cap=%u back_to_band=%u floor_below=%u "
         "floor_unknown=%u relocate=%u reloc_unknown=%u plan_dropped=%u ms_p50=%u ms_max=%u back_to_band_would=%u "
-        "back_to_band_repeat=%u expire_work_override_would=%u overwritten_shadow=%u na_purpose=%u na_stale=%u overwritten_neutral=%u switch_ms=%u",
+        "back_to_band_repeat=%u expire_work_override_would=%u overwritten_shadow=%u na_purpose=%u na_stale=%u overwritten_neutral=%u switch_ms=%u "
+        "passive_ticks=%u agree_grind=%u disagree_grind=%u back_to_band_would_quest=%u back_to_band_would_grind=%u",
         cohort, minute, c.plans, c.keeps, c.switches, c.tierA, c.tierB, c.tierC, c.deadWait, c.deadClose, c.zoneChange,
         c.zoneChangeDead, c.cut, c.skip, c.timer, c.overBudget, c.overwritten, c.overwrittenGroup, c.agree, c.disagree,
         c.r1Mismatch, c.maxHold, c.repeatCap, c.backToBand, c.floorBelow, c.floorUnknown, c.relocate, c.relocUnknown,
         c.planDropped, c.msP50, c.msMax, c.backToBandWould, c.backToBandRepeat, c.expireWorkOverrideWould,
-        c.overwrittenShadow, c.naPurpose, c.naStale, c.overwrittenNeutral, c.switchMsMax);
+        c.overwrittenShadow, c.naPurpose, c.naStale, c.overwrittenNeutral, c.switchMsMax, c.passiveTicks, c.agreeGrind,
+        c.disagreeGrind, c.backToBandWouldQuest, c.backToBandWouldGrind);
     if (w < 0)
         return 0;
     return std::size_t(w) < n ? std::size_t(w) : n - 1;
