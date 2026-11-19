@@ -83,6 +83,10 @@ public:
     bool HasProgress(Quest const* quest);
     // The quest actions: kill credit, item credit, quest complete.
     void OnCredit(std::uint32_t questId);
+    // twow-repo#724: the quest was rewarded (bot thread: the bot's SMSG_QUESTGIVER_QUEST_COMPLETE from the packet inbox, or
+    // PlayerbotAI::NoteQuestRewarded after the bot's own RewardQuest without announce); the next regular snapshot (not
+    // forced: logging only, the snapshot timing stays as before) labels it turned_in when it left the log (repeatable quests too).
+    void OnRewarded(std::uint32_t questId);
 
 private:
     struct Watch
@@ -103,6 +107,8 @@ private:
     Watch watch_[kLog];
     std::uint32_t prev_[kLog] = {};
     std::size_t nPrev_ = 0;
+    std::uint32_t rewarded_[kLog] = {};   // twow-repo#724: reward notes since the last snapshot
+    std::size_t nRewarded_ = 0;
 };
 }
 

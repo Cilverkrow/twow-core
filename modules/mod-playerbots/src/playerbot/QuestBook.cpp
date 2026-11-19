@@ -91,8 +91,9 @@ void QuestBook::Observe(std::uint32_t nowMs)
     std::size_t const nLeft = LeftLog(prev_, nPrev_, now, n, left, kLog);
     for (std::size_t i = 0; i < nLeft; ++i)
     {
-        LeftReason const reason = bot->GetQuestRewardStatus(left[i]) ? LeftReason::TurnedIn :
-            bot->GetQuestStatus(left[i]) == QUEST_STATUS_FAILED ? LeftReason::Failed : LeftReason::Dropped;
+        // twow-repo#724: a reward note since the last snapshot also counts (repeatable quests are never "rewarded").
+        LeftReason const reason = ClassifyLeft(bot->GetQuestRewardStatus(left[i]), HasQuestId(rewarded_, nRewarded_, left[i]),
+            bot->GetQuestStatus(left[i]) == QUEST_STATUS_FAILED);
         sLog.outBasic("[QuestBook] state=left_log bot=%s guid=%u cohort=%c quest=%u reason=%s mode=%s", bot->GetName(), guid,
             cohort::Letter(guid), left[i], LeftReasonName(reason), modeText);
         Note(guid, Count::LeftLog);
@@ -100,6 +101,7 @@ void QuestBook::Observe(std::uint32_t nowMs)
         if (Watch* w = Find(left[i]))
             *w = Watch{};
     }
+    nRewarded_ = 0;   // twow-repo#724: the notes belong to this snapshot
 
     // QB4 KPI: complete but not turned in for StaleCompleteSeconds.
     std::uint32_t const staleMs = sPlayerbotAIConfig.questBookStaleCompleteSeconds * 1000u;
@@ -173,6 +175,12 @@ void QuestBook::OnCredit(std::uint32_t questId)
     dirty_ = true;
     if (!credits_.Bump(questId))
         Note(ai_->GetBot() ? ai_->GetBot()->GetGUIDLow() : 0, Count::CreditDropped);
+}
+
+void QuestBook::OnRewarded(std::uint32_t questId)
+{
+    // twow-repo#724: no dirty_ here (logging only: the snapshot keeps its old timing; the note waits for the next one).
+    nRewarded_ = NoteQuestId(rewarded_, nRewarded_, kLog, questId);
 }
 }
 
