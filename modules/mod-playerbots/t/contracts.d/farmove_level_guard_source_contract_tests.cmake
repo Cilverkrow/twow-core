@@ -2,7 +2,7 @@
 # far-travel-stuck/levelguard/DESIGN.md): a travel destination with a creature spawn hostile to the bot's side within Radius yd
 # whose level_max is >= bot level + Margin is deferred at the target choice, so the main loop takes another destination.
 # The rule and the grid are tested in t/far_move_policy_tests.cpp; this contract pins the wiring:
-# 1. config: default off, an unknown mode off, margin / radius clamped; ConfigEcho entries sorted; dist conf off.
+# 1. config: default 1 (LGX ADOPT 19.11.2026), an unknown mode off, margin / radius clamped; ConfigEcho entries sorted; dist conf 1.
 # 2. the grid is built once at startup, only with the switch on, after the quest travel table.
 # 3. PostActiveDeferralOf: LevelGuard after DangerMap and before None, the same gate as the danger map plus the cohort switch
 #    and the far-move distance; the answer only through the out parameter (no count, no log in the shared predicate).
@@ -68,12 +68,12 @@ read_source("PlayerbotAI.cpp" ai_cpp)
 read_source("QuestSearchPolicy.h" search)
 
 # ---- 1. config ----------------------------------------------------------------------------------------------------
-require_text("${config_h}" "uint32 rosterFarMoveLevelGuard = 0;" "member default off")
-require_text("${config_cpp}" "rosterFarMoveLevelGuard = config.GetIntDefault(\"AiPlayerbot.RosterFarMove.LevelGuard\", 0);\n    if (rosterFarMoveLevelGuard > 3)\n        rosterFarMoveLevelGuard = 0;" "default 0, mode 3 (cohort A, crossover) accepted, an unknown mode off")
+require_text("${config_h}" "uint32 rosterFarMoveLevelGuard = 1;" "member default 1 (LGX ADOPT)")
+require_text("${config_cpp}" "rosterFarMoveLevelGuard = config.GetIntDefault(\"AiPlayerbot.RosterFarMove.LevelGuard\", 1);\n    if (rosterFarMoveLevelGuard > 3)\n        rosterFarMoveLevelGuard = 0;" "default 1, mode 3 (cohort A, crossover) accepted, an unknown mode off")
 require_text("${config_cpp}" "ai::level_guard::ClampMargin(config.GetIntDefault(\"AiPlayerbot.RosterFarMove.LevelGuard.Margin\", 3))" "margin clamped")
 require_text("${config_cpp}" "ai::level_guard::ClampRadius(config.GetFloatDefault(\"AiPlayerbot.RosterFarMove.LevelGuard.Radius\", 50.0f))" "radius clamped")
 require_text("${config_cpp}" "            {\"RosterFarMove.ArriveSafe\", Value(rosterFarMoveArriveSafe)},\n            {\"RosterFarMove.LevelGuard\", Value(rosterFarMoveLevelGuard)},\n            {\"RosterFarMove.LevelGuard.Margin\", Value(rosterFarMoveLevelGuardMargin)},\n            {\"RosterFarMove.LevelGuard.Radius\", Value(rosterFarMoveLevelGuardRadius)},\n            {\"RosterFarMove.LevelGuard.SkipHarmless\"" "ConfigEcho entries, sorted (twow-repo#575: the sub-keys follow, farmove_level_guard_zwindow)")
-require_text("${conf}" "\nAiPlayerbot.RosterFarMove.LevelGuard = 0\nAiPlayerbot.RosterFarMove.LevelGuard.Margin = 3\nAiPlayerbot.RosterFarMove.LevelGuard.Radius = 50\n" "dist conf, off")
+require_text("${conf}" "\nAiPlayerbot.RosterFarMove.LevelGuard = 1\nAiPlayerbot.RosterFarMove.LevelGuard.Margin = 3\nAiPlayerbot.RosterFarMove.LevelGuard.Radius = 50\n" "dist conf, 1")
 require_text("${policy}" "constexpr float DefaultRadius = 50.0f;" "default radius")
 require_text("${policy}" "constexpr uint32_t DefaultMargin = 3;" "default margin")
 require_text("${policy}" "return spawnLevelMax >= botLevel + margin;" "the rule")
