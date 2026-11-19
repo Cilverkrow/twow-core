@@ -1300,6 +1300,13 @@ AiPlayerbot.QuestRescue.NoTargetFreeSlot = 1
 # [RescueHubMin] at_hub=) instead of the legacy targets. Acts only where HomeHubs applies; night elf / undead keep their next-zone rows.
 # Cohort mode: 0 = off (default, today's table), 1 = all bots, 2 = cohort B (odd guid), 3 = cohort A (even guid); other values act like 0.
 AiPlayerbot.QuestRescue.HomeHubs.L5OwnHub = 0
+# twow-repo#575 RescueHub LevelFloor (OB-00 19.11.2026; CLI-PATH finding dauerb-silverpine ADDENDUM 8be4a03c, census rescue-hub-floor 43a83b6c):
+# the undead next-zone hub, The Sepulcher, lies in an area of level 10. In DAUER-B 8 of 11 undead rescued there at L5-7 never levelled
+# again (no quest for their level; the rescue also rebinds the hearth there). With the key an undead L5-9 is rescued to its own
+# start-zone hub, Brill ([RescueHub] step=own_hub anchors=5688; a bot already there: result=at_hub, no target), and to the Sepulcher
+# only from L10. Night elves keep Auberdine (9 of 9 rescued at L7-10 levelled on). Acts only where HomeHubs applies.
+# Cohort mode: 0 = off (default, today's table), 1 = all bots, 2 = cohort B (odd guid), 3 = cohort A (even guid); other values act like 0.
+AiPlayerbot.QuestRescue.HomeHubs.LevelFloor = 0
 # A creature entry that killed the bot GrindAvoid.MaxDeaths times within
 # WindowSeconds is skipped as a grind target for AvoidSeconds. 0 = off.
 AiPlayerbot.GrindAvoid.MaxDeaths = 0

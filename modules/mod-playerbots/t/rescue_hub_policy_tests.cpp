@@ -169,6 +169,55 @@ int main()
         Require(counters.atHub.exchange(0) == 1 && counters.atHub.load() == 0, "at_hub counter takes and resets");
     }
 
+    // 6d. twow-repo#575 RescueHub LevelFloor (HomeHubs.LevelFloor, OB-00 19.11.2026): undead L5-9 at Brill, the Sepulcher from L10;
+    //     night elves keep Auberdine.
+    {
+        // Without the flag: the lookup is today's, for every race, level, custom-starts and L5OwnHub value (pin of the off path).
+        for (std::uint32_t race = 0; race <= 11; ++race)
+            for (std::uint32_t level = 0; level <= 60; ++level)
+                for (bool custom : { false, true })
+                    for (bool l5 : { false, true })
+                        Require(RowFor(race, level, custom, l5, false) == RowFor(race, level, custom, l5), "LevelFloor off: the old lookup, row for row");
+        // With the flag: undead L5-9 own hub Brill (short distance, at_hub when near), L10 next_zone Sepulcher, L1-4 and L11+ unchanged.
+        for (bool custom : { false, true })
+            for (bool l5 : { false, true })
+            {
+                for (std::uint32_t level = 5; level <= 9; ++level)
+                {
+                    Row const* row = RowFor(5, level, custom, l5, true);
+                    Require(row && row->step == Step::OwnHub && row->entries[0] == 5688 && row->entries[1] == 0 &&
+                        row->minDistance == OwnHubMinDistance, "LevelFloor, undead L5-9: Brill with the short distance");
+                    Require(row->entries[0] == RowFor(5, 4, true)->entries[0], "the L5-9 row uses the anchor of the L1-4 row");
+                    Require(IsL5OwnHubRow(row), "the L5-9 row has the at_hub rule");
+                    Require(Decide(row, 1, 0) == Outcome::AtHub && Decide(row, 1, 1) == Outcome::Hub && Decide(row, 0, 0) == Outcome::Fallback,
+                        "the L5-9 row: at_hub near, hub far, fallback without a spawn");
+                    Require(Usable(row, true) && Usable(row, false), "own hub: R1 does not gate it");
+                }
+                Row const* l10 = RowFor(5, 10, custom, l5, true);
+                Require(l10 && l10->step == Step::NextZone && l10->entries[0] == 6739 && l10->minDistance == NextZoneMinDistance,
+                    "LevelFloor, undead L10: the Sepulcher");
+                Require(!IsL5OwnHubRow(l10) && Decide(l10, 1, 0) == Outcome::Fallback, "the L10 next_zone row keeps today's fallback");
+                Require(!Usable(l10, true) && Usable(l10, false), "the L10 next_zone row stays gated by R1");
+                for (std::uint32_t level = 0; level <= 60; ++level)
+                {
+                    if (level < 5 || level > 10)
+                        Require(RowFor(5, level, custom, l5, true) == RowFor(5, level, custom, l5), "LevelFloor: undead outside L5-10 unchanged");
+                    for (std::uint32_t race = 0; race <= 11; ++race)
+                        if (race != 5)
+                            Require(RowFor(race, level, custom, l5, true) == RowFor(race, level, custom, l5),
+                                "LevelFloor: every other race unchanged (night elf keeps Auberdine)");
+                }
+            }
+        Require(RowFor(4, 7, true, false, true)->entries[0] == 6737, "night elf L7 with LevelFloor: Auberdine");
+        // Well formed: undead only, the two bands cover L5-10 without a gap or overlap.
+        Require(LevelFloorTable[0].race == 5 && LevelFloorTable[1].race == 5, "undead rows only");
+        Require(LevelFloorTable[0].minLevel == 5 && LevelFloorTable[0].maxLevel == 9 && LevelFloorTable[1].minLevel == 10 &&
+            LevelFloorTable[1].maxLevel == 10, "L5-9 and L10");
+        for (Row const& row : LevelFloorTable)
+            for (Row const& other : L5OwnHubTable)
+                Require(other.race != row.race, "no race of the L5 table (the flags never compete)");
+    }
+
     // 7. Names and counters.
     {
         Require(std::strcmp(StepName(Step::OwnHub), "own_hub") == 0 && std::strcmp(StepName(Step::NextZone), "next_zone") == 0 &&
