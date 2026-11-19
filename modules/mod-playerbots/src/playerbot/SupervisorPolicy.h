@@ -435,6 +435,26 @@ struct PlanLine
     PlanAlt alt[3];
     std::uint32_t blocked = 0;
     std::uint32_t budgetMs = 0;
+    // A3 step 3 planner P-2 (A3-S3-PLANER-ENTWURF.md v0.3 section 7): appended after budget_ms, the head of the line stays.
+    std::uint32_t level = 0;
+    std::uint32_t zone = 0;
+    std::uint32_t band = 0;           // the plan zone from the band table (0 = none)
+    char const* tier = "-";
+    char const* ev = "-";
+    char const* route = "est";
+    bool dangerQueried = true;        // false: danger=na (not in the top N or another map), the value counts 0
+    char const* fb = "-";
+    float marginPct = 0.0f;
+    std::uint32_t cut = 0;
+    std::uint32_t skip = 0;
+    char const* plannerLimit = "-";   // - | QB6 | QB7
+    std::uint32_t waitSec = 0;
+    std::uint32_t cycles = 0;
+    char const* relocSrc = "-";
+    char const* floor = "-";          // ok | unknown | below
+    char const* hold = "-";           // switch | same | margin | bind | forced
+    std::uint32_t write = 0;
+    std::uint32_t ms = 0;
 };
 
 inline std::size_t FormatPlanLine(char* buf, std::size_t n, PlanLine const& l)
@@ -449,11 +469,21 @@ inline std::size_t FormatPlanLine(char* buf, std::size_t n, PlanLine const& l)
         else
             std::snprintf(alts[i], sizeof(alts[i]), "-");
     }
+    char danger[24];   // planner P-2: na when the danger map was not asked (not in the top N, another map); the value counts 0
+    if (l.dangerQueried)
+        std::snprintf(danger, sizeof(danger), "%.2f", double(l.danger));
+    else
+        std::snprintf(danger, sizeof(danger), "na");
     int const w = std::snprintf(buf, n, "[Plan] bot=%u cohort=%c arbiter=%u mode=%s pick=%s:%u:%u value=%.2f xpm=%.1f route_s=%.0f "
-        "work_s=%.0f rest_s=%.0f danger=%.2f turnin=%u brain=%u reason=%s cands=%u alt1=%s alt2=%s alt3=%s blocked=%u budget_ms=%u",
+        "work_s=%.0f rest_s=%.0f danger=%s turnin=%u brain=%u reason=%s cands=%u alt1=%s alt2=%s alt3=%s blocked=%u budget_ms=%u "
+        "lvl=%u zone=%u band=%u tier=%s ev=%s route=%s fb=%s margin=%.0f cut=%u skip=%u planner_limit=%s wait=%u "
+        "cycles=%u relocate_src=%s floor=%s hold=%s write=%u ms=%u",
         l.guid, l.cohort, l.arbiter, ModeName(l.mode), l.kind ? l.kind : "-", l.id, l.destId, double(l.value), double(l.xpm),
-        double(l.routeSec), double(l.workSec), double(l.restSec), double(l.danger), l.turnIn ? 1u : 0u, l.brain,
-        l.reason ? l.reason : "-", l.cands, alts[0], alts[1], alts[2], l.blocked, l.budgetMs);
+        double(l.routeSec), double(l.workSec), double(l.restSec), danger, l.turnIn ? 1u : 0u, l.brain,
+        l.reason ? l.reason : "-", l.cands, alts[0], alts[1], alts[2], l.blocked, l.budgetMs, l.level, l.zone, l.band,
+        l.tier ? l.tier : "-", l.ev ? l.ev : "-", l.route ? l.route : "-", l.fb ? l.fb : "-",
+        double(l.marginPct), l.cut, l.skip, l.plannerLimit ? l.plannerLimit : "-", l.waitSec, l.cycles,
+        l.relocSrc ? l.relocSrc : "-", l.floor ? l.floor : "-", l.hold ? l.hold : "-", l.write, l.ms);
     return Sanitize(buf, w, n);
 }
 

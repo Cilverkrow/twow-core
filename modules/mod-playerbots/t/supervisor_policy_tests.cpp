@@ -232,6 +232,31 @@ void TestFormatters()
         "plan line head");
     Require(plan.find(" turnin=1 brain=0 reason=turnin_first cands=4 alt1=grind:3:4.50 alt2=- alt3=- blocked=0 budget_ms=0")
         != std::string::npos, "plan line tail");
+
+    // A3 step 3 planner P-2: the planner fields are appended after budget_ms; the head and the old tail stay.
+    char big[1024];
+    p.level = 6;
+    p.zone = 85;
+    p.band = 85;
+    p.tier = "A";
+    p.ev = "quest_complete";
+    p.fb = "band_table_off";
+    p.marginPct = 15.0f;
+    p.cut = 2;
+    p.skip = 3;
+    p.waitSec = 0;
+    p.relocSrc = "unknown";
+    p.floor = "ok";
+    p.hold = "switch";
+    p.ms = 1;
+    std::size_t const bn = FormatPlanLine(big, sizeof(big), p);
+    std::string const full(big);
+    Require(bn == full.size(), "planner line length");
+    Require(full.rfind("[Plan] bot=7 cohort=A arbiter=0 mode=QUEST pick=quest_turnin:783:5 ", 0) == 0, "planner line head");
+    Require(full.find(" blocked=0 budget_ms=0 lvl=6 zone=85 band=85 tier=A ev=quest_complete route=est "
+        "fb=band_table_off margin=15 cut=2 skip=3 planner_limit=- wait=0 cycles=0 relocate_src=unknown floor=ok hold=switch "
+        "write=0 ms=1") != std::string::npos && full.back() == '1', "planner line tail");
+    Require(full.size() < 700, "the planner line fits the 1024 buffer with room for a 40 char kind and alternatives");
 }
 
 // Behaviour pair 1 (AiPlayerbot.Supervisor.Arbiter): the arbiter shadow's pure rules.

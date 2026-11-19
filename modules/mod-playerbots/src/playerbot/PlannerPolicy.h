@@ -74,6 +74,14 @@ enum class Reason : std::uint8_t
     BestValue = 1,
     TurnInFirst = 2,     // the pick is a turn-in
     OnlyCandidate = 3,   // nothing else was eligible
+    // A3 step 3 planner P-2 (A3-S3-PLANER-ENTWURF.md v0.3 section 7, OB-10 N2): the reasons of the planner in the tick.
+    Incumbent = 4,       // the pick stays (margin or bind time)
+    R1Hold = 5,          // below the start zone level: no next zone
+    DeadTarget = 6,      // the W8 dead target wait or close
+    BandTableOff = 7,    // no band table: the plan zone is the current zone
+    MaxHold = 8,         // a complete quest held longer than MaxHoldSec: its turn-in wins
+    BackToBand = 9,      // no destination with an empty log outside the band: back to the band zone
+    RepeatCap = 10,      // a repeatable quest held back by the re-take rule
 };
 
 inline char const* ReasonName(Reason reason)
@@ -84,6 +92,13 @@ inline char const* ReasonName(Reason reason)
         case Reason::BestValue: return "best_value";
         case Reason::TurnInFirst: return "turnin_first";
         case Reason::OnlyCandidate: return "only_candidate";
+        case Reason::Incumbent: return "incumbent";
+        case Reason::R1Hold: return "r1_hold";
+        case Reason::DeadTarget: return "dead_target";
+        case Reason::BandTableOff: return "band_table_off";
+        case Reason::MaxHold: return "max_hold";
+        case Reason::BackToBand: return "back_to_band";
+        case Reason::RepeatCap: return "repeat_cap";
     }
     return "unknown";
 }
