@@ -1306,8 +1306,9 @@ bool PlayerbotAIConfig::Initialize()
     if (rosterFarMoveArriveSafe > 2)
         rosterFarMoveArriveSafe = 0;   // twow-repo#601 cand4-B: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B)
     // twow-repo#601 cand4 lever (ii) (LevelGuardPolicy.h): 0 off, 1 all, 2 cohort B, 3 cohort A (crossover, CohortPolicy mode 3);
-    // an unknown mode is off; an unusable margin / radius is the default.
-    rosterFarMoveLevelGuard = config.GetIntDefault("AiPlayerbot.RosterFarMove.LevelGuard", 0);
+    // an unknown mode is off; an unusable margin / radius is the default. Default 1 with ZWindow 20 + SkipHarmless 1 since the LGX
+    // crossover ADOPT (19.11.2026, PREREG-LEVELGUARD-XOVER v3); 0 = rollback.
+    rosterFarMoveLevelGuard = config.GetIntDefault("AiPlayerbot.RosterFarMove.LevelGuard", 1);
     if (rosterFarMoveLevelGuard > 3)
         rosterFarMoveLevelGuard = 0;
     // twow-repo#601 A3 step 1: Rpg.TurnInFirst, an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B, 3 cohort A).
@@ -1317,12 +1318,12 @@ bool PlayerbotAIConfig::Initialize()
     rosterFarMoveLevelGuardMargin = ai::level_guard::ClampMargin(config.GetIntDefault("AiPlayerbot.RosterFarMove.LevelGuard.Margin", 3));
     rosterFarMoveLevelGuardRadius = ai::level_guard::ClampRadius(config.GetFloatDefault("AiPlayerbot.RosterFarMove.LevelGuard.Radius", 50.0f));
     // twow-repo#575 / #703 item 5 (LevelGuardPolicy.h): ZWindow 0 off or 5..100 yd, SkipHarmless 0/1; any other value is 0 (logged).
-    rosterFarMoveLevelGuardZWindow = config.GetIntDefault("AiPlayerbot.RosterFarMove.LevelGuard.ZWindow", 0);
+    rosterFarMoveLevelGuardZWindow = config.GetIntDefault("AiPlayerbot.RosterFarMove.LevelGuard.ZWindow", 20);
     int32 const levelGuardZWindowRaw = int32(rosterFarMoveLevelGuardZWindow);
     rosterFarMoveLevelGuardZWindow = ai::level_guard::ClampZWindow(levelGuardZWindowRaw);
     if (int32(rosterFarMoveLevelGuardZWindow) != levelGuardZWindowRaw)
         sLog.outError("[FarMoveGuard] config key=LevelGuard.ZWindow value=%d result=off (0 off, 5..100 yd)", levelGuardZWindowRaw);
-    rosterFarMoveLevelGuardSkipHarmless = config.GetIntDefault("AiPlayerbot.RosterFarMove.LevelGuard.SkipHarmless", 0);
+    rosterFarMoveLevelGuardSkipHarmless = config.GetIntDefault("AiPlayerbot.RosterFarMove.LevelGuard.SkipHarmless", 1);
     int32 const levelGuardSkipHarmlessRaw = int32(rosterFarMoveLevelGuardSkipHarmless);
     rosterFarMoveLevelGuardSkipHarmless = ai::level_guard::ClampSkipHarmless(levelGuardSkipHarmlessRaw);
     if (int32(rosterFarMoveLevelGuardSkipHarmless) != levelGuardSkipHarmlessRaw)
