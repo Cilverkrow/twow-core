@@ -680,6 +680,10 @@ void PlayerbotAI::NoteQuestRewarded(uint32 questId)
 {
     if (questBook_)
         questBook_->OnRewarded(questId);
+    // A3 step 3 planner P-2b (AiPlayerbot.Planner, default 0; OB-10 B2, OB-60 K1): the planner's own note, outside the book's if
+    // (no book, no note there). Off: one config read.
+    if (sPlayerbotAIConfig.planner)
+        plannerRewardNotes_.Note(questId);
 }
 
 bool PlayerbotAI::InQuestBookScope()
@@ -4212,6 +4216,16 @@ void PlayerbotAI::HandleBotOutgoingPacket(const WorldPacket& packet)
 		// twow-repo#724 (logging only): Player::SendQuestReward writes the quest id first. Read here on the bot's thread (packet
 		// inbox, before the quest book's snapshot); the book labels the quest turned_in when it left the log (repeatable quests are
 		// never "rewarded" by Player::GetQuestRewardStatus).
+		// A3 step 3 planner P-2b (AiPlayerbot.Planner, default 0; OB-10 B2): the planner's own reward note, with or without a quest
+		// book (the planner labels a repeatable quest that left the log quest_reward by it). Off: one config read.
+		if (sPlayerbotAIConfig.planner && packet.size() >= 4)
+		{
+			WorldPacket p(packet);
+			p.rpos(0);
+			uint32 plannerQuestId;
+			p >> plannerQuestId;
+			plannerRewardNotes_.Note(plannerQuestId);
+		}
 		if (questBook_ && packet.size() >= 4)
 		{
 			WorldPacket p(packet);

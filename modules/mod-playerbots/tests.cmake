@@ -2010,7 +2010,8 @@ add_executable(planner_shadow_policy_tests
   "${PB_MODULE_DIR}/t/planner_shadow_policy_tests.cpp")
 
 target_include_directories(planner_shadow_policy_tests PRIVATE
-  "${PB_MODULE_DIR}/src/playerbot")
+  "${PB_MODULE_DIR}/src/playerbot"
+  "${PB_MODULE_DIR}/src")   # P-2b: PlannerShadow.h (the reward note, the complete marks) includes "playerbot/..."
 
 set_target_properties(planner_shadow_policy_tests PROPERTIES
   RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")

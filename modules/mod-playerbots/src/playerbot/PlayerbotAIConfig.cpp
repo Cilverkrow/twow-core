@@ -1050,6 +1050,36 @@ bool PlayerbotAIConfig::Initialize()
     }
     // A3 step 3 planner P-1: the band table path (BandTable.cpp); "" = off.
     plannerBandTable = config.GetStringDefault("AiPlayerbot.Planner.BandTable", "");
+    // A3 step 3 planner P-2b (A3-S3-PLANER-ENTWURF.md v0.3 section 8): the planner in the supervisor tick (PlannerShadow.cpp).
+    planner = uint32(config.GetIntDefault("AiPlayerbot.Planner", 0));
+    if (planner > 2)
+    {
+        sLog.outError("[Planner] config key=Planner value=%u result=off (0 off, 1 shadow, 2 plan pick acts)", planner);
+        planner = 0;
+    }
+    plannerMargin = config.GetFloatDefault("AiPlayerbot.Planner.Margin", 15.0f);
+    plannerMinBindSec = uint32(config.GetIntDefault("AiPlayerbot.Planner.MinBindSec", 120));
+    plannerMaxIdleSec = uint32(config.GetIntDefault("AiPlayerbot.Planner.MaxIdleSec", 300));
+    plannerMinDwellSec = uint32(config.GetIntDefault("AiPlayerbot.Planner.MinDwellSec", 120));
+    plannerMaxCandidates = uint32(config.GetIntDefault("AiPlayerbot.Planner.MaxCandidates", 32));
+    plannerBudgetMs = uint32(config.GetIntDefault("AiPlayerbot.Planner.BudgetMs", 2));
+    plannerDeadWaitMaxSec = uint32(config.GetIntDefault("AiPlayerbot.Planner.DeadWaitMaxSec", 600));
+    plannerDeadProbeYards = config.GetFloatDefault("AiPlayerbot.Planner.DeadProbeYards", 40.0f);
+    plannerRouteFactor = config.GetFloatDefault("AiPlayerbot.Planner.RouteFactor", 1.3f);
+    plannerDangerCells = uint32(config.GetIntDefault("AiPlayerbot.Planner.DangerCells", 8));
+    plannerDangerTopN = uint32(config.GetIntDefault("AiPlayerbot.Planner.DangerTopN", 6));
+    plannerDangerPenalty = config.GetFloatDefault("AiPlayerbot.Planner.DangerPenalty", 0.0f);
+    plannerSwitchCost = config.GetFloatDefault("AiPlayerbot.Planner.SwitchCost", 0.0f);
+    plannerBrainBonusMax = config.GetFloatDefault("AiPlayerbot.Planner.BrainBonusMax", 0.0f);
+    plannerTurnInWorkSec = config.GetFloatDefault("AiPlayerbot.Planner.TurnInWorkSec", 0.0f);
+    plannerGrindKillsPerMin = config.GetFloatDefault("AiPlayerbot.Planner.GrindKillsPerMin", 2.0f);
+    plannerMaxHoldSec = uint32(config.GetIntDefault("AiPlayerbot.Planner.MaxHoldSec", 1800));
+    plannerRepeatableRetakeSec = uint32(config.GetIntDefault("AiPlayerbot.Planner.RepeatableRetakeSec", 1800));
+    plannerRepeatableMaxPerHour = uint32(config.GetIntDefault("AiPlayerbot.Planner.RepeatableMaxPerHour", 1));
+    plannerRelocMinYards = config.GetFloatDefault("AiPlayerbot.Planner.RelocMinYards", 60.0f);
+    plannerRelocSlack = config.GetFloatDefault("AiPlayerbot.Planner.RelocSlack", 1.5f);
+    if (plannerMaxCandidates > 64)
+        plannerMaxCandidates = 64;   // the candidate array of the tick (PlannerShadow.cpp kMaxCandidates)
     // A3 step 5 (ADR-0041): the combat rule, parts HealerStart, PriestOverlay, RestBeforePull and ProgressGuard (CombatRulePolicy.h); an unknown
     // mode is off.
     combatRuleHealerStart = uint32(config.GetIntDefault("AiPlayerbot.CombatRule.HealerStart", 0));
@@ -2321,6 +2351,28 @@ bool PlayerbotAIConfig::Initialize()
             {"Perf.BindAreaFromHomebind", Value(perfBindAreaFromHomebind)},
             {"Perf.DispatchPrecomputedPath", Value(perfDispatchPrecomputedPath)},
             {"Perf.RouteTimeTrace", Value(perfRouteTimeTrace)},
+            {"Planner", Value(planner)},
+            {"Planner.BrainBonusMax", Value(plannerBrainBonusMax)},
+            {"Planner.BudgetMs", Value(plannerBudgetMs)},
+            {"Planner.DangerCells", Value(plannerDangerCells)},
+            {"Planner.DangerPenalty", Value(plannerDangerPenalty)},
+            {"Planner.DangerTopN", Value(plannerDangerTopN)},
+            {"Planner.DeadProbeYards", Value(plannerDeadProbeYards)},
+            {"Planner.DeadWaitMaxSec", Value(plannerDeadWaitMaxSec)},
+            {"Planner.GrindKillsPerMin", Value(plannerGrindKillsPerMin)},
+            {"Planner.Margin", Value(plannerMargin)},
+            {"Planner.MaxCandidates", Value(plannerMaxCandidates)},
+            {"Planner.MaxHoldSec", Value(plannerMaxHoldSec)},
+            {"Planner.MaxIdleSec", Value(plannerMaxIdleSec)},
+            {"Planner.MinBindSec", Value(plannerMinBindSec)},
+            {"Planner.MinDwellSec", Value(plannerMinDwellSec)},
+            {"Planner.RelocMinYards", Value(plannerRelocMinYards)},
+            {"Planner.RelocSlack", Value(plannerRelocSlack)},
+            {"Planner.RepeatableMaxPerHour", Value(plannerRepeatableMaxPerHour)},
+            {"Planner.RepeatableRetakeSec", Value(plannerRepeatableRetakeSec)},
+            {"Planner.RouteFactor", Value(plannerRouteFactor)},
+            {"Planner.SwitchCost", Value(plannerSwitchCost)},
+            {"Planner.TurnInWorkSec", Value(plannerTurnInWorkSec)},
             {"PotionFind.BySpell", Value(potionFindBySpell)},
             {"ProfessionTraining.NearRadius", Value(professionTrainingNearRadius)},
             {"ProfessionTraining.Travel", Value(professionTrainingTravel)},

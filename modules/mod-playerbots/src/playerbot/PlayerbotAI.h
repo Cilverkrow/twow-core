@@ -28,6 +28,7 @@
 #include "playerbot/StallGuardPolicy.h"
 #include "playerbot/CombatRulePolicy.h"   // A3 step 5 (CombatRule.ProgressGuard): the combat progress clock
 #include "playerbot/SupervisorPolicy.h"   // A3 step 5: the CombatLoop event a ProgressGuard break leaves (plain data)
+#include "playerbot/PlannerShadow.h"      // A3 step 3 planner P-2b: the reward note and the relocation source (plain data)
 #include "playerbot/ManagerInboxPolicy.h"   // A3 step 6 T30-0: the last group edge this bot posted (plain data)
 #include <atomic>
 #include <functional>
@@ -1375,6 +1376,17 @@ public:
     // twow-repo#724 (logging only): the bot rewarded this quest without a reward packet (RewardQuest with announce = false);
     // the quest book (active or shadow, if made) labels it turned_in when it left the log. Bot thread only.
     void NoteQuestRewarded(uint32 questId);
+    // A3 step 3 planner P-2b (AiPlayerbot.Planner, default 0; OB-10 B2): the planner's own reward note, filled by the two reward
+    // sources with or without a quest book, taken by Supervisor::PlanTick. And the source of the last position jump (CLI-PATH
+    // R9-2 sets it at the teleport sites; P-2b has no setter, so a jump is "unknown"); PlanTick reads and clears it. Bot thread only.
+    ai::planner::RewardNotes& PlannerRewardNotes() { return plannerRewardNotes_; }
+    void SetLastRelocSource(ai::planner::RelocSource source) { lastRelocSource_ = source; }
+    ai::planner::RelocSource TakeLastRelocSource()
+    {
+        ai::planner::RelocSource const source = lastRelocSource_;
+        lastRelocSource_ = ai::planner::RelocSource::Unknown;
+        return source;
+    }
     // A persistent roster bot without a real player master: the population of the quest book (as quest_accept::SkipForRosterBot).
     bool InQuestBookScope();
     // A3 step 2 H5 (QuestNeedPolicy.h, AiPlayerbot.QuestBook.NeedPerObjective, default 0): part (a) applies to this bot (switch first,
@@ -1535,6 +1547,8 @@ protected:
     std::unique_ptr<ai::supervisor::Supervisor> supervisor_;
     // A3 step 2 (ADR-0041, AiPlayerbot.QuestBook, default 0): nullptr while neither the switch nor the shadow applies to this bot.
     std::unique_ptr<ai::questbook::QuestBook> questBook_;
+    ai::planner::RewardNotes plannerRewardNotes_;                                    // A3 step 3 planner P-2b (OB-10 B2)
+    ai::planner::RelocSource lastRelocSource_ = ai::planner::RelocSource::Unknown;   // A3 step 3 planner P-2b (CLI-PATH R9-2)
     // A3 step 2 H5 (AiPlayerbot.QuestBook.NeedPerObjective, default 0): nullptr until .Log or part (b) needs it; memory only.
     std::unique_ptr<ai::quest_need::BotState> questNeed_;
     void QuestNeedWriteHour(uint32 hourStart);

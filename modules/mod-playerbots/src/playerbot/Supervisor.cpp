@@ -51,6 +51,7 @@ void Supervisor::Tick(std::uint32_t nowMs, std::uint32_t arbiter)
     }
     if (arbiter >= 1)
         ProbeTick(nowMs, arbiter);
+    PlanTick(nowMs, arbiter);
 }
 
 // Mailbox pair (SupervisorMail.cpp): no mail anywhere = one atomic load. The drained events are counted by the mailbox. A3 step 3

@@ -986,6 +986,31 @@ public:
     // A3 step 3 planner P-1 (AiPlayerbot.Planner.BandTable, default ""): path of the planner's band table (BandTable.cpp). Read
     // once at boot, fail closed; "" = no file I/O, no line, no table (the planner then has no zone term).
     std::string plannerBandTable;
+    // A3 step 3 planner P-2b (A3-S3-PLANER-ENTWURF.md v0.3 section 8, frozen d6e51878; AiPlayerbot.Planner, default 0): 0 off,
+    // 1 shadow (the planner plans and counts, writes nothing), 2 the plan pick acts (P-3; until then 2 is read as 1). Above 2 is
+    // off. The parameters below are the PREREG's; the defaults are the draft's proposals.
+    uint32 planner = 0;
+    float plannerMargin = 15.0f;
+    uint32 plannerMinBindSec = 120;
+    uint32 plannerMaxIdleSec = 300;
+    uint32 plannerMinDwellSec = 120;   // P-3: the QUEST/GRIND dwell of Decide(..., Requester::Planner); read, echoed, unused in P-2
+    uint32 plannerMaxCandidates = 32;
+    uint32 plannerBudgetMs = 2;
+    uint32 plannerDeadWaitMaxSec = 600;
+    float plannerDeadProbeYards = 40.0f;
+    float plannerRouteFactor = 1.3f;
+    uint32 plannerDangerCells = 8;
+    uint32 plannerDangerTopN = 6;
+    float plannerDangerPenalty = 0.0f;
+    float plannerSwitchCost = 0.0f;
+    float plannerBrainBonusMax = 0.0f;
+    float plannerTurnInWorkSec = 0.0f;
+    float plannerGrindKillsPerMin = 2.0f;
+    uint32 plannerMaxHoldSec = 1800;
+    uint32 plannerRepeatableRetakeSec = 1800;
+    uint32 plannerRepeatableMaxPerHour = 1;
+    float plannerRelocMinYards = 60.0f;
+    float plannerRelocSlack = 1.5f;
     // A3 step 5 (ADR-0041, OB-00 07.11.2026): the combat rule (CombatRulePolicy.h, CombatRule.cpp), one switch per part.
     // HealerStart: a holy paladin / restoration druid may attack like a healer with "offdps" (their contexts have no offdps
     // creator, so the healer gate refused every attack). 0 off (default, the old rule), 1 all, 2 cohort B, 3 cohort A; other = 0.

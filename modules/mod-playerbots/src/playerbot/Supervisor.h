@@ -3,6 +3,7 @@
 #include "playerbot/SupervisorPolicy.h"
 #include "playerbot/SupervisorShadow.h"
 #include "playerbot/ArbiterLanePolicy.h"
+#include "playerbot/PlannerShadow.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -29,19 +30,6 @@ class TravelTarget;
 // T02-GROUP A/B. Legacy writers are deleted only after adoption.
 namespace ai::supervisor
 {
-// R5 target memory: where the bot was and why a target was closed (filled from the behaviour pairs on).
-struct TargetMemory
-{
-    std::uint32_t destId = 0;
-    std::uint32_t mapId = 0;
-    float x = 0.0f;
-    float y = 0.0f;
-    std::uint32_t arrivedMs = 0;
-    std::uint32_t closedUntilMs = 0;
-    std::uint8_t closeReason = 0;
-};
-constexpr std::size_t kTargetMemorySlots = 8;
-
 class Supervisor
 {
 public:
@@ -99,6 +87,12 @@ public:
     void NoteWriter(WriterId writer, std::uint32_t gen) { lastWriter_ = writer; lastWriterGen_ = gen; }
     void AdoptGroupOwner(std::uint32_t gen, EnforceCount why);   // SupervisorGroup.cpp; the only group lane owner write
 
+    // ---- A3 step 3 planner P-2b (AiPlayerbot.Planner, default 0; A3-S3-PLANER-ENTWURF.md v0.3) ------------------------------
+    // The planner state for the shadow comparison after SetBestTarget (ai::planner_shadow::NoteChoice, PlannerShadow.cpp), bot
+    // thread only; and the writer of the last admitted write (overwritten_shadow).
+    ai::planner::PlanState& Plan() { return plan_; }
+    WriterId LastWriter() const { return lastWriter_; }
+
 private:
     // Mailbox pair: takes this bot's mail, oldest first, once per tick; the mailbox counts it (GroupDirective separately).
     // T02-GROUP: the drained events go to HandleMail (SupervisorGroup.cpp), which only keeps the newest group directive.
@@ -113,6 +107,11 @@ private:
     // A3 step 3 T02-a: the probe (AiPlayerbot.Supervisor.ArbiterProbe). Defined in SupervisorEnforce.cpp next to the gate it
     // tests; at arbiter 2 it tries three denied writes as Select under a group owner, at 1 it only counts the paired control.
     void ProbeTick(std::uint32_t nowMs, std::uint32_t arbiter);
+    // A3 step 3 planner P-2b (AiPlayerbot.Planner, default 0): the planner, the last statement of Tick. Defined in
+    // PlannerShadow.cpp (config, log and the game reads live there). Off: one config read. On: the snapshot comparison every
+    // tick (also in Group, Rest and Passive, so no old event fires on the return), a plan only in Quest or Grind on an event or
+    // after MaxIdleSec. It writes nothing of the bot: [Plan] and [PlanMin] lines and its own state only.
+    void PlanTick(std::uint32_t nowMs, std::uint32_t arbiter);
 
     // ---- A3 step 3 T02-GROUP (AiPlayerbot.Supervisor.Arbiter = 2, BotGroups.Manager.Types > 0; default 0) ----------------
     // The bot side of the group manager, defined in SupervisorGroup.cpp (design A3-S3-T02-ENTWURF.md v0.4.3 section 7), bot
@@ -147,7 +146,9 @@ private:
     Mode mode_ = Mode::Passive;
     Phase phase_ = Phase::Plan;
     std::uint64_t ticks_ = 0;
-    [[maybe_unused]] TargetMemory memory_[kTargetMemorySlots];
+    // A3 step 3 planner P-2b (AiPlayerbot.Planner, default 0): the planner state (PlannerShadow.h; R5 target memory included),
+    // bot thread only. It replaces the unused scaffold slot of the R5 target memory.
+    ai::planner::PlanState plan_;
     ShadowState shadow_;
     // A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2, default 0).
     bool enforce_ = false;
