@@ -94,14 +94,30 @@ constexpr std::array<Row, 6> L5OwnHubTable{{
     { 6, 5, 10, Step::OwnHub, OwnHubMinDistance, { 6747, 0 } },   // tauren: Bloodhoof Village
 }};
 
+// twow-repo#575 RescueHub LevelFloor (AiPlayerbot.QuestRescue.HomeHubs.LevelFloor, OB-00 19.11.2026; finding
+// dauerb-silverpine-20261119/ADDENDUM-DAUERB-Q1-CORRECTION-20261119.md 8be4a03c, census rescue-hub-floor/CENSUS-RESCUEHUB-DAUERB-20261119.md
+// 43a83b6c): the undead next_zone hub, The Sepulcher (Innkeeper Bates), lies in an area of level 10 (AreaTable 228). DAUER-B: 8 of 11 undead
+// rescued there at L5-7 never levelled again (no quest for their level, hearth rebound there). These rows keep an undead L5-9 at its own
+// start-zone hub (Brill, as the L1-4 row) and send it to the Sepulcher from L10. Night elves keep Auberdine (DAUER-B: 9 of 9 rescued at
+// L7-10 levelled on, OB-00 19.11.). Seen only with the sub-key (levelFloor) and searched before the main table.
+constexpr std::array<Row, 2> LevelFloorTable{{
+    { 5, 5, 9, Step::OwnHub, OwnHubMinDistance, { 5688, 0 } },        // undead L5-9: Innkeeper Renee 28474, Brill
+    { 5, 10, 10, Step::NextZone, NextZoneMinDistance, { 6739, 0 } },  // undead L10: Innkeeper Bates 17865, The Sepulcher
+}};
+
 // The row for a bot, or nullptr (= legacy). Goblins have no row: their island rules (CustomRaceStartZones) decide. The high-elf row
 // needs CustomRaceStartZones (customStarts): without it high elves live at the proxy start Northshire and avoid the Thalassian
 // Highlands, so the legacy targets apply (SZM adoption review 10.11.2026). l5OwnHub (#703 item 2) adds the L5-10 own-hub rows; the
-// main table is searched first, so night elf / undead keep their next_zone rows.
-inline Row const* RowFor(std::uint32_t race, std::uint32_t level, bool customStarts, bool l5OwnHub = false)
+// main table is searched first, so night elf / undead keep their next_zone rows. levelFloor (RescueHub LevelFloor) puts its undead
+// rows before the main table; it has no row for the races of the L5 table, so the two flags never compete for a bot.
+inline Row const* RowFor(std::uint32_t race, std::uint32_t level, bool customStarts, bool l5OwnHub = false, bool levelFloor = false)
 {
     if (race == HighElfRace && !customStarts)
         return nullptr;
+    if (levelFloor)
+        for (Row const& row : LevelFloorTable)
+            if (row.race == race && level >= row.minLevel && level <= row.maxLevel)
+                return &row;
     for (Row const& row : Table)
         if (row.race == race && level >= row.minLevel && level <= row.maxLevel)
             return &row;
@@ -112,11 +128,15 @@ inline Row const* RowFor(std::uint32_t race, std::uint32_t level, bool customSta
     return nullptr;
 }
 
-// True for a row of the L5-10 own-hub table (#703 item 2).
+// True for a row of the L5-10 own-hub table (#703 item 2), and for the L5-9 own-hub row of the LevelFloor table: a bot that already
+// stands at that hub gets no target (at_hub), not the legacy targets.
 inline bool IsL5OwnHubRow(Row const* row)
 {
     for (Row const& r : L5OwnHubTable)
         if (row == &r)
+            return true;
+    for (Row const& r : LevelFloorTable)
+        if (row == &r && r.step == Step::OwnHub)
             return true;
     return false;
 }

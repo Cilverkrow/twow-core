@@ -7676,6 +7676,8 @@ std::vector<WorldLocation> RandomPlayerbotMgr::QuestRescueTargets(Player* bot)
     // undead L5-10 to the next zone on the home continent unless R1 gates the level. No row or no spawn left: the legacy targets.
     // twow-repo#703 item 2 (HomeHubs.L5OwnHub, default 0): the L5-10 own-hub rows; a bot that already stands at that hub gets no
     // target (at_hub) instead of the legacy targets (another race's start valley).
+    // twow-repo#575 RescueHub LevelFloor (HomeHubs.LevelFloor, default 0): undead L5-9 stay at Brill (at_hub as above), the Sepulcher
+    // (area level 10) only from L10.
     if (startZoneRules && ai::cohort::Applies(sPlayerbotAIConfig.questRescueHomeHubs, bot->GetGUIDLow()))
     {
         namespace rh = ai::rescue_hub;
@@ -7683,7 +7685,8 @@ std::vector<WorldLocation> RandomPlayerbotMgr::QuestRescueTargets(Player* bot)
         bool const startZoneGated = ai::zone_keep::StartZoneGated(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevel, level) &&
             ai::cohort::Applies(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevelCohort, bot->GetGUIDLow());
         bool const l5OwnHub = ai::cohort::Applies(sPlayerbotAIConfig.questRescueHomeHubsL5OwnHub, bot->GetGUIDLow());
-        rh::Row const* const row = rh::RowFor(bot->getRace(), level, sPlayerbotAIConfig.customRaceStartZones, l5OwnHub);
+        bool const levelFloor = ai::cohort::Applies(sPlayerbotAIConfig.questRescueHomeHubsLevelFloor, bot->GetGUIDLow());
+        rh::Row const* const row = rh::RowFor(bot->getRace(), level, sPlayerbotAIConfig.customRaceStartZones, l5OwnHub, levelFloor);
         bool atHub = false;
         if (row && !rh::Usable(row, startZoneGated))
             counters.gated.fetch_add(1, std::memory_order_relaxed);
@@ -7728,7 +7731,8 @@ std::vector<WorldLocation> RandomPlayerbotMgr::QuestRescueTargets(Player* bot)
             sLog.outBasic("[RescueHubMin] own_hub=%u next_zone=%u fallback=%u gated=%u at_hub=%u", counters.TakeHub(rh::Step::OwnHub),
                 counters.TakeHub(rh::Step::NextZone), counters.fallback.exchange(0, std::memory_order_relaxed),
                 counters.gated.exchange(0, std::memory_order_relaxed), counters.atHub.exchange(0, std::memory_order_relaxed));
-        // at_hub (#703 item 2): no target, the rescue ends as no_target (only an L5-10 own-hub row, only with L5OwnHub).
+        // at_hub (#703 item 2): no target, the rescue ends as no_target (only an L5-10 own-hub row with L5OwnHub, or the undead L5-9 row
+        // with LevelFloor).
         if (!targets.empty() || atHub)
             return targets;
     }
