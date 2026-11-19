@@ -72,6 +72,7 @@ bool RewardAction::Reward(Player* requester, uint32 itemId, Object* questGiver)
                 if (itemId == pRewardItem->ItemId)
                 {
                     bot->RewardQuest(pQuest, rewardIdx, questGiver ? ToWorldObject(questGiver) : nullptr, false);
+                    ai->NoteQuestRewarded(questID);   // twow-repo#724: announce = false sends no reward packet
 
                     std::map<std::string, std::string> args;
                     args["%item"] = chat->formatItem(pRewardItem);

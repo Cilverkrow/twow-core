@@ -1372,6 +1372,9 @@ public:
     // A3 step 2 (ADR-0041, AiPlayerbot.QuestBook, default 0): the active quest book (a roster bot on its own in the switch's
     // cohort), or null - then every caller keeps its old rule. A shadow book is never returned. Bot thread only.
     ai::questbook::QuestBook* ActiveQuestBook() const;
+    // twow-repo#724 (logging only): the bot rewarded this quest without a reward packet (RewardQuest with announce = false);
+    // the quest book (active or shadow, if made) labels it turned_in when it left the log. Bot thread only.
+    void NoteQuestRewarded(uint32 questId);
     // A persistent roster bot without a real player master: the population of the quest book (as quest_accept::SkipForRosterBot).
     bool InQuestBookScope();
     // A3 step 2 H5 (QuestNeedPolicy.h, AiPlayerbot.QuestBook.NeedPerObjective, default 0): part (a) applies to this bot (switch first,

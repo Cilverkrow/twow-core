@@ -213,6 +213,29 @@ int main()
         Require(std::strcmp(NoReasonName(NoReason::AboveWindow), "above_window") == 0, "no-reason names");
     }
 
+    // 10b) twow-repo#724: the turn-in label (a repeatable quest is never "rewarded"; a reward note is the proof).
+    {
+        Require(ClassifyLeft(true, false, false) == LeftReason::TurnedIn, "rewarded status -> turned_in");
+        Require(ClassifyLeft(false, true, false) == LeftReason::TurnedIn, "reward note (repeatable) -> turned_in");
+        Require(ClassifyLeft(false, true, true) == LeftReason::TurnedIn, "a reward note wins over failed");
+        Require(ClassifyLeft(false, false, true) == LeftReason::Failed, "failed");
+        Require(ClassifyLeft(false, false, false) == LeftReason::Dropped, "no reward, no note -> dropped");
+
+        std::uint32_t ids[3] = {};
+        std::size_t n = 0;
+        n = NoteQuestId(ids, n, 3, 889);
+        n = NoteQuestId(ids, n, 3, 889);
+        Require(n == 1 && HasQuestId(ids, n, 889), "a repeat is kept once");
+        n = NoteQuestId(ids, n, 3, 0);
+        Require(n == 1, "quest 0 is ignored");
+        n = NoteQuestId(ids, n, 3, 5042);
+        n = NoteQuestId(ids, n, 3, 5043);
+        n = NoteQuestId(ids, n, 3, 5044);
+        Require(n == 3 && !HasQuestId(ids, n, 889) && HasQuestId(ids, n, 5042) && HasQuestId(ids, n, 5044), "full: oldest dropped");
+        Require(!HasQuestId(ids, 0, 5042) && !HasQuestId(nullptr, 3, 5042), "empty / null list");
+        Require(NoteQuestId(nullptr, 2, 3, 5045) == 2 && NoteQuestId(ids, 1, 0, 5045) == 1, "null list / cap 0 unchanged");
+    }
+
     // 11) QB4 KPI: complete but not turned in.
     {
         Require(!ShouldReportStale(0, 5000000, 1800000, false), "not complete");
