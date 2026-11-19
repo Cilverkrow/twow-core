@@ -2020,6 +2020,20 @@ add_test(NAME band_table_policy
   COMMAND band_table_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# A3 step 3 planner P-2a (AiPlayerbot.Planner, default 0): the pure rules of the planner in the supervisor tick (PlannerShadowPolicy.h).
+add_executable(planner_shadow_policy_tests
+  "${PB_MODULE_DIR}/t/planner_shadow_policy_tests.cpp")
+
+target_include_directories(planner_shadow_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(planner_shadow_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME planner_shadow_policy
+  COMMAND planner_shadow_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # #628: ad-hoc groups form and leave on the world thread (AdHoc.WorldThread).
 add_test(NAME adhoc_group_world_thread_source_contract
   COMMAND "${CMAKE_COMMAND}"
