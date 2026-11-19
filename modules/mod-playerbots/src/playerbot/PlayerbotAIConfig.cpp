@@ -910,6 +910,13 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[RescueHub] config key=HomeHubs.L5OwnHub value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", questRescueHomeHubsL5OwnHub);
         questRescueHomeHubsL5OwnHub = 0;
     }
+    // twow-repo#575 RescueHub LevelFloor (OB-00 19.11.2026): undead L5-9 at the own hub, the Sepulcher from L10, only where HomeHubs applies.
+    questRescueHomeHubsLevelFloor = config.GetIntDefault("AiPlayerbot.QuestRescue.HomeHubs.LevelFloor", 0);
+    if (questRescueHomeHubsLevelFloor > 3)
+    {
+        sLog.outError("[RescueHub] config key=HomeHubs.LevelFloor value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", questRescueHomeHubsLevelFloor);
+        questRescueHomeHubsLevelFloor = 0;
+    }
     grindAvoidMaxDeaths = config.GetIntDefault("AiPlayerbot.GrindAvoid.MaxDeaths", 0);
     grindAvoidWindowSeconds = std::max<uint32>(60, config.GetIntDefault("AiPlayerbot.GrindAvoid.WindowSeconds", 3600));
     grindAvoidSeconds = std::max<uint32>(60, config.GetIntDefault("AiPlayerbot.GrindAvoid.AvoidSeconds", 3600));
@@ -2400,6 +2407,7 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestRelation.GameObjectChanceDrops", Value(questRelationGameObjectChanceDrops)},
             {"QuestRescue.HomeHubs", Value(questRescueHomeHubs)},
             {"QuestRescue.HomeHubs.L5OwnHub", Value(questRescueHomeHubsL5OwnHub)},
+            {"QuestRescue.HomeHubs.LevelFloor", Value(questRescueHomeHubsLevelFloor)},
             {"QuestRescue.KeepRequestWhenFull", Value(questRescueKeepRequestWhenFull)},
             {"QuestRescue.NoTargetFreeSlot", Value(questRescueNoTargetFreeSlot)},
             {"QuestTurnIn.RepeatableAutoComplete", Value(questTurnInRepeatableAutoComplete)},

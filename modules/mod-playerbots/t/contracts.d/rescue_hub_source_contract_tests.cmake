@@ -6,6 +6,9 @@ cmake_policy(VERSION 3.16)
 # twow-repo#703 item 2 (design szf/DESIGN-703-2-VALLEY-L5-20261111.md d9a6539c, OB-10 review 49953b8c): the sub-key
 # AiPlayerbot.QuestRescue.HomeHubs.L5OwnHub (cohort modes, default 0): the L5-10 own-hub rows only behind the flag, the at_hub rule
 # only for those rows (spawns, all near: no target, no legacy), the legacy fallback only without any spawn.
+# twow-repo#575 RescueHub LevelFloor (OB-00 19.11.2026; census rescue-hub-floor/CENSUS-RESCUEHUB-DAUERB-20261119.md 43a83b6c): the sub-key
+# AiPlayerbot.QuestRescue.HomeHubs.LevelFloor (cohort modes, default 0): undead L5-9 at the own hub Brill (at_hub rule), the Sepulcher
+# only from L10, searched before the main table and only behind the flag; night elves unchanged.
 
 if(NOT DEFINED PB_SOURCE_DIR)
   message(FATAL_ERROR "rescue hub: PB_SOURCE_DIR is required")
@@ -102,12 +105,12 @@ require_order("${targets_fn}" "ai::cohort::Applies(sPlayerbotAIConfig.questRescu
   "UsesGoblinStartRescue(bot->getRace(), level)" "table block before the goblin island rules")
 between("${targets_fn}" "ai::cohort::Applies(sPlayerbotAIConfig.questRescueHomeHubs" "// twow-repo#601 owner rule R1" block)
 require_text("${block}" "ai::zone_keep::StartZoneGated(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevel, level) &&\n            ai::cohort::Applies(sPlayerbotAIConfig.questFirstProgressionStartZoneMinLevelCohort, bot->GetGUIDLow());" "the bot's R1 gate, as R1 computes it")
-require_text("${block}" "bool const l5OwnHub = ai::cohort::Applies(sPlayerbotAIConfig.questRescueHomeHubsL5OwnHub, bot->GetGUIDLow());\n        rh::Row const* const row = rh::RowFor(bot->getRace(), level, sPlayerbotAIConfig.customRaceStartZones, l5OwnHub);" "row lookup with the custom starts switch and the L5 flag of the bot's cohort")
+require_text("${block}" "bool const l5OwnHub = ai::cohort::Applies(sPlayerbotAIConfig.questRescueHomeHubsL5OwnHub, bot->GetGUIDLow());\n        bool const levelFloor = ai::cohort::Applies(sPlayerbotAIConfig.questRescueHomeHubsLevelFloor, bot->GetGUIDLow());\n        rh::Row const* const row = rh::RowFor(bot->getRace(), level, sPlayerbotAIConfig.customRaceStartZones, l5OwnHub, levelFloor);" "row lookup with the custom starts switch and the L5 and LevelFloor flags of the bot's cohort")
 # SZM adoption review (10.11.2026): the start-zone rules of the rescue act only on roster bots without a real player master (as
 # StartZoneHolds), and the high-elf row needs CustomRaceStartZones.
 require_order("${targets_fn}" "bool const startZoneRules = IsPersistentRosterMember(bot->GetGUIDLow()) && !(rescueAi && rescueAi->HasRealPlayerMaster());"
   "if (startZoneRules && ai::cohort::Applies(sPlayerbotAIConfig.questRescueHomeHubs, bot->GetGUIDLow()))" "HomeHubs only for roster bots on their own")
-require_text("${policy}" "inline Row const* RowFor(std::uint32_t race, std::uint32_t level, bool customStarts, bool l5OwnHub = false)\n{\n    if (race == HighElfRace && !customStarts)\n        return nullptr;" "high-elf row only with custom starts")
+require_text("${policy}" "inline Row const* RowFor(std::uint32_t race, std::uint32_t level, bool customStarts, bool l5OwnHub = false, bool levelFloor = false)\n{\n    if (race == HighElfRace && !customStarts)\n        return nullptr;" "high-elf row only with custom starts (before every table)")
 forbid_text("${targets_fn}" "rh::RowFor(bot->getRace(), level);" "a row lookup without the custom starts switch")
 require_text("${block}" "if (row && !rh::Usable(row, startZoneGated))" "R1 holds back next_zone")
 require_text("${block}" "if (botPos.distance(WorldPosition(spawn)) > row->minDistance)" "per-row distance")
@@ -162,5 +165,28 @@ require_text("${config_h}" "uint32 questRescueHomeHubsL5OwnHub = 0;" "L5 key def
 require_text("${config_cpp}" "questRescueHomeHubsL5OwnHub = config.GetIntDefault(\"AiPlayerbot.QuestRescue.HomeHubs.L5OwnHub\", 0);\n    if (questRescueHomeHubsL5OwnHub > 3)\n    {\n        sLog.outError(\"[RescueHub] config key=HomeHubs.L5OwnHub value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)\", questRescueHomeHubsL5OwnHub);\n        questRescueHomeHubsL5OwnHub = 0;\n    }" "L5 key loader: cohort modes, other = off, logged")
 require_order("${config_cpp}" "{\"QuestRescue.HomeHubs\", Value(questRescueHomeHubs)},\n            {\"QuestRescue.HomeHubs.L5OwnHub\", Value(questRescueHomeHubsL5OwnHub)},\n" "{\"QuestRescue.KeepRequestWhenFull\"" "echo, sorted")
 require_text("${conf_dist}" "# Cohort mode: 0 = off (default, today's table), 1 = all bots, 2 = cohort B (odd guid), 3 = cohort A (even guid); other values act like 0.\nAiPlayerbot.QuestRescue.HomeHubs.L5OwnHub = 0\n" "dist default 0 with the mode text")
+
+# 5. twow-repo#575 RescueHub LevelFloor.
+#    a) The rows: undead only, L5-9 own hub Brill, L10 the Sepulcher; the main table keeps its undead / night-elf next_zone rows.
+require_text("${policy}" "constexpr std::array<Row, 2> LevelFloorTable{{\n    { 5, 5, 9, Step::OwnHub, OwnHubMinDistance, { 5688, 0 } },        // undead L5-9: Innkeeper Renee 28474, Brill\n    { 5, 10, 10, Step::NextZone, NextZoneMinDistance, { 6739, 0 } },  // undead L10: Innkeeper Bates 17865, The Sepulcher\n}};" "the LevelFloor rows (undead only)")
+between("${policy}" "constexpr std::array<Row, 2> LevelFloorTable{{" "}};" floor_rows)
+forbid_text("${floor_rows}" "{ 4," "a night-elf LevelFloor row (OB-00 19.11.: night elves keep Auberdine)")
+#    b) RowFor: the flag is a defaulted last parameter; the LevelFloor table once, behind the flag, before the main table.
+require_text("${policy}" "inline Row const* RowFor(std::uint32_t race, std::uint32_t level, bool customStarts, bool l5OwnHub = false, bool levelFloor = false)\n{\n    if (race == HighElfRace && !customStarts)\n        return nullptr;\n    if (levelFloor)\n        for (Row const& row : LevelFloorTable)" "LevelFloor table behind the flag, first")
+require_order("${rowfor}" "if (levelFloor)\n        for (Row const& row : LevelFloorTable)" "for (Row const& row : Table)" "LevelFloor before the main table")
+string(REGEX MATCHALL "LevelFloorTable" floor_refs "${rowfor}")
+list(LENGTH floor_refs floor_ref_count)
+if(NOT floor_ref_count EQUAL 1)
+  message(FATAL_ERROR "rescue hub: RowFor reads the LevelFloor table ${floor_ref_count} times (expected once, behind the flag)")
+endif()
+#    c) at_hub: the L5-9 own-hub row of the LevelFloor table only (the L10 next_zone row keeps today's fallback).
+require_text("${policy}" "    for (Row const& r : LevelFloorTable)\n        if (row == &r && r.step == Step::OwnHub)\n            return true;" "at_hub for the LevelFloor own-hub row only")
+forbid_text("${block}" "levelFloor = true" "the LevelFloor flag forced on")
+forbid_text("${targets_fn}" "l5OwnHub, true)" "the LevelFloor rows without the key")
+#    d) Config: default 0, cohort modes, an unknown mode is off and logged; echo sorted; dist 0.
+require_text("${config_h}" "uint32 questRescueHomeHubsLevelFloor = 0;" "LevelFloor key default 0")
+require_text("${config_cpp}" "questRescueHomeHubsLevelFloor = config.GetIntDefault(\"AiPlayerbot.QuestRescue.HomeHubs.LevelFloor\", 0);\n    if (questRescueHomeHubsLevelFloor > 3)\n    {\n        sLog.outError(\"[RescueHub] config key=HomeHubs.LevelFloor value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)\", questRescueHomeHubsLevelFloor);\n        questRescueHomeHubsLevelFloor = 0;\n    }" "LevelFloor key loader: cohort modes, other = off, logged")
+require_order("${config_cpp}" "{\"QuestRescue.HomeHubs.L5OwnHub\", Value(questRescueHomeHubsL5OwnHub)},\n            {\"QuestRescue.HomeHubs.LevelFloor\", Value(questRescueHomeHubsLevelFloor)},\n" "{\"QuestRescue.KeepRequestWhenFull\"" "echo, sorted")
+require_text("${conf_dist}" "# Cohort mode: 0 = off (default, today's table), 1 = all bots, 2 = cohort B (odd guid), 3 = cohort A (even guid); other values act like 0.\nAiPlayerbot.QuestRescue.HomeHubs.LevelFloor = 0\n" "LevelFloor dist default 0 with the mode text")
 
 message(STATUS "rescue hub source contract: ok")
