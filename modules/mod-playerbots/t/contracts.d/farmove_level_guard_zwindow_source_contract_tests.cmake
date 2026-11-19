@@ -1,11 +1,11 @@
 cmake_policy(VERSION 3.16)
 # twow-repo#575 / BOT-14 #703 item 5 (CLI-PATH 10.11.2026; design ws-10/cli-pathfinding/szf/DESIGN-LEVELGUARD-FALSEALARM-20261110.md
 # v2, OB-10 review a4f2daef, OB-00 decision (a) 10.11.): two sub-keys of AiPlayerbot.RosterFarMove.LevelGuard against false alarms,
-# both default 0 = the rule byte-for-byte:
+# both 0 = the rule byte-for-byte (defaults ZWindow 20 / SkipHarmless 1 since the LGX ADOPT 19.11.2026):
 #   .ZWindow (0 off, 5..100 yd, else 0 logged): a spawn counts only within ZWindow yd of the travel point's z (not the bot's);
 #   .SkipHarmless (0/1, else 0 logged): no-aggro / trigger spawns leave the grid; event-only spawns (GetGameEventId > 0) count
 #     only while their event is active; < 0 (a normal spawn an event removes) and 0 always count.
-# Pins: the keys (members, clamped logged reads, sorted echo, dist 0 / 0); with LevelGuard 0 neither sub-key has any effect (no
+# Pins: the keys (members 20 / 1, clamped logged reads, sorted echo, dist 1 / 20); with LevelGuard 0 neither sub-key has any effect (no
 # grid, the one Query site behind the guard's gate, no refresh without a grid, the minute counts inside the guard's block);
 # zWindow 0 = no z test; the event rule > 0 (no != 0, no GetGameEventId scan); the harmless skip and the event map only behind
 # SkipHarmless; the travel point's z; the active-event snapshot from the world thread; the line formats; the core accessor.
@@ -86,17 +86,17 @@ endfunction()
 function(check_all policy config_h config_cpp conf_dist choose move mgr gem out)
   set(r "")
 
-  # 1. Keys: members 0, clamped reads (logged), sorted echo after .Radius, dist 0 / 0 after .Radius.
-  need("${config_h}" "uint32 rosterFarMoveLevelGuardZWindow = 0;" "member ZWindow 0")
-  need("${config_h}" "uint32 rosterFarMoveLevelGuardSkipHarmless = 0;" "member SkipHarmless 0")
-  need("${config_cpp}" "    rosterFarMoveLevelGuardZWindow = config.GetIntDefault(\"AiPlayerbot.RosterFarMove.LevelGuard.ZWindow\", 0);\n    int32 const levelGuardZWindowRaw = int32(rosterFarMoveLevelGuardZWindow);\n    rosterFarMoveLevelGuardZWindow = ai::level_guard::ClampZWindow(levelGuardZWindowRaw);" "ZWindow read default 0, clamped")
-  need("${config_cpp}" "    rosterFarMoveLevelGuardSkipHarmless = config.GetIntDefault(\"AiPlayerbot.RosterFarMove.LevelGuard.SkipHarmless\", 0);\n    int32 const levelGuardSkipHarmlessRaw = int32(rosterFarMoveLevelGuardSkipHarmless);\n    rosterFarMoveLevelGuardSkipHarmless = ai::level_guard::ClampSkipHarmless(levelGuardSkipHarmlessRaw);" "SkipHarmless read default 0, clamped")
+  # 1. Keys: members 20 / 1, clamped reads (logged), sorted echo after .Radius, dist 1 / 20 after .Radius.
+  need("${config_h}" "uint32 rosterFarMoveLevelGuardZWindow = 20;" "member ZWindow 20")
+  need("${config_h}" "uint32 rosterFarMoveLevelGuardSkipHarmless = 1;" "member SkipHarmless 1")
+  need("${config_cpp}" "    rosterFarMoveLevelGuardZWindow = config.GetIntDefault(\"AiPlayerbot.RosterFarMove.LevelGuard.ZWindow\", 20);\n    int32 const levelGuardZWindowRaw = int32(rosterFarMoveLevelGuardZWindow);\n    rosterFarMoveLevelGuardZWindow = ai::level_guard::ClampZWindow(levelGuardZWindowRaw);" "ZWindow read default 20, clamped")
+  need("${config_cpp}" "    rosterFarMoveLevelGuardSkipHarmless = config.GetIntDefault(\"AiPlayerbot.RosterFarMove.LevelGuard.SkipHarmless\", 1);\n    int32 const levelGuardSkipHarmlessRaw = int32(rosterFarMoveLevelGuardSkipHarmless);\n    rosterFarMoveLevelGuardSkipHarmless = ai::level_guard::ClampSkipHarmless(levelGuardSkipHarmlessRaw);" "SkipHarmless read default 1, clamped")
   need("${config_cpp}" "[FarMoveGuard] config key=LevelGuard.ZWindow value=%d result=off (0 off, 5..100 yd)" "ZWindow log")
   need("${config_cpp}" "[FarMoveGuard] config key=LevelGuard.SkipHarmless value=%d result=off (0 off, 1 on)" "SkipHarmless log")
   need("${config_cpp}" "            {\"RosterFarMove.LevelGuard.Radius\", Value(rosterFarMoveLevelGuardRadius)},\n            {\"RosterFarMove.LevelGuard.SkipHarmless\", Value(rosterFarMoveLevelGuardSkipHarmless)},\n            {\"RosterFarMove.LevelGuard.ZWindow\", Value(rosterFarMoveLevelGuardZWindow)},\n            {\"Rotation.CastLosGate\"" "[ConfigEcho] entries, sorted")
   need("${conf_dist}" "\nAiPlayerbot.RosterFarMove.LevelGuard.Radius = 50\n" "dist radius")
-  need("${conf_dist}" "\nAiPlayerbot.RosterFarMove.LevelGuard.SkipHarmless = 0\nAiPlayerbot.RosterFarMove.LevelGuard.ZWindow = 0\n" "dist sub-keys 0 / 0")
-  order("${conf_dist}" "AiPlayerbot.RosterFarMove.LevelGuard.Radius = 50" "AiPlayerbot.RosterFarMove.LevelGuard.SkipHarmless = 0" "dist after .Radius")
+  need("${conf_dist}" "\nAiPlayerbot.RosterFarMove.LevelGuard.SkipHarmless = 1\nAiPlayerbot.RosterFarMove.LevelGuard.ZWindow = 20\n" "dist sub-keys 1 / 20")
+  order("${conf_dist}" "AiPlayerbot.RosterFarMove.LevelGuard.Radius = 50" "AiPlayerbot.RosterFarMove.LevelGuard.SkipHarmless = 1" "dist after .Radius")
 
   # 2. Pure rules: clamps, zWindow 0 = no z test, the event rule > 0, harmless flags, the slot -> event formula.
   need("${policy}" "inline uint32_t ClampZWindow(int32_t window) { return (window >= ZWindowMin && window <= ZWindowMax) ? uint32_t(window) : 0u; }" "ClampZWindow")
@@ -221,7 +221,9 @@ function(probe what file_var from to)
   set(caught ${n} PARENT_SCOPE)
 endfunction()
 probe("event rule != 0" policy "{ return eventId > 0; }" "{ return eventId != 0; }")
-probe("dist ZWindow 20" conf_dist "AiPlayerbot.RosterFarMove.LevelGuard.ZWindow = 0\n" "AiPlayerbot.RosterFarMove.LevelGuard.ZWindow = 20\n")
+probe("dist ZWindow 0" conf_dist "AiPlayerbot.RosterFarMove.LevelGuard.ZWindow = 20\n" "AiPlayerbot.RosterFarMove.LevelGuard.ZWindow = 0\n")
+probe("member ZWindow 0" config_h "uint32 rosterFarMoveLevelGuardZWindow = 20;" "uint32 rosterFarMoveLevelGuardZWindow = 0;")
+probe("loader SkipHarmless 0" config_cpp "LevelGuard.SkipHarmless\", 1);" "LevelGuard.SkipHarmless\", 0);")
 probe("z test without zWindow" policy "                        if (zWindow && !InZWindow(dz, zWindow))" "                        if (!InZWindow(dz, zWindow))")
 probe("harmless skip without SkipHarmless" choose "                if (skipHarmless && Harmless(info->flags_extra))" "                if (Harmless(info->flags_extra))")
 probe("grid without LevelGuard" config_cpp "    if (sPlayerbotAIConfig.rosterFarMoveLevelGuard)\n        ai::level_guard::BuildGrid();" "    ai::level_guard::BuildGrid();")
@@ -230,7 +232,7 @@ probe("refresh without the grid check" choose "        if (!Ready() || gridEvent
 probe("zfiltered outside the guard block" move "                        if (sPlayerbotAIConfig.rosterFarMoveLevelGuardZWindow)\n                        {\n                            snprintf(buf, sizeof(buf), \" guard_zfiltered=%u\"" "                        if (true)\n                        {\n                            snprintf(buf, sizeof(buf), \" guard_zfiltered=%u\"")
 probe("ZWindow clamp removed" config_cpp "    rosterFarMoveLevelGuardZWindow = ai::level_guard::ClampZWindow(levelGuardZWindowRaw);" "    rosterFarMoveLevelGuardZWindow = uint32(levelGuardZWindowRaw);")
 probe("echo unsorted" config_cpp "            {\"RosterFarMove.LevelGuard.SkipHarmless\", Value(rosterFarMoveLevelGuardSkipHarmless)},\n            {\"RosterFarMove.LevelGuard.ZWindow\", Value(rosterFarMoveLevelGuardZWindow)},\n" "            {\"RosterFarMove.LevelGuard.ZWindow\", Value(rosterFarMoveLevelGuardZWindow)},\n            {\"RosterFarMove.LevelGuard.SkipHarmless\", Value(rosterFarMoveLevelGuardSkipHarmless)},\n")
-if(NOT caught EQUAL 10)
-  message(FATAL_ERROR "${TAG}: ${caught} negative probes caught, 10 expected")
+if(NOT caught EQUAL 12)
+  message(FATAL_ERROR "${TAG}: ${caught} negative probes caught, 12 expected")
 endif()
-message(STATUS "${TAG}: all checks passed, 10 negative probes caught")
+message(STATUS "${TAG}: all checks passed, 12 negative probes caught")
