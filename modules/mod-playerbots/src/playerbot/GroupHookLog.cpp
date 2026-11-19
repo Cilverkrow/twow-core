@@ -17,6 +17,8 @@
 // (no player lookup, no player pointer), and writes with sLog.outBasic directly: the deferred log would drop lines (per-bot cap),
 // write them only at the bot's next UpdateAI (lost on logout) with the write time, and route the disband lines of all members to
 // one bot.
+// sPlayerbotAIConfig.botGroupsDiagnostics is read on map threads too (a plain bool set at config load, as for the other group
+// observers); the snapshot runs only when Diagnostics = 1 on the first world tick - a later reload to 1 writes no snapshot.
 namespace ai::group_hook
 {
 namespace
