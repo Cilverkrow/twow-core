@@ -1,7 +1,7 @@
-# twow-repo#703 item 3 (A3-PLAN-ZIEL, owner standing approval 09.11.2026; design v2 4e9c26b5, OB-10 OK 11.11.2026; default 0
-# until its A/B): AiPlayerbot.Loot.MoveGiveUp, the move-to-loot loop. "move to loot" followed an unreachable loot target without
+# twow-repo#703 item 3 (A3-PLAN-ZIEL, owner standing approval 09.11.2026; design v2 4e9c26b5, OB-10 OK 11.11.2026; default 1
+# since the 703H u3 ADOPT 19.11.2026): AiPlayerbot.Loot.MoveGiveUp, the move-to-loot loop. "move to loot" followed an unreachable loot target without
 # an attempt count (ARB N1: bots 853 / 169 / 2142 stood 219-262 min, moved=0.0).
-# This contract pins the key (dist 0, member 0, read with 0, cohort clamp with its error line, [ConfigEcho] sorted), the pure
+# This contract pins the key (dist 1, member 1, read with 1, cohort clamp with its error line, [ConfigEcho] sorted), the pure
 # policy constants, the hook in MoveToLootAction after the hold / abort checks and before the move with the key tested first,
 # the scope (cohort, roster bot on its own), the give-up steps, GiveUp only from MoveToLootAction, the Add refusal (Add is the
 # only insert, so OrderByDistance never sees a given-up object), the mode-0 neutrality, the two line formats and the unit test.
@@ -82,11 +82,12 @@ read_source("${PB_SOURCE_DIR}/LootObjectStack.cpp" stack_cpp)
 read_source("${PB_SOURCE_DIR}/strategy/actions/MovementActions.cpp" move_cpp)
 read_source("${PB_MODULE_DIR}/tests.cmake" tests)
 
-# 1. The key: dist default 0, member default 0, read with default 0, modes 0..3 (other -> 0, logged), [ConfigEcho] sorted.
-require_text("${dist}" "\nAiPlayerbot.Loot.MoveGiveUp = 0\n" "dist default 0")
+# 1. The key: dist default 1, member default 1, read with default 1 (since the 703H u3 ADOPT 19.11.2026; 0 = rollback),
+#    modes 0..3 (other -> 0, logged), [ConfigEcho] sorted.
+require_text("${dist}" "\nAiPlayerbot.Loot.MoveGiveUp = 1\n" "dist default 1")
 count_text("${dist}" "AiPlayerbot.Loot.MoveGiveUp =" 1 "one dist line")
-require_text("${config_h}" "    uint32 lootMoveGiveUp = 0;" "member default 0")
-require_text("${config_cpp}" "    lootMoveGiveUp = config.GetIntDefault(\"AiPlayerbot.Loot.MoveGiveUp\", 0);" "read with default 0")
+require_text("${config_h}" "    uint32 lootMoveGiveUp = 1;" "member default 1")
+require_text("${config_cpp}" "    lootMoveGiveUp = config.GetIntDefault(\"AiPlayerbot.Loot.MoveGiveUp\", 1);" "read with default 1")
 require_text("${config_cpp}" "    if (lootMoveGiveUp > 3)\n    {\n        sLog.outError(\"[LootGiveUp] config key=Loot.MoveGiveUp value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)\", lootMoveGiveUp);\n        lootMoveGiveUp = 0;\n    }" "cohort clamp with its error line")
 require_text("${config_cpp}" "            {\"Loot.HoldTravelWhileLootable.MaxSeconds\", Value(lootHoldTravelWhileLootableMaxSeconds)},\n            {\"Loot.MoveGiveUp\", Value(lootMoveGiveUp)},\n            {\"Loot.RoleWeights\", Value(lootRoleWeights)}," "[ConfigEcho] sorted")
 
