@@ -55,6 +55,10 @@ void TestXpPerMin()
     Require(Near(XpPerMin(neg, w), 0.0f), "negative inputs count as 0");
     Require(std::string(KindName(Kind::QuestTurnIn)) == "quest_turnin", "kind name");
     Require(std::string(ReasonName(Reason::TurnInFirst)) == "turnin_first", "reason name");
+    Require(std::string(ReasonName(Reason::Incumbent)) == "incumbent" && std::string(ReasonName(Reason::MaxHold)) == "max_hold" &&
+        std::string(ReasonName(Reason::BackToBand)) == "back_to_band" && std::string(ReasonName(Reason::RepeatCap)) == "repeat_cap" &&
+        std::string(ReasonName(Reason::R1Hold)) == "r1_hold" && std::string(ReasonName(Reason::DeadTarget)) == "dead_target" &&
+        std::string(ReasonName(Reason::BandTableOff)) == "band_table_off", "the planner reasons of P-2 (section 7)");
 }
 
 void TestTurnInFirst()
