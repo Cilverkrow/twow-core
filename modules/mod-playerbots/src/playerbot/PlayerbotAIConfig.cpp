@@ -522,7 +522,7 @@ bool PlayerbotAIConfig::Initialize()
     buffStrangerCooldownSeconds = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.Buff.StrangerCooldownSeconds", 900)));
     lootHoldTravelWhileLootable = config.GetBoolDefault("AiPlayerbot.Loot.HoldTravelWhileLootable", false);   // twow-repo#575 H1
     lootHoldTravelWhileLootableMaxSeconds = ai::loot_hold::ClampMaxSeconds(config.GetIntDefault("AiPlayerbot.Loot.HoldTravelWhileLootable.MaxSeconds", int(ai::loot_hold::DefaultMaxSeconds)));   // twow-repo#575 H1
-    lootMoveGiveUp = config.GetIntDefault("AiPlayerbot.Loot.MoveGiveUp", 0);   // twow-repo#703 item 3
+    lootMoveGiveUp = config.GetIntDefault("AiPlayerbot.Loot.MoveGiveUp", 1);   // twow-repo#703 item 3 (default 1 since 703H u3 ADOPT; 0 = rollback)
     if (lootMoveGiveUp > 3)
     {
         sLog.outError("[LootGiveUp] config key=Loot.MoveGiveUp value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", lootMoveGiveUp);
