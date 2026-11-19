@@ -4851,7 +4851,7 @@ add_test(NAME rescue_hub_policy
   COMMAND rescue_hub_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
-# twow-repo#703 item 1 (AiPlayerbot.QuestRescue.NoTargetFreeSlot, default 0): the rescue targets before the global limiter, no
+# twow-repo#703 item 1 (AiPlayerbot.QuestRescue.NoTargetFreeSlot, default 1 since 703G 18.11.2026): the rescue targets before the global limiter, no
 # slot for a no_target (QuestRescueSlotPolicy.h); source contract in t/contracts.d.
 add_executable(quest_rescue_slot_policy_tests
   "${PB_MODULE_DIR}/t/quest_rescue_slot_policy_tests.cpp")
