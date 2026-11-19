@@ -1083,6 +1083,10 @@ bool ChooseTravelTargetAction::Execute(Event& event)
         }
 
         SET_AI_VALUE2(bool, "no active travel destinations", futureTravelPurpose, true);
+        // A3 step 3 planner P-2b (AiPlayerbot.Planner, default 0; OB-10 B4): no target - back_to_band_would by the purpose of this
+        // search (PlannerShadow.cpp), read only. Off: one config read.
+        if (sPlayerbotAIConfig.planner)
+            ai::planner_shadow::NoteChoice(ai, futureTravelPurpose.c_str(), nullptr);
         ai->TellDebug(ai->GetMaster(), "No target set", "debug travel");
 
         // twow-repo#594 / P3-b: empty Station / Dungeon / Raid requests for [DirectTarget] state=summary.
@@ -1342,6 +1346,11 @@ bool ChooseTravelTargetAction::Execute(Event& event)
 
         return false;
     }
+
+    // A3 step 3 planner P-2b (AiPlayerbot.Planner, default 0; OB-10 B1): the shadow comparison of the accepted target with the
+    // planner's pick (agree / disagree by purpose, na_purpose, na_stale), read only. Off: one config read.
+    if (sPlayerbotAIConfig.planner)
+        ai::planner_shadow::NoteChoice(ai, futureTravelPurpose.c_str(), newTarget.GetDestination());
 
     if (futureTravelPurpose == "quest")
     {

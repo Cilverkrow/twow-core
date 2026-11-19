@@ -6,8 +6,7 @@ cmake_policy(VERSION 3.16)
 #       last (one release store, after the loaded line) and read with an acquire load; it is never freed once published;
 #   (c) wiring: Load() once in TravelMgr.cpp, after the hub ladder loader; the key is read with default "" and documented in
 #       aiplayerbot.conf.dist.in with "" as its value; tests.cmake registers band_table_policy;
-#   (d) P-1 is inert: nothing outside BandTable.cpp calls ai::band_table::Get() yet (the planner pair P-2 adds the reader and
-#       updates this check).
+#   (d) one reader: outside BandTable.cpp only the planner (PlannerShadow.cpp, P-2b) calls ai::band_table::Get().
 # Every check_* returns "" when it holds, else the reason; the negative probes at the end reuse them on mutated text.
 if(NOT DEFINED PB_SOURCE_DIR)
   message(FATAL_ERROR "a3s3 planner band_table: PB_SOURCE_DIR is required")
@@ -171,18 +170,18 @@ function(check_wiring travel config_cpp config_h conf tests out)
   set(${out} "" PARENT_SCOPE)
 endfunction()
 
-# ---- (d) inert in P-1 -------------------------------------------------------------------------------------------------------
+# ---- (d) one reader (P-2b: the planner) ------------------------------------------------------------------------------------
 function(check_inert src_dir out)
   file(GLOB_RECURSE sources "${src_dir}/*.cpp" "${src_dir}/*.h")
   foreach(path IN LISTS sources)
     get_filename_component(name "${path}" NAME)
-    if(name STREQUAL "BandTable.cpp" OR name STREQUAL "BandTable.h")
+    if(name STREQUAL "BandTable.cpp" OR name STREQUAL "BandTable.h" OR name STREQUAL "PlannerShadow.cpp")
       continue()
     endif()
     file(READ "${path}" text)
     string(FIND "${text}" "band_table::Get(" at)
     if(NOT at EQUAL -1)
-      set(${out} "${name}: reads the band table (P-1 is inert; the planner pair updates this check)" PARENT_SCOPE)
+      set(${out} "${name}: reads the band table (only the planner, PlannerShadow.cpp, may)" PARENT_SCOPE)
       return()
     endif()
   endforeach()

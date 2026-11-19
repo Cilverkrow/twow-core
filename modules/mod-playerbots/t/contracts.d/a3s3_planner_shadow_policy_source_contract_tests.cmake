@@ -8,7 +8,7 @@ cmake_policy(VERSION 3.16)
 #   (c) PlannerPolicy.h names the planner reasons of section 7 (OB-10 N2); SupervisorPolicy.h appends the planner fields of the
 #       [Plan] line after budget_ms, so the head of the line stays;
 #   (d) tests.cmake registers planner_shadow_policy;
-#   (e) P-2a is inert: no source includes PlannerShadowPolicy.h yet (P-2b adds the adapter and updates this check).
+#   (e) one door: only PlannerShadow.h (P-2b, the planner state) includes PlannerShadowPolicy.h; every other file goes through it.
 # Every check_* returns "" when it holds, else the reason; the negative probes at the end reuse them on mutated text.
 if(NOT DEFINED PB_SOURCE_DIR)
   message(FATAL_ERROR "a3s3 planner shadow policy: PB_SOURCE_DIR is required")
@@ -177,15 +177,15 @@ function(check_tests text out)
   set(${out} "" PARENT_SCOPE)
 endfunction()
 
-# (e) inert
+# (e) one door
 function(check_inert_text name text out)
-  if(name STREQUAL "PlannerShadowPolicy.h")
+  if(name STREQUAL "PlannerShadowPolicy.h" OR name STREQUAL "PlannerShadow.h")
     set(${out} "" PARENT_SCOPE)
     return()
   endif()
-  string(FIND "${text}" "PlannerShadowPolicy.h" at)
+  string(FIND "${text}" "PlannerShadowPolicy.h\"" at)
   if(NOT at EQUAL -1)
-    set(${out} "${name}: includes PlannerShadowPolicy.h (P-2a is inert; P-2b adds the adapter and updates this check)" PARENT_SCOPE)
+    set(${out} "${name}: includes PlannerShadowPolicy.h (only PlannerShadow.h may, P-2b)" PARENT_SCOPE)
     return()
   endif()
   set(${out} "" PARENT_SCOPE)
@@ -257,6 +257,6 @@ string(REPLACE "add_test(NAME planner_shadow_policy\n" "add_test(NAME planner_sh
 check_tests("${m}" r)
 expect_caught("the unit suite is not registered" "${r}")
 check_inert_text("Supervisor.h" "#include \"playerbot/PlannerShadowPolicy.h\"" r)
-expect_caught("a source includes the pure header (P-2a is inert)" "${r}")
+expect_caught("another source includes the pure header (only PlannerShadow.h may)" "${r}")
 
 message(STATUS "${TAG}: all checks passed")
