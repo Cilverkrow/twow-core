@@ -6,7 +6,8 @@ cmake_policy(VERSION 3.16)
 #       row, reloc_loop at the 3rd, planned loop at the 4th) and the forced rules (never rate_limited; Death/Revive/Rescue not
 #       loop-counted; only a hearth or a teleport ack with a confirmed leg is planned);
 #   (c) tests.cmake registers replan_policy;
-#   (d) R9-1 is inert: no source outside ReplanPolicy.h includes it (the wiring pair R9-2 adds the caller and updates this check).
+#   (d) R9-1 is inert: no source outside ReplanPolicy.h runs the meter (ProgressMeter). Including the header for its types is fine
+#       (planner P-2 may take RelocSource from it); the wiring pair R9-2 adds the caller and updates this check.
 # Every check_* returns "" when it holds, else the reason; the negative probes at the end reuse them on mutated text.
 if(NOT DEFINED PB_SOURCE_DIR)
   message(FATAL_ERROR "r9 replan_policy: PB_SOURCE_DIR is required")
@@ -110,9 +111,9 @@ endfunction()
 
 # ---- (d) inert in R9-1 --------------------------------------------------------------------------------------------------
 function(check_inert_text name text out)
-  string(FIND "${text}" "ReplanPolicy.h\"" at)
+  string(FIND "${text}" "ProgressMeter" at)
   if(NOT at EQUAL -1)
-    set(${out} "${name}: includes ReplanPolicy.h (R9-1 is inert; the wiring pair R9-2 updates this check)" PARENT_SCOPE)
+    set(${out} "${name}: uses ProgressMeter (R9-1 is inert; the wiring pair R9-2 updates this check)" PARENT_SCOPE)
     return()
   endif()
   set(${out} "" PARENT_SCOPE)
@@ -176,7 +177,11 @@ expect_caught("planned without a confirmed leg" "${r}")
 string(REPLACE "add_test(NAME replan_policy\n" "add_test(NAME replan_policy_off\n" m "${tests}")
 check_registered("${m}" r)
 expect_caught("suite not registered" "${r}")
-check_inert_text("Supervisor.cpp" "#include \"Supervisor.h\"\n#include \"ReplanPolicy.h\"\n" r)
+check_inert_text("Supervisor.cpp" "#include \"ReplanPolicy.h\"\nai::replan::ProgressMeter meter;\n" r)
 expect_caught("a caller in R9-1" "${r}")
+check_inert_text("PlannerPolicy.h" "#include \"ReplanPolicy.h\"\nai::replan::RelocSource src = ai::replan::RelocSource::Unknown;\n" r)
+if(NOT "${r}" STREQUAL "")
+  message(FATAL_ERROR "${TAG}: a type-only include must stay allowed: ${r}")
+endif()
 
 message(STATUS "${TAG}: all checks passed")
