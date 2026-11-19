@@ -67,13 +67,22 @@ require_text("${talk_cpp}" "        bot->RewardQuest(quest, 0, questGiver, false
 require_text("${reward_cpp}" "                    bot->RewardQuest(pQuest, rewardIdx, questGiver ? ToWorldObject(questGiver) : nullptr, false);
                     ai->NoteQuestRewarded(questID);" "RewardAction notes the quest right after RewardQuest")
 
-# The book: a note forces the next snapshot; the classification takes the note; the notes are cleared after the left loop.
+# The book: a note only notes (no dirty_: the snapshot timing, and with it the active book's state, stays as before); the
+# classification takes the note; the notes are cleared after the left loop. The whole body is pinned, so an added dirty_ fails.
 require_text("${qb_h}" "    void OnRewarded(std::uint32_t questId);" "OnRewarded declared")
 require_text("${qb_cpp}" "void QuestBook::OnRewarded(std::uint32_t questId)
 {
-    dirty_ = true;
+    // twow-repo#724: no dirty_ here (logging only: the snapshot keeps its old timing; the note waits for the next one).
     nRewarded_ = NoteQuestId(rewarded_, nRewarded_, kLog, questId);
-}" "OnRewarded forces a snapshot and notes the quest")
+}" "OnRewarded only notes the quest (no forced snapshot)")
+string(FIND "${qb_cpp}" "void QuestBook::OnRewarded(std::uint32_t questId)" on_rewarded_at)
+string(SUBSTRING "${qb_cpp}" ${on_rewarded_at} 300 on_rewarded_body)
+string(FIND "${on_rewarded_body}" "}" on_rewarded_end)
+string(SUBSTRING "${on_rewarded_body}" 0 ${on_rewarded_end} on_rewarded_body)
+string(FIND "${on_rewarded_body}" "dirty_ =" on_rewarded_dirty)
+if(NOT on_rewarded_dirty EQUAL -1)
+  message(FATAL_ERROR "questbook turn-in label: OnRewarded must not force a snapshot (dirty_ =): logging only")
+endif()
 require_text("${qb_cpp}" "        LeftReason const reason = ClassifyLeft(bot->GetQuestRewardStatus(left[i]), HasQuestId(rewarded_, nRewarded_, left[i]),
             bot->GetQuestStatus(left[i]) == QUEST_STATUS_FAILED);" "left_log reason via ClassifyLeft with the reward note")
 # The clear sits right after the left loop's closing brace (a clear inside the loop would lose a second turn-in of the snapshot).

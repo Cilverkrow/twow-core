@@ -84,8 +84,8 @@ public:
     // The quest actions: kill credit, item credit, quest complete.
     void OnCredit(std::uint32_t questId);
     // twow-repo#724: the quest was rewarded (bot thread: the bot's SMSG_QUESTGIVER_QUEST_COMPLETE from the packet inbox, or
-    // PlayerbotAI::NoteQuestRewarded after the bot's own RewardQuest without announce); the next snapshot (forced) labels it
-    // turned_in when it left the log (repeatable quests too). Logging only.
+    // PlayerbotAI::NoteQuestRewarded after the bot's own RewardQuest without announce); the next regular snapshot (not
+    // forced: logging only, the snapshot timing stays as before) labels it turned_in when it left the log (repeatable quests too).
     void OnRewarded(std::uint32_t questId);
 
 private:
