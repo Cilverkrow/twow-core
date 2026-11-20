@@ -24,7 +24,7 @@ if(NOT DEFINED PB_MODULE_DIR)
 endif()
 
 set(TAG "a3s3 arbiter shadow")
-set(RATCHET_BASE 102)   # (SetTarget|SetStatus|SetNullTravelTarget)( in the module: 97 at release/9.x 55cd53f8, 98 with A3 step 3 T02-a (the probe in SupervisorEnforce.cpp: r1 on the live target and the local copy; pair a3s3_arbiter_enforce_source_contract_tests.cmake), 99 with twow-repo#703 item 4 (TravelTarget::MarkUnreachableCamp ends the target, Execution scope in SCOPES; Rotation.UnreachableGiveUp, default 0), 102 with A3 step 3 T02-GROUP (SupervisorGroup.cpp: one SetTarget( for the gather point and two SetStatus( in CloseLive; pair a3s3_supervisor_group_source_contract_tests.cmake)
+set(RATCHET_BASE 103)   # (SetTarget|SetStatus|SetNullTravelTarget)( in the module: 97 at release/9.x 55cd53f8, 98 with A3 step 3 T02-a (the probe in SupervisorEnforce.cpp: r1 on the live target and the local copy; pair a3s3_arbiter_enforce_source_contract_tests.cmake), 99 with twow-repo#703 item 4 (TravelTarget::MarkUnreachableCamp ends the target, Execution scope in SCOPES; Rotation.UnreachableGiveUp, default 0), 102 with A3 step 3 T02-GROUP (SupervisorGroup.cpp: one SetTarget( for the gather point and two SetStatus( in CloseLive; pair a3s3_supervisor_group_source_contract_tests.cmake), 103 with A3 step 3 planner P-3a (PlannerWrite.cpp: the one SetStatus( of the expire under WriterId::Planner; pair a3s3_planner_write_source_contract_tests.cmake)
 
 function(read_source path out_var)
   if(NOT EXISTS "${PB_SOURCE_DIR}/${path}")
@@ -562,9 +562,11 @@ function(check_switch config_h config_cpp conf_dist ai_cpp policy all_sources ou
   # CLI-GRP T30-1c (agreed with CLI-Projekt 10.11.): the group manager reads the switch through ArbiterValue in LiveTypesNow
   # (GroupManager.cpp; pinned by a3s6_t30_directives check_t30_1c), so 2. A3 step 3 T02-GROUP adds the gate-off counter
   # GateOffThread (SupervisorEnforce.cpp, first statement ArbiterValue(...) != 2; pinned by the enforce contract), so 3.
+  # A3 step 3 planner P-3a: the write condition reads it through ArbiterValue in FeedBegin (PlannerWrite.cpp) and NoteChoiceImpl
+  # (PlannerShadow.cpp); pinned by a3s3_planner_write check_arbiter_reads, so 5.
   count_regex("${all_sources}" "sPlayerbotAIConfig\\.supervisorArbiter[^A-Za-z0-9_]" n)
-  if(NOT n EQUAL 3)
-    set(${out} "the arbiter switch is read in ${n} places (3 expected: the gate, the group manager, GateOffThread)" PARENT_SCOPE)
+  if(NOT n EQUAL 5)
+    set(${out} "the arbiter switch is read in ${n} places (5 expected: the gate, the group manager, GateOffThread, the planner's feed and NoteChoice)" PARENT_SCOPE)
     return()
   endif()
   set(${out} "" PARENT_SCOPE)
