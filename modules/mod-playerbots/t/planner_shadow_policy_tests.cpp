@@ -633,6 +633,17 @@ void TestBackToBandV1V2()
         Require(other != Hold::Switch && other != Hold::Forced && same != Hold::Switch && same != Hold::Forced,
             "V-1: no expire from back_to_band");
     }
+    {
+        // Only a max_hold (forced: a complete quest's turn-in in tier A) replaces it inside MinBind; that switch is max_hold's and
+        // its pick (a turn-in, not a tier C grind) wants QUEST.
+        Incumbent inc;
+        inc.has = true;
+        inc.key = bb.key;
+        inc.sinceMs = bb.sinceMs;
+        inc.stillEligible = true;
+        Require(HoldDecision(inc, 4242, 1.0f, true, backAt + 1000, h) == Hold::Forced, "a max_hold replaces it (Forced)");
+        Require(!PickWantsGrind(false, Tier::A), "the max_hold turn-in wants QUEST");
+    }
     Require(!BackToBandHolds(false, false, true, true, true, backAt, backAt + 1000, minBind), "V-1: only a writing bot holds it");
     Require(!BackToBandHolds(true, false, true, false, true, backAt, backAt + 1000, minBind), "a normal grind pick is not held");
 
@@ -689,6 +700,20 @@ void TestRule5V3()
     Require(Decide2to5(f, false) == ExpireStep::BlockedFb, "V-3: reject blocks for MinBind");
     f.fallbackBlock = FallbackBlocks(fallbackAt, now + minBind, minBind);
     Require(Decide2to5(f, false) == ExpireStep::Go, "V-3: after MinBind the expire goes on");
+    // The starvation case of the review: one reject at t0, then purpose / stale every few seconds; the lock is not renewed and the
+    // pending expire goes at t0 + MinBind.
+    std::uint32_t const t0 = 500000;
+    std::uint32_t lockAt = 0;
+    NoteFallback(lockAt, FeedFallback::Reject, t0);
+    for (std::uint32_t t = t0 + 3000; t < t0 + minBind; t += 3000)
+    {
+        NoteFallback(lockAt, (t / 3000) % 2 ? FeedFallback::Purpose : FeedFallback::Stale, t);
+        f.fallbackBlock = FallbackBlocks(lockAt, t, minBind);
+        Require(Decide2to5(f, false) == ExpireStep::BlockedFb, "V-3: blocked inside MinBind of the reject");
+    }
+    Require(lockAt == t0, "V-3: purpose / stale do not renew the lock");
+    f.fallbackBlock = FallbackBlocks(lockAt, t0 + minBind, minBind);
+    Require(Decide2to5(f, false) == ExpireStep::Go, "V-3: the pending expire goes at t0 + MinBind");
     std::uint32_t zero = 0;
     NoteFallback(zero, FeedFallback::Denied, 0);
     Require(zero == 1, "a lock at time 0 is stored as 1 (0 = no fallback)");

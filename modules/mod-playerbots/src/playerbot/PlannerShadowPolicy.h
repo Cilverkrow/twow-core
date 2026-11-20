@@ -308,7 +308,7 @@ enum class Hold : std::uint8_t
     Same = 1,       // the new pick is the incumbent
     Margin = 2,     // keep: the new pick does not beat the incumbent by the margin
     Bind = 3,       // keep: the incumbent is younger than the bind time
-    Forced = 4,     // switch without margin and bind (max_hold, back_to_band)
+    Forced = 4,     // switch without margin and bind (max_hold; P-3a: back_to_band sets its pick outside the hysteresis, V-1)
 };
 
 inline char const* HoldName(Hold h)
@@ -495,7 +495,8 @@ inline bool BackToBandAllowed(std::uint32_t lastBackMs, std::uint32_t nowMs, std
 }
 
 // The WORK lock and its break (OB-10 B3): a plan change never expires a target in COOLDOWN; in WORK only max_hold and back_to_band
-// may (expire_work_override). Every other phase may expire.
+// may (expire_work_override). Every other phase may expire. P-3a (OB-10 V-1): back_to_band never reaches the expire (its pick is
+// held by Bind), so in the write path only max_hold breaks WORK.
 enum class ExpireGate : std::uint8_t
 {
     Allowed = 0,
@@ -1009,7 +1010,9 @@ inline void NoteFallback(std::uint32_t& fallbackAtMs, FeedFallback f, std::uint3
 // its bind time like an eligible incumbent. OB-10 V-1: the next plan therefore keeps it (Hold::Bind, or Same when the hub is the
 // top candidate), never Switch - back_to_band never reaches the mode switch (ModeSwitchFrom) nor the expire of the switch tick:
 // the mode stays as it is (the mode line stays QUEST), the grind comes through the existing grind fallback, fed with the pick
-// (V-2). A direct mode switch from back_to_band would be a new behaviour (P-3c, its own OB-10 OK). After MinBind it ends.
+// (V-2). A direct mode switch from back_to_band would be a new behaviour (P-3c, its own OB-10 OK). After MinBind it ends. An
+// empty pool (no top) leaves the pick untouched (no hysteresis). Only a max_hold (Hold::Forced, a complete quest's turn-in in
+// tier A) can replace it inside MinBind; that switch and its mode are max_hold's (a turn-in pick wants QUEST).
 inline bool BackToBandHolds(bool writes, bool incumbentEligible, bool pickHas, bool pickForced, bool pickGrind,
     std::uint32_t pickSinceMs, std::uint32_t nowMs, std::uint32_t minBindMs)
 {
