@@ -2076,6 +2076,31 @@ Rules LeverQuestRules()
     return r;
 }
 
+// T33-1 silent trap (OB-00 20.11.2026, R3): the reasons of the load note "[GroupMgr] lever_inert".
+void TestGatherLeverInertReasons()
+{
+    // args: lever, gather, manager, types, supervisor, arbiter
+    Require(LeverInertReasons(1, 2, 1, 3, 1, 2) == 0, "the T33-1 profile with arbiter 2 acts: no note");
+    Require(LeverInertReasons(0, 2, 0, 0, 0, 0) == 0 && LeverInertReasons(1, 0, 0, 0, 0, 0) == 0,
+        "lever off (0, or Gather 0 after the clamp): no note");
+    Require(LeverInertReasons(1, 1, 0, 3, 1, 2) == kLeverInertManager, "Manager 0");
+    Require(LeverInertReasons(1, 1, 4, 3, 1, 2) == kLeverInertManager, "Manager unknown (4)");
+    Require(LeverInertReasons(1, 1, 1, 3, 0, 2) == kLeverInertSupervisor, "Supervisor 0");
+    Require(LeverInertReasons(1, 2, 1, 3, 1, 1) == kLeverInertArbiter, "Arbiter 1 at load (T33-1 + console enforce)");
+    Require(LeverInertReasons(1, 1, 1, 1, 1, 2) == kLeverInertNoQuest, "Types ADHOC only");
+    Require(LeverInertReasons(1, 2, 3, 3, 1, 2) == kLeverInertCohorts && LeverInertReasons(1, 3, 1, 3, 2, 2) == kLeverInertCohorts,
+        "Gather B with manager A only, Gather A with supervisor B only");
+    Require(LeverInertReasons(1, 2, 2, 3, 2, 2) == 0 && LeverInertReasons(1, 1, 2, 3, 3, 2) == 0, "overlapping cohorts act");
+    Require(LeverInertReasons(1, 1, 0, 0, 0, 0) == (kLeverInertManager | kLeverInertSupervisor | kLeverInertArbiter | kLeverInertNoQuest),
+        "the dist defaults plus Lever 1 / Gather 1: four reasons");
+    Require(std::strcmp(LeverInertName(kLeverInertManager), "manager_off") == 0 &&
+        std::strcmp(LeverInertName(kLeverInertSupervisor), "supervisor_off") == 0 &&
+        std::strcmp(LeverInertName(kLeverInertArbiter), "arbiter_not_2") == 0 &&
+        std::strcmp(LeverInertName(kLeverInertNoQuest), "types_no_quest") == 0 &&
+        std::strcmp(LeverInertName(kLeverInertCohorts), "cohorts_disjoint") == 0 &&
+        LeverInertName(0) == nullptr && LeverInertName(3) == nullptr && LeverInertName(32) == nullptr, "one name per reason bit");
+}
+
 // The pure parts: the key, the arm, the ladder, the mask.
 void TestGatherLeverPure()
 {
@@ -2546,6 +2571,7 @@ int main()
     TestAckTimeoutKey();
     TestAckTimeoutOrphanGrace();
     TestGatherLeverPure();
+    TestGatherLeverInertReasons();
     TestGatherLeverEnter();
     TestGatherLeverShadowOnly();
     TestGatherLeverMeeting();
