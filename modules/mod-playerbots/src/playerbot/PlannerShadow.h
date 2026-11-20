@@ -147,7 +147,8 @@ struct Pick
     std::uint32_t map = 0;        // the pick point (W8 probe)
     float x = 0.0f;
     float y = 0.0f;
-    bool forced = false;          // P-3a: a forced pick (max_hold, back_to_band) may expire a target in WORK (B3)
+    bool forced = false;          // P-3a: a forced pick (max_hold) may expire a target in WORK (B3); back_to_band marks its
+                                  // pick with it but never reaches the expire (OB-10 V-1)
 };
 
 // The shadow comparison's last agree (for overwritten_shadow: a quest book lane writer replaces it inside the bind time).

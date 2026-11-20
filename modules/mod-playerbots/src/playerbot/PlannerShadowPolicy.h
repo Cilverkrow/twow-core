@@ -908,7 +908,7 @@ enum class ExpireStep : std::uint8_t
     AppliedLive = 2,     // condition 2: the live target already is the pick (applied_live_quest / _grind)
     ZoneUnknown = 3,     // P3-1: a grind pick and the live target's zone is unknown: nothing expires
     DeniedCooldown = 4,  // condition 3: COOLDOWN is never expired
-    DeniedWork = 5,      // condition 3: WORK only with a forced pick (max_hold, back_to_band)
+    DeniedWork = 5,      // condition 3: WORK only with a forced pick (max_hold; back_to_band never reaches the expire, OB-10 V-1)
     Repeat = 6,          // condition 4: this pick expired once (guard = 0)
     BlockedFb = 7,       // condition 5: a fallback less than MinBindSec ago
     DeniedLane = 8,      // condition 6: the lane check (Questbook, site "planner") refused
@@ -974,6 +974,62 @@ inline ExpireStep ExpireAdmit(bool laneFree, bool groupCopy)
 inline bool FallbackBlocks(std::uint32_t fallbackAtMs, std::uint32_t nowMs, std::uint32_t minBindMs)
 {
     return fallbackAtMs && nowMs - fallbackAtMs < minBindMs;
+}
+
+// The fallback reasons of the feed (one fallback_* each). OB-10 V-3 (pre-review 20.11., deviation 6 rejected): rule 5 locks only
+// after a fallback in which the attempt with the current pick failed - reject, budget, parked, denied, zone_empty. none, stale and
+// purpose never set the lock: a bot whose quest pick meets grind searches, or whose pick goes stale between plan ticks, would
+// renew it for ever and starve an open expire (condition 4, once per pick, already stops churn).
+enum class FeedFallback : std::uint8_t
+{
+    None = 0,
+    Stale = 1,
+    Purpose = 2,
+    Reject = 3,
+    Budget = 4,
+    Parked = 5,
+    Denied = 6,
+    ZoneEmpty = 7,
+};
+
+inline bool FallbackLocks(FeedFallback f)
+{
+    return f == FeedFallback::Reject || f == FeedFallback::Budget || f == FeedFallback::Parked || f == FeedFallback::Denied ||
+        f == FeedFallback::ZoneEmpty;
+}
+
+// The one setter of the rule 5 time (PlannerWrite.cpp calls it for every fallback; 0 stays "no fallback").
+inline void NoteFallback(std::uint32_t& fallbackAtMs, FeedFallback f, std::uint32_t nowMs)
+{
+    if (FallbackLocks(f))
+        fallbackAtMs = nowMs ? nowMs : 1u;
+}
+
+// The back_to_band pick of a writing bot (section 2.5, deviation 5): the forced band hub is not in the tier's pool, so it holds
+// its bind time like an eligible incumbent. OB-10 V-1: the next plan therefore keeps it (Hold::Bind, or Same when the hub is the
+// top candidate), never Switch - back_to_band never reaches the mode switch (ModeSwitchFrom) nor the expire of the switch tick:
+// the mode stays as it is (the mode line stays QUEST), the grind comes through the existing grind fallback, fed with the pick
+// (V-2). A direct mode switch from back_to_band would be a new behaviour (P-3c, its own OB-10 OK). After MinBind it ends.
+inline bool BackToBandHolds(bool writes, bool incumbentEligible, bool pickHas, bool pickForced, bool pickGrind,
+    std::uint32_t pickSinceMs, std::uint32_t nowMs, std::uint32_t minBindMs)
+{
+    return writes && !incumbentEligible && pickHas && pickForced && pickGrind && nowMs - pickSinceMs < minBindMs;
+}
+
+// setNewTarget of a fed choice (ApplyWatch): a new write generation is applied_quest / applied_grind; none is fallback_parked
+// (the #485 refusal expired the live target) or fallback_denied (the arbiter refused the copy).
+enum class ApplyOutcome : std::uint8_t
+{
+    Applied = 0,
+    Parked = 1,
+    Denied = 2,
+};
+
+inline ApplyOutcome ApplyOutcomeOf(std::uint32_t genBefore, std::uint32_t genAfter, bool liveExpired)
+{
+    if (genAfter != genBefore)
+        return ApplyOutcome::Applied;
+    return liveExpired ? ApplyOutcome::Parked : ApplyOutcome::Denied;
 }
 
 // The pending expire (section 2.3, Nachtrag 1 F8): a denial of the switch tick by WORK, the fallback block, the lane, the group

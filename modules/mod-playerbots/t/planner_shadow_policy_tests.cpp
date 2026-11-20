@@ -449,7 +449,7 @@ void TestExpireRules()
     g.liveZone = 12;
     Require(Decide2to5(g, false) == ExpireStep::Go, "P3-1: a target in another zone expires");
 
-    // Condition 3 (B3): COOLDOWN never, WORK only for a forced pick (max_hold, back_to_band).
+    // Condition 3 (B3): COOLDOWN never, WORK only for a forced pick (max_hold; back_to_band never reaches the expire, V-1).
     Require(Decide2to5(QuestFacts(TravelPhase::Cooldown), true) == ExpireStep::DeniedCooldown, "COOLDOWN is never expired");
     Require(Decide2to5(QuestFacts(TravelPhase::Work), false) == ExpireStep::DeniedWork, "WORK without a forced pick");
     Require(ExpireCheck(TravelPhase::Work, true) == ExpireGate::WorkOverride &&
@@ -594,6 +594,106 @@ void TestMemoryP3()
     Require(!evicted && Closes(m, 4, 12) == 2, "the same key is no eviction");
 }
 
+// OB-10 pre-review 20.11. V-1 / V-2: the back_to_band pick (a forced grind pick at the band hub, set outside the hysteresis) is
+// held by the next plan (Bind, or Same when the hub is the top candidate), never Switch: it reaches neither the mode switch nor
+// the expire of the switch tick (the mode line stays QUEST). The next grind search inside MinBind is fed with it and a new write
+// generation counts applied_grind; after MinBind the hold ends and the pick is replaced as usual.
+void TestBackToBandV1V2()
+{
+    std::uint32_t const minBind = 120000;
+    Hysteresis h;
+    h.minBindMs = minBind;
+    std::uint32_t const backAt = 50000;
+    Pick bb;   // as NoteChoiceImpl sets it
+    bb.has = true;
+    bb.kind = Kind::Grind;
+    bb.key = TargetKey(std::uint8_t(Kind::Grind), 0, 85u | 0x80000000u);
+    bb.sinceMs = backAt;
+    bb.atMs = backAt;
+    bb.zone = 85;
+    bb.forced = true;
+
+    // V-1: the EvMode plan of the next tick and every plan inside MinBind.
+    for (std::uint32_t dt : {1000u, 30000u, minBind - 1})
+    {
+        std::uint32_t const now = backAt + dt;
+        Incumbent inc;
+        inc.has = bb.has;
+        inc.key = bb.key;
+        inc.sinceMs = bb.sinceMs;
+        inc.stillEligible = false;   // the band hub is not in the tier's pool
+        Require(BackToBandHolds(true, inc.stillEligible, bb.has, bb.forced, bb.kind == Kind::Grind, bb.sinceMs, now, minBind),
+            "V-1: the back_to_band pick holds inside MinBind");
+        inc.stillEligible = true;
+        Hold const other = HoldDecision(inc, 4242, 1.0e6f, false, now, h);
+        Hold const same = HoldDecision(inc, bb.key, 1.0e6f, false, now, h);
+        Require(other == Hold::Bind && same == Hold::Same, "V-1: a better candidate is held off by Bind, the hub itself is Same");
+        Require(!ModeSwitchFrom(other) && !ModeSwitchFrom(same), "V-1: no mode switch from back_to_band (stays QUEST)");
+        // The expire runs only in the switch branch (Switch / Forced); Bind and Same never get there.
+        Require(other != Hold::Switch && other != Hold::Forced && same != Hold::Switch && same != Hold::Forced,
+            "V-1: no expire from back_to_band");
+    }
+    Require(!BackToBandHolds(false, false, true, true, true, backAt, backAt + 1000, minBind), "V-1: only a writing bot holds it");
+    Require(!BackToBandHolds(true, false, true, false, true, backAt, backAt + 1000, minBind), "a normal grind pick is not held");
+
+    // V-2: the next grind search inside MinBind is fed (fed), a new write generation is applied_grind.
+    std::uint32_t const next = backAt + 20000;
+    Require(FeedCheck(false, true, false, bb.has, true, bb.atMs, next, minBind, false, false) == FeedSkip::Feed,
+        "V-2: the next grind search is fed with the back_to_band pick");
+    Require(ApplyOutcomeOf(7, 8, false) == ApplyOutcome::Applied, "V-2: a new write generation is applied (applied_grind)");
+    Require(ApplyOutcomeOf(7, 7, true) == ApplyOutcome::Parked && ApplyOutcomeOf(7, 7, false) == ApplyOutcome::Denied,
+        "no new generation: parked (#485) or denied (arbiter)");
+    // V-2: after MinBind the hold ends: an incumbent outside the pool is replaced (Switch), the pick is no longer fresh.
+    std::uint32_t const late = backAt + minBind;
+    Require(!BackToBandHolds(true, false, bb.has, bb.forced, true, bb.sinceMs, late, minBind), "V-2: the hold ends at MinBind");
+    Incumbent gone;
+    gone.has = true;
+    gone.key = bb.key;
+    gone.sinceMs = bb.sinceMs;
+    gone.stillEligible = false;
+    Require(HoldDecision(gone, 4242, 1.0f, false, late, h) == Hold::Switch, "V-2: after MinBind the pick is replaced as usual");
+    Require(FeedCheck(false, true, false, bb.has, true, bb.atMs, late, minBind, false, false) == FeedSkip::Stale,
+        "V-2: an unconfirmed back_to_band pick is stale after MinBind (no feed)");
+}
+
+// OB-10 V-3 (deviation 6 rejected): rule 5 locks only after reject, budget, parked, denied and zone_empty; none, stale and purpose
+// never set it, so an open pending expire ends despite repeated purpose and stale fallbacks.
+void TestRule5V3()
+{
+    Require(FallbackLocks(FeedFallback::Reject) && FallbackLocks(FeedFallback::Budget) && FallbackLocks(FeedFallback::Parked) &&
+        FallbackLocks(FeedFallback::Denied) && FallbackLocks(FeedFallback::ZoneEmpty), "V-3: the five lock reasons");
+    Require(!FallbackLocks(FeedFallback::None) && !FallbackLocks(FeedFallback::Stale) && !FallbackLocks(FeedFallback::Purpose),
+        "V-3: none, stale and purpose never lock");
+
+    std::uint32_t const minBind = 120000;
+    std::uint32_t fallbackAt = 0;
+    ExpireFacts f = QuestFacts(TravelPhase::Work);   // the pending expire waits for WORK -> TRAVEL (F8 (a))
+    std::uint32_t now = 1000;
+    Require(Decide2to5(f, false) == ExpireStep::DeniedWork && PendingStarts(ExpireStep::DeniedWork), "the expire is pending");
+    for (int i = 0; i < 50; ++i)
+    {
+        now += 5000;   // a grind search meets the quest pick (purpose), the pick goes stale between plan ticks, no pick
+        NoteFallback(fallbackAt, FeedFallback::Purpose, now);
+        NoteFallback(fallbackAt, FeedFallback::Stale, now);
+        NoteFallback(fallbackAt, FeedFallback::None, now);
+    }
+    Require(fallbackAt == 0, "V-3: purpose / stale / none leave the rule 5 time unset");
+    f.phase = TravelPhase::Travel;
+    f.fallbackBlock = FallbackBlocks(fallbackAt, now, minBind);
+    Require(!f.fallbackBlock && Decide2to5(f, false) == ExpireStep::Go, "V-3: the pending expire ends despite those fallbacks");
+
+    // A failed attempt with the current pick locks for MinBind, then the expire goes on.
+    NoteFallback(fallbackAt, FeedFallback::Reject, now);
+    Require(fallbackAt == now, "V-3: reject sets the time");
+    f.fallbackBlock = FallbackBlocks(fallbackAt, now + 1000, minBind);
+    Require(Decide2to5(f, false) == ExpireStep::BlockedFb, "V-3: reject blocks for MinBind");
+    f.fallbackBlock = FallbackBlocks(fallbackAt, now + minBind, minBind);
+    Require(Decide2to5(f, false) == ExpireStep::Go, "V-3: after MinBind the expire goes on");
+    std::uint32_t zero = 0;
+    NoteFallback(zero, FeedFallback::Denied, 0);
+    Require(zero == 1, "a lock at time 0 is stored as 1 (0 = no fallback)");
+}
+
 // Section 6.1 / 7.5: [PlanMin] at Planner 0 / 1 is the P-2b line byte for byte; Planner = 2 appends the P-3a fields; the longest
 // line fits kPlanMinBuf.
 void TestPlanMinP3()
@@ -672,6 +772,8 @@ int main()
     TestAttemptClasses();
     TestMemoryP3();
     TestPlanMinP3();
+    TestBackToBandV1V2();
+    TestRule5V3();
     std::cout << "planner_shadow_policy_tests: OK\n";
     return 0;
 }
