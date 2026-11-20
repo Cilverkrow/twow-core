@@ -16,6 +16,7 @@
 #include "playerbot/SafePullPolicy.h"   // twow-repo#656 (Grind.SafePull)
 #include "playerbot/CohortPolicy.h"
 #include "playerbot/QuestLoopPolicy.h"   // twow-repo#601 turn_in hold (QuestLoop.RelationWorkNoGrind)
+#include "playerbot/GrindIdlePolicy.h"   // twow-repo#601 (ActivityTrace.GrindIdleDetail)
 #include "playerbot/TravelMgr.h"
 #include "CreatureGroups.h"
 #include "World.h"
@@ -101,6 +102,19 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
         }
     };
 
+    // twow-repo#601 (AiPlayerbot.ActivityTrace.GrindIdleDetail, OB-00 20.11.2026): round 0 of the pass (the bot's own pick) counts
+    // its candidates and why each was refused into the bot's tally (GrindIdlePolicy.h), read by the [GrindIdleDetail] start line.
+    // Counters only, no decision reads them. Off (or an assist round): no tally, nothing is written.
+    ai::grind_idle::PassTally* const tally = !assistCount && sPlayerbotAIConfig.activityTrace &&
+        sPlayerbotAIConfig.activityTraceGrindIdleDetail ? &ai->GrindPassTally() : nullptr;
+    if (tally)
+        tally->Start(uint32(time(nullptr)));
+    auto const skip = [tally](ai::grind_idle::Skip why)
+    {
+        if (tally)
+            tally->Note(why);
+    };
+
     std::list<ObjectGuid> attackers = context->GetValue<std::list<ObjectGuid>>("possible attack targets")->Get();
     for (std::list<ObjectGuid>::iterator i = attackers.begin(); i != attackers.end(); i++)
     {
@@ -114,6 +128,8 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
             continue;
         }
 
+        if (tally)
+            tally->picked = true;
         logGrind(unit, "(hostile) selected.");
         return unit;
     }
@@ -204,10 +220,15 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
         Unit* unit = ai->GetUnit(*tIter);
         if (!unit)
             continue;
+        if (tally && tally->candidates < 0xFFFF)
+            ++tally->candidates;
 
         // Hotfix 8.2: a creature this bot could not reach is skipped for five minutes.
         if (ai->IsUnreachableTarget(unit->GetObjectGuid()))
+        {
+            skip(ai::grind_idle::Skip::Unreachable);
             continue;
+        }
 
 #ifdef MANGOSBOT_TWO 
         if (bot->GetMapId() == 609)
@@ -267,12 +288,14 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
 
         if (abs(bot->GetPositionZ() - unit->GetPositionZ()) > sPlayerbotAIConfig.spellDistance)
         {
+            skip(ai::grind_idle::Skip::Height);
             logGrind(unit, "ignored (to far above/below).");
             continue;
         }
 
         if (!bot->InBattleGround() && !CanFreeMoveValue::CanFreeTarget(ai, GuidPosition(unit))) //Do not grind mobs far away from master.
         {
+            skip(ai::grind_idle::Skip::FreeRange);
             logGrind(unit, "ignored (out of free range).");
             continue;
         }
@@ -282,12 +305,14 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
              ai->HasStrategy("wander", BotState::BOT_STATE_NON_COMBAT)) &&
             sServerFacade.GetDistance2d(master, unit) > sPlayerbotAIConfig.proximityDistance)
         {
+            skip(ai::grind_idle::Skip::FreeRange);
             logGrind(unit, "ignored (far from master).");
             continue;
         }
 
         if (!bot->InBattleGround() && (int)unit->GetLevel() - (int)bot->GetLevel() > maxLevelsAbove && !unit->GetObjectGuid().IsPlayer())
         {
+            skip(ai::grind_idle::Skip::LevelAbove);
             logGrind(unit, std::to_string((int)unit->GetLevel() - (int)bot->GetLevel()) + " levels above bot).");
             continue;
         }
@@ -295,6 +320,7 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
         if (rosterOnItsOwn && sPlayerbotAIConfig.grindAvoidMaxDeaths && !unit->GetObjectGuid().IsPlayer() &&
             grind_cap::Avoids().IsAvoided(bot->GetGUIDLow(), unit->GetEntry(), uint32(now)))
         {
+            skip(ai::grind_idle::Skip::Avoided);
             logGrind(unit, "ignored (killed this bot repeatedly).");
             continue;
         }
@@ -303,24 +329,28 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
         if (creature && creature->GetCreatureInfo() && creature->GetCreatureInfo()->Rank > CREATURE_ELITE_NORMAL && !AI_VALUE(bool, "can fight elite") &&
             !AI_VALUE2(bool, "trigger active", "in vehicle"))
         {
+            skip(ai::grind_idle::Skip::Elite);
             logGrind(unit, "ignored (can not fight elites currently).");
             continue;
         }
 
         if (!AttackersValue::IsValid(unit, bot, nullptr, false, false))
         {
+            skip(ai::grind_idle::Skip::Invalid);
             logGrind(unit, "ignored (is pet or evading/unkillable).");
             continue;
         }
 
         if (!PossibleAttackTargetsValue::IsPossibleTarget(unit, bot, sPlayerbotAIConfig.sightDistance, false))
         {
+            skip(ai::grind_idle::Skip::Tapped);
             logGrind(unit, "ignored (tapped, cced or out of range).");
             continue;
         }
 
         if (creature && creature->IsCritter() && urand(0, 10))
         {
+            skip(ai::grind_idle::Skip::Critter);
             logGrind(unit, "ignored (ignore critters).");
             continue;
         }
@@ -349,6 +379,7 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
         {
             if (!noGrindSkipped++)
                 noGrindEntry = entry;
+            skip(ai::grind_idle::Skip::Rule);
             logGrind(unit, "ignored (GrindMode 2: not needed for a quest).");
             continue;
         }
@@ -363,6 +394,7 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
             ++questOrderSkipped;
             if (!assistCount)
                 PlayerbotAI::NoteQuestOrder(uint8(ai::quest_first_order::Event::Skipped));
+            skip(ai::grind_idle::Skip::Rule);
             logGrind(unit, "ignored (QuestFirstOrder: not needed for a quest, not in the way).");
             continue;
         }
@@ -371,6 +403,7 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
         {
             if (ai::quest_loop::RelationWorkGrindSkipped(relationWorkOpen, needForQuest))
             {
+                skip(ai::grind_idle::Skip::Rule);
                 logGrind(unit, "ignored (QuestLoop.RelationWorkNoGrind: the hand-in / accept at the NPC first).");
                 continue;
             }
@@ -380,6 +413,7 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
             if (gapGrind && ai::quest_grind_mode::GapTargetSkipped(true, false, unit->GetVictim() == bot, gapLow, gapHigh, unit->GetLevel()))
             {
                 ++gapSkipped;
+                skip(ai::grind_idle::Skip::Rule);
                 logGrind(unit, "ignored (GrindMode 1: level outside the window).");
                 continue;
             }
@@ -395,6 +429,7 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
             // specific, but no longer skip everything else 99% of the time.
             if (urand(0, 100) < 20 && travelTargetWorking && !isGrindTravelDest)
             {
+                skip(ai::grind_idle::Skip::NotNeeded);
                 logGrind(unit, "ignored (not needed for active quest).");
                 continue;
             }
@@ -411,6 +446,7 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
                     !MaNGOS::XP::Gain(bot, creature)) &&
                 (ai::quest_search::SkipGreyTarget(rosterOnItsOwn, true, false, creature->GetVictim() == bot) || urand(0, 50)))
             {
+                skip(ai::grind_idle::Skip::Grey);
                 logGrind(unit, "ignored (not xp and not needed for quest).");
                 continue;
             }
@@ -423,6 +459,8 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
 
         if (!bot->InBattleGround() && GetTargetingPlayerCount(unit) > assistCount)
         {
+            if (tally && tally->crowded < 0xFFFF)
+                ++tally->crowded;
             logGrind(unit, std::to_string(GetTargetingPlayerCount(unit)) + " bots already targeting).");
             newdistance =+ GetTargetingPlayerCount(unit) * 5;
         }
@@ -517,6 +555,9 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
     // assist rounds (recheck: a later round may still return a target). Nothing counted here.
     if (!assistCount)
         round0GapSkipped = gapSkipped;
+    // twow-repo#601 (ActivityTrace.GrindIdleDetail): the pass's pick, after the safe-pull and neighbour rules (round 0 only).
+    if (tally)
+        tally->picked = result != nullptr;
 
     return result;
 }
