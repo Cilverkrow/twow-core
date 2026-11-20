@@ -7482,7 +7482,7 @@ void RandomPlayerbotMgr::PrepareTeleportCache()
     results = WorldDatabase.PQuery("SELECT map, position_x, position_y, position_z, "
         "r.race, r.minl, r.maxl "
         "FROM creature c INNER JOIN ai_playerbot_rpg_races r ON c.id = r.entry "
-        "WHERE r.race < 15");
+        "WHERE r.race < 15 AND c.map IN (0, 1)");   // continents only (MapEntry::IsContinent): entry 7733 also has a spawn on map 451 (GM island)
 
     if (results)
     {
