@@ -1,6 +1,7 @@
 #pragma once
 
 #include "playerbot/QuestBookPolicy.h"
+#include "playerbot/QuestTurnInParkPolicy.h"
 
 #include <atomic>
 #include <cstddef>
@@ -88,6 +89,48 @@ public:
     // forced: logging only, the snapshot timing stays as before) labels it turned_in when it left the log (repeatable quests too).
     void OnRewarded(std::uint32_t questId);
 
+    // QB6/QB7 pair (A3 4.5 (8), QB-S3-ANTWORT-20261106.md sections 4-5; CLI-Projekt 20.11. Q1-Q4 (a)). The book's Close / Park /
+    // Episode memory for the planner, which moves its own close memory here later (its own pair). No caller yet, no key: nothing
+    // in the game calls these, so there is no runtime effect. Bot thread only, like the rest of the book. Pure rules:
+    // QuestBookPolicy.h CloseBook / ParkBook / EpisodeBook.
+    // Close: time-bounded, never permanent (permanent only via the QB5 list or a QB2 mark). sourceKey is the caller's opaque key.
+    void Close(std::uint32_t questId, std::uint32_t sourceKey, std::uint32_t untilMs, std::uint8_t reason, std::uint32_t nowMs,
+        bool dropQuest = false)
+    {
+        closes_.Close(questId, sourceKey, untilMs, reason, nowMs, dropQuest);
+    }
+    bool IsClosed(std::uint32_t questId, std::uint32_t sourceKey, std::uint32_t nowMs) const
+    {
+        return closes_.IsClosed(questId, sourceKey, nowMs);
+    }
+    std::size_t OpenSources(std::uint32_t questId, std::uint32_t const* sourceKeys, std::size_t n, std::uint32_t nowMs) const
+    {
+        return closes_.OpenSources(questId, sourceKeys, n, nowMs);
+    }
+    std::uint8_t CloseDeadCycles(std::uint32_t questId, std::uint32_t sourceKey) const { return closes_.DeadCycles(questId, sourceKey); }
+    std::uint8_t CloseCount(std::uint32_t questId, std::uint32_t sourceKey) const { return closes_.Closes(questId, sourceKey); }
+    bool DropRequested(std::uint32_t questId, std::uint32_t nowMs) const { return closes_.DropRequested(questId, nowMs); }
+    // Park: the book's own park slots. IsParked also reads the bot's turn-in park (TravelTarget::turnInParks, read-only: a const
+    // pointer, nothing is written there) when the caller passes it, so the two lists never disagree.
+    void Park(std::uint32_t questId, std::uint32_t untilMs, std::uint8_t reason, std::uint32_t nowMs) { parks_.Park(questId, untilMs, reason, nowMs); }
+    void Unpark(std::uint32_t questId) { parks_.Unpark(questId); }
+    bool IsParked(std::uint32_t questId, std::uint32_t nowMs, turnin_park::Book const* turnInParks = nullptr) const
+    {
+        return parks_.IsParked(questId, nowMs) || (turnInParks && turnin_park::IsParked(*turnInParks, questId, nowMs));
+    }
+    std::size_t Parked(std::uint32_t nowMs, std::uint32_t* out, std::size_t max) const { return parks_.Parked(nowMs, out, max); }
+    // QB5: the permanent list (read only).
+    bool IsExcluded(std::uint32_t questId) const { return Excluded(questId); }
+    // QB6 / QB7: one episode with a hard end; while ActiveEpisode is not null the planner does not re-plan.
+    bool StartEpisode(std::uint32_t questId, EpisodeKind kind, std::uint32_t durationMs, std::uint32_t nowMs)
+    {
+        return episode_.Start(questId, kind, durationMs, nowMs);
+    }
+    bool AdvanceEpisode(std::uint32_t questId, std::uint8_t stage, std::uint32_t nowMs) { return episode_.Advance(questId, stage, nowMs); }
+    bool EndEpisode(std::uint32_t questId, EpisodeEnd why) { return episode_.End(questId, why); }
+    Episode const* ActiveEpisode(std::uint32_t nowMs) const { return episode_.Active(nowMs); }
+    EpisodeEnd LastEpisodeEnd() const { return episode_.LastEnd(); }
+
 private:
     struct Watch
     {
@@ -109,6 +152,9 @@ private:
     std::size_t nPrev_ = 0;
     std::uint32_t rewarded_[kLog] = {};   // twow-repo#724: reward notes since the last snapshot
     std::size_t nRewarded_ = 0;
+    CloseBook closes_;     // QB6/QB7 pair: no caller yet
+    ParkBook parks_;
+    EpisodeBook episode_;
 };
 }
 
