@@ -3864,7 +3864,8 @@ bool GOHello_go_kheyna_wormhole(Player* pPlayer, GameObject* pGo)
         if (pPlayer->FindNearestCreature(81041, 15.0F))
             return true;
 
-        if (pPlayer->GetQuestStatus(80395) == QUEST_STATUS_INCOMPLETE || pPlayer->GetQuestStatus(80395) == QUEST_STATUS_COMPLETE || pPlayer->GetQuestStatus(80396) == QUEST_STATUS_COMPLETE) // A Glittering Opportunity
+        if (pPlayer->GetQuestStatus(80395) == QUEST_STATUS_INCOMPLETE || pPlayer->GetQuestStatus(80395) == QUEST_STATUS_COMPLETE || pPlayer->GetQuestStatus(80396) == QUEST_STATUS_COMPLETE
+            || (pPlayer->GetQuestRewardStatus(80395) && pPlayer->GetQuestStatus(80396) == QUEST_STATUS_NONE)) // A Glittering Opportunity (twow-repo#694: 80396 not accepted in the 60-s window)
             pGo->SummonCreature(81041, pGo->GetPositionX() + 1.0F, pGo->GetPositionY() + 1.0F, pGo->GetPositionZ(), pGo->GetOrientation(), TEMPSUMMON_TIMED_DESPAWN, 60 * 1000);
         return true;
     }
