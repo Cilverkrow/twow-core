@@ -1150,7 +1150,7 @@ public:
     // failures from at least Bots distinct roster bots within WindowSeconds and no credit of its quest since is skipped for Seconds;
     // any credit of the quest clears it. Mode 0 off (default), 1 all, 2 cohort B, 3 cohort A (crossover arm, OB-00 31.10.2026) - the skip
     // only; failures of every bot count.
-    uint32 questFirstProgressionStaleObjectiveFilter = 0;
+    uint32 questFirstProgressionStaleObjectiveFilter = 1;  // default 1 since the owner adoption 04.11.2026 (twow-repo#601); 0 = rollback
     uint32 questFirstProgressionStaleObjectiveFailures = 4;       // 1..8
     uint32 questFirstProgressionStaleObjectiveBots = 3;           // 1..8
     uint32 questFirstProgressionStaleObjectiveWindowSeconds = 3600;
