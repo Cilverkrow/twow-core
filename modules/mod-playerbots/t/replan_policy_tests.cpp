@@ -687,11 +687,12 @@ void Lines()
     Counters k;
     k.stalls = 1;
     k.forced = 2;
+    k.forcedDropped = 4;
     char buf[256];
     FormatReplanMinLine(buf, sizeof(buf), 'A', false, k, 3);
     Require(std::string(buf) == "[ReplanMin] cohort=A shadow=0 stalls=1 relocates=0 keep=0 replan=0 close=0 forced=2 "
                                 "rate_limited=0 forced_after_rate_limited=0 gaps=0 planned_credit=0 hops=0 grind_nokill=0 offmap=0 "
-                                "dropped=3",
+                                "dropped=3 forced_dropped=4",
             "line: [ReplanMin]");
     char small[16];
     std::size_t volatile smallN = sizeof(small);   // runtime size: the truncation is the point of the check

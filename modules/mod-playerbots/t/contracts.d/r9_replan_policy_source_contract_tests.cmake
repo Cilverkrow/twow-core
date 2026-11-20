@@ -152,9 +152,11 @@ function(check_nits policy out)
     return()
   endif()
   foreach(needle
-      "    std::uint32_t stalls = 0, relocates = 0, keep = 0, replan = 0, close = 0, forced = 0, rateLimited = 0, forcedAfterRateLimited = 0,\n                  gaps = 0, plannedCredit = 0, hops = 0, grindNoKill = 0, offMap = 0;"
+      "    std::uint32_t stalls = 0, relocates = 0, keep = 0, replan = 0, close = 0, forced = 0, rateLimited = 0, forcedAfterRateLimited = 0,\n                  gaps = 0, plannedCredit = 0, hops = 0, grindNoKill = 0, offMap = 0, forcedDropped = 0;"
       "inline void Add(Counters& a, Counters const& b)"
-      "forced_after_rate_limited=%u")
+      "forced_after_rate_limited=%u"
+      "dropped=%u forced_dropped=%u\""
+      "    a.forcedDropped += b.forcedDropped;")
     count_text("${policy}" "${needle}" n)
     if(NOT n EQUAL 1)
       set(${out} "ReplanPolicy.h: '${needle}' not found once" PARENT_SCOPE)
@@ -224,5 +226,8 @@ expect_caught("a relocation decision recorded as a give-up (OB-10 nit 1)" "${r}"
 string(REPLACE "\"forced_after_rate_limited=%u gaps=%u" "\"gaps=%u" m "${policy}")
 check_nits("${m}" r)
 expect_caught("forced_after_rate_limited missing from [ReplanMin]" "${r}")
+string(REPLACE " forced_dropped=%u\"" "\"" m "${policy}")
+check_nits("${m}" r)
+expect_caught("forced_dropped missing from [ReplanMin] (R9-a)" "${r}")
 
 message(STATUS "${TAG}: all checks passed")
