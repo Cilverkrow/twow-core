@@ -585,7 +585,7 @@ public:
     // twow-repo#333 P1-z (OB-00 31.10.2026, bug fix: code default 1, 0 = rollback, 2 cohort B): BuyAction "vendor" also reads the
     // vendor template items (creature_template.vendor_id), as the player's buy, the by-name buy and the vendor map already do.
     uint32 buyVendorTemplateItems = 1;
-    uint32 travelRpgAreaLevelFromSpawn = 0;  // twow-repo#333 P1-v: RpgTravelDestination::IsPossible reads the area level at the spawn nearest to the bot, not at the map origin (RpgAreaLevelPolicy.h); 0 off, 1 all, 2 cohort B (odd guid)
+    uint32 travelRpgAreaLevelFromSpawn = 1;  // twow-repo#333 P1-v: RpgTravelDestination::IsPossible reads the area level at the spawn nearest to the bot, not at the map origin (RpgAreaLevelPolicy.h); 0 off (rollback), 1 all (default since the RALS-ABN acceptance unit 20.11.2026), 2 cohort B (odd guid)
     bool travelElevatorScanCache = false;  // BOT-12 (twow-repo#677): WorldPosition::getTransports' elevator branch walks a per-map list of the transport-type gameobject spawns, built once, instead of all gameobject spawn data on every call
     uint32 gatherQuestHerbFilter = 0;  // twow-repo#333 P1-f: a quest herb (lock 259) is picked only with its quest active (modes 0/1/2)
     // #333: roster bots use their professions while levelling.
