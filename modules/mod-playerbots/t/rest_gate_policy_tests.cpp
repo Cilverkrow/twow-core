@@ -1,6 +1,8 @@
 // twow-repo#602 ROT-01 X1 (AiPlayerbot.Rotation.RestGate): start / end rules with hysteresis, timeout and restart cooldown (also across a
 // getMSTime wrap), food / drink durations with the aura cap, the cast retry wait, threshold clamping and the exact [RestGate] lines
 // (RestGatePolicy.h). Hand-rolled Require(), std::exit(1) on failure, no gtest.
+// DEEP7 finding 3 (20.11.2026, measurement only): the late read of a stale episode (late / gap / dur_late, the stale_* counters), and a
+// randomized check that Step / Close decide exactly as the code before that change (verbatim copy in namespace ref below).
 #ifdef _WIN32
 #include <windows.h>
 #endif
@@ -39,6 +41,105 @@ ai::rest_gate::Reading At(std::uint32_t hp, bool manaPool = false, std::uint32_t
     r.manaPool = manaPool;
     r.mana = mana;
     return r;
+}
+}
+
+// The episode decisions before the DEEP7 measurement change (f4d0ef98 / 3cd8dac9), copied verbatim: the new code must decide the same.
+namespace ref
+{
+using namespace ai::rest_gate;
+
+struct Closed
+{
+    bool closed = false;
+    End end = End::None;
+    bool applied = false;
+    std::uint32_t durMs = 0;
+    std::uint32_t startHp = 0;
+    int startMana = -1;
+};
+
+inline Closed Close(Episode& ep, End end, std::uint32_t nowMs)
+{
+    Closed c;
+    if (!ep.open)
+        return c;
+    c.closed = true;
+    c.end = end;
+    c.applied = ep.applied;
+    // A stale episode lasted until it was last seen, not until the bot came back.
+    c.durMs = (end == End::Stale ? ep.lastSeenMs : nowMs) - ep.startMs;
+    c.startHp = ep.startHp;
+    c.startMana = ep.startMana;
+    ep.open = false;
+    ep.timedOut = end == End::Timeout;
+    ep.endMs = nowMs;
+    return c;
+}
+
+inline Closed Step(Episode& ep, Reading const& r, Thresholds const& t, std::uint32_t nowMs, bool applies)
+{
+    Closed c;
+    if (ep.open)
+    {
+        End const end = std::uint32_t(nowMs - ep.lastSeenMs) > StaleGapMs ? End::Stale : EndOf(r, t, nowMs, ep.startMs);
+        if (end == End::None)
+        {
+            ep.lastSeenMs = nowMs;
+            return c;
+        }
+        c = ref::Close(ep, end, nowMs);   // the one change to the copy: ref:: (ADL would also find ai::rest_gate::Close)
+    }
+    if (RestartBlocked(ep.timedOut, nowMs, ep.endMs) || !StartRest(r, t))
+        return c;
+    ep.open = true;
+    ep.applied = applies;
+    ep.timedOut = false;
+    ep.startMs = nowMs;
+    ep.lastSeenMs = nowMs;
+    ep.startHp = r.hp;
+    ep.startMana = r.manaPool ? int(r.mana) : -1;
+    return c;
+}
+
+// The old RestGateTrace RecordEpisode body (now ai::rest_gate::Count).
+inline void Record(Counters& c, End end, std::uint32_t durMs)
+{
+    ++c.episodes;
+    c.restMs += durMs;
+    if (end == End::Done)
+        ++c.done;
+    else if (end == End::Combat)
+        ++c.combat;
+    else if (end == End::Death)
+        ++c.death;
+    else if (end == End::Stale)
+        ++c.stale;
+    else if (end == End::Timeout)
+        ++c.timeout;
+}
+}
+
+namespace
+{
+bool SameEpisode(ai::rest_gate::Episode const& a, ai::rest_gate::Episode const& b)
+{
+    return a.open == b.open && a.applied == b.applied && a.timedOut == b.timedOut && a.startMs == b.startMs &&
+        a.lastSeenMs == b.lastSeenMs && a.endMs == b.endMs && a.startHp == b.startHp && a.startMana == b.startMana;
+}
+
+bool SameClosed(ai::rest_gate::Closed const& n, ref::Closed const& o)
+{
+    return n.closed == o.closed && n.end == o.end && n.applied == o.applied && n.durMs == o.durMs && n.startHp == o.startHp &&
+        n.startMana == o.startMana;
+}
+
+std::uint32_t g_seed = 0x2B8E1F3Du;
+
+std::uint32_t Next()
+{
+    g_seed = g_seed * 1664525u + 1013904223u;   // LCG, deterministic
+    return g_seed >> 8;
 }
 }
 
@@ -157,8 +258,9 @@ int main()
         c.restMs = 123456;
         c.castFail = 2;
         RequireLine(FormatTotalLine(60, 'B', 4, c, 3),
-            "[RestGateTotal] window_min=60 cohort=B cls=4 episodes=6 done=4 combat=1 death=2 timeout=1 stale=3 rest_s=123 cast_fail=2 dropped=3",
-            "total line");
+            "[RestGateTotal] window_min=60 cohort=B cls=4 episodes=6 done=4 combat=1 death=2 timeout=1 stale=3 rest_s=123 cast_fail=2 dropped=3"
+            " stale_rested=0 stale_combat=0 stale_timeout=0 stale_low=0 stale_gap_s=0",
+            "total line (the old fields first and unchanged, the stale_* fields after dropped=)");
         Require(Counters().Empty() && !c.Empty(), "empty counters");
         Counters failOnly;
         failOnly.castFail = 1;
@@ -229,6 +331,7 @@ int main()
         Step(g, At(45), t, 6000, true);
         c = Step(g, At(45), t, 30000, true);
         Require(c.closed && c.end == End::Stale && c.durMs == 5000 && !g.timedOut, "stale after a 24 s gap");
+        Require(c.late == End::None && c.gapMs == 24000 && c.lateMs == 29000, "stale: late read still below target, gap 24 s, 29 s to it");
         Require(g.open && g.startMs == 30000, "the bot still below 70 % opens a fresh episode");
 
         // Aggro seen on a read (the cached path) closes as combat as well.
@@ -244,6 +347,176 @@ int main()
         Step(w, At(40), t, 0xFFFFF000u, true);
         c = Step(w, At(92), t, 0x00002000u, true);
         Require(c.closed && c.end == End::Done && c.durMs == 0x3000u, "durations across the wrap");
+        Require(c.late == End::None && c.gapMs == 0x3000u && c.lateMs == 0x3000u, "not stale: no late reading, dur_late = dur");
+    }
+
+    // 10) DEEP7 finding 3 (measurement only): the late read of a stale episode, its line fields and counters.
+    {
+        // The eat / drink wait: opened at 55 % (first read), the AI waits DurationMs (22.5 s), the next read finds 100 %.
+        Episode e;
+        Step(e, At(55), t, 1000, true);
+        Closed c = Step(e, At(100), t, 23500, true);
+        Require(c.closed && c.end == End::Stale && c.durMs == 0 && c.late == End::Done && c.gapMs == 22500 && c.lateMs == 22500 &&
+            !e.open && !e.timedOut, "rested through the wait: stale (as before), late = rested, dur_ms 0, dur_late 22.5 s");
+
+        // A stale caster at 99 % HP, 50 % mana: still below the 85 % mana target, within 120 s - low; no new episode (above 40 %).
+        Episode m;
+        Step(m, At(95, true, 30), t, 0, true);
+        c = Step(m, At(99, true, 50), t, 16000, true);
+        Require(c.end == End::Stale && c.late == End::None && !m.open, "stale, late = low, no reopen above the start lines");
+
+        // Seen in combat at the late read.
+        Episode k;
+        Step(k, At(40), t, 0, false);
+        ai::rest_gate::Reading hit = At(60);
+        hit.inCombat = true;
+        c = Step(k, hit, t, 20000, false);
+        Require(c.end == End::Stale && c.late == End::Combat && !c.applied && !k.open, "stale, late = combat (cohort A)");
+
+        // Parked for 200 s, still low: late = timeout; still no cooldown (stale ends as stale), a fresh episode opens.
+        Episode p;
+        Step(p, At(40), t, 0, true);
+        c = Step(p, At(40), t, 200000, true);
+        Require(c.end == End::Stale && c.late == End::Timeout && !p.timedOut && p.open && p.startMs == 200000,
+            "stale, late = timeout, no cooldown, fresh episode");
+
+        // Exactly StaleGapMs is not stale (unchanged boundary).
+        Episode b;
+        Step(b, At(40), t, 0, true);
+        Require(!Step(b, At(41), t, StaleGapMs, true).closed, "a 15 s gap is not stale");
+        c = Step(b, At(95), t, 2 * StaleGapMs + 1, true);
+        Require(c.end == End::Stale && c.late == End::Done && c.gapMs == StaleGapMs + 1 && c.durMs == StaleGapMs &&
+            c.lateMs == 2 * StaleGapMs + 1, "15.001 s: stale, rested");
+
+        // Events never carry a late reading.
+        Episode v;
+        Step(v, At(40), t, 0, true);
+        c = Close(v, End::Combat, 30000);
+        Require(c.end == End::Combat && c.late == End::None && c.durMs == 30000 && c.gapMs == 30000 && c.lateMs == 30000, "combat event");
+
+        // Lines: non-stale lines stay byte-identical (also with late fields passed), a stale line gets late / gap_ms / dur_late_ms.
+        RequireLine(FormatEpisodeLine(4711, "Morwenna", 1, 14, 'B', true, 50, -1, 91, -1, 31000, End::Done, false, End::Done, 7, 9),
+            "[RestGate] bot=4711 name=Morwenna cls=1 level=14 cohort=B applied=1 start_hp=50 start_mana=-1 end_hp=91 end_mana=-1 "
+            "dur_ms=31000 reason=done minimal=0", "done line unchanged");
+        RequireLine(FormatEpisodeLine(4711, "Morwenna", 1, 14, 'B', true, 55, -1, 100, -1, 0, End::Stale, false, End::Done, 22500, 22500),
+            "[RestGate] bot=4711 name=Morwenna cls=1 level=14 cohort=B applied=1 start_hp=55 start_mana=-1 end_hp=100 end_mana=-1 "
+            "dur_ms=0 reason=stale minimal=0 late=rested gap_ms=22500 dur_late_ms=22500", "stale line");
+        RequireLine(FormatEpisodeLine(8, "Kettlina", 8, 17, 'A', false, 62, 30, 99, 50, 5, End::Stale, true, End::None, 16000, 16005),
+            "[RestGate] bot=8 name=Kettlina cls=8 level=17 cohort=A applied=0 start_hp=62 start_mana=30 end_hp=99 end_mana=50 "
+            "dur_ms=5 reason=stale minimal=1 late=low gap_ms=16000 dur_late_ms=16005", "stale line, still low");
+        Require(std::string(LateName(End::Combat)) == "combat" && std::string(LateName(End::Timeout)) == "timeout", "late names");
+        std::string const longName(200, 'x');
+        std::string const longLine = FormatEpisodeLine(4294967295u, longName, 4294967295u, 4294967295u, 'B', true, 4294967295u, -2147483647,
+            4294967295u, -2147483647, 4294967295u, End::Stale, true, End::Timeout, 4294967295u, 4294967295u);
+        Require(longLine.size() < 384 && longLine.find("dur_late_ms=4294967295") != std::string::npos, "the longest stale line fits");
+
+        // Counters: stale stays the sum, the late split adds up to it, the gaps are summed.
+        Counters n;
+        Closed s1;
+        s1.closed = true;
+        s1.end = End::Stale;
+        s1.durMs = 10;
+        s1.late = End::Done;
+        s1.gapMs = 22500;
+        Count(n, s1);
+        s1.late = End::None;
+        s1.gapMs = 16000;
+        Count(n, s1);
+        s1.late = End::Combat;
+        Count(n, s1);
+        s1.late = End::Timeout;
+        Count(n, s1);
+        Closed d1;
+        d1.closed = true;
+        d1.end = End::Done;
+        d1.durMs = 8000;
+        d1.gapMs = 1000;
+        Count(n, d1);
+        Require(n.episodes == 5 && n.stale == 4 && n.done == 1 && n.staleRested == 1 && n.staleLow == 1 && n.staleCombat == 1 &&
+            n.staleTimeout == 1 && n.staleGapMs == 22500 + 3 * 16000 && n.restMs == 8040, "counters");
+        RequireLine(FormatTotalLine(60, 'A', 8, n, 0),
+            "[RestGateTotal] window_min=60 cohort=A cls=8 episodes=5 done=1 combat=0 death=0 timeout=0 stale=4 rest_s=8 cast_fail=0 dropped=0"
+            " stale_rested=1 stale_combat=1 stale_timeout=1 stale_low=1 stale_gap_s=70", "total line with the stale split");
+    }
+
+    // 11) Byte-identical decisions: random readings, gaps (also around StaleGapMs and the 120 s timeout), events and the timer wrap,
+    // driven through the new and the old Step / Close side by side; every episode field, Resting and the closed episode must match, and
+    // the counters' old fields must match the old RecordEpisode.
+    {
+        Thresholds tt[3];
+        tt[1].startHp = 50;
+        tt[1].targetHp = 100;
+        tt[1].maxRestSeconds = 20;
+        tt[2].startMana = 90;
+        tt[2].targetMana = 95;
+        tt[2].maxRestSeconds = 3600;
+        std::uint32_t const gaps[] = { 0, 1, 100, 1000, 5000, 14999, 15000, 15001, 16000, 22500, 30000, 59999, 60000, 119999, 120000,
+            200000 };
+        std::uint64_t stepsChecked = 0, staleSeen = 0, eventsSeen = 0;
+        for (int run = 0; run < 3000; ++run)
+        {
+            Thresholds const& th = tt[run % 3];
+            Episode a, b;
+            Counters cn, co;
+            std::uint32_t now = (run % 7 == 0) ? 0xFFFF0000u + (Next() & 0xFFFFu) : Next();
+            bool const applies = (Next() & 1u) != 0;
+            for (int i = 0; i < 400; ++i)
+            {
+                std::uint32_t const pick = Next();
+                now += (pick % 4 == 0) ? gaps[(pick >> 4) % (sizeof(gaps) / sizeof(gaps[0]))] : (pick >> 4) % 3000;
+                ai::rest_gate::Reading r;
+                r.hp = Next() % 101;
+                r.manaPool = (Next() % 3) != 0;
+                r.mana = Next() % 101;
+                r.inCombat = (Next() % 17) == 0;
+                r.attacked = (Next() % 23) == 0;
+                std::uint32_t const op = Next() % 20;
+                if (op == 0 || op == 1)
+                {
+                    End const ev = op == 0 ? End::Combat : End::Death;   // OnCombatStarted / OnDeath
+                    Closed const cn1 = Close(a, ev, now);
+                    ref::Closed const co1 = ref::Close(b, ev, now);
+                    Require(SameClosed(cn1, co1) && cn1.late == End::None, "event close: same");
+                    if (cn1.closed)
+                    {
+                        Count(cn, cn1);
+                        ref::Record(co, co1.end, co1.durMs);
+                        ++eventsSeen;
+                    }
+                }
+                else if (op == 2)
+                {
+                    a.open = false;   // Calculate: switch off, dead or out of the population
+                    b.open = false;
+                }
+                else
+                {
+                    bool const ap = (op == 3) ? !applies : applies;
+                    Closed const cn1 = Step(a, r, th, now, ap);
+                    ref::Closed const co1 = ref::Step(b, r, th, now, ap);
+                    Require(SameClosed(cn1, co1), "Step: same closed episode");
+                    Require(cn1.end == End::Stale || cn1.late == End::None, "late only on stale");
+                    if (cn1.closed)
+                    {
+                        Count(cn, cn1);
+                        ref::Record(co, co1.end, co1.durMs);
+                        if (cn1.end == End::Stale)
+                        {
+                            ++staleSeen;
+                            Require(cn1.gapMs > StaleGapMs && cn1.lateMs == cn1.durMs + cn1.gapMs, "stale: gap and dur_late");
+                        }
+                    }
+                }
+                Require(SameEpisode(a, b), "same episode state");
+                Require(Resting(a) == Resting(b), "same Resting");
+                ++stepsChecked;
+            }
+            Require(cn.episodes == co.episodes && cn.done == co.done && cn.combat == co.combat && cn.death == co.death &&
+                cn.timeout == co.timeout && cn.stale == co.stale && cn.restMs == co.restMs && cn.castFail == co.castFail,
+                "old counter fields unchanged");
+            Require(cn.staleRested + cn.staleCombat + cn.staleTimeout + cn.staleLow == cn.stale, "stale split adds up");
+        }
+        Require(stepsChecked == 1200000 && staleSeen > 1000 && eventsSeen > 1000, "the random check covered stale closes and events");
     }
 
     std::cout << "rest_gate_policy_tests passed\n";
