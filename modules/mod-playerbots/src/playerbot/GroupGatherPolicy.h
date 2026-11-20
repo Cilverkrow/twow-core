@@ -66,7 +66,7 @@ constexpr std::uint32_t kLeverInertManager = 1u;      // BotGroups.Manager off o
 constexpr std::uint32_t kLeverInertSupervisor = 2u;   // Supervisor off: LiveTypes 0, no directive reaches a bot
 constexpr std::uint32_t kLeverInertArbiter = 4u;      // Supervisor.Arbiter != 2 at load: LiveTypes 0 until the console enforces
 constexpr std::uint32_t kLeverInertNoQuest = 8u;      // Manager.Types without the QUEST bit: GatherApplies needs a QUEST group
-constexpr std::uint32_t kLeverInertCohorts = 16u;     // the Gather arm is cohort B and the manager or supervisor only A (or reverse)
+constexpr std::uint32_t kLeverInertCohorts = 16u;     // two of Gather arm / manager / supervisor are cohort B and only A (or reverse)
 
 inline bool CohortsDisjoint(std::uint32_t a, std::uint32_t b)
 {
@@ -88,9 +88,18 @@ inline std::uint32_t LeverInertReasons(std::uint32_t lever, std::uint32_t gather
         r |= kLeverInertArbiter;
     if (!TypeOn(types, GroupType::Quest))
         r |= kLeverInertNoQuest;
-    if (CohortsDisjoint(gather, manager) || CohortsDisjoint(gather, supervisorMode))
+    // A QUEST candidate needs the manager's cohort (Owns) and the supervisor (Candidate, SupervisorApplies), and the leader must
+    // be in the Gather arm: any disjoint pair of the three leaves no leader the lever could reach (OB-60 R3 20.11.).
+    if (CohortsDisjoint(gather, manager) || CohortsDisjoint(gather, supervisorMode) || CohortsDisjoint(manager, supervisorMode))
         r |= kLeverInertCohorts;
     return r;
+}
+
+// Arbiter below 2 at load is the one soft reason (the console can still enforce): with no other reason the loader writes
+// "lever_pending" instead of "lever_inert", so a run with Arbiter 1 + console enforce (T33-1) is not read as inert.
+inline bool LeverInertHard(std::uint32_t r)
+{
+    return (r & ~kLeverInertArbiter) != 0;
 }
 
 // The name of one reason bit for the note line (nullptr for anything else); the loader joins the set bits in bit order.
@@ -100,7 +109,7 @@ inline char const* LeverInertName(std::uint32_t bit)
     {
         case kLeverInertManager: return "manager_off";
         case kLeverInertSupervisor: return "supervisor_off";
-        case kLeverInertArbiter: return "arbiter_not_2";
+        case kLeverInertArbiter: return "arbiter_not_2_until_enforce";
         case kLeverInertNoQuest: return "types_no_quest";
         case kLeverInertCohorts: return "cohorts_disjoint";
         default: return nullptr;

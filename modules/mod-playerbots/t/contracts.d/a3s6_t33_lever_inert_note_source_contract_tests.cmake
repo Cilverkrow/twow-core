@@ -2,9 +2,12 @@ cmake_policy(VERSION 3.16)
 # A3 step 6 T33-1 silent trap (OB-00 20.11.2026, R3: logging only, defaults and behaviour unchanged): with
 # AiPlayerbot.BotGroups.Manager.Gather.Lever = 1 after the load clamps the lever can still never act, without any error line, when
 # BotGroups.Manager is off, Supervisor is off, Supervisor.Arbiter is not 2 at load, Manager.Types has no QUEST bit, or the Gather
-# arm and the manager / supervisor cohorts do not overlap (population check T33-1, a3-schritt6/t33-1-final/POPULATION-ABGLEICH).
-# The loader then writes one note line "[GroupMgr] lever_inert reasons=...". Pins:
+# arm, the manager and the supervisor cohorts do not overlap pairwise (population check T33-1, a3-schritt6/t33-1-final/
+# POPULATION-ABGLEICH; manager x supervisor pair and the soft arbiter reason after OB-60 R3 20.11.). The loader then writes one
+# note line "[GroupMgr] lever_inert reasons=...", or "[GroupMgr] lever_pending reasons=arbiter_not_2_until_enforce ..." when the
+# arbiter at load is the only reason (the console can still enforce). Pins:
 #   (a) the pure rule: LeverInertReasons returns 0 while the lever is off, else one bit per reason; LeverInertName names each bit;
+#       LeverInertHard is false only for the arbiter alone;
 #   (b) the loader: exactly one note, written with outBasic (no ERROR prefix: kits read "ERROR:[GroupMgr] config key=" as a clamp
 #       line), after the Supervisor.Arbiter / ArbiterProbe reads (it needs the loaded arbiter) and before the planner keys, and it
 #       changes no config value;
@@ -70,11 +73,12 @@ set(R_MGR "    if (manager == cohort::ModeOff || manager > cohort::ModeOnlyA)\n 
 set(R_SUP "    if (!SupervisorAny(supervisorMode))\n        r |= kLeverInertSupervisor;")
 set(R_ARB "    if (arbiter != kManagerArbiter)\n        r |= kLeverInertArbiter;")
 set(R_QST "    if (!TypeOn(types, GroupType::Quest))\n        r |= kLeverInertNoQuest;")
-set(R_COH "    if (CohortsDisjoint(gather, manager) || CohortsDisjoint(gather, supervisorMode))\n        r |= kLeverInertCohorts;")
-set(N_ARB "        case kLeverInertArbiter: return \"arbiter_not_2\";")
+set(R_COH "    if (CohortsDisjoint(gather, manager) || CohortsDisjoint(gather, supervisorMode) || CohortsDisjoint(manager, supervisorMode))\n        r |= kLeverInertCohorts;")
+set(N_ARB "        case kLeverInertArbiter: return \"arbiter_not_2_until_enforce\";")
+set(R_HARD "inline bool LeverInertHard(std::uint32_t r)\n{\n    return (r & ~kLeverInertArbiter) != 0;\n}")
 
 function(check_pure gather_h out)
-  foreach(var R_OFF R_MGR R_SUP R_ARB R_QST R_COH N_ARB)
+  foreach(var R_OFF R_MGR R_SUP R_ARB R_QST R_COH N_ARB R_HARD)
     string(FIND "${gather_h}" "${${var}}" at)
     if(at EQUAL -1)
       set(${out} "pure: GroupGatherPolicy.h missing ${var}" PARENT_SCOPE)
@@ -86,7 +90,7 @@ endfunction()
 
 # ---- (b) the loader ----------------------------------------------------------------------------------------------------------
 set(NOTE_CALL "ai::group_mgr::LeverInertReasons(botGroupsManagerGatherLever, botGroupsManagerGather,")
-set(NOTE_LINE "        sLog.outBasic(\"[GroupMgr] lever_inert reasons=%s lever=%u gather=%u manager=%u types=%u supervisor=%u arbiter=%u\",")
+set(NOTE_LINE "        sLog.outBasic(\"[GroupMgr] %s reasons=%s lever=%u gather=%u manager=%u types=%u supervisor=%u arbiter=%u\",\n            ai::group_mgr::LeverInertHard(leverInert) ? \"lever_inert\" : \"lever_pending\", names.c_str(),")
 set(AFTER "    supervisorArbiterProbe = uint32(config.GetIntDefault(\"AiPlayerbot.Supervisor.ArbiterProbe\", 0));")
 set(BEFORE "    plannerBandTable = config.GetStringDefault(\"AiPlayerbot.Planner.BandTable\", \"\");")
 
@@ -96,14 +100,16 @@ function(check_loader config_cpp out)
     set(${out} "loader: LeverInertReasons( appears ${n} times (1 expected)" PARENT_SCOPE)
     return()
   endif()
-  count_text("${config_cpp}" "lever_inert" n)
-  if(NOT n EQUAL 1)
-    set(${out} "loader: lever_inert appears ${n} times (1 expected)" PARENT_SCOPE)
-    return()
-  endif()
+  foreach(tag lever_inert lever_pending)
+    count_text("${config_cpp}" "${tag}" n)
+    if(NOT n EQUAL 1)
+      set(${out} "loader: ${tag} appears ${n} times (1 expected)" PARENT_SCOPE)
+      return()
+    endif()
+  endforeach()
   string(FIND "${config_cpp}" "${NOTE_LINE}" line_at)
   if(line_at EQUAL -1)
-    set(${out} "loader: missing NOTE_LINE (outBasic, no ERROR prefix)" PARENT_SCOPE)
+    set(${out} "loader: missing NOTE_LINE (outBasic, no ERROR prefix, tag by LeverInertHard)" PARENT_SCOPE)
     return()
   endif()
   string(FIND "${config_cpp}" "${NOTE_CALL}" call_at)
@@ -148,16 +154,22 @@ fail_if("${r}")
 string(REPLACE "${R_ARB}" "" m "${gather_h}")
 check_pure("${m}" r)
 expect_reason("arbiter reason dropped" "${r}" "missing R_ARB")
-string(REPLACE "sLog.outBasic(\"[GroupMgr] lever_inert" "sLog.outError(\"[GroupMgr] lever_inert" m "${config_cpp}")
+string(REPLACE "${R_COH}" "    if (CohortsDisjoint(gather, manager) || CohortsDisjoint(gather, supervisorMode))\n        r |= kLeverInertCohorts;" m "${gather_h}")
+check_pure("${m}" r)
+expect_reason("manager x supervisor pair dropped" "${r}" "missing R_COH")
+string(REPLACE "sLog.outBasic(\"[GroupMgr] %s reasons" "sLog.outError(\"[GroupMgr] %s reasons" m "${config_cpp}")
 check_loader("${m}" r)
 expect_reason("note as outError" "${r}" "missing NOTE_LINE")
+string(REPLACE "ai::group_mgr::LeverInertHard(leverInert) ? \"lever_inert\" : \"lever_pending\"" "\"lever_inert\"" m "${config_cpp}")
+check_loader("${m}" r)
+expect_reason("no lever_pending tag" "${r}" "lever_pending appears 0 times")
 check_loader("${config_cpp}\n    supervisorArbiterProbe = 0; // ${NOTE_CALL}" r)
 expect_reason("second LeverInertReasons call" "${r}" "LeverInertReasons\\( appears 2 times")
 string(REPLACE "${BEFORE}" "" m "${config_cpp}")
 string(REPLACE "    // T33-1 silent trap (OB-00 20.11.2026, R3 logging only)" "${BEFORE}\n    // T33-1 silent trap (OB-00 20.11.2026, R3 logging only)" m "${m}")
 check_loader("${m}" r)
 expect_reason("note after the planner keys" "${r}" "not between")
-string(REPLACE "        sLog.outBasic(\"[GroupMgr] lever_inert" "        botGroupsManagerGatherLever = 0;\n        sLog.outBasic(\"[GroupMgr] lever_inert" m "${config_cpp}")
+string(REPLACE "        sLog.outBasic(\"[GroupMgr] %s reasons" "        botGroupsManagerGatherLever = 0;\n        sLog.outBasic(\"[GroupMgr] %s reasons" m "${config_cpp}")
 check_loader("${m}" r)
 expect_reason("note block clamps the lever" "${r}" "assigns a config member")
 string(REPLACE "    TestGatherLeverInertReasons();\n" "" m "${dtest}")

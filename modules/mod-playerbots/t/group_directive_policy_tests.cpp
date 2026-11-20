@@ -2090,12 +2090,17 @@ void TestGatherLeverInertReasons()
     Require(LeverInertReasons(1, 1, 1, 1, 1, 2) == kLeverInertNoQuest, "Types ADHOC only");
     Require(LeverInertReasons(1, 2, 3, 3, 1, 2) == kLeverInertCohorts && LeverInertReasons(1, 3, 1, 3, 2, 2) == kLeverInertCohorts,
         "Gather B with manager A only, Gather A with supervisor B only");
-    Require(LeverInertReasons(1, 2, 2, 3, 2, 2) == 0 && LeverInertReasons(1, 1, 2, 3, 3, 2) == 0, "overlapping cohorts act");
+    Require(LeverInertReasons(1, 1, 2, 3, 3, 2) == kLeverInertCohorts && LeverInertReasons(1, 1, 3, 3, 2, 2) == kLeverInertCohorts,
+        "Gather all, manager B with supervisor A only (and reverse): no candidate (OB-60 R3)");
+    Require(LeverInertReasons(1, 2, 2, 3, 2, 2) == 0 && LeverInertReasons(1, 1, 2, 3, 1, 2) == 0 && LeverInertReasons(1, 3, 1, 3, 3, 2) == 0,
+        "overlapping cohorts act");
+    Require(!LeverInertHard(0) && !LeverInertHard(kLeverInertArbiter) && LeverInertHard(kLeverInertArbiter | kLeverInertManager) &&
+        LeverInertHard(kLeverInertCohorts), "only the arbiter alone is soft (lever_pending)");
     Require(LeverInertReasons(1, 1, 0, 0, 0, 0) == (kLeverInertManager | kLeverInertSupervisor | kLeverInertArbiter | kLeverInertNoQuest),
         "the dist defaults plus Lever 1 / Gather 1: four reasons");
     Require(std::strcmp(LeverInertName(kLeverInertManager), "manager_off") == 0 &&
         std::strcmp(LeverInertName(kLeverInertSupervisor), "supervisor_off") == 0 &&
-        std::strcmp(LeverInertName(kLeverInertArbiter), "arbiter_not_2") == 0 &&
+        std::strcmp(LeverInertName(kLeverInertArbiter), "arbiter_not_2_until_enforce") == 0 &&
         std::strcmp(LeverInertName(kLeverInertNoQuest), "types_no_quest") == 0 &&
         std::strcmp(LeverInertName(kLeverInertCohorts), "cohorts_disjoint") == 0 &&
         LeverInertName(0) == nullptr && LeverInertName(3) == nullptr && LeverInertName(32) == nullptr, "one name per reason bit");

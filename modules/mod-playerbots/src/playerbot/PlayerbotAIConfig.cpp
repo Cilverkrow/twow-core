@@ -1057,7 +1057,7 @@ bool PlayerbotAIConfig::Initialize()
     }
     // T33-1 silent trap (OB-00 20.11.2026, R3 logging only): the lever is on but can never act (GroupGatherPolicy.h
     // LeverInertReasons). One note line, no clamp, no ERROR prefix (kits read "ERROR:[GroupMgr] config key=" as a clamp line);
-    // arbiter_not_2 can be lifted later by the console.
+    // the arbiter alone can be lifted later by the console: then the soft tag (LeverInertHard false; OB-60 R3 20.11.).
     if (std::uint32_t const leverInert = ai::group_mgr::LeverInertReasons(botGroupsManagerGatherLever, botGroupsManagerGather,
             botGroupsManager, botGroupsManagerTypes, supervisor, supervisorArbiter))
     {
@@ -1065,9 +1065,9 @@ bool PlayerbotAIConfig::Initialize()
         for (std::uint32_t bit = 1u; bit <= ai::group_mgr::kLeverInertCohorts; bit <<= 1)
             if ((leverInert & bit) && ai::group_mgr::LeverInertName(bit))
                 names += (names.empty() ? "" : ",") + std::string(ai::group_mgr::LeverInertName(bit));
-        sLog.outBasic("[GroupMgr] lever_inert reasons=%s lever=%u gather=%u manager=%u types=%u supervisor=%u arbiter=%u",
-            names.c_str(), botGroupsManagerGatherLever, botGroupsManagerGather, botGroupsManager, botGroupsManagerTypes, supervisor,
-            supervisorArbiter);
+        sLog.outBasic("[GroupMgr] %s reasons=%s lever=%u gather=%u manager=%u types=%u supervisor=%u arbiter=%u",
+            ai::group_mgr::LeverInertHard(leverInert) ? "lever_inert" : "lever_pending", names.c_str(), botGroupsManagerGatherLever,
+            botGroupsManagerGather, botGroupsManager, botGroupsManagerTypes, supervisor, supervisorArbiter);
     }
     // A3 step 3 planner P-1: the band table path (BandTable.cpp); "" = off.
     plannerBandTable = config.GetStringDefault("AiPlayerbot.Planner.BandTable", "");
