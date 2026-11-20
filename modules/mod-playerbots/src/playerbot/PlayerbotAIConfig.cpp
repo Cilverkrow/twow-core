@@ -1223,7 +1223,8 @@ bool PlayerbotAIConfig::Initialize()
     }
     // twow-repo#601 cand4 (i) StaleObjectiveFilter: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B); the parameters
     // are clamped (failures and bots fit the 8 failures kept per objective; window and mark 60 s .. 1 day).
-    questFirstProgressionStaleObjectiveFilter = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter", 0);
+    // Default 1 since the owner adoption "ja bringen" 04.11.2026 (cand4G RESULT ADOPT fad2d62a, twow-repo#601); 0 = rollback.
+    questFirstProgressionStaleObjectiveFilter = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter", 1);
     // twow-repo#601 crossover (OB-00 31.10.2026): 3 = only cohort A (CohortPolicy ModeOnlyA).
     if (questFirstProgressionStaleObjectiveFilter > 3)
     {
