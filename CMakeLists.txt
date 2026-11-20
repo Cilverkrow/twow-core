@@ -1173,6 +1173,11 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
     COMMAND "${CMAKE_COMMAND}"
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_game_tele_484_contract.cmake")
+  # twow-repo#694: Kheyna (81041) is summoned again when 80395 is rewarded and 80396 not accepted.
+  add_test(NAME kheyna_694_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_kheyna_694_contract.cmake")
   # twow-repo#405: quest-item chests respawn in half the time (owner, train 8).
   add_test(NAME quest_go_respawn_405_contract
     COMMAND "${CMAKE_COMMAND}"
