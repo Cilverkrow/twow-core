@@ -7,7 +7,9 @@
 --    Lunar Festival 7: 73, Winter Veil 2: 21, Winter Veil gifts 21: 6, Love is in the Air 8: 17, Midsummer 1: 16,
 --    Children's Week 10: 12, Harvest Festival 11: 4, Noblegarden 9: 1.
 -- 2) Switch off the holiday events that are still enabled: 1 Midsummer, 2/21 Winter Veil, 9/28 Noblegarden,
---    10 Children's Week, 11 Harvest Festival, 12 Hallow's End (7 Lunar and 8/110-115 Love are already disabled).
+--    10 Children's Week, 11 Harvest Festival, 12 Hallow's End, and the calendar events 6 Fireworks, 34 New Year's Eve,
+--    38 Chinese New Year, 39 Post Firework Toasting Goblets, 41 July 4th Fireworks, 42 Peon Day (owner 20.11.2026)
+--    (7 Lunar and 8/110-115 Love are already disabled). 6 and 39 are hardcoded events; Update skips them when disabled.
 --    Disabled events never start (GameEventMgr::Update skips them), so their NPCs, decoration and quests stay off.
 --    Darkmoon Faire (4/5/23/24) and all other events are not touched.
 -- Nothing is deleted. Marker table game_event_quest_580 holds exactly the pairs this file adds; backup table
@@ -57,12 +59,12 @@ SELECT m.`quest`, m.`event` FROM `game_event_quest_580` m;
 
 -- Keep the first-seen `disabled` values, then switch the holiday events off.
 INSERT IGNORE INTO `game_event_bak_580` (`entry`, `disabled`)
-SELECT `entry`, `disabled` FROM `game_event` WHERE `entry` IN (1, 2, 9, 10, 11, 12, 21, 28);
-UPDATE `game_event` SET `disabled` = 1 WHERE `entry` IN (1, 2, 9, 10, 11, 12, 21, 28);
+SELECT `entry`, `disabled` FROM `game_event` WHERE `entry` IN (1, 2, 6, 9, 10, 11, 12, 21, 28, 34, 38, 39, 41, 42);
+UPDATE `game_event` SET `disabled` = 1 WHERE `entry` IN (1, 2, 6, 9, 10, 11, 12, 21, 28, 34, 38, 39, 41, 42);
 
 -- End state. The updater ignores statement results, so a wrong end state must fail here.
 CREATE TEMPORARY TABLE IF NOT EXISTS `tmp_check_580` (`ok` TINYINT(1) NOT NULL CHECK (`ok` = 1));
 INSERT INTO `tmp_check_580` (`ok`)
 SELECT (SELECT COUNT(*) FROM `tmp_link_580` t
          WHERE EXISTS (SELECT 1 FROM `game_event_quest` g WHERE g.`quest` = t.`quest` AND g.`event` = t.`event`)) = 150
-   AND (SELECT COUNT(*) FROM `game_event` WHERE `entry` IN (1, 2, 9, 10, 11, 12, 21, 28) AND `disabled` = 1) = 8;
+   AND (SELECT COUNT(*) FROM `game_event` WHERE `entry` IN (1, 2, 6, 9, 10, 11, 12, 21, 28, 34, 38, 39, 41, 42) AND `disabled` = 1) = 14;
