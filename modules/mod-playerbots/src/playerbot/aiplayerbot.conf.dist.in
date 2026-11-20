@@ -4419,6 +4419,20 @@ AiPlayerbot.Rotation.FollowUnstealth = 0
 # Cohort mode: 0 = off, as before (default until its A/B); 1 = all bots; 2 = cohort B (odd guid); 3 = cohort A; other = 0.
 AiPlayerbot.Rotation.UnreachableGiveUp = 0
 
+# twow-repo#703 item 4b (fights that go on after a give-up; 703H u4: 8 [StuckCombat] stops within minutes of a give-up by the
+# same bot, 1.77 expected by chance, 5 of them on the given-up entry): after a give-up of Rotation.UnreachableGiveUp, a bot on
+# its own does not pick that unit again for 1800 s, nor another unit of the same entry on the same map within 100 yd of the
+# give-up spot. Solo only: a bot in a group is never locked (checked when the lock is set and when it is read). The grind pick,
+# the assist pick, the attack and the pull request skip a locked unit. Self-defence stays: a same-entry unit whose victim is the
+# bot or its pet may be fought, the given-up unit only when it attacks the bot or its pet and the bot can hit it now. When the
+# lock is set, a swing on a same-entry unit near the spot that is not hitting the bot or its pet stops, and so does the pet; no
+# threat change, no combat stop. One [UnreachableLock] state=arm line per lock; state=block lines at most once a minute per bot,
+# with counts of pick calls (not units) per path. Needs Rotation.UnreachableGiveUp >= 1 for the same bots (only the give-up
+# sets a lock, and only on a creature); with the give-up off, or on only for the other cohort (2 with 3), the lock is inert and
+# an error line says so at load. Behaviour change: default 0 until its A/B (pending).
+# Cohort mode: 0 = off, as before (default); 1 = all bots; 2 = cohort B (odd guid); 3 = cohort A; other = 0.
+AiPlayerbot.Rotation.UnreachableLock = 0
+
 # twow-repo#602 ROT-01 3c (priest Farathil loop, OB-00 24.10.2026, BEHAVIOUR CHANGE, enable only after A/B + owner go): "low mana"
 # pushes "dark rune" (alternative "mana potion") on every evaluation, in the combat and the reaction engine. Without a rune in
 # the bags the action is impossible and dropped, so an out-of-mana priest pushed it 2-3 times per AI tick for hours (x1b

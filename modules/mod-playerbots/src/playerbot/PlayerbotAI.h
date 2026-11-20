@@ -1121,6 +1121,10 @@ protected:
     // the quest camp marks (bot thread; never touched with the key at 0).
     ai::unreachable_giveup::Ring unreachableGiveUp;
     ai::unreachable_giveup::MarkGuard unreachableMarkGuard;
+    // twow-repo#703 item 4b (AiPlayerbot.Rotation.UnreachableLock): the locks a give-up armed and the block line budget (bot
+    // thread; never touched with the key at 0).
+    ai::unreachable_giveup::Locks unreachableLocks;
+    ai::unreachable_giveup::BlockLog unreachableLockLog;
     uint32 lastValueCountTime = 0;
     uint32 lastValueNamesTime = 0;
     mutable std::mutex valueNamesMutex;
@@ -1233,6 +1237,12 @@ public:
     // twow-repo#703 item 4: one [Unreachable] result of CheckReachProgress counted; at K on one guid the target is given up
     // (UnreachableGiveUpPolicy.h). Called only with the key on.
     void UnreachableGiveUp(Unit* target, uint32 now);
+    // twow-repo#703 item 4b (Rotation.UnreachableLock): armed only from UnreachableGiveUp; read at the pick sites, true = skip the
+    // unit (a locked guid or same-entry sibling that may not be defended against). Bot thread, no game-state writes in the read.
+    void ArmUnreachableLock(Unit* target, int32 entry, uint32 now);
+    bool UnreachableLockBlocks(Unit* unit, ai::unreachable_giveup::Path path);
+    // The same verdict without the block line (the CastLosGate pre-scan in TargetValue::FindTarget).
+    bool UnreachableLockWouldBlock(Unit* unit);
     bool IsUnreachableTarget(ObjectGuid guid) const { return unreachableTargets.Ignored(guid.GetRawValue(), uint32(time(nullptr))); }
     // A3 step 5 (CombatRule.ProgressGuard): the CombatLoop event a break left for the supervisor (switch on for the bot), taken once.
     // The interface for the CombatGuard frame (Supervisor.CombatGuard, CLI-Projekt); call it on the bot's thread.

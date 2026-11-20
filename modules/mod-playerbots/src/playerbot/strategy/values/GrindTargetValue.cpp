@@ -108,6 +108,13 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
         if (!unit || !sServerFacade.IsAlive(unit))
             continue;
 
+        // twow-repo#703 4b (Rotation.UnreachableLock): a locked unit is skipped unless the bot may fight back (MayDefend).
+        if (ai->UnreachableLockBlocks(unit, ai::unreachable_giveup::Path::GrindAttacker))
+        {
+            logGrind(unit, "(hostile) ignored (unreachable lock).");
+            continue;
+        }
+
         if (!bot->InBattleGround() && !CanFreeMoveValue::CanFreeTarget(ai, GuidPosition(unit)))
         {
             logGrind(unit, "(hostile) ignored (out of free range).");
@@ -207,6 +214,10 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
 
         // Hotfix 8.2: a creature this bot could not reach is skipped for five minutes.
         if (ai->IsUnreachableTarget(unit->GetObjectGuid()))
+            continue;
+
+        // twow-repo#703 4b (Rotation.UnreachableLock): also the same-entry siblings near the give-up spot, for 1800 s.
+        if (ai->UnreachableLockBlocks(unit, ai::unreachable_giveup::Path::GrindCandidate))
             continue;
 
 #ifdef MANGOSBOT_TWO 
