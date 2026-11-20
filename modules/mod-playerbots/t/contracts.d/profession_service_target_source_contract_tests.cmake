@@ -1,7 +1,8 @@
 # twow-repo#333 Berufe P1-v (OB-00 26.10.2026, M1r run 3: 20 trainer requests, 0 targets, every end "lost trip_s=0").
 # (a) No switch: a profession trip builds its destination list without the fight gate of GetPartitions / IsLocationLevelValid
 #     (bot level - 2 - deaths against the area level) and says "[ProfTravel] state=no_target" when the list gives no target.
-# (b) AiPlayerbot.Travel.RpgAreaLevelFromSpawn (modes 0/1/2, default 0, ConfigEcho): RpgTravelDestination::IsPossible reads the
+# (b) AiPlayerbot.Travel.RpgAreaLevelFromSpawn (modes 0/1/2, default 1 since the RALS-ABN acceptance unit 20.11.2026,
+#     0 = rollback, ConfigEcho): RpgTravelDestination::IsPossible reads the
 #     area level at the spawn nearest to the bot instead of GuidPosition(HIGHGUID_UNIT, entry) - map 0 at the origin.
 # The rule behaviour is tested in t/rpg_area_level_policy_tests.cpp; this contract pins the wiring.
 
@@ -68,11 +69,14 @@ require_order("${choose_cpp}" "ProfessionTripNoTarget(ai, futureTravelPurpose," 
 require_text("${values_cpp}" "sLog.outBasic(\"[ProfTravel] state=no_target kind=%s bot=%u level=%u cohort=%c ranges=%u points=%u path=%s rejects=%s\"," "the no_target line")
 require_text("${values_cpp}" "sLog.outBasic(\"[ProfTravel] state=end kind=%s bot=%u level=%u cohort=%c reason=no_target trip_s=0 hold_over_s=0 path=%s\"," "the end at once")
 
-# (b) The switch: modes 0/1/2, default 0, ConfigEcho, read on the bot thread into PlayerTravelInfo.
-require_text("${config_h}" "uint32 travelRpgAreaLevelFromSpawn = 0;" "default off")
-require_text("${config_cpp}" "travelRpgAreaLevelFromSpawn = config.GetIntDefault(\"AiPlayerbot.Travel.RpgAreaLevelFromSpawn\", 0);\n    if (travelRpgAreaLevelFromSpawn > 2)\n        travelRpgAreaLevelFromSpawn = 0;" "an unknown mode is off")
+# (b) The switch: modes 0/1/2, default 1 (0 = rollback), ConfigEcho, read on the bot thread into PlayerTravelInfo.
+require_text("${config_h}" "uint32 travelRpgAreaLevelFromSpawn = 1;" "default on")
+forbid_text("${config_h}" "uint32 travelRpgAreaLevelFromSpawn = 0;" "member default back to off")
+require_text("${config_cpp}" "travelRpgAreaLevelFromSpawn = config.GetIntDefault(\"AiPlayerbot.Travel.RpgAreaLevelFromSpawn\", 1);\n    if (travelRpgAreaLevelFromSpawn > 2)\n        travelRpgAreaLevelFromSpawn = 0;" "an unknown mode is off")
 require_text("${config_cpp}" "{\"Travel.RpgAreaLevelFromSpawn\", Value(travelRpgAreaLevelFromSpawn)}," "ConfigEcho")
-require_text("${conf_dist}" "AiPlayerbot.Travel.RpgAreaLevelFromSpawn = 0" "documented, default 0")
+require_text("${conf_dist}" "\nAiPlayerbot.Travel.RpgAreaLevelFromSpawn = 1\n" "documented, default 1")
+forbid_text("${conf_dist}" "\nAiPlayerbot.Travel.RpgAreaLevelFromSpawn = 0\n" "dist default back to off")
+forbid_text("${config_cpp}" "GetIntDefault(\"AiPlayerbot.Travel.RpgAreaLevelFromSpawn\", 0)" "loader default back to off")
 require_text("${mgr_cpp}" "rpgAreaFromSpawn = ai::cohort::Applies(sPlayerbotAIConfig.travelRpgAreaLevelFromSpawn, player->GetGUIDLow());" "cohort mode on the bot thread")
 require_text("${mgr_h}" "bool UsesRpgAreaFromSpawn() const { return rpgAreaFromSpawn; }" "the snapshot bit")
 

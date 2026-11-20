@@ -2863,8 +2863,8 @@ AiPlayerbot.ProfessionUse.ToolBuy = 0
 # template_items=0|1 money=" line per vendor visit of a bot missing its pick / knife at a vendor that stocks it.
 # Mode: 0 = as before (rollback), 1 = every bot (default), 2 = only cohort B (odd low guid). Any other value acts like 1.
 AiPlayerbot.Buy.VendorTemplateItems = 1
-# twow-repo#333 P1-v (OB-00 26.10.2026, BUG FIX behind a switch: it changes the RPG travel of every bot; profile 1 only after a
-# cand A/B with quest metrics and the owner's go): an RPG target (vendor, repairer, trainer, mailbox, auctioneer, named RPG
+# twow-repo#333 P1-v (OB-00 26.10.2026, BUG FIX behind a switch: it changes the RPG travel of every bot; code default 1 after the
+# acceptance unit RALS-ABN, 20.11.2026, and the owner's go): an RPG target (vendor, repairer, trainer, mailbox, auctioneer, named RPG
 # target) is "not possible" for a bot when its area is more than 5 levels above it. That area level was read at the default
 # position of GuidPosition(HIGHGUID_UNIT, entry) - map 0 at the origin, not the spawn - so one unrelated area decided for
 # every such target of every bot. With the mode on for the bot it is read at the spawn nearest to the bot (a sub-area
@@ -2872,9 +2872,9 @@ AiPlayerbot.Buy.VendorTemplateItems = 1
 # their own checks and are not affected. With any mode set: "[RpgAreaLevel] state=trip purpose=Vendor|Repair|Trainer|AH|
 # Mail|GenericRpg bot= level= cohort= arm= entry= zone= target_area_level= distance=" per RPG trip (arm=1: the spawn rule
 # applies to the bot) and once per server run "[RpgAreaLevel] state=origin area_level=" (the level the old rule read).
-# Mode (in-realm A/B, cohort parity): 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other
-# value acts like 0.
-AiPlayerbot.Travel.RpgAreaLevelFromSpawn = 0
+# Mode (in-realm A/B, cohort parity): 0 = as before (rollback), 1 = every bot (default since the RALS-ABN acceptance unit,
+# 20.11.2026), 2 = only cohort B (odd low guid). Any other value acts like 0.
+AiPlayerbot.Travel.RpgAreaLevelFromSpawn = 1
 # BOT-12 (twow-repo#677; cand4G u2: a bot at a zeppelin dock node with entry 0 paid ~13 ms per update): 1 = the elevator
 # branch of the transport lookup (UseTransport, dock waits) walks a list per map of the transport-type gameobject spawns
 # (GAMEOBJECT_TYPE_TRANSPORT, GAMEOBJECT_TYPE_MO_TRANSPORT), built once on first use, instead of all gameobject spawn data
