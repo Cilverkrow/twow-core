@@ -88,7 +88,7 @@ require_text("${policy}" "return relationWorkOpen && !needForQuest;" "grind skip
 require_text("${grind}" "bool const relationWorkOpen = ai::cohort::Applies(sPlayerbotAIConfig.questLoopRelationWorkNoGrind, bot->GetGUIDLow()) &&\n        travelTargetWorking && travelTarget && !group && rosterOnItsOwn && QuestRelationOpen(bot, travelTarget->GetDestination());" "the gate: switch first, WORK, roster bot on its own, no group, open relation")
 require_order("${grind}" "logGrind(unit, \"(hostile) selected.\");" "bool const relationWorkOpen =" "attackers before the rule")
 between("${grind}" "        if (entry && !needForQuest)\n        {" "else if (urand(0, 100) < 75)" plain)
-require_text("${plain}" "if (ai::quest_loop::RelationWorkGrindSkipped(relationWorkOpen, needForQuest))\n            {\n                logGrind(unit, \"ignored (QuestLoop.RelationWorkNoGrind: the hand-in / accept at the NPC first).\");\n                continue;\n            }" "the skip")
+require_text("${plain}" "if (ai::quest_loop::RelationWorkGrindSkipped(relationWorkOpen, needForQuest))\n            {\n                skip(ai::grind_idle::Skip::Rule);\n                logGrind(unit, \"ignored (QuestLoop.RelationWorkNoGrind: the hand-in / accept at the NPC first).\");\n                continue;\n            }" "the skip (with the GrindIdleDetail tally note, log only)")
 require_order("${plain}" "RelationWorkGrindSkipped(relationWorkOpen, needForQuest)" "ai::quest_grind_mode::GapTargetSkipped" "before the gap window")
 require_order("${plain}" "RelationWorkGrindSkipped(relationWorkOpen, needForQuest)" "urand(0, 100) < 20" "before the 20 % skip")
 

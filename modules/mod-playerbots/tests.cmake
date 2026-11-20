@@ -2789,6 +2789,21 @@ add_test(NAME bot_activity_policy
   COMMAND bot_activity_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#601 (AiPlayerbot.ActivityTrace.GrindIdleDetail, OB-00 20.11.2026): the [GrindIdleDetail] cause (GrindIdlePolicy.h);
+# source contract in t/contracts.d.
+add_executable(grind_idle_policy_tests
+  "${PB_MODULE_DIR}/t/grind_idle_policy_tests.cpp")
+
+target_include_directories(grind_idle_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(grind_idle_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME grind_idle_policy
+  COMMAND grind_idle_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 add_test(NAME bot_activity_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
