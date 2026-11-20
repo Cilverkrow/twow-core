@@ -4158,10 +4158,15 @@ AiPlayerbot.Rotation.EmergencyLadder.SoloCcSpells = polymorph,banish,fear
 # (capped at the 25 s / 30 s aura). It ends on combat or after MaxRestSeconds (then no new episode for a minute). A turn-in's stall
 # observation counts the rest as a pause. Rest after a revive (50 % HP) follows from StartHp.
 # Lines (bots.log): "[RestGate] bot= name= cls= level= cohort= applied=0|1 start_hp= start_mana= end_hp= end_mana= dur_ms=
-# reason=done|combat|timeout minimal=" per finished episode (the cohort the switch does not apply to logs the same episodes with
-# applied=0 and does not rest; 300 lines a minute over all bots), and once an hour per cohort and class "[RestGateTotal] window_min=60
-# cohort= cls= episodes= done= combat= timeout= rest_s= cast_fail= dropped=". The trigger nodes are added when the strategies are built:
-# switching between 0 and 1/2 needs a strategy reset or restart.
+# reason=done|combat|death|timeout|stale minimal=" per finished episode (the cohort the switch does not apply to logs the same episodes
+# with applied=0 and does not rest; 300 lines a minute over all bots), and once an hour per cohort and class "[RestGateTotal]
+# window_min=60 cohort= cls= episodes= done= combat= death= timeout= stale= rest_s= cast_fail= dropped= stale_rested= stale_combat=
+# stale_timeout= stale_low= stale_gap_s=". stale = the value was not read for 15 s, mostly the bot's own eat / drink wait (no AI pass
+# meanwhile); dur_ms then runs to the last read. Since 20.11.2026 (DEEP7 finding 3, log only) a stale line ends with " late=rested|combat|
+# timeout|low gap_ms= dur_late_ms=" (what the late read shows: rested = at the targets; the gap since the last read; start to the late
+# read) and the total line with the stale_* fields (stale_rested + stale_combat + stale_timeout + stale_low = stale); every other field
+# and line is unchanged. The trigger nodes are added when the strategies are built: switching between 0 and 1/2 needs a strategy reset or
+# restart.
 # 0 = off (default), 1 = all bots, 2 = only cohort B (odd low guid, in-realm A/B).
 AiPlayerbot.Rotation.RestGate = 0
 # twow-repo#602 X1 (E2/E4): a rest episode starts below StartHp % HP or (mana pool) below StartMana % mana, and ends at TargetHp % HP and
