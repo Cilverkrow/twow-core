@@ -1,10 +1,10 @@
 -- twow-repo#580 (WORLD-HOLIDAY-OFF-01), main train (Ae15: DB change). Owner 11.11.2026 (relayed by OB-00):
 -- "generell event quests erstmal rausnehmen wie winter-herbst-valentinstag-etc"; Darkmoon Faire stays ("Jahrmarkt bleibt").
--- 1) Link 150 holiday quests that are not yet in game_event_quest to their holiday event. Linked quests start
+-- 1) Link 151 holiday quests that are not yet in game_event_quest to their holiday event. Linked quests start
 --    inactive (GameEventMgr load: SetQuestActiveState(false)) and are only active while the event runs; inactive
 --    quests are hidden in quest menus and cannot be accepted, also not from items (Player::CanSeeStartQuest /
 --    CanTakeQuest check Quest::IsActive). Classification: evidence ws-30/580-event-quests/klassifikation-eventquests-580.tsv.
---    Lunar Festival 7: 73, Winter Veil 2: 21, Winter Veil gifts 21: 6, Love is in the Air 8: 17, Midsummer 1: 16,
+--    Lunar Festival 7: 74 (incl. 80740, OB-50 20.11.2026), Winter Veil 2: 21, Winter Veil gifts 21: 6, Love is in the Air 8: 17, Midsummer 1: 16,
 --    Children's Week 10: 12, Harvest Festival 11: 4, Noblegarden 9: 1.
 -- 2) Switch off the holiday events that are still enabled: 1 Midsummer, 2/21 Winter Veil, 9/28 Noblegarden,
 --    10 Children's Week, 11 Harvest Festival, 12 Hallow's End, and the calendar events 6 Fireworks, 34 New Year's Eve,
@@ -46,7 +46,7 @@ INSERT INTO `tmp_link_580` (`quest`, `event`) VALUES
     (7063, 2), (8149, 11), (8150, 11), (8744, 21), (8746, 2), (8762, 2), (8763, 2), (8767, 21),
     (8768, 21), (8769, 21), (8788, 21), (8799, 2), (8803, 21), (8897, 8), (8898, 8), (8899, 8),
     (8900, 8), (8901, 8), (8902, 8), (8903, 8), (8904, 8), (8979, 8), (8981, 8), (8982, 8),
-    (8984, 8), (8993, 8), (9024, 8), (9026, 8), (9028, 8), (9029, 8);
+    (8984, 8), (8993, 8), (9024, 8), (9026, 8), (9028, 8), (9029, 8), (80740, 7);
 
 -- Record only pairs that are new (first run); a replay finds them already linked and records nothing.
 INSERT IGNORE INTO `game_event_quest_580` (`quest`, `event`)
@@ -66,5 +66,5 @@ UPDATE `game_event` SET `disabled` = 1 WHERE `entry` IN (1, 2, 6, 9, 10, 11, 12,
 CREATE TEMPORARY TABLE IF NOT EXISTS `tmp_check_580` (`ok` TINYINT(1) NOT NULL CHECK (`ok` = 1));
 INSERT INTO `tmp_check_580` (`ok`)
 SELECT (SELECT COUNT(*) FROM `tmp_link_580` t
-         WHERE EXISTS (SELECT 1 FROM `game_event_quest` g WHERE g.`quest` = t.`quest` AND g.`event` = t.`event`)) = 150
+         WHERE EXISTS (SELECT 1 FROM `game_event_quest` g WHERE g.`quest` = t.`quest` AND g.`event` = t.`event`)) = 151
    AND (SELECT COUNT(*) FROM `game_event` WHERE `entry` IN (1, 2, 6, 9, 10, 11, 12, 21, 28, 34, 38, 39, 41, 42) AND `disabled` = 1) = 14;
