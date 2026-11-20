@@ -2897,6 +2897,11 @@ bool TravelTarget::ObservePosStuck()
     // never the start-zone rescue of #587). Fired only out of combat (Observe), only for a bot that stood, rate-limited per bot
     // (Escalate); executed by ApplyMove (PosStuckMove.cpp), so this file stays free of teleports.
     pos_stuck::MoveResult const moved = pos_stuck::ApplyMove(bot, step, posStuck.anchorX, posStuck.anchorY, posStuck.anchorZ);
+    // A3 R9 / R2 wiring pair R9-2 (twow-repo#575, D12): both steps (back to the anchor, the home bind) are labelled home_teleport,
+    // which counts toward reloc_loop. ApplyMove reports Moved without the result of the move, so the label also needs a teleport
+    // that started (the semaphore is set until the ack), as the movement sites check.
+    if (moved == pos_stuck::MoveResult::Moved && bot->IsBeingTeleported())
+        ai->SetLastRelocSource(ai::replan::RelocSource::HomeTeleport);
     if (step == pos_stuck::Step::Unstuck)
     {
         counters.unstuck.fetch_add(1, std::memory_order_relaxed);

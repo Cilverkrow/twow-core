@@ -1087,6 +1087,19 @@ bool PlayerbotAIConfig::Initialize()
     plannerRelocSlack = config.GetFloatDefault("AiPlayerbot.Planner.RelocSlack", 1.5f);
     if (plannerMaxCandidates > 64)
         plannerMaxCandidates = 64;   // the candidate array of the tick (PlannerShadow.cpp kMaxCandidates)
+    // A3 R9 / R2 wiring pair R9-2 (twow-repo#575, R9-PREREG C2): the progress meter's switch (a cohort mode) and its shadow key.
+    replan = uint32(config.GetIntDefault("AiPlayerbot.Replan", 0));
+    if (replan > 3)
+    {
+        sLog.outError("[Replan] config key=Replan value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", replan);
+        replan = 0;
+    }
+    replanShadow = uint32(config.GetIntDefault("AiPlayerbot.Replan.Shadow", 0));
+    if (replanShadow > 1)
+    {
+        sLog.outError("[Replan] config key=Replan.Shadow value=%u result=off (0 off, 1 shadow)", replanShadow);
+        replanShadow = 0;
+    }
     // A3 step 5 (ADR-0041): the combat rule, parts HealerStart, PriestOverlay, RestBeforePull and ProgressGuard (CombatRulePolicy.h); an unknown
     // mode is off.
     combatRuleHealerStart = uint32(config.GetIntDefault("AiPlayerbot.CombatRule.HealerStart", 0));
@@ -2463,6 +2476,8 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestRescue.KeepRequestWhenFull", Value(questRescueKeepRequestWhenFull)},
             {"QuestRescue.NoTargetFreeSlot", Value(questRescueNoTargetFreeSlot)},
             {"QuestTurnIn.RepeatableAutoComplete", Value(questTurnInRepeatableAutoComplete)},
+            {"Replan", Value(replan)},
+            {"Replan.Shadow", Value(replanShadow)},
             {"Rescue.RepopDeadOnly", Value(rescueRepopDeadOnly)},
             {"Revive.CorpseRunFirst", Value(reviveCorpseRunFirst)},
             {"Revive.CorpseRunFirst.MaxSeconds", Value(reviveCorpseRunFirstMaxSeconds)},

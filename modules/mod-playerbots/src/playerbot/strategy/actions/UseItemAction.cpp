@@ -1410,6 +1410,9 @@ bool UseHearthStoneAction::Execute(Event& event)
         sPlayerbotAIConfig.logEvent(ai, "UseHearthStoneAction", event.getParam(), event.getSource());
         RESET_AI_VALUE(bool, "combat::self target");
         RESET_AI_VALUE(WorldPosition, "current position");
+        // A3 R9 / R2 wiring pair R9-2 (twow-repo#575): the hearth label for the jump at the end of the cast (one site for every
+        // hearthstone caller); the teleport ack confirms it (ReplanWirePolicy.h).
+        ai->SetLastRelocSource(ai::replan::RelocSource::Hearth);
 
         // twow-repo#333 finding 4 (TeleportCastPolicy.h): the callers hold the AI for the cast. Recorded as the last spell cast,
         // an interrupted or failed hearthstone (SMSG_SPELL_FAILURE -> PlayerbotAI::SpellInterrupted) ends that hold at once,

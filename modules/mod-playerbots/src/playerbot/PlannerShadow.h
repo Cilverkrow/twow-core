@@ -2,14 +2,20 @@
 
 #include "playerbot/PlannerPolicy.h"
 #include "playerbot/PlannerShadowPolicy.h"
+#include "playerbot/ReplanPolicy.h"
+#include "playerbot/ReplanWirePolicy.h"
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 
 // A3 step 3 planner P-2b (A3-S3-PLANER-ENTWURF.md v0.3, frozen d6e51878; AiPlayerbot.Planner, default 0): the planner's state
 // in the supervisor instance (Supervisor::plan_), and the hooks of the other files. Numbers and ids only; the game side is
 // PlannerShadow.cpp (Supervisor::PlanTick, the snapshot, the candidates, the lines). The state lives and dies with the
 // supervisor instance (release / reset: the planner starts again with ev=start, the re-take counters start again; OB-10 B2).
+// A3 R9 / R2 wiring pair R9-2 (twow-repo#575, R9 v5; AiPlayerbot.Replan / Replan.Shadow, default 0): the progress meter lives with
+// the planner state (PlanState::replan), made only while the meter applies to the bot. The relocation source is
+// ai::replan::RelocSource (ReplanPolicy.h); the latch rules are in ReplanWirePolicy.h.
 class PlayerbotAI;
 
 namespace ai
@@ -19,33 +25,6 @@ class TravelDestination;
 
 namespace ai::planner
 {
-// The source of a position jump, set by the teleport sites (CLI-PATH R9-2) and read and cleared by PlanTick. A placeholder of
-// ai::replan::RelocSource (ReplanPolicy.h, core#1088) with the same values, in its own namespace so both pairs can land in one
-// pin; R9-2 switches the field to ai::replan::RelocSource. P-2b has no setter: every jump is "unknown".
-enum class RelocSource : std::uint8_t
-{
-    Unknown = 0,
-    Hearth = 1,
-    HomeTeleport = 2,
-    Rescue = 3,
-    FarMoveArrival = 4,
-    TeleportAck = 5,
-};
-
-inline char const* RelocSourceName(RelocSource s)
-{
-    switch (s)
-    {
-        case RelocSource::Unknown: return "unknown";
-        case RelocSource::Hearth: return "hearth";
-        case RelocSource::HomeTeleport: return "home_teleport";
-        case RelocSource::Rescue: return "rescue";
-        case RelocSource::FarMoveArrival: return "far_move_arrival";
-        case RelocSource::TeleportAck: return "teleport_ack";
-    }
-    return "unknown";
-}
-
 // The planner's own reward note (OB-10 B2, OB-60 K1): the two reward sources of #1078 (PlayerbotAI::NoteQuestRewarded and the
 // SMSG_QUESTGIVER_QUEST_COMPLETE handler) note the quest id here, on the bot's thread, with or without a quest book; PlanTick
 // takes the note when the quest leaves the log (quest_gone + note = quest_reward). A full note drops the oldest id.
@@ -185,6 +164,22 @@ inline std::uint32_t DeadWaitFor(std::uint32_t respawnSec, std::uint32_t deadWai
     return DeadWaitMs(respawnSec ? respawnSec : deadWaitMaxSec, deadWaitMaxSec);
 }
 
+// R9-2 (twow-repo#575): the meter of one bot and what the planner tick keeps for it. Lines and counters only before P-3 (D1).
+struct ReplanState
+{
+    ai::replan::ProgressMeter meter;
+    bool active = false;              // AiPlayerbot.Replan applies to the bot (shadow=0 in the line)
+    bool groupCopy = false;           // the sink's view: the live target is a group copy
+    bool respawnWait = false;         // the sink's view: W8 waits at the pick for a respawn
+    std::uint32_t xpTotal = 0;        // Sample.xp: the XP gained since the meter was made
+    std::uint32_t lastXp = 0;
+    std::uint32_t lastLevel = 0;      // 0 = no sample yet
+    ai::replan::Sample held;          // OB-10 R-2: the last living sample (its target and distance hold while dead)
+    std::uint32_t minute = 0;         // the last minute this bot flushed into its cohort's [ReplanMin]
+    ai::replan::Counters pending;     // counts not yet in the cohort's [ReplanMin] (flushed once a minute, as passiveTicks)
+    std::uint32_t pendingDropped = 0; // [Replan] lines the budget refused, not yet flushed
+};
+
 struct PlanState
 {
     Snapshot prev;
@@ -200,6 +195,7 @@ struct PlanState
     std::uint32_t lastProbeMs = 0;     // W8: the last probe at the pick (at most one per kProbeEveryMs)
     std::uint32_t passiveTicks = 0;    // ticks in PASSIVE since the last flush (PlanMin passive_ticks)
     std::uint32_t passiveMinute = 0;   // the minute of passiveTicks
+    std::unique_ptr<ReplanState> replan;   // R9-2: nullptr while AiPlayerbot.Replan and AiPlayerbot.Replan.Shadow are 0
 };
 }
 

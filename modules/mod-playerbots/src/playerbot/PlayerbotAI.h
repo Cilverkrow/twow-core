@@ -1377,16 +1377,20 @@ public:
     // the quest book (active or shadow, if made) labels it turned_in when it left the log. Bot thread only.
     void NoteQuestRewarded(uint32 questId);
     // A3 step 3 planner P-2b (AiPlayerbot.Planner, default 0; OB-10 B2): the planner's own reward note, filled by the two reward
-    // sources with or without a quest book, taken by Supervisor::PlanTick. And the source of the last position jump (CLI-PATH
-    // R9-2 sets it at the teleport sites; P-2b has no setter, so a jump is "unknown"); PlanTick reads and clears it. Bot thread only.
+    // sources with or without a quest book, taken by Supervisor::PlanTick. Bot thread only.
     ai::planner::RewardNotes& PlannerRewardNotes() { return plannerRewardNotes_; }
-    void SetLastRelocSource(ai::planner::RelocSource source) { lastRelocSource_ = source; }
-    ai::planner::RelocSource TakeLastRelocSource()
-    {
-        ai::planner::RelocSource const source = lastRelocSource_;
-        lastRelocSource_ = ai::planner::RelocSource::Unknown;
-        return source;
-    }
+    // A3 R9 / R2 wiring pair R9-2 (twow-repo#575; AiPlayerbot.Replan / Replan.Shadow, default 0): the source of the last position
+    // jump, an atomic latch (ReplanWirePolicy.h) written from any thread: the teleport sites (bot thread, the quest rescue on the
+    // world thread), the teleport ack (bot, world or a master holder's map thread). Every writer checks ReplanWired() first, so
+    // with both keys 0 nothing writes and PlanTick takes "unknown" every tick as in P-2b (D3).
+    bool ReplanWired() const;
+    void SetLastRelocSource(ai::replan::RelocSource source);   // a site, only after a teleport that started (D12)
+    void MarkRelocHop();                                         // D6: a movement hop of a non-detailed bot (no relocation)
+    void NoteTeleportAck();                                      // HandleTeleportAck: the ack confirms the site (D7)
+    ai::replan_wire::Taken TakeLastRelocSource(std::uint32_t nowMs);
+    void ExpireLastRelocSource(std::uint32_t nowMs);
+    // R9-2: the [Unreachable] results of this bot (Sample.unreachable, a diagnosis field); counted only while ReplanWired().
+    std::uint32_t ReplanUnreachable() const { return replanUnreachable_; }
     // A persistent roster bot without a real player master: the population of the quest book (as quest_accept::SkipForRosterBot).
     bool InQuestBookScope();
     // A3 step 2 H5 (QuestNeedPolicy.h, AiPlayerbot.QuestBook.NeedPerObjective, default 0): part (a) applies to this bot (switch first,
@@ -1548,7 +1552,8 @@ protected:
     // A3 step 2 (ADR-0041, AiPlayerbot.QuestBook, default 0): nullptr while neither the switch nor the shadow applies to this bot.
     std::unique_ptr<ai::questbook::QuestBook> questBook_;
     ai::planner::RewardNotes plannerRewardNotes_;                                    // A3 step 3 planner P-2b (OB-10 B2)
-    ai::planner::RelocSource lastRelocSource_ = ai::planner::RelocSource::Unknown;   // A3 step 3 planner P-2b (CLI-PATH R9-2)
+    std::atomic<std::uint64_t> lastRelocSource_{0};   // R9-2: the relocation latch (ReplanWirePolicy.h), any thread
+    std::uint32_t replanUnreachable_ = 0;             // R9-2: [Unreachable] results while ReplanWired(), bot thread
     // A3 step 2 H5 (AiPlayerbot.QuestBook.NeedPerObjective, default 0): nullptr until .Log or part (b) needs it; memory only.
     std::unique_ptr<ai::quest_need::BotState> questNeed_;
     void QuestNeedWriteHour(uint32 hourStart);

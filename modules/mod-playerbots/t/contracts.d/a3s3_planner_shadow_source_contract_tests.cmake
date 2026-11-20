@@ -64,7 +64,8 @@ read_file("${PB_SOURCE_DIR}/strategy/actions/ChooseTravelTargetAction.cpp" choos
 set(PLANNER_KEYS Planner Planner.BrainBonusMax Planner.BudgetMs Planner.DangerCells Planner.DangerPenalty Planner.DangerTopN
   Planner.DeadProbeYards Planner.DeadWaitMaxSec Planner.GrindKillsPerMin Planner.Margin Planner.MaxCandidates Planner.MaxHoldSec
   Planner.MaxIdleSec Planner.MinBindSec Planner.MinDwellSec Planner.RelocMinYards Planner.RelocSlack Planner.RepeatableMaxPerHour
-  Planner.RepeatableRetakeSec Planner.RouteFactor Planner.SwitchCost Planner.TurnInWorkSec)
+  Planner.RepeatableRetakeSec Planner.RouteFactor Planner.SwitchCost Planner.TurnInWorkSec
+  Replan Replan.Shadow)   # R9-2 (twow-repo#575): the progress meter keys in the planner tick
 
 # ---- (a) writes nothing -----------------------------------------------------------------------------------------------------
 function(check_writes_nothing text out)
