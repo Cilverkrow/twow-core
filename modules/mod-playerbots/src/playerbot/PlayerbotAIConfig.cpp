@@ -23,6 +23,8 @@
 #include "playerbot/GroupGatherPolicy.h"   // A3 step 6 T33-0: BotGroups.Manager.Gather
 #include "playerbot/ManagerInboxPolicy.h"   // A3-GERUEST-L60 7.2.11: BotGroups.Manager.StatusSeconds clamp
 #include "playerbot/SupervisorPolicy.h"   // A3 step 3: Supervisor mode
+#include "playerbot/SupervisorShadow.h"   // A3 step 3 planner P-3a: SetArbiterPlanField
+#include "playerbot/PlannerShadow.h"      // A3 step 3 planner P-3a: kWriteCohortMax, WriteCohortOf (the pure rules' one door)
 #include "playerbot/QuestBookPolicy.h"   // A3 step 2: QuestBook mode
 #include "playerbot/QuestBundlePolicy.h"   // A3 step 2 QB-B: QuestBook.BundleRadius clamp
 #include "playerbot/QuestNeedPolicy.h"   // A3 step 2 H5: QuestBook.NeedPerObjective mode
@@ -1087,6 +1089,16 @@ bool PlayerbotAIConfig::Initialize()
     plannerRelocSlack = config.GetFloatDefault("AiPlayerbot.Planner.RelocSlack", 1.5f);
     if (plannerMaxCandidates > 64)
         plannerMaxCandidates = 64;   // the candidate array of the tick (PlannerShadow.cpp kMaxCandidates)
+    // A3 step 3 planner P-3a (P3-ENTWURF-v0.2 section 8, OB-00 F2 (a)): the write cohort of Planner = 2; above 3 is 0 (fail closed,
+    // never "all"). [ArbiterMin] gets plan= only at Planner = 2.
+    plannerWriteCohort = uint32(config.GetIntDefault("AiPlayerbot.Planner.WriteCohort", 0));
+    if (plannerWriteCohort > ai::planner::kWriteCohortMax)
+    {
+        sLog.outError("[Planner] config key=Planner.WriteCohort value=%u result=0 (0 none, 1 all, 2 cohort B, 3 cohort A)",
+            plannerWriteCohort);
+        plannerWriteCohort = ai::planner::WriteCohortOf(plannerWriteCohort);
+    }
+    ai::supervisor::SetArbiterPlanField(planner == 2);
     // A3 step 5 (ADR-0041): the combat rule, parts HealerStart, PriestOverlay, RestBeforePull and ProgressGuard (CombatRulePolicy.h); an unknown
     // mode is off.
     combatRuleHealerStart = uint32(config.GetIntDefault("AiPlayerbot.CombatRule.HealerStart", 0));
@@ -2380,6 +2392,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Planner.RouteFactor", Value(plannerRouteFactor)},
             {"Planner.SwitchCost", Value(plannerSwitchCost)},
             {"Planner.TurnInWorkSec", Value(plannerTurnInWorkSec)},
+            {"Planner.WriteCohort", Value(plannerWriteCohort)},
             {"PotionFind.BySpell", Value(potionFindBySpell)},
             {"ProfessionTraining.NearRadius", Value(professionTrainingNearRadius)},
             {"ProfessionTraining.Travel", Value(professionTrainingTravel)},

@@ -9,6 +9,7 @@
 #include "playerbot/ContestedObjectivePolicy.h"   // twow-repo#601 F5 (diagnostic): death_suppressed by source
 
 namespace ai::quest_band { struct WalkPlan; }   // twow-repo#601 S5a F4 (QuestBandPolicy.h)
+namespace ai::planner_write { struct Feed; }   // A3 step 3 planner P-3a (PlannerWrite.h)
 
 namespace ai
 {
@@ -43,6 +44,10 @@ namespace ai
         // twow-repo#601 cand4 (i) (QuestFirstProgression.StaleObjectiveFilter): objectives skipped as realm-wide stale; an own
         // [QuestFirstRoute] state=stale_objective line after an empty search, only when > 0.
         uint32 lastStaleObjective = 0;
+        // A3 step 3 planner P-3a (AiPlayerbot.Planner = 2 with Planner.WriteCohort, default 0): the F1 feed of the running choice
+        // (Execute's stack; nullptr outside it) and the local target its plan attempt chose (setNewTarget's ApplyWatch).
+        ai::planner_write::Feed* planFeed_ = nullptr;
+        TravelTarget const* planFedTarget_ = nullptr;
         // #421 B: no quest target - widen the quest search.
         void WidenQuestSearch(uint32 ranges);
         // twow-repo#601 S5a (AiPlayerbot.QuestFirstProgression.BandLadder): the band step from the empty quest search

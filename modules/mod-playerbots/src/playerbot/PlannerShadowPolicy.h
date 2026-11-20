@@ -230,6 +230,7 @@ enum class Fallback : std::uint8_t
     R1Hold = 1,         // below StartZoneMinLevel: C is closed
     BandTableOff = 2,   // no band table: the plan zone is the current zone, C is closed
     Arbiter = 3,        // Planner = 2 but arbiter != 2: shadow this tick
+    Cohort = 4,         // P-3a: Planner = 2 but the bot is not in Planner.WriteCohort: shadow
 };
 
 inline char const* FallbackName(Fallback f)
@@ -240,6 +241,7 @@ inline char const* FallbackName(Fallback f)
         case Fallback::R1Hold: return "r1_hold";
         case Fallback::BandTableOff: return "band_table_off";
         case Fallback::Arbiter: return "arbiter";
+        case Fallback::Cohort: return "cohort";
     }
     return "-";
 }
@@ -585,8 +587,13 @@ struct MemorySlot
     std::uint8_t deadCycles = 0;
     std::uint32_t closedAtMs = 0;
     std::uint32_t closedUntilMs = 0;
+    std::uint16_t closes = 0;   // P-3a (P3-ENTWURF-v0.2 section 5.3): closes of this key in this slot, saturating at 65535
 };
-constexpr std::size_t kMemorySlots = 8;
+// P-3a (P3-ENTWURF-v0.2 section 5.3, OB-00 F4 (a)): the field has 16 slots (the book's rules). A writing bot (Planner = 2 with
+// Planner.WriteCohort) uses all 16 and saturates deadCycles (N1); the shadow (Planner = 1, a bot that does not write) uses the
+// first kShadowMemorySlots with the old 255 -> 0 reset, so its picks and lines stay byte-identical to P-2b.
+constexpr std::size_t kMemorySlots = 16;
+constexpr std::size_t kShadowMemorySlots = 8;
 
 inline bool Expired(MemorySlot const& m, std::uint32_t nowMs)
 {
@@ -601,10 +608,16 @@ inline bool IsClosed(MemorySlot const* mem, std::size_t n, std::uint32_t key, st
     return false;
 }
 
-// The replacement rule: the same key, else the oldest expired slot, else the oldest slot. closeMs 0 is not a close.
+// The replacement rule: the same key, else the first expired slot in slot order (B19: the first, not the oldest; P-3a fixed this
+// comment, the rule is unchanged), else the oldest slot. closeMs 0 is not a close.
+// P-3a (P3-ENTWURF-v0.2 section 5.4): saturate (a writing bot) keeps deadCycles at 255 ("always dead", N1, as the book) instead of
+// the shadow's 255 -> 0 reset; evicted (when given) is set when a slot of another key that had not expired is replaced (N2,
+// mem_evict: its counts are lost). closes counts the closes of the slot's key.
 inline void Close(MemorySlot* mem, std::size_t n, std::uint32_t key, std::uint32_t questId, std::uint8_t kind, CloseReason reason,
-    std::uint32_t nowMs, std::uint32_t closeMs)
+    std::uint32_t nowMs, std::uint32_t closeMs, bool saturate = false, bool* evicted = nullptr)
 {
+    if (evicted)
+        *evicted = false;
     if (!mem || !n || !key || !closeMs || reason == CloseReason::None)
         return;
     std::size_t at = n;
@@ -620,15 +633,40 @@ inline void Close(MemorySlot* mem, std::size_t n, std::uint32_t key, std::uint32
         for (std::size_t i = 1; i < n; ++i)
             if (static_cast<std::int32_t>(mem[i].closedAtMs - mem[at].closedAtMs) < 0)
                 at = i;
+        if (evicted)
+            *evicted = true;   // N2: every slot holds another key that has not expired
     }
-    std::uint8_t const cycles = mem[at].key == key && mem[at].deadCycles < 255 ? mem[at].deadCycles : 0;
+    bool const same = mem[at].key == key;
+    std::uint8_t const cycles = same && (saturate || mem[at].deadCycles < 255) ? mem[at].deadCycles : 0;
+    std::uint16_t const closes = same ? mem[at].closes : 0;
     mem[at].key = key;
     mem[at].questId = questId;
     mem[at].kind = kind;
     mem[at].reason = reason;
-    mem[at].deadCycles = reason == CloseReason::Dead ? std::uint8_t(cycles + 1) : cycles;
+    if (reason != CloseReason::Dead)
+        mem[at].deadCycles = cycles;
+    else
+        mem[at].deadCycles = saturate && cycles == 255 ? cycles : std::uint8_t(cycles + 1);
     mem[at].closedAtMs = nowMs;
     mem[at].closedUntilMs = nowMs + closeMs;
+    mem[at].closes = closes < 65535 ? std::uint16_t(closes + 1) : closes;
+}
+
+// The memory's reads (section 5.3 PlanMemory: Close / IsClosed / DeadCycles / Closes): 0 for a key it does not hold.
+inline std::uint8_t DeadCycles(MemorySlot const* mem, std::size_t n, std::uint32_t key)
+{
+    for (std::size_t i = 0; i < n; ++i)
+        if (key && mem[i].key == key)
+            return mem[i].deadCycles;
+    return 0;
+}
+
+inline std::uint16_t Closes(MemorySlot const* mem, std::size_t n, std::uint32_t key)
+{
+    for (std::size_t i = 0; i < n; ++i)
+        if (key && mem[i].key == key)
+            return mem[i].closes;
+    return 0;
 }
 
 // ---- the minute line (section 7) -------------------------------------------------------------------------------------------
@@ -680,7 +718,44 @@ struct PlanMinCounts
     std::uint32_t disagreeGrind = 0;
     std::uint32_t backToBandWouldQuest = 0;
     std::uint32_t backToBandWouldGrind = 0;
+    // P-3a (P3-ENTWURF-v0.2 section 6.1, Nachtrag 1 F8 (ii)): the write path; printed only at Planner = 2 (FormatPlanMin p3).
+    std::uint32_t expired = 0;
+    std::uint32_t expireDenied = 0;   // the sum of the five below
+    std::uint32_t expireDeniedCooldown = 0;
+    std::uint32_t expireDeniedWork = 0;
+    std::uint32_t expireDeniedLane = 0;
+    std::uint32_t expireDeniedGroup = 0;
+    std::uint32_t expireDeniedThread = 0;
+    std::uint32_t expireDeniedZoneUnknown = 0;
+    std::uint32_t expireWorkOverride = 0;
+    std::uint32_t expireRepeat = 0;
+    std::uint32_t expireBlockedFb = 0;
+    std::uint32_t expirePending = 0;   // bots with a pending expire, once per bot and minute
+    std::uint32_t expireAfterWork = 0;
+    std::uint32_t fed = 0;             // plan attempts SetBestTarget took (applied + denied + parked + early returns after it)
+    std::uint32_t appliedQuest = 0;
+    std::uint32_t appliedGrind = 0;
+    std::uint32_t appliedLiveQuest = 0;
+    std::uint32_t appliedLiveGrind = 0;
+    std::uint32_t fallbackReject = 0;
+    std::uint32_t fallbackStale = 0;
+    std::uint32_t fallbackNone = 0;
+    std::uint32_t fallbackPurpose = 0;
+    std::uint32_t fallbackBudget = 0;
+    std::uint32_t fallbackDenied = 0;
+    std::uint32_t fallbackParked = 0;
+    std::uint32_t fallbackZoneEmpty = 0;
+    std::uint32_t fbArbiter = 0;
+    std::uint32_t fbCohort = 0;
+    std::uint32_t turninUnreached = 0;
+    std::uint32_t memEvict = 0;
+    std::uint32_t modeQuestGrind = 0;
+    std::uint32_t modeGrindQuest = 0;
+    std::uint32_t modeDenied = 0;
 };
+
+// The [PlanMin] buffer of the minute emitter: every field at 4294967295 with the P-3a fields fits (the unit test checks it).
+constexpr std::size_t kPlanMinBuf = 2560;
 
 // msP50 is not added: a median is not additive. The minute aggregator (PlannerShadow.cpp) takes it from the plan times of the
 // minute when the minute rolls; msMax is the maximum.
@@ -729,9 +804,44 @@ inline void Add(PlanMinCounts& into, PlanMinCounts const& c)
     into.backToBandWouldGrind += c.backToBandWouldGrind;
     if (c.msMax > into.msMax)
         into.msMax = c.msMax;
+    into.expired += c.expired;
+    into.expireDenied += c.expireDenied;
+    into.expireDeniedCooldown += c.expireDeniedCooldown;
+    into.expireDeniedWork += c.expireDeniedWork;
+    into.expireDeniedLane += c.expireDeniedLane;
+    into.expireDeniedGroup += c.expireDeniedGroup;
+    into.expireDeniedThread += c.expireDeniedThread;
+    into.expireDeniedZoneUnknown += c.expireDeniedZoneUnknown;
+    into.expireWorkOverride += c.expireWorkOverride;
+    into.expireRepeat += c.expireRepeat;
+    into.expireBlockedFb += c.expireBlockedFb;
+    into.expirePending += c.expirePending;
+    into.expireAfterWork += c.expireAfterWork;
+    into.fed += c.fed;
+    into.appliedQuest += c.appliedQuest;
+    into.appliedGrind += c.appliedGrind;
+    into.appliedLiveQuest += c.appliedLiveQuest;
+    into.appliedLiveGrind += c.appliedLiveGrind;
+    into.fallbackReject += c.fallbackReject;
+    into.fallbackStale += c.fallbackStale;
+    into.fallbackNone += c.fallbackNone;
+    into.fallbackPurpose += c.fallbackPurpose;
+    into.fallbackBudget += c.fallbackBudget;
+    into.fallbackDenied += c.fallbackDenied;
+    into.fallbackParked += c.fallbackParked;
+    into.fallbackZoneEmpty += c.fallbackZoneEmpty;
+    into.fbArbiter += c.fbArbiter;
+    into.fbCohort += c.fbCohort;
+    into.turninUnreached += c.turninUnreached;
+    into.memEvict += c.memEvict;
+    into.modeQuestGrind += c.modeQuestGrind;
+    into.modeGrindQuest += c.modeGrindQuest;
+    into.modeDenied += c.modeDenied;
 }
 
-inline std::size_t FormatPlanMin(char* buf, std::size_t n, char cohort, std::uint32_t minute, PlanMinCounts const& c)
+// p3 (AiPlayerbot.Planner = 2, the key value only, never the cohort; section 7.5): the P-3a fields after the P-2b ones. Without
+// p3 the line is byte-identical to P-2b.
+inline std::size_t FormatPlanMin(char* buf, std::size_t n, char cohort, std::uint32_t minute, PlanMinCounts const& c, bool p3 = false)
 {
     if (!buf || n == 0)
         return 0;
@@ -749,6 +859,174 @@ inline std::size_t FormatPlanMin(char* buf, std::size_t n, char cohort, std::uin
         c.disagreeGrind, c.backToBandWouldQuest, c.backToBandWouldGrind);
     if (w < 0)
         return 0;
-    return std::size_t(w) < n ? std::size_t(w) : n - 1;
+    std::size_t len = std::size_t(w) < n ? std::size_t(w) : n - 1;
+    if (!p3 || len + 1 >= n)
+        return len;
+    int const t = std::snprintf(buf + len, n - len, " expired=%u expire_denied=%u expire_denied_cooldown=%u expire_denied_work=%u "
+        "expire_denied_lane=%u expire_denied_group=%u expire_denied_thread=%u expire_denied_zone_unknown=%u expire_work_override=%u "
+        "expire_repeat=%u expire_blocked_fb=%u expire_pending=%u expire_after_work=%u fed=%u applied_quest=%u applied_grind=%u "
+        "applied_live_quest=%u applied_live_grind=%u fallback_reject=%u fallback_stale=%u fallback_none=%u fallback_purpose=%u "
+        "fallback_budget=%u fallback_denied=%u fallback_parked=%u fallback_zone_empty=%u fb_arbiter=%u fb_cohort=%u "
+        "turnin_unreached=%u mem_evict=%u mode_quest_grind=%u mode_grind_quest=%u mode_denied=%u",
+        c.expired, c.expireDenied, c.expireDeniedCooldown, c.expireDeniedWork, c.expireDeniedLane, c.expireDeniedGroup,
+        c.expireDeniedThread, c.expireDeniedZoneUnknown, c.expireWorkOverride, c.expireRepeat, c.expireBlockedFb, c.expirePending,
+        c.expireAfterWork, c.fed, c.appliedQuest, c.appliedGrind, c.appliedLiveQuest, c.appliedLiveGrind, c.fallbackReject,
+        c.fallbackStale, c.fallbackNone, c.fallbackPurpose, c.fallbackBudget, c.fallbackDenied, c.fallbackParked,
+        c.fallbackZoneEmpty, c.fbArbiter, c.fbCohort, c.turninUnreached, c.memEvict, c.modeQuestGrind, c.modeGrindQuest,
+        c.modeDenied);
+    if (t < 0)
+        return len;
+    len += std::size_t(t);
+    return len < n ? len : n - 1;
+}
+
+// ---- P-3a: the write path (P3-ENTWURF-v0.2, frozen d45c4961, Nachtraege 1-3; AiPlayerbot.Planner = 2, default 0) -------------
+// Planner.WriteCohort (OB-00 F2 (a), section 8): 0 no bot writes (default), 1 every bot, 2 cohort B (odd low guid), 3 cohort A.
+// Above 3 is 0: fail closed, never "all". The parity rule is CohortPolicy.h Applies (the unit test compares the two).
+constexpr std::uint32_t kWriteCohortMax = 3;
+
+inline std::uint32_t WriteCohortOf(std::uint32_t raw)
+{
+    return raw > kWriteCohortMax ? 0u : raw;
+}
+
+// The bot is in the write cohort of Planner = 2. Planner 0 / 1 never write; Planner = 2 alone writes nothing (WriteCohort 0).
+inline bool WritesFor(std::uint32_t planner, std::uint32_t writeCohort, std::uint32_t guidLow)
+{
+    if (planner != 2)
+        return false;
+    bool const b = (guidLow & 1u) != 0;
+    return writeCohort == 1 || (writeCohort == 2 && b) || (writeCohort == 3 && !b);
+}
+
+// The expire of the live target (section 2.3, conditions 2-5; the adapter PlannerWrite.cpp adds the thread, the lane (6) and the
+// group copy (7)). The live facts are numbers: the adapter fills them on the bot's thread.
+enum class ExpireStep : std::uint8_t
+{
+    Go = 0,              // conditions 2-5 hold
+    NotOpen = 1,         // the live target is not READY, TRAVEL, WORK or COOLDOWN (nothing to expire; a pending expire ends)
+    AppliedLive = 2,     // condition 2: the live target already is the pick (applied_live_quest / _grind)
+    ZoneUnknown = 3,     // P3-1: a grind pick and the live target's zone is unknown: nothing expires
+    DeniedCooldown = 4,  // condition 3: COOLDOWN is never expired
+    DeniedWork = 5,      // condition 3: WORK only with a forced pick (max_hold, back_to_band)
+    Repeat = 6,          // condition 4: this pick expired once (guard = 0)
+    BlockedFb = 7,       // condition 5: a fallback less than MinBindSec ago
+    DeniedLane = 8,      // condition 6: the lane check (Questbook, site "planner") refused
+    DeniedGroup = 9,     // condition 7: the live target is a group copy (P3-2)
+    DeniedThread = 10,   // not the bot's own map thread (expected 0)
+    Expired = 11,        // the adapter expired the live target
+};
+
+struct ExpireFacts
+{
+    TravelPhase phase = TravelPhase::None;   // the adapter maps READY to Travel (open, not yet travelling)
+    bool liveNull = true;                    // no destination or the null target
+    std::uint32_t liveDestKey = 0;
+    std::uint32_t liveQuest = 0;
+    std::uint32_t liveZone = 0;              // the zone of the live target's point (0 = unknown)
+    bool pickGrind = false;
+    std::uint32_t pickDestKey = 0;
+    std::uint32_t pickQuest = 0;
+    std::uint32_t pickZone = 0;
+    bool repeat = false;                     // condition 4: the pick (key and since) already expired once
+    bool fallbackBlock = false;              // condition 5
+};
+
+// Conditions 2-5 in the design's order. Quest kinds compare destination AND quest (OB-60 H1: several quests can share a
+// destination); a grind pick compares the zone of the live target (P3-1: a grind pick has destKey 0 and never matches a mob
+// target by key).
+inline ExpireStep ExpireDecide(ExpireFacts const& f, ExpireGate gate)
+{
+    bool const open = f.phase == TravelPhase::Travel || f.phase == TravelPhase::Work || f.phase == TravelPhase::Cooldown;
+    if (f.liveNull || !open)
+        return ExpireStep::NotOpen;
+    if (f.pickGrind)
+    {
+        if (!f.liveZone)
+            return ExpireStep::ZoneUnknown;
+        if (f.liveZone == f.pickZone)
+            return ExpireStep::AppliedLive;
+    }
+    else if (f.liveDestKey == f.pickDestKey && f.liveQuest == f.pickQuest)
+        return ExpireStep::AppliedLive;
+    if (gate == ExpireGate::Cooldown)
+        return ExpireStep::DeniedCooldown;
+    if (gate == ExpireGate::Work)
+        return ExpireStep::DeniedWork;
+    if (f.repeat)
+        return ExpireStep::Repeat;
+    if (f.fallbackBlock)
+        return ExpireStep::BlockedFb;
+    return ExpireStep::Go;
+}
+
+// Conditions 6 and 7 after Go, in this order (the adapter asks LaneFree first, then the group copy).
+inline ExpireStep ExpireAdmit(bool laneFree, bool groupCopy)
+{
+    if (!laneFree)
+        return ExpireStep::DeniedLane;
+    if (groupCopy)
+        return ExpireStep::DeniedGroup;
+    return ExpireStep::Go;
+}
+
+// Rule 5: a fallback (the plan pick was not applied) blocks an expire for MinBindSec.
+inline bool FallbackBlocks(std::uint32_t fallbackAtMs, std::uint32_t nowMs, std::uint32_t minBindMs)
+{
+    return fallbackAtMs && nowMs - fallbackAtMs < minBindMs;
+}
+
+// The pending expire (section 2.3, Nachtrag 1 F8): a denial of the switch tick by WORK, the fallback block, the lane, the group
+// copy or the thread leaves the expire pending; every tick tries it again with conditions 1-7 (P3-4: nothing expires by waiting -
+// a WORK without a forced pick stays denied). It ends with the expire, a new pick (F8 (i): only while its key is the pick), the
+// live target being the pick, or a live target that is no longer TRAVEL or WORK (the end of the target, also WORK -> COOLDOWN,
+// F8 (iii)). WORK -> TRAVEL on the same target keeps it (F8 (a)): it fires in TRAVEL (expire_after_work).
+inline bool PendingStarts(ExpireStep step)
+{
+    return step == ExpireStep::DeniedWork || step == ExpireStep::BlockedFb || step == ExpireStep::DeniedLane ||
+        step == ExpireStep::DeniedGroup || step == ExpireStep::DeniedThread;
+}
+
+inline bool PendingKeeps(std::uint32_t pendingKey, std::uint32_t pickKey, ExpireStep step)
+{
+    return pendingKey && pendingKey == pickKey && PendingStarts(step);
+}
+
+// The F1 feed of a choice (section 2.4): which choice tries the plan pick first, and why not. Every "not" is one fallback_*.
+enum class FeedSkip : std::uint8_t
+{
+    Feed = 0,
+    Purpose = 1,   // the search is neither quest nor grind, a forced target (guild, pvp, petition), or the pick is of the other kind
+    None = 2,      // no plan pick
+    Stale = 3,     // the pick is older than the bind time (F5 (c))
+    Budget = 4,    // #416: a resume of the full list is pending, or this pick's attempt already ran out of time
+};
+
+inline FeedSkip FeedCheck(bool questPurpose, bool grindPurpose, bool forcedTarget, bool hasPick, bool pickGrind,
+    std::uint32_t pickAtMs, std::uint32_t nowMs, std::uint32_t freshMs, bool resumePending, bool budgetHeld)
+{
+    if (forcedTarget || (!questPurpose && !grindPurpose))
+        return FeedSkip::Purpose;
+    if (!hasPick)
+        return FeedSkip::None;
+    if (pickGrind != grindPurpose)
+        return FeedSkip::Purpose;
+    if (nowMs - pickAtMs >= freshMs)
+        return FeedSkip::Stale;
+    if (resumePending || budgetHeld)
+        return FeedSkip::Budget;
+    return FeedSkip::Feed;
+}
+
+// The mode switch (section 2.6, P3-3): only out of a pick change (switch or forced), never out of same / margin / bind; a grind
+// pick of tier C wants GRIND, every other pick wants QUEST (Supervisor Decide with Requester::Planner and the dwell decides).
+inline bool ModeSwitchFrom(Hold hold)
+{
+    return hold == Hold::Switch || hold == Hold::Forced;
+}
+
+inline bool PickWantsGrind(bool grindKind, Tier tier)
+{
+    return grindKind && tier == Tier::C;
 }
 }

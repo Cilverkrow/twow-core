@@ -26,6 +26,7 @@
 #include "playerbot/ProfessionUsePolicy.h"   // twow-repo#333 M2-T: the [ProfCount] created line
 #include "playerbot/TeleportAckThreadPolicy.h"   // twow-repo#563 X5 (ThreadSafeTeleportAck)
 #include "playerbot/Supervisor.h"   // A3 step 3 (AiPlayerbot.Supervisor): the per-bot supervisor scaffold
+#include "playerbot/PlannerWrite.h"   // A3 step 3 planner P-3a: the plan attempt's feasibility buffer (class P)
 #include "playerbot/CombatRule.h"   // A3 step 5 (AiPlayerbot.CombatRule.ProgressGuard): limits, counters, CombatLoop event
 #include "playerbot/QuestBook.h"    // A3 step 2 (AiPlayerbot.QuestBook): the per-bot quest book core
 #include "playerbot/QuestNeedPolicy.h"    // A3 step 2 H5 (QuestBook.NeedPerObjective): the per-bot cap and hour lines
@@ -1723,6 +1724,23 @@ namespace
 std::atomic<uint32> questFeasibilitySkips{0};
 std::atomic<uint32> questFeasibilityDrops{0};
 std::atomic<uint32> questFeasibilityGiverInactive{0};
+// A3 step 3 planner P-3a (Nachtrag 3, class P; AiPlayerbot.Planner = 2, default 0): the plan attempt's buffer of the skip and
+// giver counters on its own thread; nullptr (always below Planner = 2) = the shared counters above.
+thread_local ai::planner_write::FeasibilityCounts* t_feasibilitySink = nullptr;
+}
+
+namespace ai::planner_write
+{
+void SetFeasibilitySink(FeasibilityCounts* sink)
+{
+    t_feasibilitySink = sink;
+}
+
+void CommitFeasibility(FeasibilityCounts const& buffer)
+{
+    CommitBuffered(questFeasibilitySkips, buffer.skips);
+    CommitBuffered(questFeasibilityGiverInactive, buffer.giverInactive);
+}
 }
 
 // S3a: Enable first - with the switch off nothing else is read. Scope, lists and the class exemption (solo group rule
@@ -1759,10 +1777,11 @@ bool PlayerbotAI::SkipInfeasibleQuest(Quest const* quest, ai::quest_feasibility:
     if (path == ai::quest_feasibility::Path::Giver && !ai::quest_feasibility::GiverInactive(reason))
         return false;
 
+    // A3 step 3 planner P-3a (Nachtrag 3, class P): inside a plan attempt the counts go to its buffer (t_feasibilitySink).
     if (path == ai::quest_feasibility::Path::Giver)
-        questFeasibilityGiverInactive.fetch_add(1, std::memory_order_relaxed);
+        (t_feasibilitySink ? t_feasibilitySink->giverInactive : questFeasibilityGiverInactive).fetch_add(1, std::memory_order_relaxed);
     else
-        questFeasibilitySkips.fetch_add(1, std::memory_order_relaxed);
+        (t_feasibilitySink ? t_feasibilitySink->skips : questFeasibilitySkips).fetch_add(1, std::memory_order_relaxed);
 
     if (ai::quest_feasibility::LogDue(questFeasibilityLog, quest->GetQuestId(), path, uint32(time(nullptr))))
         sLog.outBasic("%s", ai::quest_feasibility::FormatSkipLine(bot->GetGUIDLow(), bot->GetLevel(), quest->GetQuestId(),

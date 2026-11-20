@@ -6,8 +6,12 @@
 
 #include "PlannerShadowPolicy.h"
 #include "PlannerShadow.h"   // P-2b: RewardNotes, UpdateComplete
+#include "PlannerWrite.h"    // P-3a: the plan attempt's counter classes (header templates only)
+#include "CohortPolicy.h"    // P-3a: WritesFor against the cohort parity rule
 
+#include <atomic>
 #include <cstdlib>
+#include <cstring>
 #include <iostream>
 #include <string>
 
@@ -373,6 +377,278 @@ void TestNotesAndComplete()
     // W8: an unknown respawn waits the full maximum.
     Require(DeadWaitFor(0, 600) == 600000u && DeadWaitFor(60, 600) == 120000u && DeadWaitFor(500, 600) == 600000u, "dead wait");
 }
+
+// ---- A3 step 3 planner P-3a (P3-ENTWURF-v0.2, frozen d45c4961, Nachtraege 1-3; AiPlayerbot.Planner = 2, default 0) -----------
+// Planner.WriteCohort: 0..3 kept, above 3 is 0 (never "all"); only Planner = 2 writes; the parity rule of CohortPolicy.h.
+void TestWriteCohort()
+{
+    for (std::uint32_t raw = 0; raw <= kWriteCohortMax; ++raw)
+        Require(WriteCohortOf(raw) == raw, "WriteCohort 0..3 kept");
+    Require(WriteCohortOf(4) == 0 && WriteCohortOf(0xFFFFFFFFu) == 0, "WriteCohort above 3 is 0, never all");
+    for (std::uint32_t guid = 0; guid < 8; ++guid)
+    {
+        for (std::uint32_t raw = 0; raw <= 5; ++raw)
+        {
+            std::uint32_t const mode = WriteCohortOf(raw);
+            Require(WritesFor(2, mode, guid) == ai::cohort::Applies(mode, guid), "WritesFor is the cohort parity rule");
+            Require(!WritesFor(0, mode, guid) && !WritesFor(1, mode, guid) && !WritesFor(3, mode, guid), "only Planner = 2 writes");
+        }
+        Require(!WritesFor(2, 0, guid), "Planner = 2 with WriteCohort 0 writes nothing");
+        Require(WritesFor(2, 1, guid), "WriteCohort 1: every bot");
+    }
+    Require(WritesFor(2, 2, 7) && !WritesFor(2, 2, 8) && WritesFor(2, 3, 8) && !WritesFor(2, 3, 7), "2 = cohort B (odd), 3 = A");
+}
+
+ExpireFacts QuestFacts(TravelPhase phase)
+{
+    ExpireFacts f;
+    f.phase = phase;
+    f.liveNull = false;
+    f.liveDestKey = 11;
+    f.liveQuest = 100;
+    f.pickDestKey = 22;
+    f.pickQuest = 200;
+    return f;
+}
+
+ExpireStep Decide2to5(ExpireFacts const& f, bool forced)
+{
+    return ExpireDecide(f, ExpireCheck(f.phase, forced));
+}
+
+// Section 2.3, conditions 2-7, P3-1 (grind by zone), P3-2 (group copy), OB-60 H1 (DestKey AND quest).
+void TestExpireRules()
+{
+    ExpireFacts f = QuestFacts(TravelPhase::Travel);
+    Require(Decide2to5(f, false) == ExpireStep::Go, "another quest target expires");
+    f.pickDestKey = 11;
+    f.pickQuest = 100;
+    Require(Decide2to5(f, false) == ExpireStep::AppliedLive, "the live target is the pick: applied_live");
+    f.pickQuest = 101;
+    Require(Decide2to5(f, false) == ExpireStep::Go, "H1: the same destination with another quest is not the pick");
+    f.pickQuest = 100;
+    f.pickDestKey = 12;
+    Require(Decide2to5(f, false) == ExpireStep::Go, "H1: the same quest at another destination is not the pick");
+
+    Require(Decide2to5(QuestFacts(TravelPhase::None), false) == ExpireStep::NotOpen, "nothing open: nothing to expire");
+    Require(Decide2to5(QuestFacts(TravelPhase::Expired), true) == ExpireStep::NotOpen, "an expired target is not open");
+    ExpireFacts null = QuestFacts(TravelPhase::Travel);
+    null.liveNull = true;
+    Require(Decide2to5(null, true) == ExpireStep::NotOpen, "the null target is never expired");
+
+    // P3-1: a grind pick (destKey 0) compares the live target's zone, never the key.
+    ExpireFacts g = QuestFacts(TravelPhase::Travel);
+    g.pickGrind = true;
+    g.pickDestKey = 0;
+    g.pickQuest = 0;
+    g.pickZone = 40;
+    g.liveZone = 40;
+    Require(Decide2to5(g, false) == ExpireStep::AppliedLive, "P3-1: a mob target in the pick zone is the grind pick");
+    g.liveZone = 0;
+    Require(Decide2to5(g, true) == ExpireStep::ZoneUnknown, "P3-1: an unknown zone expires nothing");
+    g.liveZone = 12;
+    Require(Decide2to5(g, false) == ExpireStep::Go, "P3-1: a target in another zone expires");
+
+    // Condition 3 (B3): COOLDOWN never, WORK only for a forced pick (max_hold, back_to_band).
+    Require(Decide2to5(QuestFacts(TravelPhase::Cooldown), true) == ExpireStep::DeniedCooldown, "COOLDOWN is never expired");
+    Require(Decide2to5(QuestFacts(TravelPhase::Work), false) == ExpireStep::DeniedWork, "WORK without a forced pick");
+    Require(ExpireCheck(TravelPhase::Work, true) == ExpireGate::WorkOverride &&
+        Decide2to5(QuestFacts(TravelPhase::Work), true) == ExpireStep::Go, "WORK with a forced pick: expire_work_override");
+    // Conditions 4 and 5.
+    f = QuestFacts(TravelPhase::Travel);
+    f.repeat = true;
+    Require(Decide2to5(f, false) == ExpireStep::Repeat, "rule 4: once per pick");
+    f.repeat = false;
+    f.fallbackBlock = true;
+    Require(Decide2to5(f, false) == ExpireStep::BlockedFb, "rule 5: blocked after a fallback");
+    Require(FallbackBlocks(1000, 1000 + 119999, 120000) && !FallbackBlocks(1000, 1000 + 120000, 120000) &&
+        !FallbackBlocks(0, 5000, 120000), "rule 5 lasts MinBindSec, no fallback blocks nothing");
+    // Conditions 6 and 7 (P3-2): the lane first, then the group copy.
+    Require(ExpireAdmit(false, true) == ExpireStep::DeniedLane && ExpireAdmit(true, true) == ExpireStep::DeniedGroup &&
+        ExpireAdmit(true, false) == ExpireStep::Go, "P3-2: the lane, then the group copy");
+}
+
+// The pending expire: P3-4 (nothing expires by waiting) and F8 (i)-(iii).
+void TestPendingExpire()
+{
+    for (ExpireStep s : {ExpireStep::DeniedWork, ExpireStep::BlockedFb, ExpireStep::DeniedLane, ExpireStep::DeniedGroup,
+             ExpireStep::DeniedThread})
+        Require(PendingStarts(s), "a denial by 3 (WORK), 5, 6, 7 or the thread leaves the expire pending");
+    for (ExpireStep s : {ExpireStep::Go, ExpireStep::NotOpen, ExpireStep::AppliedLive, ExpireStep::ZoneUnknown,
+             ExpireStep::DeniedCooldown, ExpireStep::Repeat, ExpireStep::Expired})
+        Require(!PendingStarts(s), "no pending expire after these steps");
+    // P3-4: WORK without a forced pick stays denied however long the pending expire waits.
+    ExpireFacts f = QuestFacts(TravelPhase::Work);
+    for (int tick = 0; tick < 1000; ++tick)
+    {
+        ExpireStep const s = Decide2to5(f, false);
+        Require(s == ExpireStep::DeniedWork && PendingKeeps(7, 7, s), "P3-4: no expire by waiting");
+    }
+    // F8 (a): WORK -> TRAVEL on the same target fires in TRAVEL (expire_after_work).
+    f.phase = TravelPhase::Travel;
+    Require(Decide2to5(f, false) == ExpireStep::Go, "F8 (a): the pending expire fires in TRAVEL");
+    // F8 (iii): WORK -> COOLDOWN ends it, as does the end of the target.
+    f.phase = TravelPhase::Cooldown;
+    ExpireStep s = Decide2to5(f, false);
+    Require(s == ExpireStep::DeniedCooldown && !PendingKeeps(7, 7, s), "F8 (iii): WORK -> COOLDOWN ends the pending expire");
+    f.phase = TravelPhase::None;
+    s = Decide2to5(f, false);
+    Require(s == ExpireStep::NotOpen && !PendingKeeps(7, 7, s), "the end of the target ends it");
+    // F8 (i): only while its key is the pick.
+    Require(!PendingKeeps(7, 8, ExpireStep::DeniedWork) && !PendingKeeps(0, 0, ExpireStep::DeniedWork), "F8 (i): a new pick ends it");
+}
+
+// P3-3 and the feed check (section 2.4).
+void TestModeAndFeed()
+{
+    Require(ModeSwitchFrom(Hold::Switch) && ModeSwitchFrom(Hold::Forced), "a pick change may switch the mode");
+    Require(!ModeSwitchFrom(Hold::Same) && !ModeSwitchFrom(Hold::Margin) && !ModeSwitchFrom(Hold::Bind),
+        "P3-3: never out of same, margin or bind");
+    Require(PickWantsGrind(true, Tier::C) && !PickWantsGrind(true, Tier::B) && !PickWantsGrind(false, Tier::C) &&
+        !PickWantsGrind(false, Tier::A), "only a grind pick of tier C wants GRIND");
+
+    std::uint32_t const fresh = 120000;
+    Require(FeedCheck(true, false, false, true, false, 1000, 2000, fresh, false, false) == FeedSkip::Feed, "a fresh quest pick feeds");
+    Require(FeedCheck(false, true, false, true, true, 1000, 2000, fresh, false, false) == FeedSkip::Feed, "a grind pick feeds grind");
+    Require(FeedCheck(false, false, false, true, false, 1000, 2000, fresh, false, false) == FeedSkip::Purpose, "another purpose");
+    Require(FeedCheck(true, false, true, true, false, 1000, 2000, fresh, false, false) == FeedSkip::Purpose, "a forced target");
+    Require(FeedCheck(true, false, false, true, true, 1000, 2000, fresh, false, false) == FeedSkip::Purpose,
+        "a grind pick never feeds a quest search");
+    Require(FeedCheck(true, false, false, false, false, 0, 2000, fresh, false, false) == FeedSkip::None, "no pick");
+    Require(FeedCheck(true, false, false, true, false, 1000, 1000 + fresh, fresh, false, false) == FeedSkip::Stale, "F5 (c) stale");
+    Require(FeedCheck(true, false, false, true, false, 1000, 2000, fresh, true, false) == FeedSkip::Budget, "#416 resume pending");
+    Require(FeedCheck(true, false, false, true, false, 1000, 2000, fresh, false, true) == FeedSkip::Budget, "#416 the pick ran out");
+}
+
+// Nachtrag 3: a failed plan attempt changes no choice counter - class B (this bot's / action's state) is restored, class P (the
+// process-wide atomics) is buffered and only a chosen attempt adds it; never a restore or a fetch_sub on the shared counter.
+struct FakeRejects
+{
+    std::uint32_t crossMap = 0;
+    std::uint32_t levelGuard = 0;
+};
+
+void TestAttemptClasses()
+{
+    FakeRejects rejects;
+    rejects.crossMap = 3;
+    std::uint32_t skillLocked = 4;
+    bool budgetExceeded = false;
+    std::string resume = "quest:7";
+    {
+        ai::planner_write::AttemptRestore<FakeRejects, std::uint32_t, bool, std::string> classB(rejects, skillLocked, budgetExceeded,
+            resume);
+        rejects = FakeRejects();   // what the attempt's SetBestTarget does to them
+        rejects.levelGuard = 9;
+        skillLocked = 0;
+        budgetExceeded = true;
+        resume = "quest:2";
+        classB.Restore();
+    }
+    Require(rejects.crossMap == 3 && rejects.levelGuard == 0 && skillLocked == 4 && !budgetExceeded && resume == "quest:7",
+        "class B: a failed attempt changes no choice counter");
+
+    std::atomic<std::uint32_t> shared{10};
+    std::atomic<std::uint32_t> buffer{0};
+    buffer.fetch_add(5);      // the attempt counts into its buffer
+    shared.fetch_add(2);      // another bot's thread counts meanwhile
+    Require(shared.load() == 12, "class P: a failed attempt (buffer dropped) leaves only the other thread's counts");
+    ai::planner_write::CommitBuffered(shared, buffer);
+    Require(shared.load() == 17, "class P: a chosen attempt adds its buffer once");
+    std::atomic<std::uint32_t> none{0};
+    ai::planner_write::CommitBuffered(shared, none);
+    Require(shared.load() == 17, "class P: an empty buffer adds nothing");
+}
+
+// Section 5.4: 16 slots for a writing bot (the shadow keeps 8), N1 saturating deadCycles, N2 mem_evict, B19 first expired slot,
+// the close counter.
+void TestMemoryP3()
+{
+    Require(kMemorySlots == 16 && kShadowMemorySlots == 8, "16 slots for a writing bot, 8 for the shadow");
+    MemorySlot w[kMemorySlots];
+    MemorySlot s[kMemorySlots];
+    for (std::uint32_t i = 0; i < 256; ++i)
+    {
+        Close(w, kMemorySlots, 7, 1, 0, CloseReason::Dead, 1000 + i, 10, true);
+        Close(s, kShadowMemorySlots, 7, 1, 0, CloseReason::Dead, 1000 + i, 10, false);
+    }
+    Require(DeadCycles(w, kMemorySlots, 7) == 255, "N1: a writing bot's deadCycles saturate at 255");
+    Require(DeadCycles(s, kShadowMemorySlots, 7) == 1, "the shadow keeps P-2b's 255 -> 0 -> 1");
+    Require(Closes(w, kMemorySlots, 7) == 256 && Closes(w, kMemorySlots, 8) == 0, "the close counter per key");
+
+    MemorySlot m[4];
+    bool evicted = true;
+    Close(m, 4, 1, 1, 0, CloseReason::Suppressed, 1000, 500, false, &evicted);
+    Require(!evicted, "an empty slot is no eviction");
+    Close(m, 4, 2, 2, 0, CloseReason::Suppressed, 1000, 400);
+    Close(m, 4, 3, 3, 0, CloseReason::Suppressed, 1000, 300);
+    Close(m, 4, 4, 4, 0, CloseReason::Suppressed, 1000, 200);
+    Close(m, 4, 9, 9, 0, CloseReason::Suppressed, 1450, 100000, false, &evicted);
+    Require(m[1].key == 9 && m[2].key == 3 && m[3].key == 4 && !evicted, "B19: the first expired slot in slot order");
+    Close(m, 4, 10, 10, 0, CloseReason::Suppressed, 1460, 100000, false, &evicted);
+    Close(m, 4, 11, 11, 0, CloseReason::Suppressed, 1465, 100000, false, &evicted);
+    Require(m[2].key == 10 && m[3].key == 11 && !evicted, "expired slots are taken first");
+    Close(m, 4, 12, 12, 0, CloseReason::Suppressed, 1470, 100000, false, &evicted);
+    Require(evicted && m[0].key == 12 && !IsClosed(m, 4, 1, 1470), "N2: every slot open: the oldest is evicted (mem_evict)");
+    Close(m, 4, 12, 12, 0, CloseReason::Suppressed, 1480, 100000, false, &evicted);
+    Require(!evicted && Closes(m, 4, 12) == 2, "the same key is no eviction");
+}
+
+// Section 6.1 / 7.5: [PlanMin] at Planner 0 / 1 is the P-2b line byte for byte; Planner = 2 appends the P-3a fields; the longest
+// line fits kPlanMinBuf.
+void TestPlanMinP3()
+{
+    std::string const golden = "[PlanMin] cohort=A min=7 plans=0 keeps=0 switches=0 tierA=0 tierB=0 tierC=0 dead_wait=0 dead_close=0 "
+        "zone_change=0 zone_change_dead=0 cut=0 skip=0 timer=0 over_budget=0 overwritten=0 overwritten_group=0 agree=0 disagree=0 "
+        "r1_mismatch=0 max_hold=0 repeat_cap=0 back_to_band=0 floor_below=0 floor_unknown=0 relocate=0 reloc_unknown=0 "
+        "plan_dropped=0 ms_p50=0 ms_max=0 back_to_band_would=0 back_to_band_repeat=0 expire_work_override_would=0 "
+        "overwritten_shadow=0 na_purpose=0 na_stale=0 overwritten_neutral=0 switch_ms=0 passive_ticks=0 agree_grind=0 "
+        "disagree_grind=0 back_to_band_would_quest=0 back_to_band_would_grind=0";
+    std::string const tail = " expired=0 expire_denied=0 expire_denied_cooldown=0 expire_denied_work=0 expire_denied_lane=0 "
+        "expire_denied_group=0 expire_denied_thread=0 expire_denied_zone_unknown=0 expire_work_override=0 expire_repeat=0 "
+        "expire_blocked_fb=0 expire_pending=0 expire_after_work=0 fed=0 applied_quest=0 applied_grind=0 applied_live_quest=0 "
+        "applied_live_grind=0 fallback_reject=0 fallback_stale=0 fallback_none=0 fallback_purpose=0 fallback_budget=0 "
+        "fallback_denied=0 fallback_parked=0 fallback_zone_empty=0 fb_arbiter=0 fb_cohort=0 turnin_unreached=0 mem_evict=0 "
+        "mode_quest_grind=0 mode_grind_quest=0 mode_denied=0";
+    PlanMinCounts z;
+    char buf[kPlanMinBuf];
+    std::size_t n = FormatPlanMin(buf, sizeof(buf), 'A', 7, z);
+    Require(std::string(buf) == golden && n == golden.size(), "Planner 0 / 1: the [PlanMin] golden line, byte-identical");
+    FormatPlanMin(buf, sizeof(buf), 'A', 7, z, false);
+    Require(std::string(buf) == golden, "p3 false is the default");
+    n = FormatPlanMin(buf, sizeof(buf), 'A', 7, z, true);
+    Require(std::string(buf) == golden + tail && n == golden.size() + tail.size(), "Planner = 2: the P-3a fields appended");
+
+    PlanMinCounts a;
+    a.expired = 1;
+    a.expireDenied = 2;
+    a.fed = 3;
+    a.fallbackZoneEmpty = 4;
+    a.memEvict = 5;
+    a.modeDenied = 6;
+    PlanMinCounts const b = a;
+    Add(a, b);
+    FormatPlanMin(buf, sizeof(buf), 'B', 8, a, true);
+    std::string const line(buf);
+    std::string const last = " mode_denied=12";
+    Require(line.find(" expired=2 expire_denied=4 ") != std::string::npos && line.find(" fed=6 ") != std::string::npos &&
+        line.find(" fallback_zone_empty=8 ") != std::string::npos && line.find(" mem_evict=10 ") != std::string::npos &&
+        line.size() > last.size() && line.compare(line.size() - last.size(), last.size(), last) == 0,
+        "Add sums the P-3a fields into their places");
+
+    PlanMinCounts full;
+    static_assert(sizeof(PlanMinCounts) % sizeof(std::uint32_t) == 0, "PlanMinCounts holds only uint32 fields");
+    std::uint32_t fields[sizeof(PlanMinCounts) / sizeof(std::uint32_t)];
+    for (std::uint32_t& v : fields)
+        v = 4294967295u;
+    std::memcpy(&full, fields, sizeof(full));
+    char big[kPlanMinBuf];
+    n = FormatPlanMin(big, sizeof(big), 'B', 4294967295u, full, true);
+    std::string const maxTail = " mode_denied=4294967295";
+    Require(n == std::strlen(big) && n + 1 < sizeof(big) && n > maxTail.size() &&
+        std::string(big).compare(n - maxTail.size(), maxTail.size(), maxTail) == 0,
+        "the longest [PlanMin] line fits kPlanMinBuf, not cut");
+}
 }
 
 int main()
@@ -389,6 +665,13 @@ int main()
     TestDeadAndMemory();
     TestMinute();
     TestNotesAndComplete();
+    TestWriteCohort();
+    TestExpireRules();
+    TestPendingExpire();
+    TestModeAndFeed();
+    TestAttemptClasses();
+    TestMemoryP3();
+    TestPlanMinP3();
     std::cout << "planner_shadow_policy_tests: OK\n";
     return 0;
 }
