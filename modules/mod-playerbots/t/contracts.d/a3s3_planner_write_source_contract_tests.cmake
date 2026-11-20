@@ -19,6 +19,8 @@ cmake_policy(VERSION 3.16)
 #       documented; [ArbiterMin] plan= only at Planner = 2 (SetArbiterPlanField);
 #   (f) the group copy's writer is cited (ChooseGroupTravelTargetAction::Execute, SetGroupCopy under WriterId::GroupFollow).
 #   (g) the write condition reads ArbiterValue (the console override) in FeedBegin and NoteChoiceImpl.
+#   (h) OB-10 pre-review 20.11.: V-3 rule 5 locks only after reject, budget, parked, denied, zone_empty (NoteFallback); V-1 no
+#       mode switch from back_to_band (one PlannerMode call, the BackToBandHolds hold).
 # Every check_* returns "" when it holds, else the reason; the negative probes at the end reuse them on mutated text.
 if(NOT DEFINED PB_SOURCE_DIR)
   message(FATAL_ERROR "a3s3 planner write: PB_SOURCE_DIR is required")
@@ -380,8 +382,46 @@ function(check_arbiter_reads write shadow out)
   set(${out} "" PARENT_SCOPE)
 endfunction()
 
+# ---- (h) OB-10 pre-review 20.11.: V-3 rule 5 lock reasons, V-1 back_to_band never switches the mode -------------------------
+# V-3: the rule 5 time is set only through NoteFallback (5 calls: FeedBegin, FeedResult x3, ApplyWatch); FallbackLocks names the
+# five lock reasons (reject, budget, parked, denied, zone_empty). V-1: the one PlannerMode call in PlannerShadow.cpp is the switch
+# branch's; the back_to_band hold goes through BackToBandHolds (no direct mode switch from back_to_band, P-3c with its own OK).
+function(check_v1_v3 write shadow policy out)
+  set(locks "inline bool FallbackLocks(FeedFallback f)\n{\n    return f == FeedFallback::Reject || f == FeedFallback::Budget || f == FeedFallback::Parked || f == FeedFallback::Denied ||\n        f == FeedFallback::ZoneEmpty;\n}")
+  count_text("${policy}" locks n)
+  if(NOT n EQUAL 1)
+    set(${out} "PlannerShadowPolicy.h: FallbackLocks is not the five lock reasons (found ${n})" PARENT_SCOPE)
+    return()
+  endif()
+  set(note "NoteFallback(st.fallbackAtMs, ")
+  count_text("${write}" note n)
+  if(NOT n EQUAL 5)
+    set(${out} "PlannerWrite.cpp: NoteFallback(st.fallbackAtMs, found ${n} times, want 5" PARENT_SCOPE)
+    return()
+  endif()
+  foreach(t write shadow)
+    string(FIND "${${t}}" "fallbackAtMs = " at)
+    if(NOT at EQUAL -1)
+      set(${out} "a direct rule 5 time write outside NoteFallback (${t})" PARENT_SCOPE)
+      return()
+    endif()
+  endforeach()
+  set(mode "PlannerMode(")
+  count_text("${shadow}" mode n)
+  set(hold "    if (BackToBandHolds(writes, inc.stillEligible, st.pick.has, st.pick.forced, st.pick.kind == Kind::Grind, st.pick.sinceMs,")
+  count_text("${shadow}" hold m)
+  if(NOT n EQUAL 1 OR NOT m EQUAL 1)
+    set(${out} "PlannerShadow.cpp: PlannerMode( ${n} (want 1, the switch branch), BackToBandHolds hold ${m} (want 1)" PARENT_SCOPE)
+    return()
+  endif()
+  set(${out} "" PARENT_SCOPE)
+endfunction()
+
 read_file("${PB_SOURCE_DIR}/PlannerShadow.cpp" planner_shadow_cpp)
+read_file("${PB_SOURCE_DIR}/PlannerShadowPolicy.h" policy_h)
 check_arbiter_reads("${write_cpp}" "${planner_shadow_cpp}" r)
+fail_if("${r}")
+check_v1_v3("${write_cpp}" "${planner_shadow_cpp}" "${policy_h}" r)
 fail_if("${r}")
 check_door("${write_cpp}" r)
 fail_if("${r}")
@@ -498,5 +538,15 @@ expect_caught("the group copy writer not cited" "${r}")
 string(REPLACE "Writes(ai, *sup, ai::supervisor::ArbiterValue(sPlayerbotAIConfig.supervisorArbiter))" "Writes(ai, *sup, sPlayerbotAIConfig.supervisorArbiter)" m "${write_cpp}")
 check_arbiter_reads("${m}" "${planner_shadow_cpp}" r)
 expect_caught("the feed reads the raw arbiter key (no console override)" "${r}")
+
+string(REPLACE "    return f == FeedFallback::Reject ||" "    return f == FeedFallback::Purpose || f == FeedFallback::Reject ||" m "${policy_h}")
+check_v1_v3("${write_cpp}" "${planner_shadow_cpp}" "${m}" r)
+expect_caught("V-3: purpose locks rule 5" "${r}")
+string(REPLACE "        NoteFallback(st.fallbackAtMs, fb, nowMs);" "        st.fallbackAtMs = nowMs;" m "${write_cpp}")
+check_v1_v3("${m}" "${planner_shadow_cpp}" "${policy_h}" r)
+expect_caught("V-3: every feed skip sets the rule 5 time" "${r}")
+string(REPLACE "                st.evNext |= EvMode;" "                st.evNext |= EvMode;\n                supervisor->PlannerMode(Mode::Grind, 0, 2);" m "${planner_shadow_cpp}")
+check_v1_v3("${write_cpp}" "${m}" "${policy_h}" r)
+expect_caught("V-1: a direct mode switch from back_to_band" "${r}")
 
 message(STATUS "${TAG}: all checks passed")

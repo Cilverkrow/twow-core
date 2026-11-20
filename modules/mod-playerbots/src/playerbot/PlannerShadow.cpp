@@ -376,7 +376,8 @@ void NoteChoiceImpl(PlayerbotAI* ai, char const* purpose, ai::TravelDestination 
         // a stranded bot fails again by construction (the guard "= 0" is P-3's).
         bool const allowed = BackToBandAllowed(st.lastBackMs, nowMs, sPlayerbotAIConfig.plannerMinBindSec * 1000u);
         // P-3a (section 2.5, B15; Planner = 2, writing bot, quest or grind search): back_to_band acts - the pick becomes the band
-        // hub (grind, forced: it may expire a target in WORK), EvMode plans in the next tick, the next choice is fed. lastBackMs
+        // hub (grind, forced), EvMode plans in the next tick and holds it (Bind; OB-10 V-1: no mode switch and no expire from
+        // back_to_band - the mode stays, the grind comes through the existing grind fallback), the next grind choice is fed. lastBackMs
         // is set only by the effect, so back_to_band_repeat (guard = 0) is live. Every other bot keeps the shadow rule below.
         if ((quest || grind) && WritingBot(ai, *supervisor, ai::supervisor::ArbiterValue(sPlayerbotAIConfig.supervisorArbiter)))
         {
@@ -1111,8 +1112,9 @@ void PlanTickImpl(ai::supervisor::Supervisor& sup, PlayerbotAI* ai_, PlanState& 
         }
     // P-3a (section 2.5): the back_to_band pick of a writing bot (the forced band hub) is not in the tier's pool; it holds its
     // bind time like an eligible incumbent (then Bind, or Forced for a max_hold), so the EvMode plan does not drop it at once.
-    if (writes && !inc.stillEligible && st.pick.has && st.pick.forced && st.pick.kind == Kind::Grind &&
-        nowMs - st.pick.sinceMs < minBindMs)
+    // OB-10 V-1: kept by Bind / Same, it never reaches the mode switch or the expire below (BackToBandHolds, unit-tested).
+    if (BackToBandHolds(writes, inc.stillEligible, st.pick.has, st.pick.forced, st.pick.kind == Kind::Grind, st.pick.sinceMs,
+            nowMs, minBindMs))
     {
         inc.stillEligible = true;
         inc.value = st.pick.value;
@@ -1255,6 +1257,8 @@ void PlanTickImpl(ai::supervisor::Supervisor& sup, PlayerbotAI* ai_, PlanState& 
                     }
                     // P-3a (section 2.6, P3-3): the mode follows only a pick change (switch, or forced: max_hold); a grind pick
                     // of tier C wants GRIND, every other pick QUEST. Decide with Requester::Planner and the dwell decides.
+                    // OB-10 V-1: back_to_band never gets here (its pick is set outside the hysteresis, then held by Bind, no
+                    // tier C): it switches no mode and expires nothing; the mode line stays QUEST.
                     if (ModeSwitchFrom(hold))
                     {
                         Mode const want = PickWantsGrind(p.kind == Kind::Grind, tier.tier) ? Mode::Grind : Mode::Quest;

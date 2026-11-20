@@ -135,15 +135,16 @@ bool FeedBegin(PlayerbotAI* ai, char const* purpose, bool forcedTarget, bool res
     if (skip != FeedSkip::Feed)
     {
         PlanMinCounts c;
+        FeedFallback fb = FeedFallback::None;
         switch (skip)
         {
-            case FeedSkip::Purpose: ++c.fallbackPurpose; break;
-            case FeedSkip::None: ++c.fallbackNone; break;
-            case FeedSkip::Stale: ++c.fallbackStale; break;
-            case FeedSkip::Budget: ++c.fallbackBudget; break;
+            case FeedSkip::Purpose: ++c.fallbackPurpose; fb = FeedFallback::Purpose; break;
+            case FeedSkip::None: ++c.fallbackNone; fb = FeedFallback::None; break;
+            case FeedSkip::Stale: ++c.fallbackStale; fb = FeedFallback::Stale; break;
+            case FeedSkip::Budget: ++c.fallbackBudget; fb = FeedFallback::Budget; break;
             case FeedSkip::Feed: break;
         }
-        st.fallbackAtMs = nowMs;   // rule 5
+        NoteFallback(st.fallbackAtMs, fb, nowMs);   // rule 5 (OB-10 V-3): only budget locks here; none, stale, purpose never
         Count(ai, c);
         return false;
     }
@@ -182,15 +183,15 @@ void FeedResult(PlayerbotAI* ai, Feed const& feed, FeedEnd end)
             break;
         case FeedEnd::Reject:
             ++c.fallbackReject;
-            st.fallbackAtMs = nowMs;
+            NoteFallback(st.fallbackAtMs, FeedFallback::Reject, nowMs);
             break;
         case FeedEnd::ZoneEmpty:
             ++c.fallbackZoneEmpty;
-            st.fallbackAtMs = nowMs;
+            NoteFallback(st.fallbackAtMs, FeedFallback::ZoneEmpty, nowMs);
             break;
         case FeedEnd::Budget:
             ++c.fallbackBudget;
-            st.fallbackAtMs = nowMs;
+            NoteFallback(st.fallbackAtMs, FeedFallback::Budget, nowMs);
             st.feedBudgetKey = feed.key;   // #416: no second attempt for this pick (the full list resumes)
             break;
     }
@@ -213,7 +214,8 @@ ApplyWatch::~ApplyWatch()
     std::uint32_t const nowMs = NowMs();
     std::uint32_t const gen = live_->WriteGen();
     PlanMinCounts c;
-    if (gen != gen_)
+    ApplyOutcome const outcome = ApplyOutcomeOf(gen_, gen, live_->GetStatus() == TravelStatus::TRAVEL_STATUS_EXPIRED);
+    if (outcome == ApplyOutcome::Applied)
     {
         ++(feed_->grind ? c.appliedGrind : c.appliedQuest);
         st.appliedGen = gen;
@@ -229,11 +231,9 @@ ApplyWatch::~ApplyWatch()
     else
     {
         // No new write generation: the #485 refusal expired the live target (parked), else the arbiter denied the copy.
-        if (live_->GetStatus() == TravelStatus::TRAVEL_STATUS_EXPIRED)
-            ++c.fallbackParked;
-        else
-            ++c.fallbackDenied;
-        st.fallbackAtMs = nowMs;
+        bool const parked = outcome == ApplyOutcome::Parked;
+        ++(parked ? c.fallbackParked : c.fallbackDenied);
+        NoteFallback(st.fallbackAtMs, parked ? FeedFallback::Parked : FeedFallback::Denied, nowMs);
     }
     Count(ai_, c);
 }
