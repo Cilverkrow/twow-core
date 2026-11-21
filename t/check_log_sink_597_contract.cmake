@@ -366,6 +366,12 @@ slice("${log_cpp}" "    bool Drain(uint32 waitMs)" "\n    }\n" drain_fn)
 require_order("${drain_fn}" "fifo.Close();" "idle.wait_for(" "Drain closes the queue before it waits")
 require_order("${stop_fn}" "s_terminateSink.store(nullptr);" "m_sink->Drain(log_sink::DrainWaitMs);" "terminate handler disarmed before the drain")
 
+# CORE-MSVC-01 (twow-core#1128): Common.h maps vsnprintf to _vsnprintf on MSVC, so std::vsnprintf in AppendV was rewritten to a name that does not exist in std.
+require_order("${policy_h}" "#pragma push_macro(\"vsnprintf\")
+#undef vsnprintf" "inline void AppendV(" "vsnprintf macro hidden before AppendV")
+require_order("${policy_h}" "inline void AppendV(" "#pragma pop_macro(\"vsnprintf\")" "vsnprintf macro restored after AppendV")
+forbid_text("${policy_h}" "std::_vsnprintf" "legacy MSVC name")
+
 # ---- Tests registered; tags.
 require_text("${root_cmake}" "add_executable(log_sink_597_test\n    \"\${TW_CORE_ROOT}/t/log_sink_597_test.cpp\")" "unit test target")
 require_text("${root_cmake}" "add_test(NAME log_sink_597_test COMMAND log_sink_597_test)" "unit test registered")
