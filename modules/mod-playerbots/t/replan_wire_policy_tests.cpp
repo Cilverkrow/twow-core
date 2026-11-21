@@ -6,6 +6,7 @@
 
 #include "ReplanWirePolicy.h"
 #include "SupervisorPolicy.h"
+#include "RotCastPolicy.h"
 
 #include <cstdint>
 #include <cstdlib>
@@ -280,6 +281,29 @@ void ForcedOutsideBudget()
     Require(OutsideLineBudget(r), "D11: a forced record of a new episode is outside it");
 }
 
+
+// R9-a (OB-10 review core#1100 36d45289): forced lines have a global safety ceiling above the 300 / min [Replan] budget; the tick
+// takes it with the same per-minute window as every line budget (RotCastPolicy.h BudgetTake). A refused forced line is
+// forced_dropped=, the decision stays in forced=.
+void ForcedLineCeiling()
+{
+    static_assert(kForcedLinesPerMinute == 600, "R9-a: the forced-line ceiling is 600 per minute");
+    static_assert(kForcedLinesPerMinute > 300, "R9-a: the ceiling sits above the [Replan] budget");
+    std::uint32_t window = 0, used = 0;
+    std::uint32_t const t0 = 1000000;
+    std::uint32_t taken = 0;
+    for (std::uint32_t i = 0; i < kForcedLinesPerMinute + 5; ++i)
+        taken += ai::rot_cast::BudgetTake(window, used, t0 + (i % 50), kForcedLinesPerMinute) ? 1u : 0u;
+    Require(taken == kForcedLinesPerMinute, "R9-a: at most kForcedLinesPerMinute forced lines in one minute");
+    Require(ai::rot_cast::BudgetTake(window, used, t0 + 60, kForcedLinesPerMinute), "R9-a: a new minute opens the ceiling again");
+    ai::replan::Counters a, b;
+    a.forced = 3;
+    a.forcedDropped = 1;
+    b.forced = 2;
+    b.forcedDropped = 2;
+    ai::replan::Add(a, b);
+    Require(a.forced == 5 && a.forcedDropped == 3, "R9-a: forced_dropped sums per cohort, forced keeps every decision");
+}
 void GrindAndOffMap()
 {
     Require(GrindNoKill(ai::replan::TargetKind::Grind), "R-5: a grind target is not fed without a kill counter");
@@ -490,6 +514,7 @@ int main()
     HopOneShot();
     HearthResyncDuringCast();
     ForcedOutsideBudget();
+    ForcedLineCeiling();
     GrindAndOffMap();
     DeadHold();
     GhostRunThroughHold();
