@@ -1264,6 +1264,13 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[QuestFirstRoute] config key=GiverFetchAnyQuest value=%u result=off (0 off, 1 all, 2 cohort B)", questFirstProgressionGiverFetchAnyQuest);
         questFirstProgressionGiverFetchAnyQuest = 0;
     }
+    // twow-repo#738 L03 QuestGiver.MaxLevelZeroFix: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B, 3 cohort A).
+    questGiverMaxLevelZeroFix = config.GetIntDefault("AiPlayerbot.QuestGiver.MaxLevelZeroFix", 0);
+    if (questGiverMaxLevelZeroFix > 3)
+    {
+        sLog.outError("[QuestFirstRoute] config key=QuestGiver.MaxLevelZeroFix value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", questGiverMaxLevelZeroFix);
+        questGiverMaxLevelZeroFix = 0;
+    }
     // twow-repo#601 SkipSkillLockedObjectives: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B).
     questFirstProgressionSkipSkillLockedObjectives = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.SkipSkillLockedObjectives", 0);
     if (questFirstProgressionSkipSkillLockedObjectives > 2)
@@ -2502,6 +2509,7 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestFirstProgression.StartZoneMinLevel.ObjectiveWindow.AboveLevels", Value(questFirstProgressionStartZoneObjectiveWindowAbove)},
             {"QuestFirstProgression.TransientCountsAfter", Value(questFirstProgressionTransientCountsAfter)},
             {"QuestFirstProgression.TurnInParkFailures", Value(questFirstProgressionTurnInParkFailures)},
+            {"QuestGiver.MaxLevelZeroFix", Value(questGiverMaxLevelZeroFix)},
             {"QuestGroups.Enable", Value(questGroupsEnable)},
             {"QuestGroups.OneHeavyStep", Value(questGroupsOneHeavyStep)},
             {"QuestGroups.ScanBudgetUs", Value(questGroupsScanBudgetUs)},

@@ -98,6 +98,9 @@ namespace ai
 		// twow-repo#333 P1-v (AiPlayerbot.Travel.RpgAreaLevelFromSpawn): the area level of an RPG target from its spawn nearest to the
 		// bot (RpgAreaLevelPolicy.h), set in the constructor on the bot thread; false for every bot with the switch off.
 		bool UsesRpgAreaFromSpawn() const { return rpgAreaFromSpawn; }
+		// twow-repo#738 L03 (AiPlayerbot.QuestGiver.MaxLevelZeroFix): the giver trip check reads a quest MaxLevel of 0 as no upper
+		// limit for this bot; set in the constructor on the bot thread, false for every bot with the switch off.
+		bool UsesGiverMaxLevelZeroOpen() const { return giverMaxLevelZeroOpen; }
 		// twow-repo#601 quest acceptance lever (iv) (QuestFirstProgression.GiverFetchAnyQuest): the lever applies to this bot (a roster
 		// bot without a real player master in the mode's cohort), set in the constructor on the bot thread; false with the mode off.
 		bool HasGiverAnyQuest() const { return giverAnyQuest; }
@@ -153,6 +156,7 @@ namespace ai
 		bool bandGiverFilter = false;    // twow-repo#601 S5a: false for every bot but an in-scope BandLadder bot with a usable row
 		std::uint32_t groupGoalQuest = 0;   // A3 step 3 T02-GROUP: the group goal c (0 = no group goal)
 		bool rpgAreaFromSpawn = false;   // twow-repo#333 P1-v: Travel.RpgAreaLevelFromSpawn applies to this bot
+		bool giverMaxLevelZeroOpen = false;   // twow-repo#738 L03: QuestGiver.MaxLevelZeroFix applies to this bot
 		bool giverAnyQuest = false;     // twow-repo#601 lever (iv): QuestFirstProgression.GiverFetchAnyQuest applies to this bot
 		uint32 bandGreyLevel = 0;
 		bool questBook = false;          // A3 step 2: an active quest book (QuestBook applies to this roster bot on its own)
