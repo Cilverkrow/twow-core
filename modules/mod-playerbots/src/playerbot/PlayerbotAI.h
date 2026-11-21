@@ -37,6 +37,7 @@
 #include "playerbot/QuestSearchPolicy.h"
 #include "playerbot/QuestFeasibilityPolicy.h"
 #include "playerbot/BotActivityPolicy.h"
+#include "playerbot/GrindIdlePolicy.h"   // twow-repo#601 (ActivityTrace.GrindIdleDetail): the grind pass tally (plain data)
 #include "playerbot/StuckReasonPolicy.h"   // A3-HARM-UPSTREAM T40 follow-up: the [StuckReason] records (plain data)
 #include "playerbot/FarMovePolicy.h"
 #include "playerbot/GatherPurposePolicy.h"
@@ -519,6 +520,9 @@ public:
     // A3-HARM-UPSTREAM T40 follow-up (OB-00 (a) 16.11.; ActivityTrace.StuckReason, log only, default 0): the "attack anything" record
     // slot (AttackAnythingAction only).
     ai::stuck_reason::AaRecord& StuckReasonAa() { return stuckReasonAa; }
+    // twow-repo#601 (ActivityTrace.GrindIdleDetail, log only, default 0): the tally of the newest grind target pass (round 0;
+    // GrindTargetValue only, bot thread).
+    ai::grind_idle::PassTally& GrindPassTally() { return grindPass; }
     bool CanDoSpecificAction(const std::string& name, bool isUseful = true, bool isPossible = true);
     virtual bool DoSpecificAction(const std::string& name, Event event = Event(), bool silent = false);
     void ChangeStrategy(const std::string& name, BotState type);
@@ -1113,6 +1117,11 @@ protected:
     // twow-repo#601 (AiPlayerbot.ActivityTrace.IdleDetail): one [IdleDetail] start and end line per idle episode.
     ai::bot_activity::IdleEpisode idleEpisode;
     void ReportIdleDetail(ai::bot_activity::State const& state, ai::bot_activity::Kind kind, ai::bot_activity::IdleNote note, uint32 now);
+    // twow-repo#601 (AiPlayerbot.ActivityTrace.GrindIdleDetail): one [GrindIdleDetail] start and end line per grind_idle episode.
+    ai::grind_idle::PassTally grindPass;
+    ai::bot_activity::IdleEpisode grindIdleEpisode;
+    ai::grind_idle::Cause grindIdleCause = ai::grind_idle::Cause::NoPass;   // at the episode's start, for its end line
+    void ReportGrindIdleDetail(ai::bot_activity::Kind kind, ai::bot_activity::IdleNote note, uint32 now);
     // Hotfix 8.2: targets this bot could not get closer to.
     ai::unreachable::Approach reachApproach;
     ai::unreachable::IgnoreList unreachableTargets;
@@ -1121,6 +1130,10 @@ protected:
     // the quest camp marks (bot thread; never touched with the key at 0).
     ai::unreachable_giveup::Ring unreachableGiveUp;
     ai::unreachable_giveup::MarkGuard unreachableMarkGuard;
+    // twow-repo#703 item 4b (AiPlayerbot.Rotation.UnreachableLock): the locks a give-up armed and the block line budget (bot
+    // thread; never touched with the key at 0).
+    ai::unreachable_giveup::Locks unreachableLocks;
+    ai::unreachable_giveup::BlockLog unreachableLockLog;
     uint32 lastValueCountTime = 0;
     uint32 lastValueNamesTime = 0;
     mutable std::mutex valueNamesMutex;
@@ -1233,6 +1246,12 @@ public:
     // twow-repo#703 item 4: one [Unreachable] result of CheckReachProgress counted; at K on one guid the target is given up
     // (UnreachableGiveUpPolicy.h). Called only with the key on.
     void UnreachableGiveUp(Unit* target, uint32 now);
+    // twow-repo#703 item 4b (Rotation.UnreachableLock): armed only from UnreachableGiveUp; read at the pick sites, true = skip the
+    // unit (a locked guid or same-entry sibling that may not be defended against). Bot thread, no game-state writes in the read.
+    void ArmUnreachableLock(Unit* target, int32 entry, uint32 now);
+    bool UnreachableLockBlocks(Unit* unit, ai::unreachable_giveup::Path path);
+    // The same verdict without the block line (the CastLosGate pre-scan in TargetValue::FindTarget).
+    bool UnreachableLockWouldBlock(Unit* unit);
     bool IsUnreachableTarget(ObjectGuid guid) const { return unreachableTargets.Ignored(guid.GetRawValue(), uint32(time(nullptr))); }
     // A3 step 5 (CombatRule.ProgressGuard): the CombatLoop event a break left for the supervisor (switch on for the bot), taken once.
     // The interface for the CombatGuard frame (Supervisor.CombatGuard, CLI-Projekt); call it on the bot's thread.
@@ -1377,16 +1396,20 @@ public:
     // the quest book (active or shadow, if made) labels it turned_in when it left the log. Bot thread only.
     void NoteQuestRewarded(uint32 questId);
     // A3 step 3 planner P-2b (AiPlayerbot.Planner, default 0; OB-10 B2): the planner's own reward note, filled by the two reward
-    // sources with or without a quest book, taken by Supervisor::PlanTick. And the source of the last position jump (CLI-PATH
-    // R9-2 sets it at the teleport sites; P-2b has no setter, so a jump is "unknown"); PlanTick reads and clears it. Bot thread only.
+    // sources with or without a quest book, taken by Supervisor::PlanTick. Bot thread only.
     ai::planner::RewardNotes& PlannerRewardNotes() { return plannerRewardNotes_; }
-    void SetLastRelocSource(ai::planner::RelocSource source) { lastRelocSource_ = source; }
-    ai::planner::RelocSource TakeLastRelocSource()
-    {
-        ai::planner::RelocSource const source = lastRelocSource_;
-        lastRelocSource_ = ai::planner::RelocSource::Unknown;
-        return source;
-    }
+    // A3 R9 / R2 wiring pair R9-2 (twow-repo#575; AiPlayerbot.Replan / Replan.Shadow, default 0): the source of the last position
+    // jump, an atomic latch (ReplanWirePolicy.h) written from any thread: the teleport sites (bot thread, the quest rescue on the
+    // world thread), the teleport ack (bot, world or a master holder's map thread). Every writer checks ReplanWired() first, so
+    // with both keys 0 nothing writes and PlanTick takes "unknown" every tick as in P-2b (D3).
+    bool ReplanWired() const;
+    void SetLastRelocSource(ai::replan::RelocSource source);   // a site, only after a teleport that started (D12)
+    void MarkRelocHop();                                         // D6: a movement hop of a non-detailed bot (no relocation)
+    void NoteTeleportAck();                                      // HandleTeleportAck: the ack confirms the site (D7)
+    ai::replan_wire::Taken TakeLastRelocSource(std::uint32_t nowMs);
+    void ExpireLastRelocSource(std::uint32_t nowMs);
+    // R9-2: the [Unreachable] results of this bot (Sample.unreachable, a diagnosis field); counted only while ReplanWired().
+    std::uint32_t ReplanUnreachable() const { return replanUnreachable_; }
     // A persistent roster bot without a real player master: the population of the quest book (as quest_accept::SkipForRosterBot).
     bool InQuestBookScope();
     // A3 step 2 H5 (QuestNeedPolicy.h, AiPlayerbot.QuestBook.NeedPerObjective, default 0): part (a) applies to this bot (switch first,
@@ -1548,7 +1571,8 @@ protected:
     // A3 step 2 (ADR-0041, AiPlayerbot.QuestBook, default 0): nullptr while neither the switch nor the shadow applies to this bot.
     std::unique_ptr<ai::questbook::QuestBook> questBook_;
     ai::planner::RewardNotes plannerRewardNotes_;                                    // A3 step 3 planner P-2b (OB-10 B2)
-    ai::planner::RelocSource lastRelocSource_ = ai::planner::RelocSource::Unknown;   // A3 step 3 planner P-2b (CLI-PATH R9-2)
+    std::atomic<std::uint64_t> lastRelocSource_{0};   // R9-2: the relocation latch (ReplanWirePolicy.h), any thread
+    std::uint32_t replanUnreachable_ = 0;             // R9-2: [Unreachable] results while ReplanWired(), bot thread
     // A3 step 2 H5 (AiPlayerbot.QuestBook.NeedPerObjective, default 0): nullptr until .Log or part (b) needs it; memory only.
     std::unique_ptr<ai::quest_need::BotState> questNeed_;
     void QuestNeedWriteHour(uint32 hourStart);

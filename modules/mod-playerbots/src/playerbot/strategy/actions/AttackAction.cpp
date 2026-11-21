@@ -120,6 +120,14 @@ bool AttackAction::Attack(Player* requester, Unit* target)
         return false;
     }
 
+    // twow-repo#703 4b (Rotation.UnreachableLock): the last gate of every attack start (melee on the current target, a cached
+    // grind target, every AttackAction subclass).
+    if (ai->UnreachableLockBlocks(target, ai::unreachable_giveup::Path::Attack))
+    {
+        SC_LOG("attack-cmd FAIL bot=%s - unreachable lock", bot ? bot->GetName() : "(null)");
+        return false;
+    }
+
     if (IsTargetValid(requester, target))
     {
         SC_LOG("attack-cmd valid-tgt bot=%s tgt=%s mounted=%d range=%.1f",

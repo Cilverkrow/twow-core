@@ -66,6 +66,10 @@ bool PullRequestAction::Execute(Event& event)
         return false;
     }
 
+    // twow-repo#703 4b (Rotation.UnreachableLock): no pull request on a locked unit (a bot on its own, no master to tell).
+    if (ai->UnreachableLockBlocks(target, ai::unreachable_giveup::Path::Pull))
+        return false;
+
     const float maxPullDistance = sPlayerbotAIConfig.reactDistance * 3;
     const float distanceToPullTarget = target->GetDistance(ai->GetBot());
     if (distanceToPullTarget > maxPullDistance)

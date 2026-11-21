@@ -72,6 +72,7 @@
 #include "strategy/values/PositionValue.h"
 #include "playerbot/ServerFacade.h"
 #include "playerbot/TravelMgr.h"
+#include "Formulas.h"   // twow-repo#601 (ActivityTrace.GrindIdleDetail): the grey level on the [GrindIdleDetail] line
 #include "playerbot/strategy/values/TravelValues.h"   // twow-repo#333 P1-aa: ProfessionTripTick
 #include "playerbot/TravelNode.h"   // twow-repo#575 (PATH-01 F4): WalkToMachineByGraph
 #include "playerbot/DangerMapConfig.h"
@@ -687,6 +688,61 @@ void PlayerbotAI::NoteQuestRewarded(uint32 questId)
         plannerRewardNotes_.Note(questId);
 }
 
+// A3 R9 / R2 wiring pair R9-2 (twow-repo#575; AiPlayerbot.Replan / Replan.Shadow, default 0; DESIGN-R9-2 D3/D6/D7/D12): the
+// relocation latch. Writers merge with a CAS loop (ReplanWirePolicy.h rules), because the ack can run on the world thread or on
+// a master holder's map thread. With both keys 0 every writer returns at once, so nothing changes against P-2b.
+template <typename Merge>
+static void MergeRelocLatch(std::atomic<std::uint64_t>& latch, Merge merge)
+{
+    std::uint64_t cur = latch.load(std::memory_order_relaxed);
+    while (!latch.compare_exchange_weak(cur, merge(cur), std::memory_order_acq_rel, std::memory_order_relaxed))
+    {
+    }
+}
+
+bool PlayerbotAI::ReplanWired() const
+{
+    return sPlayerbotAIConfig.replan || sPlayerbotAIConfig.replanShadow;
+}
+
+void PlayerbotAI::SetLastRelocSource(ai::replan::RelocSource source)
+{
+    if (!ReplanWired())
+        return;
+    std::uint32_t const now = WorldTimer::getMSTime();
+    MergeRelocLatch(lastRelocSource_, [source, now](std::uint64_t l) { return ai::replan_wire::MergeSite(l, source, now); });
+}
+
+void PlayerbotAI::MarkRelocHop()
+{
+    if (!ReplanWired())
+        return;
+    std::uint32_t const now = WorldTimer::getMSTime();
+    MergeRelocLatch(lastRelocSource_, [now](std::uint64_t l) { return ai::replan_wire::MergeHop(l, now); });
+}
+
+void PlayerbotAI::NoteTeleportAck()
+{
+    if (!ReplanWired())
+        return;
+    std::uint32_t const now = WorldTimer::getMSTime();
+    MergeRelocLatch(lastRelocSource_, [now](std::uint64_t l) { return ai::replan_wire::MergeAck(l, now); });
+}
+
+ai::replan_wire::Taken PlayerbotAI::TakeLastRelocSource(std::uint32_t nowMs)
+{
+    return ai::replan_wire::Take(lastRelocSource_.exchange(0, std::memory_order_acq_rel), nowMs);
+}
+
+// A planner tick without a jump: a resync ack (zero-distance NearTeleportTo) leaves an acked entry, dropped once stale so it never
+// labels a later jump; an acked hop mark is dropped at once (OB-10 R-3: one-shot, a short hop is no jump and must not hide one).
+void PlayerbotAI::ExpireLastRelocSource(std::uint32_t nowMs)
+{
+    std::uint64_t cur = lastRelocSource_.load(std::memory_order_relaxed);
+    if (ai::replan_wire::DropAtTickEnd(cur, nowMs))
+        lastRelocSource_.compare_exchange_strong(cur, 0, std::memory_order_acq_rel, std::memory_order_relaxed);
+}
+
 bool PlayerbotAI::InQuestBookScope()
 {
     return bot && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !HasRealPlayerMaster();
@@ -919,6 +975,8 @@ bool PlayerbotAI::CheckReachProgress(Unit* target, float distance)
 
     uint32 const ignoreSeconds = ai::unreachable::IgnoreFor(playerMaster);
     unreachableTargets.Add(target->GetObjectGuid().GetRawValue(), now, ignoreSeconds);
+    if (ReplanWired())
+        ++replanUnreachable_;   // R9-2 (twow-repo#575): Sample.unreachable, a diagnosis field of the [Replan] line
     reachApproach.Reset();
     if (!lastUnreachableLog || now - lastUnreachableLog >= ai::unreachable::LogSeconds)
     {
@@ -985,6 +1043,131 @@ void PlayerbotAI::UnreachableGiveUp(Unit* target, uint32 now)
         " reason=unreachable_k cohort=%c",
         bot->GetGUIDLow(), target->GetObjectGuid().GetCounter(), target->GetEntry(), quest, count, ug::LongIgnoreSeconds, markSeconds,
         mark, evicted ? 1u : 0u, ai::cohort::Letter(bot->GetGUIDLow()));
+
+    // 4. twow-repo#703 item 4b (Rotation.UnreachableLock): lock this guid and its entry near the spot, solo only; the key first.
+    if (sPlayerbotAIConfig.rotationUnreachableLock &&
+        ug::LockActive(sPlayerbotAIConfig.rotationUnreachableLock, ai::cohort::Applies(sPlayerbotAIConfig.rotationUnreachableLock, bot->GetGUIDLow()),
+            group != nullptr))
+        ArmUnreachableLock(target, entry, now);
+}
+
+// twow-repo#703 item 4b (AiPlayerbot.Rotation.UnreachableLock, design 20.11.2026 L1-L8): the only writer of the locks, called
+// from UnreachableGiveUp after its line. (1) The lock. (2) A swing on a same-entry unit near the spot that is not hitting the bot
+// or its pet stops (an earlier [Unreachable] on a sibling left it). (3) The pet stops the same way, and on the given-up unit.
+// (4) One line. No threat change, no combat stop (L1, L4). Creatures only, as in the read (a player or pet target arms nothing).
+void PlayerbotAI::ArmUnreachableLock(Unit* target, int32 entry, uint32 now)
+{
+    if (!target->GetObjectGuid().IsCreature())
+        return;
+
+    namespace ug = ai::unreachable_giveup;
+    bool const evicted = unreachableLocks.Arm(target->GetObjectGuid().GetRawValue(), entry, target->GetMapId(),
+        target->GetPositionX(), target->GetPositionY(), now);
+
+    Pet* const pet = bot->GetPet();
+    auto attacksUs = [this, pet](Unit* unit)
+    {
+        Unit* const its = unit->GetVictim();
+        return its && (its == bot || (pet && its == pet));
+    };
+    auto lockMatch = [this, now](Unit* unit)
+    {
+        if (!unit->GetObjectGuid().IsCreature())
+            return ug::Match::None;
+        return unreachableLocks.Find(unit->GetObjectGuid().GetRawValue(), int32(unit->GetEntry()), unit->GetMapId(),
+            unit->GetPositionX(), unit->GetPositionY(), now);
+    };
+
+    bool victimStop = false;
+    if (Unit* const victim = bot->GetVictim())
+        if (lockMatch(victim) == ug::Match::Entry && !ug::MayDefend(ug::Match::Entry, attacksUs(victim), false))
+        {
+            bot->AttackStop();
+            victimStop = true;
+        }
+
+    bool petStop = false;
+    if (Unit* const petVictim = pet ? pet->GetVictim() : nullptr)
+        if (petVictim == target ||
+            (lockMatch(petVictim) == ug::Match::Entry && !ug::MayDefend(ug::Match::Entry, attacksUs(petVictim), false)))
+        {
+            pet->AttackStop();
+            petStop = true;
+        }
+
+    sLog.outBasic("[UnreachableLock] state=arm bot=%u guid=%u entry=%u map=%u x=%.0f y=%.0f lock_s=%u radius=%.0f victim_stop=%u pet_stop=%u"
+        " evicted=%u cohort=%c",
+        bot->GetGUIDLow(), target->GetObjectGuid().GetCounter(), uint32(entry), target->GetMapId(), target->GetPositionX(),
+        target->GetPositionY(), ug::LockSeconds, ug::EntryRadiusYards, victimStop ? 1u : 0u, petStop ? 1u : 0u, evicted ? 1u : 0u,
+        ai::cohort::Letter(bot->GetGUIDLow()));
+}
+
+// twow-repo#703 item 4b (Rotation.UnreachableLock): the read of the locks at the pick sites; true = skip the unit. Mode 0
+// returns in the first statement. Bot thread, no game-state writes. Not gated on purpose (self-defence and "has attackers"
+// stay): the attackers list and the closest attacker targeting the bot. UnreachableLockWouldBlock below is its log-free twin.
+bool PlayerbotAI::UnreachableLockBlocks(Unit* unit, ai::unreachable_giveup::Path path)
+{
+    if (!sPlayerbotAIConfig.rotationUnreachableLock || !unit)
+        return false;
+
+    namespace ug = ai::unreachable_giveup;
+    uint32 const now = uint32(time(nullptr));
+    if (!unreachableLocks.Any(now) || !unit->GetObjectGuid().IsCreature() || bot->GetGroup())
+        return false;
+
+    uint64 const guid = unit->GetObjectGuid().GetRawValue();
+    int32 const entry = int32(unit->GetEntry());
+    uint32 const map = unit->GetMapId();
+    float const x = unit->GetPositionX();
+    float const y = unit->GetPositionY();
+    ug::Match const match = unreachableLocks.Find(guid, entry, map, x, y, now);
+    if (match == ug::Match::None)
+        return false;
+
+    Pet* const pet = bot->GetPet();
+    Unit* const victim = unit->GetVictim();
+    bool const attacksBotOrPet = victim && (victim == bot || (pet && victim == pet));
+    // Hittable now only for the given-up unit when it attacks the bot or its pet (L2): no line-of-sight test per candidate.
+    bool const hittableNow = match == ug::Match::Guid && attacksBotOrPet &&
+        (bot->CanReachWithMeleeAttack(unit) || (IsRanged(bot) && bot->IsWithinLOSInMap(unit) && bot->GetDistance(unit) <= GetRange("spell")));
+    bool const defend = ug::MayDefend(match, attacksBotOrPet, hittableNow);
+    if (unreachableLockLog.Note(path, defend, now))
+    {
+        sLog.outBasic("[UnreachableLock] state=block bot=%u guid=%u entry=%u match=%s path=%s attacks_bot=%u left_s=%u"
+            " n_grind_att=%u n_grind_cand=%u n_assist=%u n_attack=%u n_pull=%u defended=%u cohort=%c",
+            bot->GetGUIDLow(), unit->GetObjectGuid().GetCounter(), unit->GetEntry(), ug::MatchName(match), ug::PathName(path),
+            attacksBotOrPet ? 1u : 0u, unreachableLocks.LeftFor(match, guid, entry, map, x, y, now),
+            unreachableLockLog.Blocked(ug::Path::GrindAttacker), unreachableLockLog.Blocked(ug::Path::GrindCandidate),
+            unreachableLockLog.Blocked(ug::Path::Assist), unreachableLockLog.Blocked(ug::Path::Attack),
+            unreachableLockLog.Blocked(ug::Path::Pull), unreachableLockLog.defended, ai::cohort::Letter(bot->GetGUIDLow()));
+        unreachableLockLog.Reset(now);
+    }
+    return !defend;
+}
+
+// twow-repo#703 item 4b: the verdict of UnreachableLockBlocks without its block line and counts, for the CastLosGate pre-scan in
+// TargetValue::FindTarget (a locked unit is no reachable alternative there). Same gates, same rule; reads only.
+bool PlayerbotAI::UnreachableLockWouldBlock(Unit* unit)
+{
+    if (!sPlayerbotAIConfig.rotationUnreachableLock || !unit)
+        return false;
+
+    namespace ug = ai::unreachable_giveup;
+    uint32 const now = uint32(time(nullptr));
+    if (!unreachableLocks.Any(now) || !unit->GetObjectGuid().IsCreature() || bot->GetGroup())
+        return false;
+
+    ug::Match const match = unreachableLocks.Find(unit->GetObjectGuid().GetRawValue(), int32(unit->GetEntry()), unit->GetMapId(),
+        unit->GetPositionX(), unit->GetPositionY(), now);
+    if (match == ug::Match::None)
+        return false;
+
+    Pet* const pet = bot->GetPet();
+    Unit* const victim = unit->GetVictim();
+    bool const attacksBotOrPet = victim && (victim == bot || (pet && victim == pet));
+    bool const hittableNow = match == ug::Match::Guid && attacksBotOrPet &&
+        (bot->CanReachWithMeleeAttack(unit) || (IsRanged(bot) && bot->IsWithinLOSInMap(unit) && bot->GetDistance(unit) <= GetRange("spell")));
+    return !ug::MayDefend(match, attacksBotOrPet, hittableNow);
 }
 
 // twow-repo#630 follow-up (AiPlayerbot.Rotation.ReachDropEngagement): the caller dropped only "current target"; every other
@@ -1129,6 +1312,25 @@ void PlayerbotAI::SampleActivity(uint32 now)
             idleEpisode.startLogged = ai::bot_activity::IdleDetailGlobal().Take(now);
             if (idleEpisode.startLogged)
                 ReportIdleDetail(state, kind, note, now);
+        }
+    }
+    // twow-repo#601 (AiPlayerbot.ActivityTrace.GrindIdleDetail, OB-00 20.11.2026): the same episode rule for grind_idle (a grind
+    // destination in WORK without a fight), its own per-minute limit; the start line names the cause from the bot's newest grind
+    // target pass. Off: nothing is read or written.
+    if (sPlayerbotAIConfig.activityTraceGrindIdleDetail)
+    {
+        ai::bot_activity::IdleNote const note = grindIdleEpisode.Note(kind == ai::bot_activity::Kind::GrindIdle, now,
+            ai::bot_activity::IdleWhy::Other);
+        if (note == ai::bot_activity::IdleNote::End && grindIdleEpisode.startLogged)
+        {
+            grindIdleEpisode.startLogged = false;
+            ReportGrindIdleDetail(kind, note, now);
+        }
+        else if (note == ai::bot_activity::IdleNote::Start)
+        {
+            grindIdleEpisode.startLogged = ai::bot_activity::GrindIdleDetailGlobal().Take(now);
+            if (grindIdleEpisode.startLogged)
+                ReportGrindIdleDetail(kind, note, now);
         }
     }
 
@@ -1321,6 +1523,46 @@ void PlayerbotAI::ReportIdleDetail(ai::bot_activity::State const& state, ai::bot
         backoffUntil > int32(now) ? backoffUntil - int32(now) : 0,
         aiObjectContext->GetValue<int>("manual int", "quest search stage")->Get(), freeSlots, uint32(currentState),
         pick.action.c_str(), pick.trigger.c_str(), ai::bot_activity::IdleDetailGlobal().TakeDropped());
+}
+
+// twow-repo#601 (AiPlayerbot.ActivityTrace.GrindIdleDetail, OB-00 20.11.2026, deep research 1 NOTE-R1 section 4 no. 3): why a bot at
+// its grind destination does not fight. At the start of the episode: the destination's creature entry with its template levels
+// against the bot's grey level (grey_spot=1: the spot itself is grey, GrindTravelDestination::IsPossible), the bot's newest grind
+// target pass (its age, candidates, a pick, candidates already targeted by other bots, and the refusals by reason, GrindIdlePolicy.h
+// Skip), the friendly players in sight ("nearest friendly players", the bot's own cached value) and the cause (CauseOf). At its end
+// the seconds and the kind that ended it. Only values the bot holds and static creature templates; log only.
+void PlayerbotAI::ReportGrindIdleDetail(ai::bot_activity::Kind kind, ai::bot_activity::IdleNote note, uint32 now)
+{
+    if (note == ai::bot_activity::IdleNote::End)
+    {
+        sLog.outBasic("[GrindIdleDetail] state=end bot=%u level=%u grind_idle_s=%u cause=%s next=%s gap=%u dropped=%u",
+            bot->GetGUIDLow(), bot->GetLevel(), grindIdleEpisode.seconds, ai::grind_idle::CauseName(grindIdleCause),
+            ai::bot_activity::KindName(kind), grindIdleEpisode.endedByGap ? 1u : 0u,
+            ai::bot_activity::GrindIdleDetailGlobal().TakeDropped());
+        return;
+    }
+
+    int32 entry = 0;
+    if (TravelTarget* target = aiObjectContext->GetValue<TravelTarget*>("travel target")->Get())
+        entry = target->GetEntry();
+    CreatureInfo const* const info = entry > 0 ? sObjectMgr.GetCreatureTemplate(uint32(entry)) : nullptr;
+    uint32 const minLevel = info ? info->MinLevel : 0, maxLevel = info ? info->MaxLevel : 0;
+    uint32 const greyLevel = MaNGOS::XP::GetGrayLevel(bot->GetLevel());
+    uint32 const others = uint32(aiObjectContext->GetValue<std::list<ObjectGuid>>("nearest friendly players")->Get().size());
+    ai::grind_idle::PassTally const& t = grindPass;
+    grindIdleCause = ai::grind_idle::CauseOf(t, now, others);
+    using ai::grind_idle::Skip;
+    auto const n = [&t](Skip s) { return uint32(t.skips[uint8(s)]); };
+    sLog.outBasic("[GrindIdleDetail] state=start bot=%u level=%u map=%u zone=%u x=%.0f y=%.0f entry=%d tmpl_min=%u tmpl_max=%u"
+        " grey_level=%u grey_spot=%u pass_age_s=%d cand=%u picked=%u crowded=%u others=%u cause=%s"
+        " skip_unreach=%u skip_height=%u skip_range=%u skip_above=%u skip_avoided=%u skip_elite=%u skip_invalid=%u skip_tapped=%u"
+        " skip_critter=%u skip_rule=%u skip_notneeded=%u skip_grey=%u dropped=%u",
+        bot->GetGUIDLow(), bot->GetLevel(), bot->GetMapId(), bot->GetZoneId(), bot->GetPositionX(), bot->GetPositionY(), entry,
+        minLevel, maxLevel, greyLevel, ai::grind_idle::GreySpot(maxLevel, greyLevel) ? 1u : 0u,
+        t.at ? int32(now) - int32(t.at) : -1, uint32(t.candidates), t.picked ? 1u : 0u, uint32(t.crowded), others,
+        ai::grind_idle::CauseName(grindIdleCause), n(Skip::Unreachable), n(Skip::Height), n(Skip::FreeRange), n(Skip::LevelAbove),
+        n(Skip::Avoided), n(Skip::Elite), n(Skip::Invalid), n(Skip::Tapped), n(Skip::Critter), n(Skip::Rule), n(Skip::NotNeeded),
+        n(Skip::Grey), ai::bot_activity::GrindIdleDetailGlobal().TakeDropped());
 }
 
 bool PlayerbotAI::IsInGroupWithRealPlayer()
@@ -2199,7 +2441,9 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
                     bot->CombatStop(true);
                     bot->getHostileRefManager().deleteReferences();
                     bot->GetMotionMaster()->Clear();
-                    bot->TeleportToHomebind(0, true);
+                    bool const homed = bot->TeleportToHomebind(0, true);
+                    if (homed)
+                        SetLastRelocSource(ai::replan::RelocSource::HomeTeleport);   // R9-2 (twow-repo#575, D12): the home step's label
                 }
                 rescueInCombat = step == ai::stuck_combat::Step::Rescue;
             }
@@ -3935,6 +4179,7 @@ void PlayerbotAI::HandleTeleportAck()
 		p << bot->GetLastCounterForMovementChangeType(TELEPORT); // movement counter the core is waiting to ACK
 		p << (uint32) time(0); // time - not currently used
         bot->GetSession()->HandleMoveTeleportAckOpcode(p);
+        NoteTeleportAck();   // R9-2 (twow-repo#575): the ack confirms the site's source, else teleport_ack (D7)
 
         // add delay to simulate teleport delay
         SetAIInternalUpdateDelay(urand(1000, 2000));
@@ -3942,6 +4187,7 @@ void PlayerbotAI::HandleTeleportAck()
 	else if (bot->IsBeingTeleportedFar())
 	{
         bot->GetSession()->HandleMoveWorldportAckOpcode();
+        NoteTeleportAck();   // R9-2 (twow-repo#575): the ack confirms the site's source, else teleport_ack (D7)
 
         // add delay to simulate teleport delay
         SetAIInternalUpdateDelay(urand(2000, 5000));
