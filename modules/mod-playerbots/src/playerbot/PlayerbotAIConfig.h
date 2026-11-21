@@ -674,6 +674,7 @@ public:
     bool activityTraceStuckDetail = false;  // twow-repo#601: AiPlayerbot.ActivityTrace.StuckDetail - [StuckDetail] per stuck episode
     bool activityTraceStuckReason = false;  // A3-HARM-UPSTREAM T40 follow-up (OB-00 (a) 16.11.): AiPlayerbot.ActivityTrace.StuckReason - [StuckReason] after each [StuckDetail] (log only, default 0)
     bool activityTraceIdleDetail = false;  // twow-repo#601: AiPlayerbot.ActivityTrace.IdleDetail - [IdleDetail] per idle episode (start, end)
+    bool activityTraceGrindIdleDetail = false;  // twow-repo#601: AiPlayerbot.ActivityTrace.GrindIdleDetail - [GrindIdleDetail] per grind_idle episode (start with cause, end)
     bool botUpdateTrace = false;  // twow-repo#541: [BotUpdate] per-minute distribution of PlayerbotAI::UpdateAI wall time
     bool botUpdateTraceTick = false;  // twow-repo#597 (TICK-01): [BotUpdateSlow] ends with " tick=<world loop> region=<map>.<inst>"
     bool botUpdateTraceCohort = false;  // A3 step 0 (e), twow-repo#601: with BotUpdateTrace, two [BotUpdateCohort] lines (A, B) per minute
