@@ -355,6 +355,10 @@ void TestArbiter()
     BundleStep(cdLife, kStatusExpired, false, false, false, WriterId::Lifecycle, false, false, 10);
     Require(LineFor(ClassifyBundle(cdLife)) == LineKind::Expire && std::string(ReasonFor(cdLife)) == "lifecycle",
         "a lifecycle cooldown expiry is a line too");
+    // twow-repo#726 F6: the planner's expire (WriterId::Planner, Planner = 2) is named planner, not other.
+    Bundle plannerExpire = Steps(kStatusTravel, false, 100);
+    BundleStep(plannerExpire, kStatusExpired, false, false, false, WriterId::Planner, true, true, 900);
+    Require(std::string(ReasonFor(plannerExpire)) == "planner", "reason planner");
 
     // The manager clears an open target to the null target: new destination TRAVEL, then NONE.
     Bundle mgr = Steps(kStatusReady, false, 0);

@@ -1677,6 +1677,8 @@ AiPlayerbot.Planner = 0
 # RepeatableRetakeSec / RepeatableMaxPerHour: a repeatable quest is taken again only this long after its turn-in and at most
 # this often per bot hour. RelocMinYards / RelocSlack: a position jump is a relocation above max(yards, run speed x seconds x
 # slack).
+# twow-repo#726: the seconds keys are clamped to the nearest bound with one error line: MinBindSec 1..3600, MaxIdleSec,
+# MinDwellSec and DeadWaitMaxSec 0..3600, MaxHoldSec and RepeatableRetakeSec 0..86400.
 AiPlayerbot.Planner.Margin = 15
 AiPlayerbot.Planner.MinBindSec = 120
 AiPlayerbot.Planner.MinDwellSec = 120
@@ -1707,7 +1709,7 @@ AiPlayerbot.Planner.RelocSlack = 1.5
 # (one SetBestTarget call on the pick's entries; not chosen: the full list as before), (c) switches QUEST <-> GRIND on a pick
 # change (QUEST -> GRIND after MinDwellSec) and (d) makes back_to_band act. Bots that do not write behave as at Planner = 1 and
 # count fb_cohort / fb_arbiter. [PlanMin] gets the P-3a fields (expired, expire_denied*, applied_*, fallback_*, fb_*, mem_evict,
-# mode_*) and [ArbiterMin] plan= at Planner = 2 only. Kits set it explicitly together with Planner.MaxIdleSec = 100.
+# mode_*; twow-repo#726: fallback_reject_empty, zone_empty_held, feed_us, feed_us_max) and [ArbiterMin] plan= at Planner = 2 only. Kits set it explicitly together with Planner.MaxIdleSec = 100.
 AiPlayerbot.Planner.WriteCohort = 0
 # A3 R9 / R2 (twow-repo#575, R9-REPLAN-INTERFACE v5, R9-PREREG C2; pair R9-2): the progress meter. It runs in the planner tick, so
 # both keys need AiPlayerbot.Supervisor to apply to the bot and AiPlayerbot.Planner >= 1; set alone they log nothing. Each tick it

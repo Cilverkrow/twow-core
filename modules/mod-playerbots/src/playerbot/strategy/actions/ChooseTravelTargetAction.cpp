@@ -1086,13 +1086,17 @@ bool ChooseTravelTargetAction::Execute(Event& event)
     {
         planFeed_ = &planFeed;
         PartitionedTravelList planList;
+        auto const takesStart = std::chrono::steady_clock::now();   // twow-repo#726 F1: feed_us (measure first, OB-10)
         for (auto const& [partition, travelPoints] : destinationList)
             for (TravelPoint const& travelPoint : travelPoints)
                 if (ai::planner_write::FeedTakes(planFeed, std::get<0>(travelPoint), std::get<1>(travelPoint)))
                     planList[partition].push_back(travelPoint);
+        planFeed.takesUs = uint32(std::min<long long>(std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - takesStart).count(), 0xFFFFFFFFll));
+        // twow-repo#726 F3: an empty quest list is fallback_reject_empty (no lock); a grind pick's empty zone locks once per pick.
         if (planList.empty())
             ai::planner_write::FeedResult(ai, planFeed,
-                planFeed.grind ? ai::planner_write::FeedEnd::ZoneEmpty : ai::planner_write::FeedEnd::Reject);
+                planFeed.grind ? ai::planner_write::FeedEnd::ZoneEmpty : ai::planner_write::FeedEnd::RejectEmpty);
         else
         {
             // Class B (Nachtrag 3): saved here, restored when the attempt does not choose.
