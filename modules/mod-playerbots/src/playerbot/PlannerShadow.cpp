@@ -22,6 +22,7 @@
 #include <cstdio>
 #include <ctime>
 #include <list>
+#include <memory>
 #include <mutex>
 #include <vector>
 
@@ -32,6 +33,10 @@
 // budget, 300 per minute), [PlanMin] per cohort and minute, and its own state (Supervisor::plan_). Planner = 2 is read as 1 until
 // the pair P-3. The pure rules are in PlannerPolicy.h and PlannerShadowPolicy.h (unit tests t/planner_policy_tests.cpp,
 // t/planner_shadow_policy_tests.cpp); the shadow comparison after SetBestTarget is ai::planner_shadow::NoteChoice (OB-10 B1).
+// A3 R9 / R2 wiring pair R9-2 (twow-repo#575; R9-REPLAN-INTERFACE v5 9575095d, R9-PREREG C1/C2; DESIGN-R9-2-20261120.md D1-D13;
+// AiPlayerbot.Replan / Replan.Shadow, default 0): ReplanTick feeds the bot's progress meter (ReplanPolicy.h) every planner tick,
+// relocation first, and the supervisor answers as its sink (OnStall / OnRelocate at the end of this file). Lines and counters only:
+// "[Replan]" (own budget, 300 per minute) and "[ReplanMin]" per cohort and minute. No verdict acts before P-3 (D1).
 namespace
 {
 using namespace ai::planner;
@@ -40,6 +45,7 @@ using ai::supervisor::Mode;
 using ai::supervisor::WriterId;
 using ai::supervisor::PlanLine;
 using ai::supervisor::FormatPlanLine;
+using ai::replan::RelocSource;
 
 constexpr std::size_t kMaxCandidates = 64;            // Planner.MaxCandidates is capped at this (PlayerbotAIConfig.cpp)
 constexpr std::size_t kAlts = 3;
@@ -141,6 +147,80 @@ bool TakePlanLine()
 {
     std::lock_guard<std::mutex> lock(g_mutex);
     return ai::rot_cast::BudgetTake(g_window, g_used, std::uint32_t(time(nullptr)), kPlanLinesPerMinute);
+}
+
+// ---- R9-2 (twow-repo#575, D11): [Replan] has its own budget and [ReplanMin] its own minute, under the same short mutex ----------
+constexpr std::uint32_t kReplanLinesPerMinute = 300;
+std::uint32_t g_rWindow = 0, g_rUsed = 0;   // the [Replan] budget window
+std::uint32_t g_rMinute = 0;
+ai::replan::Counters g_rMin[2];             // [0] cohort A, [1] cohort B
+std::uint32_t g_rDropped[2] = {0, 0};       // [Replan] lines the budget refused (dropped=)
+bool g_rShadow[2] = {false, false};         // the cohort's arm (one arm per cohort: Replan is a cohort mode)
+bool g_rActive[2] = {false, false};
+
+struct ReplanMinuteOut
+{
+    bool due = false;
+    bool active[2] = {false, false};
+    bool shadow[2] = {false, false};
+    ai::replan::Counters sums[2];
+    std::uint32_t dropped[2] = {0, 0};
+};
+
+ReplanMinuteOut RollReplanLocked(std::uint32_t nowSec)
+{
+    ReplanMinuteOut out;
+    if (!ai::supervisor::ArbiterMinuteRoll(g_rMinute, nowSec / 60))
+        return out;
+    out.due = true;
+    for (std::size_t i = 0; i < 2; ++i)
+    {
+        out.active[i] = g_rActive[i];
+        out.shadow[i] = g_rShadow[i];
+        out.sums[i] = g_rMin[i];
+        out.dropped[i] = g_rDropped[i];
+        g_rMin[i] = ai::replan::Counters();
+        g_rDropped[i] = 0;
+        g_rActive[i] = false;
+    }
+    return out;
+}
+
+void EmitReplanMinute(ReplanMinuteOut const& out)
+{
+    if (!out.due)
+        return;
+    for (std::size_t i = 0; i < 2; ++i)
+    {
+        if (!out.active[i])
+            continue;
+        char buf[512];
+        ai::replan::FormatReplanMinLine(buf, sizeof(buf), i ? 'B' : 'A', out.shadow[i], out.sums[i], out.dropped[i]);
+        sLog.outBasic("%s", buf);
+    }
+}
+
+// Adds the counts a bot held since its last flush (meter counters, refused lines) to its cohort's minute; rolls the minute first.
+void FlushReplan(std::uint32_t guidLow, ai::replan::Counters const& k, std::uint32_t dropped, bool shadow)
+{
+    std::size_t const i = CohortIndex(guidLow);
+    ReplanMinuteOut out;
+    {
+        std::lock_guard<std::mutex> lock(g_mutex);
+        out = RollReplanLocked(std::uint32_t(time(nullptr)));
+        ai::replan::Add(g_rMin[i], k);
+        g_rDropped[i] += dropped;
+        g_rShadow[i] = shadow;
+        g_rActive[i] = true;
+    }
+    EmitReplanMinute(out);
+}
+
+// One [Replan] line from the R9 budget.
+bool TakeReplanLine()
+{
+    std::lock_guard<std::mutex> lock(g_mutex);
+    return ai::rot_cast::BudgetTake(g_rWindow, g_rUsed, std::uint32_t(time(nullptr)), kReplanLinesPerMinute);
 }
 
 // ---- small reads ------------------------------------------------------------------------------------------------------------
@@ -414,6 +494,223 @@ void NoteChoiceImpl(PlayerbotAI* ai, char const* purpose, ai::TravelDestination 
     Flush(bot->GetGUIDLow(), c, -1);
 }
 
+// ---- R9 / R2 (twow-repo#575; R9-REPLAN-INTERFACE v5; DESIGN-R9-2-20261120.md D1-D13) ----------------------------------------
+// The target kind of the live destination, by purpose bit (D13: a live objective carries one QuestObjectiveN bit, so a mask).
+ai::replan::TargetKind ReplanKindOf(ai::TravelDestinationPurpose purpose)
+{
+    std::uint32_t const p = std::uint32_t(purpose);
+    auto has = [p](ai::TravelDestinationPurpose bits) { return (p & std::uint32_t(bits)) != 0; };
+    if (has(ai::TravelDestinationPurpose::QuestTaker))
+        return ai::replan::TargetKind::Taker;
+    if (has(ai::TravelDestinationPurpose::QuestAllObjective))
+        return ai::replan::TargetKind::Objective;
+    if (has(ai::TravelDestinationPurpose::QuestGiver))
+        return ai::replan::TargetKind::Giver;
+    if (has(ai::TravelDestinationPurpose::Grind))
+        return ai::replan::TargetKind::Grind;
+    if (has(ai::TravelDestinationPurpose::Trainer) || has(ai::TravelDestinationPurpose::GatherSkinning) ||
+        has(ai::TravelDestinationPurpose::GatherMining) || has(ai::TravelDestinationPurpose::GatherHerbalism) ||
+        has(ai::TravelDestinationPurpose::GatherFishing) || has(ai::TravelDestinationPurpose::Station))
+        return ai::replan::TargetKind::Profession;
+    if (has(ai::TravelDestinationPurpose::GenericRpg))
+        return ai::replan::TargetKind::Rpg;
+    return ai::replan::TargetKind::Other;
+}
+
+// D9: the credit signature of a quest from the core status (kill / object and item counts, explored, the complete bit). A change
+// is progress. find(), never operator[]: a read must not add a status row.
+std::uint32_t CreditSeqOf(Player* bot, std::uint32_t questId)
+{
+    QuestStatusMap& statuses = bot->getQuestStatusMap();
+    auto const it = statuses.find(questId);
+    if (it == statuses.end())
+        return 0;
+    QuestStatusData const& q = it->second;
+    std::uint32_t seq = 0;
+    for (int i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
+        seq += q.m_creatureOrGOcount[i] + q.m_itemcount[i];
+    if (q.m_explored)
+        seq += 1;
+    if (q.m_status == QUEST_STATUS_COMPLETE)
+        seq += 0x10000u;
+    return seq;
+}
+
+// Sample.skillUps for a profession target: the skill values and maxima (a learned rank raises the maximum) of the professions,
+// without temporary bonuses.
+std::uint32_t ProfessionSkillSum(Player* bot)
+{
+    static std::uint16_t const skills[] = {SKILL_ALCHEMY, SKILL_BLACKSMITHING, SKILL_ENCHANTING, SKILL_ENGINEERING, SKILL_HERBALISM,
+        SKILL_LEATHERWORKING, SKILL_MINING, SKILL_SKINNING, SKILL_TAILORING, SKILL_COOKING, SKILL_FIRST_AID, SKILL_FISHING};
+    std::uint32_t sum = 0;
+    for (std::uint16_t const skill : skills)
+        sum += std::uint32_t(bot->GetSkillValuePure(skill)) + std::uint32_t(bot->GetSkillMaxPure(skill));
+    return sum;
+}
+
+bool AnyCount(ai::replan::Counters const& k)
+{
+    return k.stalls || k.relocates || k.keep || k.replan || k.close || k.forced || k.rateLimited || k.forcedAfterRateLimited ||
+           k.gaps || k.plannedCredit || k.hops || k.grindNoKill || k.offMap;
+}
+
+// One [Replan] line per decision (v5 6.5, 7.4). D11: a forced record is never dropped (ReplanWirePolicy.h OutsideLineBudget);
+// every other line takes the [Replan] budget, and a refused one counts as dropped= of its cohort.
+void EmitReplan(ai::replan::LineCtx const& ctx, ai::replan::Outcome const& o, std::uint32_t& dropped)
+{
+    if (!o.decided)
+        return;
+    ai::replan::Record const& r = o.rec;
+    if (!ai::replan_wire::OutsideLineBudget(r) && !TakeReplanLine())
+    {
+        ++dropped;
+        return;
+    }
+    char buf[1024];
+    ai::replan::FormatReplanLine(buf, sizeof(buf), ctx, r);
+    sLog.outBasic("%s", buf);
+}
+
+// The sink's view (D13): the group-held part comes from the supervisor member, the rest from what this tick stored.
+ai::replan_wire::PlannerView SinkView(PlanState const& st, bool groupHeld)
+{
+    ai::replan_wire::PlannerView v;
+    v.groupMember = groupHeld || (st.replan && st.replan->groupCopy);
+    v.respawnWait = st.replan && st.replan->respawnWait;
+    return v;
+}
+
+// The meter in the planner tick, only while AiPlayerbot.Replan or Replan.Shadow is on (the caller checks ReplanWired). The meter
+// key is the live travel target, not the pick. Lines and counters only (D1): no planner memory write, no event bit, no pick change.
+void ReplanTick(PlayerbotAI* ai_, Player* bot, PlanState& st, Snapshot const& cur, ai::TravelTarget* target, std::uint32_t ev,
+    ai::replan_wire::Taken const& taken, std::uint32_t guid, std::uint32_t nowMs, std::uint32_t arbiter)
+{
+    std::uint32_t const mode = sPlayerbotAIConfig.replan;
+    // D4: the quest book population, not in a battleground, not parked (ArmEnforce's facts); other bots hold no meter.
+    bool const scope = ai_->InQuestBookScope() && !bot->InBattleGround() && !ai_->IsParked();
+    if (!ai::replan_wire::MeterOn(mode, sPlayerbotAIConfig.replanShadow, guid, scope))
+    {
+        // the counts this bot still holds go to its cohort's minute before the meter is dropped
+        if (st.replan && (st.replan->pendingDropped || AnyCount(st.replan->pending)))
+            FlushReplan(guid, st.replan->pending, st.replan->pendingDropped, !st.replan->active);
+        st.replan.reset();
+        return;
+    }
+    if (!st.replan)
+        st.replan = std::make_unique<ReplanState>();
+    ReplanState& rs = *st.replan;
+    rs.active = ai::replan_wire::Active(mode, guid);
+    ai::supervisor::Supervisor* const sink = ai_->GetSupervisor();
+    if (!sink)
+        return;
+
+    // The sample (v5 2.1, 6.1): a target on its way or at work; otherwise key 0 and the meter idles.
+    ai::replan::Sample s;
+    s.nowMs = nowMs;
+    s.mapId = cur.map;
+    s.x = cur.x;
+    s.y = cur.y;
+    s.z = cur.z;
+    ai::TravelDestination* const dest = target ? target->GetDestination() : nullptr;
+    WorldPosition const* const point = target ? target->GetPosition() : nullptr;
+    if (!IsNullDest(dest) && point && (cur.travel == TravelPhase::Travel || cur.travel == TravelPhase::Work))
+    {
+        s.quest = QuestOf(dest);
+        s.targetEntry = dest->GetEntry();
+        s.tx = point->getX();
+        s.ty = point->getY();
+        s.tz = point->getZ();
+        s.kind = ReplanKindOf(dest->GetPurpose());
+        s.targetKey = ai::replan::TargetKey(s.quest, s.targetEntry, s.tx, s.ty, s.tz);
+        s.remaining = ai::replan_wire::RemainingYd(point->getMapId() == cur.map, s.tx - cur.x, s.ty - cur.y, s.tz - cur.z);
+    }
+    s.routeKnown = false;   // no route module in the tree yet (M-a)
+    s.creditSeq = s.quest ? CreditSeqOf(bot, s.quest) : 0;
+    std::uint32_t const xp = bot->GetUInt32Value(PLAYER_XP);
+    rs.xpTotal += ai::replan_wire::XpStep(rs.lastLevel, rs.lastXp, cur.level, xp);
+    rs.lastLevel = cur.level;
+    rs.lastXp = xp;
+    s.xp = rs.xpTotal;
+    s.kills = 0;   // D10: PlayerbotAI has no kill hook outside CombatRule.ProgressGuard (so a grind target is not fed, R-5)
+    s.skillUps = s.kind == ai::replan::TargetKind::Profession ? ProfessionSkillSum(bot) : 0;
+    s.unreachable = ai_->ReplanUnreachable();
+    bool const combat = bot->IsInCombat();
+    // D8: Passive from the facts (scope), never from the supervisor mode; inside the scope it is false.
+    s.state = ai::replan_wire::ClockOf(cur.alive, bot->IsTaxiFlying(), bot->GetTransport() != nullptr, !scope, combat,
+        !combat && bot->IsSittingDown());
+    // OB-10 R-5: without a kill counter a grind target is not fed (the meter idles, counted as grind_nokill=).
+    bool const grindNoKill = s.targetKey && ai::replan_wire::GrindNoKill(s.kind);
+    if (grindNoKill)
+        s.targetKey = 0;
+    // OB-10 R-2: from the death edge to the revive edge the clock pauses at the last living target and distance.
+    ai::replan_wire::HoldWhileDead(s, rs.held, cur.alive);
+
+    rs.groupCopy = target && target->IsGroupCopy();
+    rs.respawnWait = ai::replan_wire::RespawnWait(st.deadWaitSinceMs, st.pick.has, st.pick.destKey, cur.travelDest,
+        st.pick.respawnSec, nowMs);
+
+    ai::replan::LineCtx ctx;
+    ctx.guid = guid;
+    ctx.cohort = ai::cohort::Letter(guid);
+    ctx.arbiter = arbiter;
+    ctx.shadow = !rs.active;
+    ctx.level = cur.level;
+    ctx.offmap = ai::replan_wire::OffMap(s.targetKey, s.remaining);   // OB-10 R-6: tagged, out of C1/C2
+    std::uint32_t dropped = 0;
+    std::uint32_t decided = 0;
+
+    // Relocation first (v5 7.1): it re-bases the best distance without credit, so Feed never credits the jump itself. D5: the death
+    // edge, the revive edge, else a jump of a living bot that is no movement hop (D6); none while the key is 0 (D4).
+    RelocSource source = RelocSource::Unknown;
+    if (s.targetKey && ai::replan_wire::RelocationOf((ev & EvDied) != 0, (ev & EvAlive) != 0, (ev & (EvRelocate | EvMap)) != 0,
+            cur.alive, taken, source))
+    {
+        ai::replan::RelocationEvent e;
+        e.source = source;
+        e.fromMap = st.prev.map;
+        e.fx = st.prev.x;
+        e.fy = st.prev.y;
+        e.fz = st.prev.z;
+        e.toMap = cur.map;
+        e.tx = cur.x;
+        e.ty = cur.y;
+        e.tz = cur.z;
+        e.targetKey = s.targetKey;
+        e.atMs = nowMs;
+        e.remaining = s.remaining;
+        e.routeKnown = s.routeKnown;
+        e.planned = false;                    // no route executor yet (v5 8.1)
+        e.legIndex = ai::replan::NoLeg;
+        // OB-10 nit 1: a relocate-triggered Replan or Close (reloc_loop included) is not a give-up (ReplanPolicy.h, OnRelocate).
+        ai::replan::Outcome const relocated = rs.meter.OnRelocate(e, *sink);
+        decided += relocated.decided ? 1u : 0u;
+        EmitReplan(ctx, relocated, dropped);
+    }
+    ai::replan::Outcome const fed = rs.meter.Feed(s, *sink);
+    decided += fed.decided ? 1u : 0u;
+    EmitReplan(ctx, fed, dropped);
+
+    ai::replan::Counters k = rs.meter.TakeCounters();
+    if (cur.alive && taken.hop && (ev & (EvRelocate | EvMap)))
+        ++k.hops;   // OB-10 R-3: a jump that was a movement hop
+    if (grindNoKill && !s.targetKey)
+        ++k.grindNoKill;   // only when the meter idled for it (the dead hold may have put a held target back)
+    if (ctx.offmap)
+        k.offMap += decided;
+    // The counts wait in the bot's state and reach the cohort's minute (one lock) when the bot's minute changes, or at once with
+    // a decided or refused line, as passiveTicks does for [PlanMin]; the first tick of a minute also rolls a quiet cohort.
+    ai::replan::Add(rs.pending, k);
+    rs.pendingDropped += dropped;
+    std::uint32_t const minute = std::uint32_t(time(nullptr)) / 60u;
+    if (decided || dropped || minute != rs.minute)
+    {
+        rs.minute = minute;
+        FlushReplan(guid, rs.pending, rs.pendingDropped, ctx.shadow);
+        rs.pending = ai::replan::Counters();
+        rs.pendingDropped = 0;
+    }
+}
+
 // The body of Supervisor::PlanTick (file-local, so the planner names never meet the supervisor ones): the supervisor passes its
 // planner state, mode, lane owner and last writer.
 void PlanTickImpl(PlayerbotAI* ai_, PlanState& plan_, Mode mode_, Lane owner_, WriterId lastWriter, std::uint32_t nowMs,
@@ -487,8 +784,18 @@ void PlanTickImpl(PlayerbotAI* ai_, PlanState& plan_, Mode mode_, Lane owner_, W
     notes.Clear();   // a note of a quest still in the log (or never in it) is stale at the next tick
     UpdateComplete(st.complete, cur, nowMs);
 
-    // Relocation (section 13.4): the source comes from the teleport sites (R9-2); until then "unknown".
-    RelocSource relocSrc = ai_->TakeLastRelocSource();
+    // Relocation (section 13.4): the source comes from the teleport sites. R9-2 (twow-repo#575, D3): with AiPlayerbot.Replan and
+    // Replan.Shadow 0 the P-2b take every tick stays, and as nothing writes the latch then, a jump is "unknown" as before. Wired,
+    // the latch is taken at a jump (a same-map relocation or a map change) and dropped once stale otherwise, so a source set before
+    // the ack survives until the jump.
+    bool const wired = ai_->ReplanWired();
+    bool const jumped = (ev & (EvRelocate | EvMap)) != 0;
+    ai::replan_wire::Taken taken;
+    if (!wired || jumped)
+        taken = ai_->TakeLastRelocSource(nowMs);
+    else
+        ai_->ExpireLastRelocSource(nowMs);
+    RelocSource relocSrc = taken.source;
     if (ev & EvRelocate)
     {
         ++c.relocate;
@@ -591,6 +898,13 @@ void PlanTickImpl(PlayerbotAI* ai_, PlanState& plan_, Mode mode_, Lane owner_, W
             }
         }
     }
+
+    // ---- R9 / R2 (twow-repo#575, R9 v5; AiPlayerbot.Replan / Replan.Shadow, default 0): the progress meter every tick, before the
+    // plan gate. Off: no state (D3). ----
+    if (wired)
+        ReplanTick(ai_, bot, st, cur, target, ev, taken, guid, nowMs, arbiter);
+    else
+        st.replan.reset();
 
     // ---- plan only in QUEST or GRIND, on an event or after MaxIdleSec ----
     bool const planning = mode_ == Mode::Quest || mode_ == Mode::Grind;
@@ -1095,7 +1409,7 @@ void PlanTickImpl(PlayerbotAI* ai_, PlanState& plan_, Mode mode_, Lane owner_, W
         l.plannerLimit = "-";
         l.waitSec = waitSec ? waitSec : (st.deadWaitSinceMs ? (nowMs - st.deadWaitSinceMs) / 1000u : 0u);
         l.cycles = cycles;
-        l.relocSrc = (ev & EvRelocate) ? RelocSourceName(relocSrc) : "-";
+        l.relocSrc = (ev & EvRelocate) ? ai::replan::SourceName(relocSrc) : "-";
         l.floor = table ? FloorName(floorHere) : "-";
         l.hold = top ? HoldName(hold) : "-";
         l.write = 0;   // P-2: the shadow writes nothing
@@ -1126,6 +1440,18 @@ void NoteChoice(PlayerbotAI* ai, char const* purpose, ai::TravelDestination cons
 
 namespace ai::supervisor
 {
+// A3 R9 / R2 wiring pair R9-2 (twow-repo#575, R9 v5 3; D13): the sink of the bot's meter. The planner answers with a keep reason it
+// knows (group_member, respawn_wait), else Replan planner_choice; the meter enforces the forced rules and the hourly cap. Read only.
+ai::replan::Verdict Supervisor::OnStall(ai::replan::StallEvent const&)
+{
+    return ai::replan_wire::PlannerVerdict(SinkView(plan_, mode_ == Mode::Group || groupHeld_));
+}
+
+ai::replan::Verdict Supervisor::OnRelocate(ai::replan::RelocationEvent const&)
+{
+    return ai::replan_wire::PlannerVerdict(SinkView(plan_, mode_ == Mode::Group || groupHeld_));
+}
+
 void Supervisor::PlanTick(std::uint32_t nowMs, std::uint32_t arbiter)
 {
     if (!sPlayerbotAIConfig.planner)

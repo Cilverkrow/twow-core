@@ -1689,6 +1689,23 @@ AiPlayerbot.Planner.RepeatableRetakeSec = 1800
 AiPlayerbot.Planner.RepeatableMaxPerHour = 1
 AiPlayerbot.Planner.RelocMinYards = 60
 AiPlayerbot.Planner.RelocSlack = 1.5
+# A3 R9 / R2 (twow-repo#575, R9-REPLAN-INTERFACE v5, R9-PREREG C2; pair R9-2): the progress meter. It runs in the planner tick, so
+# both keys need AiPlayerbot.Supervisor to apply to the bot and AiPlayerbot.Planner >= 1; set alone they log nothing. Each tick it
+# measures the progress toward the bot's live travel target (distance, quest credit, skill for professions) and,
+# after 600 s without progress or at a position jump (hearth, home teleport, rescue, far-move arrival, teleport ack, death,
+# revive), asks the planner for Keep / Replan / Close. Only roster bots without a real player master, not in a battleground and
+# not parked. Lines: "[Replan]" per decision (own budget, 300 per minute; a forced record is never
+# dropped) and "[ReplanMin]" per cohort and minute (forced=, rate_limited=, forced_after_rate_limited=, hops=, grind_nokill=,
+# offmap=, dropped=). Before pair P-3 no verdict acts in either arm: lines and counters only, so shadow=0 lines are the active arm
+# without apply and are never scored as behaviour (OB-10 R-1). Grind targets are not measured yet (no kill counter; grind_nokill=
+# counts those ticks), a target on another map is tagged offmap=1 (out of C1/C2), and the clock pauses while the bot is dead.
+# AiPlayerbot.Replan is a cohort mode (CohortPolicy.h), unlike its parent AiPlayerbot.Planner (0/1/2): 0 = off (default), 1 =
+# every bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid); those bots are the active arm (shadow=0 in the
+# lines). Any other value acts like 0 (one error line at load).
+# AiPlayerbot.Replan.Shadow: 1 = every other bot of the population runs the meter in shadow (shadow=1: lines and counters only),
+# 0 = off (default). Any other value acts like 0 (one error line at load).
+AiPlayerbot.Replan = 0
+AiPlayerbot.Replan.Shadow = 0
 # A3 step 5 (ADR-0041, OB-00 07.11.2026): the combat rule - one module that owns the combat decisions (who may start a fight,
 # rest before the pull, target choice, flee point, loop guard), one switch per part. Design: A3-S5-KAMPFREGEL-ENTWURF.md.
 # Part HealerStart (A3-AKTIONS-VERDRAHTUNG F2 (a)): the healer gate of attack my target / attack RTI target / attack anything

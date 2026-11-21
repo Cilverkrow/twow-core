@@ -7938,7 +7938,11 @@ void RandomPlayerbotMgr::ProcessQuestRescues()
             target.mapid, target.coord_x, target.coord_y, ai->GetQuestIdleSeconds(now) / 60);
 
         bot->GetMotionMaster()->Clear();
-        bot->TeleportTo(target.mapid, target.coord_x, target.coord_y, target.coord_z, target.orientation);
+        bool const rescued = bot->TeleportTo(target.mapid, target.coord_x, target.coord_y, target.coord_z, target.orientation);
+        // A3 R9 / R2 wiring pair R9-2 (twow-repo#575, D12): the rescue label, only for a teleport that started (world thread, maps
+        // idle; the atomic latch). Rescue relocations are not loop-counted.
+        if (rescued)
+            ai->SetLastRelocSource(ai::replan::RelocSource::Rescue);
 
         // Hotfix 8.26 (v33, Rollotheo 4140): the hearthstone stayed bound to the start area, so the
         // next "long stuck" hearthstone (or the 8.14 home step) took the bot straight back to where

@@ -686,6 +686,61 @@ void PlayerbotAI::NoteQuestRewarded(uint32 questId)
         plannerRewardNotes_.Note(questId);
 }
 
+// A3 R9 / R2 wiring pair R9-2 (twow-repo#575; AiPlayerbot.Replan / Replan.Shadow, default 0; DESIGN-R9-2 D3/D6/D7/D12): the
+// relocation latch. Writers merge with a CAS loop (ReplanWirePolicy.h rules), because the ack can run on the world thread or on
+// a master holder's map thread. With both keys 0 every writer returns at once, so nothing changes against P-2b.
+template <typename Merge>
+static void MergeRelocLatch(std::atomic<std::uint64_t>& latch, Merge merge)
+{
+    std::uint64_t cur = latch.load(std::memory_order_relaxed);
+    while (!latch.compare_exchange_weak(cur, merge(cur), std::memory_order_acq_rel, std::memory_order_relaxed))
+    {
+    }
+}
+
+bool PlayerbotAI::ReplanWired() const
+{
+    return sPlayerbotAIConfig.replan || sPlayerbotAIConfig.replanShadow;
+}
+
+void PlayerbotAI::SetLastRelocSource(ai::replan::RelocSource source)
+{
+    if (!ReplanWired())
+        return;
+    std::uint32_t const now = WorldTimer::getMSTime();
+    MergeRelocLatch(lastRelocSource_, [source, now](std::uint64_t l) { return ai::replan_wire::MergeSite(l, source, now); });
+}
+
+void PlayerbotAI::MarkRelocHop()
+{
+    if (!ReplanWired())
+        return;
+    std::uint32_t const now = WorldTimer::getMSTime();
+    MergeRelocLatch(lastRelocSource_, [now](std::uint64_t l) { return ai::replan_wire::MergeHop(l, now); });
+}
+
+void PlayerbotAI::NoteTeleportAck()
+{
+    if (!ReplanWired())
+        return;
+    std::uint32_t const now = WorldTimer::getMSTime();
+    MergeRelocLatch(lastRelocSource_, [now](std::uint64_t l) { return ai::replan_wire::MergeAck(l, now); });
+}
+
+ai::replan_wire::Taken PlayerbotAI::TakeLastRelocSource(std::uint32_t nowMs)
+{
+    return ai::replan_wire::Take(lastRelocSource_.exchange(0, std::memory_order_acq_rel), nowMs);
+}
+
+// A planner tick without a jump: a resync ack (zero-distance NearTeleportTo) leaves an acked entry, dropped once stale so it never
+// labels a later jump; an acked hop mark is dropped at once (OB-10 R-3: one-shot, a short hop is no jump and must not hide one).
+void PlayerbotAI::ExpireLastRelocSource(std::uint32_t nowMs)
+{
+    std::uint64_t cur = lastRelocSource_.load(std::memory_order_relaxed);
+    if (ai::replan_wire::DropAtTickEnd(cur, nowMs))
+        lastRelocSource_.compare_exchange_strong(cur, 0, std::memory_order_acq_rel, std::memory_order_relaxed);
+}
+
 bool PlayerbotAI::InQuestBookScope()
 {
     return bot && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !HasRealPlayerMaster();
@@ -918,6 +973,8 @@ bool PlayerbotAI::CheckReachProgress(Unit* target, float distance)
 
     uint32 const ignoreSeconds = ai::unreachable::IgnoreFor(playerMaster);
     unreachableTargets.Add(target->GetObjectGuid().GetRawValue(), now, ignoreSeconds);
+    if (ReplanWired())
+        ++replanUnreachable_;   // R9-2 (twow-repo#575): Sample.unreachable, a diagnosis field of the [Replan] line
     reachApproach.Reset();
     if (!lastUnreachableLog || now - lastUnreachableLog >= ai::unreachable::LogSeconds)
     {
@@ -2180,7 +2237,9 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
                     bot->CombatStop(true);
                     bot->getHostileRefManager().deleteReferences();
                     bot->GetMotionMaster()->Clear();
-                    bot->TeleportToHomebind(0, true);
+                    bool const homed = bot->TeleportToHomebind(0, true);
+                    if (homed)
+                        SetLastRelocSource(ai::replan::RelocSource::HomeTeleport);   // R9-2 (twow-repo#575, D12): the home step's label
                 }
                 rescueInCombat = step == ai::stuck_combat::Step::Rescue;
             }
@@ -3916,6 +3975,7 @@ void PlayerbotAI::HandleTeleportAck()
 		p << bot->GetLastCounterForMovementChangeType(TELEPORT); // movement counter the core is waiting to ACK
 		p << (uint32) time(0); // time - not currently used
         bot->GetSession()->HandleMoveTeleportAckOpcode(p);
+        NoteTeleportAck();   // R9-2 (twow-repo#575): the ack confirms the site's source, else teleport_ack (D7)
 
         // add delay to simulate teleport delay
         SetAIInternalUpdateDelay(urand(1000, 2000));
@@ -3923,6 +3983,7 @@ void PlayerbotAI::HandleTeleportAck()
 	else if (bot->IsBeingTeleportedFar())
 	{
         bot->GetSession()->HandleMoveWorldportAckOpcode();
+        NoteTeleportAck();   // R9-2 (twow-repo#575): the ack confirms the site's source, else teleport_ack (D7)
 
         // add delay to simulate teleport delay
         SetAIInternalUpdateDelay(urand(2000, 5000));

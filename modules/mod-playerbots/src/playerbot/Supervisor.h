@@ -30,11 +30,18 @@ class TravelTarget;
 // T02-GROUP A/B. Legacy writers are deleted only after adoption.
 namespace ai::supervisor
 {
-class Supervisor
+// A3 R9 / R2 wiring pair R9-2 (twow-repo#575, R9 v5 3): the supervisor is the sink of the bot's progress meter; it asks the
+// planner and returns its verdict. The two bodies live in PlannerShadow.cpp with the planner. Before P-3 no verdict acts (D1).
+class Supervisor : public ai::replan::IReplanSink
 {
 public:
     explicit Supervisor(PlayerbotAI* ai);
     ~Supervisor();   // out of line in Supervisor.cpp: PlayerbotAI.h holds a unique_ptr to the incomplete type
+
+    // R9-2: the planner's answer to a stall or a relocation of the live target (Keep with group_member or respawn_wait, else
+    // Replan planner_choice). Read only; bot thread (the planner tick).
+    ai::replan::Verdict OnStall(ai::replan::StallEvent const& e) override;
+    ai::replan::Verdict OnRelocate(ai::replan::RelocationEvent const& e) override;
 
     Supervisor(Supervisor const&) = delete;
     Supervisor& operator=(Supervisor const&) = delete;
