@@ -120,6 +120,10 @@ inline void CloseOwned(Line& line)
 
 // ---- Formatting: the same bytes as the synchronous path ----
 
+// MSVC: Common.h maps vsnprintf to the legacy _vsnprintf (no C99 return value), so std::vsnprintf is rewritten to a name that does not exist in std.
+// The macro is hidden for this function only; push/pop_macro also work when it is not defined.
+#pragma push_macro("vsnprintf")
+#undef vsnprintf
 // printf into out, the same formatting as vfprintf (an embedded NUL from %c is kept).
 inline void AppendV(std::string& out, char const* fmt, va_list ap)
 {
@@ -140,6 +144,7 @@ inline void AppendV(std::string& out, char const* fmt, va_list ap)
     std::vsnprintf(&out[at], std::size_t(n) + 1, fmt, ap);
     out.resize(at + std::size_t(n));
 }
+#pragma pop_macro("vsnprintf")
 
 inline void AppendF(std::string& out, char const* fmt, ...)
 {
