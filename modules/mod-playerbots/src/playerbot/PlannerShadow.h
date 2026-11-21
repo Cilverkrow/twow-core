@@ -21,6 +21,7 @@ class PlayerbotAI;
 namespace ai
 {
 class TravelDestination;
+class WorldPosition;
 }
 
 namespace ai::planner
@@ -125,6 +126,8 @@ struct Pick
     std::uint32_t map = 0;        // the pick point (W8 probe)
     float x = 0.0f;
     float y = 0.0f;
+    bool forced = false;          // P-3a: a forced pick (max_hold) may expire a target in WORK (B3); back_to_band marks its
+                                  // pick with it but never reaches the expire (OB-10 V-1)
 };
 
 // The shadow comparison's last agree (for overwritten_shadow: a quest book lane writer replaces it inside the bind time).
@@ -195,6 +198,26 @@ struct PlanState
     std::uint32_t lastProbeMs = 0;     // W8: the last probe at the pick (at most one per kProbeEveryMs)
     std::uint32_t passiveTicks = 0;    // ticks in PASSIVE since the last flush (PlanMin passive_ticks)
     std::uint32_t passiveMinute = 0;   // the minute of passiveTicks
+    // ---- P-3a (P3-ENTWURF-v0.2; AiPlayerbot.Planner = 2 with Planner.WriteCohort, default 0): the write path ----------------
+    // Set only for a writing bot, except modeSinceMs and the fb_* ticks (Planner = 2). Planner 0 / 1 never touch them.
+    std::uint32_t expirePending = 0;   // section 2.3: the pick key a denied expire waits for (0 = none)
+    bool pendingSawWork = false;       // F8 (a): the pending expire saw WORK (an expire in TRAVEL after it is expire_after_work)
+    std::uint32_t pendingMinute = 0;   // expire_pending: once per bot and minute
+    std::uint32_t expiredKey = 0;      // rule 4: the pick (key and sinceMs) that expired once
+    std::uint32_t expiredSinceMs = 0;
+    std::uint32_t fallbackAtMs = 0;    // rule 5: the last fallback (the plan pick was not applied)
+    std::uint32_t feedBudgetKey = 0;   // #416: the pick whose plan attempt ran out of time (no second attempt for it)
+    std::uint32_t appliedGen = 0;      // overwritten*: the write generation of the applied plan target
+    std::uint32_t appliedAtMs = 0;     // 0 = no applied target inside the bind time
+    std::uint32_t appliedDest = 0;     // its DestKey, or the zone of an applied grind pick
+    bool appliedGrindZone = false;     // appliedDest is a zone (grind compares the live target's zone, P3-1)
+    std::uint32_t turninQuest = 0;     // turnin_unreached (B12): the applied turn-in's quest
+    std::uint32_t turninAtMs = 0;
+    std::uint32_t modeSinceMs = 0;     // section 2.6: the last mode change the snapshot saw (the dwell of Decide)
+    std::uint32_t fbArbiterTicks = 0;  // fb_arbiter / fb_cohort ticks since the last flush, and their minute
+    std::uint32_t fbCohortTicks = 0;
+    std::uint32_t fbMinute = 0;
+    std::uint32_t evNext = 0;          // events for the next tick (back_to_band: EvMode, section 2.5)
     std::unique_ptr<ReplanState> replan;   // R9-2: nullptr while AiPlayerbot.Replan and AiPlayerbot.Replan.Shadow are 0
 };
 }
@@ -208,4 +231,12 @@ void NoteChoice(PlayerbotAI* ai, char const* purpose, ai::TravelDestination cons
 
 // One number per destination (purpose, entry, quest), the same in the snapshot, the pick and the comparison.
 std::uint32_t DestKey(ai::TravelDestination const* dest);
+
+// P-3a: the quest of a quest destination (0 otherwise) and the zone of a point (terrain lookup; 0 = unknown), the planner's rules
+// for the write path (PlannerWrite.cpp) and the feed.
+std::uint32_t QuestOfDest(ai::TravelDestination const* dest);
+std::uint32_t ZoneOf(ai::WorldPosition const* point);
+
+// P-3a: adds counts of the write path (PlannerWrite.cpp: the feed and its outcome) to the bot's cohort minute of [PlanMin].
+void Count(std::uint32_t guidLow, ai::planner::PlanMinCounts const& c);
 }

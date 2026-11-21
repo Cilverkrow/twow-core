@@ -45,6 +45,9 @@ std::atomic<bool> g_armed{false};
 // carry no bot), moved into one cohort's minute by RollLocked.
 std::atomic<std::uint32_t> g_depthOverflow{0};
 
+// A3 step 3 planner P-3a: [ArbiterMin] plan= while on (AiPlayerbot.Planner = 2; set by the config load, SetArbiterPlanField).
+std::atomic<bool> g_planField{false};
+
 // Build rule 1 (OB-00 07.11.): one short file-local mutex around the line budget, the minute sums and every ShadowState.
 std::mutex g_mutex;
 std::uint32_t g_on = 0;             // shadows with on = true
@@ -165,10 +168,12 @@ MinuteOut RollLocked(std::uint32_t nowSec)
     // A3 step 3 T02-a: the WriterScope overflow count is process-wide (no bot, no cohort); it is reported once, in cohort B's
     // minute when B ticked in it, else in A's.
     g_min[g_active[1] ? 1 : 0].depthOverflow += g_depthOverflow.exchange(0, std::memory_order_relaxed);
+    bool const planField = g_planField.load(std::memory_order_relaxed);   // A3 step 3 planner P-3a: plan= at Planner = 2
     for (std::size_t i = 0; i < 2; ++i)
     {
         out.active[i] = g_active[i];
         out.sums[i] = g_min[i];
+        out.sums[i].planField = planField;
         g_min[i] = ArbiterMinute();
         g_active[i] = false;
     }
@@ -379,6 +384,11 @@ void ShadowDrop(ShadowState& state)
 {
     std::lock_guard<std::mutex> lock(g_mutex);
     DropLocked(state);
+}
+
+void SetArbiterPlanField(bool on)
+{
+    g_planField.store(on, std::memory_order_relaxed);
 }
 
 namespace
