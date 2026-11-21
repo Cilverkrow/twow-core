@@ -207,6 +207,10 @@ struct PlanState
     std::uint32_t expiredSinceMs = 0;
     std::uint32_t fallbackAtMs = 0;    // rule 5: the last fallback (the plan pick was not applied)
     std::uint32_t feedBudgetKey = 0;   // #416: the pick whose plan attempt ran out of time (no second attempt for it)
+    std::uint32_t feedBudgetSinceMs = 0;   // twow-repo#726 F2: that pick's sinceMs (a new pick of the same key is another pick)
+    std::uint32_t feedBudgetAtMs = 0;      // twow-repo#726 F2: the abort; the hold ends MinBindSec after it (BudgetHolds)
+    std::uint32_t zoneEmptyKey = 0;        // OB-10 Nachtrag 1 Q2 (c): the pick whose zone-empty fallback locked once
+    std::uint32_t zoneEmptySinceMs = 0;    // (ZoneEmptySeen)
     std::uint32_t appliedGen = 0;      // overwritten*: the write generation of the applied plan target
     std::uint32_t appliedAtMs = 0;     // 0 = no applied target inside the bind time
     std::uint32_t appliedDest = 0;     // its DestKey, or the zone of an applied grind pick
