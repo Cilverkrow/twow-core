@@ -2035,7 +2035,8 @@ add_test(NAME planner_shadow_policy
   COMMAND planner_shadow_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
-# A3 R9 / R2 producer, pair R9-1 (R9-REPLAN-INTERFACE v5): the pure progress meter (ReplanPolicy.h); no caller yet.
+# A3 R9 / R2 producer, pair R9-1 (R9-REPLAN-INTERFACE v5): the pure progress meter (ReplanPolicy.h); the planner tick calls it
+# since R9-2.
 add_executable(replan_policy_tests
   "${PB_MODULE_DIR}/t/replan_policy_tests.cpp")
 
@@ -2047,6 +2048,22 @@ set_target_properties(replan_policy_tests PROPERTIES
 
 add_test(NAME replan_policy
   COMMAND replan_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# A3 R9 / R2 wiring pair R9-2 (twow-repo#575, AiPlayerbot.Replan / Replan.Shadow): the pure rules between the planner tick and the
+# meter (ReplanWirePolicy.h: relocation latch, sample clock, switch and scope, sink view); the wiring is pinned in
+# t/contracts.d/r9_replan_wiring_source_contract_tests.cmake.
+add_executable(replan_wire_policy_tests
+  "${PB_MODULE_DIR}/t/replan_wire_policy_tests.cpp")
+
+target_include_directories(replan_wire_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(replan_wire_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME replan_wire_policy
+  COMMAND replan_wire_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
 # #628: ad-hoc groups form and leave on the world thread (AdHoc.WorldThread).
@@ -2787,6 +2804,21 @@ set_target_properties(bot_activity_policy_tests PROPERTIES
 
 add_test(NAME bot_activity_policy
   COMMAND bot_activity_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#601 (AiPlayerbot.ActivityTrace.GrindIdleDetail, OB-00 20.11.2026): the [GrindIdleDetail] cause (GrindIdlePolicy.h);
+# source contract in t/contracts.d.
+add_executable(grind_idle_policy_tests
+  "${PB_MODULE_DIR}/t/grind_idle_policy_tests.cpp")
+
+target_include_directories(grind_idle_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(grind_idle_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME grind_idle_policy
+  COMMAND grind_idle_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
 add_test(NAME bot_activity_source_contract

@@ -1655,11 +1655,12 @@ AiPlayerbot.Planner.BandTable = ""
 # the zone hub) by value, keeps its pick with Margin and MinBindSec, and writes "[Plan]" lines (300 per minute, own budget) and
 # "[PlanMin]" counter lines per cohort and minute. Acts only where the supervisor runs (AiPlayerbot.Supervisor) and in QUEST or
 # GRIND mode (AiPlayerbot.Supervisor.Arbiter = 2 moves a bot out of PASSIVE). 0 off (default), 1 shadow: plans and counts,
-# writes nothing of the bot; 2 the plan pick acts (pair P-3; until then 2 works as 1). Above 2 is off.
+# writes nothing of the bot; 2 the plan pick acts for the bots of AiPlayerbot.Planner.WriteCohort (P-3a; default 0 = none, so
+# 2 alone works as 1). Above 2 is off.
 AiPlayerbot.Planner = 0
 # The planner's parameters (the PREREG sets them; the defaults are the draft's proposals). Margin: percent a new pick must beat
 # the current one by. MinBindSec: a new pick is kept at least this long. MaxIdleSec: plan again after this long without an
-# event (0 = never). MinDwellSec: QUEST/GRIND switch dwell (pair P-3; read, unused before). MaxCandidates: candidates per plan (turn-ins, then objectives, then pickups by distance; at most 64).
+# event (0 = never). MinDwellSec: QUEST -> GRIND switch dwell (P-3a, writing bots only). MaxCandidates: candidates per plan (turn-ins, then objectives, then pickups by distance; at most 64).
 # BudgetMs: compute time per plan; the list ends there (over_budget). DeadWaitMaxSec / DeadProbeYards: wait at a dead target
 # at most min(2 x respawn, this) seconds, probing this radius. RouteFactor: route seconds = straight distance / run speed x
 # this. DangerCells: danger = cells on the line / this, capped at 1; DangerTopN: only the best N ask the danger map.
@@ -1689,6 +1690,34 @@ AiPlayerbot.Planner.RepeatableRetakeSec = 1800
 AiPlayerbot.Planner.RepeatableMaxPerHour = 1
 AiPlayerbot.Planner.RelocMinYards = 60
 AiPlayerbot.Planner.RelocSlack = 1.5
+# A3 step 3 planner P-3a (P3-ENTWURF-v0.2, frozen d45c4961, Nachtraege 1-3; OB-00 F2 (a)): which bots the plan pick acts for at
+# AiPlayerbot.Planner = 2, in the cohort mode: 0 = no bot (default: Planner = 2 alone writes nothing), 1 = every bot, 2 = only
+# cohort B (odd low guid), 3 = only cohort A. Any other value acts like 0 (one error line at load). A writing bot needs
+# AiPlayerbot.Supervisor.Arbiter = 2 (enforcement on and the bot out of PASSIVE); then the planner (a) expires the live travel
+# target when its pick changes (never in COOLDOWN, in WORK only for max_hold / back_to_band, once per pick, not within MinBindSec
+# after a fallback, only with a free quest book lane, never a group copy), (b) lets the travel choice try the plan pick first
+# (one SetBestTarget call on the pick's entries; not chosen: the full list as before), (c) switches QUEST <-> GRIND on a pick
+# change (QUEST -> GRIND after MinDwellSec) and (d) makes back_to_band act. Bots that do not write behave as at Planner = 1 and
+# count fb_cohort / fb_arbiter. [PlanMin] gets the P-3a fields (expired, expire_denied*, applied_*, fallback_*, fb_*, mem_evict,
+# mode_*) and [ArbiterMin] plan= at Planner = 2 only. Kits set it explicitly together with Planner.MaxIdleSec = 100.
+AiPlayerbot.Planner.WriteCohort = 0
+# A3 R9 / R2 (twow-repo#575, R9-REPLAN-INTERFACE v5, R9-PREREG C2; pair R9-2): the progress meter. It runs in the planner tick, so
+# both keys need AiPlayerbot.Supervisor to apply to the bot and AiPlayerbot.Planner >= 1; set alone they log nothing. Each tick it
+# measures the progress toward the bot's live travel target (distance, quest credit, skill for professions) and,
+# after 600 s without progress or at a position jump (hearth, home teleport, rescue, far-move arrival, teleport ack, death,
+# revive), asks the planner for Keep / Replan / Close. Only roster bots without a real player master, not in a battleground and
+# not parked. Lines: "[Replan]" per decision (own budget, 300 per minute; a forced record is never
+# dropped) and "[ReplanMin]" per cohort and minute (forced=, rate_limited=, forced_after_rate_limited=, hops=, grind_nokill=,
+# offmap=, dropped=). Before pair P-3 no verdict acts in either arm: lines and counters only, so shadow=0 lines are the active arm
+# without apply and are never scored as behaviour (OB-10 R-1). Grind targets are not measured yet (no kill counter; grind_nokill=
+# counts those ticks), a target on another map is tagged offmap=1 (out of C1/C2), and the clock pauses while the bot is dead.
+# AiPlayerbot.Replan is a cohort mode (CohortPolicy.h), unlike its parent AiPlayerbot.Planner (0/1/2): 0 = off (default), 1 =
+# every bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid); those bots are the active arm (shadow=0 in the
+# lines). Any other value acts like 0 (one error line at load).
+# AiPlayerbot.Replan.Shadow: 1 = every other bot of the population runs the meter in shadow (shadow=1: lines and counters only),
+# 0 = off (default). Any other value acts like 0 (one error line at load).
+AiPlayerbot.Replan = 0
+AiPlayerbot.Replan.Shadow = 0
 # A3 step 5 (ADR-0041, OB-00 07.11.2026): the combat rule - one module that owns the combat decisions (who may start a fight,
 # rest before the pull, target choice, flee point, loop guard), one switch per part. Design: A3-S5-KAMPFREGEL-ENTWURF.md.
 # Part HealerStart (A3-AKTIONS-VERDRAHTUNG F2 (a)): the healer gate of attack my target / attack RTI target / attack anything
@@ -2046,10 +2075,11 @@ AiPlayerbot.QuestFirstProgression.SkipSkillLockedObjectives = 0
 # quest target for .Seconds. Any quest credit (kill or item) of the quest clears it. Only objectives - givers and turn-ins never.
 # Bounded (2048 objectives). [StaleObjective] state=mark quest= entry= failures= bots= when an objective is marked, state=clear
 # when a credit ends a mark; after an empty quest search [QuestFirstRoute] state=stale_objective bot= skipped=N.
-#   0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid) skips, 3 = only cohort A (even low guid) skips - the
+#   0 = off, 1 = every roster bot (default since the owner adoption 04.11.2026, cand4G ADOPT; 0 = rollback), 2 = only cohort B
+#   (odd low guid) skips, 3 = only cohort A (even low guid) skips - the
 #   second arm of a crossover unit (OB-00 31.10.2026; needs CohortPolicy ModeOnlyA, otherwise 3 acts like 0); other values act like 0.
 #   .Failures 1..8 (default 4), .Bots 1..8 (default 3), .WindowSeconds and .Seconds 60..86400 (default 3600).
-AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter = 0
+AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter = 1
 AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter.Failures = 4
 AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter.Bots = 3
 AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter.WindowSeconds = 3600
@@ -2875,8 +2905,8 @@ AiPlayerbot.ProfessionUse.ToolBuy = 0
 # template_items=0|1 money=" line per vendor visit of a bot missing its pick / knife at a vendor that stocks it.
 # Mode: 0 = as before (rollback), 1 = every bot (default), 2 = only cohort B (odd low guid). Any other value acts like 1.
 AiPlayerbot.Buy.VendorTemplateItems = 1
-# twow-repo#333 P1-v (OB-00 26.10.2026, BUG FIX behind a switch: it changes the RPG travel of every bot; profile 1 only after a
-# cand A/B with quest metrics and the owner's go): an RPG target (vendor, repairer, trainer, mailbox, auctioneer, named RPG
+# twow-repo#333 P1-v (OB-00 26.10.2026, BUG FIX behind a switch: it changes the RPG travel of every bot; code default 1 after the
+# acceptance unit RALS-ABN, 20.11.2026, and the owner's go): an RPG target (vendor, repairer, trainer, mailbox, auctioneer, named RPG
 # target) is "not possible" for a bot when its area is more than 5 levels above it. That area level was read at the default
 # position of GuidPosition(HIGHGUID_UNIT, entry) - map 0 at the origin, not the spawn - so one unrelated area decided for
 # every such target of every bot. With the mode on for the bot it is read at the spawn nearest to the bot (a sub-area
@@ -2884,9 +2914,9 @@ AiPlayerbot.Buy.VendorTemplateItems = 1
 # their own checks and are not affected. With any mode set: "[RpgAreaLevel] state=trip purpose=Vendor|Repair|Trainer|AH|
 # Mail|GenericRpg bot= level= cohort= arm= entry= zone= target_area_level= distance=" per RPG trip (arm=1: the spawn rule
 # applies to the bot) and once per server run "[RpgAreaLevel] state=origin area_level=" (the level the old rule read).
-# Mode (in-realm A/B, cohort parity): 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other
-# value acts like 0.
-AiPlayerbot.Travel.RpgAreaLevelFromSpawn = 0
+# Mode (in-realm A/B, cohort parity): 0 = as before (rollback), 1 = every bot (default since the RALS-ABN acceptance unit,
+# 20.11.2026), 2 = only cohort B (odd low guid). Any other value acts like 0.
+AiPlayerbot.Travel.RpgAreaLevelFromSpawn = 1
 # BOT-12 (twow-repo#677; cand4G u2: a bot at a zeppelin dock node with entry 0 paid ~13 ms per update): 1 = the elevator
 # branch of the transport lookup (UseTransport, dock waits) walks a list per map of the transport-type gameobject spawns
 # (GAMEOBJECT_TYPE_TRANSPORT, GAMEOBJECT_TYPE_MO_TRANSPORT), built once on first use, instead of all gameobject spawn data
@@ -3824,6 +3854,19 @@ AiPlayerbot.ActivityTrace.StuckReason = 0
 # minute for all bots (its own budget); dropped= counts the lines refused since the previous one. Log only, no behaviour change.
 # 0 = off (default).
 AiPlayerbot.ActivityTrace.IdleDetail = 0
+# twow-repo#601 (OB-00 20.11.2026, deep research 1 NOTE-R1 section 4 no. 3): 1 = with ActivityTrace on, a roster bot that is
+# grind_idle (at its grind destination in WORK without a fight in the sample) two samples in a row writes one line for the episode:
+# "[GrindIdleDetail] state=start bot= level= map= zone= x= y= entry= tmpl_min= tmpl_max= grey_level= grey_spot= pass_age_s= cand=
+# picked= crowded= others= cause=no_pass|picked|respawn|crowded|grey|rules|other skip_unreach= skip_height= skip_range= skip_above=
+# skip_avoided= skip_elite= skip_invalid= skip_tapped= skip_critter= skip_rule= skip_notneeded= skip_grey= dropped=" - the
+# destination's creature entry and template levels against the bot's grey level (grey_spot=1: the spot itself is grey), the bot's
+# newest grind target pass (age, candidates, a pick, candidates already targeted by other bots, the refusals by reason), the
+# friendly players in sight and the cause derived from them (GrindIdlePolicy.h CauseOf: no pass within 120 s; a pick; no candidate
+# = respawn, or crowded with 2+ players in sight; else the refusal covering half the candidates: grey, tapped = crowded, the
+# quest-first rules). The first sample of another kind after it (or the first after a sampling gap: gap=1) writes
+# "[GrindIdleDetail] state=end bot= level= grind_idle_s= cause= next=<kind> gap= dropped=" (only after its start line, outside
+# the limit). At most 30 start lines a minute for all bots (its own budget). Log only, no behaviour change. 0 = off (default).
+AiPlayerbot.ActivityTrace.GrindIdleDetail = 0
 # twow-repo#541: 1 = one [WorldBots] line per minute with what the bot manager cost the serial world
 # thread (UpdateSessions, ProcessBot loop incl. logins, rest; max pass, share in per mille, logins,
 # teleport ACK calls). Log only; persistent roster and free random-bot path. 0 = off (default).
@@ -4170,10 +4213,15 @@ AiPlayerbot.Rotation.EmergencyLadder.SoloCcSpells = polymorph,banish,fear
 # (capped at the 25 s / 30 s aura). It ends on combat or after MaxRestSeconds (then no new episode for a minute). A turn-in's stall
 # observation counts the rest as a pause. Rest after a revive (50 % HP) follows from StartHp.
 # Lines (bots.log): "[RestGate] bot= name= cls= level= cohort= applied=0|1 start_hp= start_mana= end_hp= end_mana= dur_ms=
-# reason=done|combat|timeout minimal=" per finished episode (the cohort the switch does not apply to logs the same episodes with
-# applied=0 and does not rest; 300 lines a minute over all bots), and once an hour per cohort and class "[RestGateTotal] window_min=60
-# cohort= cls= episodes= done= combat= timeout= rest_s= cast_fail= dropped=". The trigger nodes are added when the strategies are built:
-# switching between 0 and 1/2 needs a strategy reset or restart.
+# reason=done|combat|death|timeout|stale minimal=" per finished episode (the cohort the switch does not apply to logs the same episodes
+# with applied=0 and does not rest; 300 lines a minute over all bots), and once an hour per cohort and class "[RestGateTotal]
+# window_min=60 cohort= cls= episodes= done= combat= death= timeout= stale= rest_s= cast_fail= dropped= stale_rested= stale_combat=
+# stale_timeout= stale_low= stale_gap_s=". stale = the value was not read for 15 s, mostly the bot's own eat / drink wait (no AI pass
+# meanwhile); dur_ms then runs to the last read. Since 20.11.2026 (DEEP7 finding 3, log only) a stale line ends with " late=rested|combat|
+# timeout|low gap_ms= dur_late_ms=" (what the late read shows: rested = at the targets; the gap since the last read; start to the late
+# read) and the total line with the stale_* fields (stale_rested + stale_combat + stale_timeout + stale_low = stale); every other field
+# and line is unchanged. The trigger nodes are added when the strategies are built: switching between 0 and 1/2 needs a strategy reset or
+# restart.
 # 0 = off (default), 1 = all bots, 2 = only cohort B (odd low guid, in-realm A/B).
 AiPlayerbot.Rotation.RestGate = 0
 # twow-repo#602 X1 (E2/E4): a rest episode starts below StartHp % HP or (mana pool) below StartMana % mana, and ends at TargetHp % HP and
@@ -4430,6 +4478,20 @@ AiPlayerbot.Rotation.FollowUnstealth = 0
 # mark_s= mark=set|none|skip_1h evicted= reason=unreachable_k line per give-up.
 # Cohort mode: 0 = off, as before (default until its A/B); 1 = all bots; 2 = cohort B (odd guid); 3 = cohort A; other = 0.
 AiPlayerbot.Rotation.UnreachableGiveUp = 0
+
+# twow-repo#703 item 4b (fights that go on after a give-up; 703H u4: 8 [StuckCombat] stops within minutes of a give-up by the
+# same bot, 1.77 expected by chance, 5 of them on the given-up entry): after a give-up of Rotation.UnreachableGiveUp, a bot on
+# its own does not pick that unit again for 1800 s, nor another unit of the same entry on the same map within 100 yd of the
+# give-up spot. Solo only: a bot in a group is never locked (checked when the lock is set and when it is read). The grind pick,
+# the assist pick, the attack and the pull request skip a locked unit. Self-defence stays: a same-entry unit whose victim is the
+# bot or its pet may be fought, the given-up unit only when it attacks the bot or its pet and the bot can hit it now. When the
+# lock is set, a swing on a same-entry unit near the spot that is not hitting the bot or its pet stops, and so does the pet; no
+# threat change, no combat stop. One [UnreachableLock] state=arm line per lock; state=block lines at most once a minute per bot,
+# with counts of pick calls (not units) per path. Needs Rotation.UnreachableGiveUp >= 1 for the same bots (only the give-up
+# sets a lock, and only on a creature); with the give-up off, or on only for the other cohort (2 with 3), the lock is inert and
+# an error line says so at load. Behaviour change: default 0 until its A/B (pending).
+# Cohort mode: 0 = off, as before (default); 1 = all bots; 2 = cohort B (odd guid); 3 = cohort A; other = 0.
+AiPlayerbot.Rotation.UnreachableLock = 0
 
 # twow-repo#602 ROT-01 3c (priest Farathil loop, OB-00 24.10.2026, BEHAVIOUR CHANGE, enable only after A/B + owner go): "low mana"
 # pushes "dark rune" (alternative "mana potion") on every evaluation, in the combat and the reaction engine. Without a rune in

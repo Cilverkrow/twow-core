@@ -23,6 +23,8 @@
 #include "playerbot/GroupGatherPolicy.h"   // A3 step 6 T33-0: BotGroups.Manager.Gather
 #include "playerbot/ManagerInboxPolicy.h"   // A3-GERUEST-L60 7.2.11: BotGroups.Manager.StatusSeconds clamp
 #include "playerbot/SupervisorPolicy.h"   // A3 step 3: Supervisor mode
+#include "playerbot/SupervisorShadow.h"   // A3 step 3 planner P-3a: SetArbiterPlanField
+#include "playerbot/PlannerShadow.h"      // A3 step 3 planner P-3a: kWriteCohortMax, WriteCohortOf (the pure rules' one door)
 #include "playerbot/QuestBookPolicy.h"   // A3 step 2: QuestBook mode
 #include "playerbot/QuestBundlePolicy.h"   // A3 step 2 QB-B: QuestBook.BundleRadius clamp
 #include "playerbot/QuestNeedPolicy.h"   // A3 step 2 H5: QuestBook.NeedPerObjective mode
@@ -550,6 +552,7 @@ bool PlayerbotAIConfig::Initialize()
     activityTraceStuckDetail = config.GetBoolDefault("AiPlayerbot.ActivityTrace.StuckDetail", false);   // twow-repo#601 (OB-00 26.10.2026)
     activityTraceStuckReason = config.GetBoolDefault("AiPlayerbot.ActivityTrace.StuckReason", false);   // A3-HARM-UPSTREAM T40 follow-up (OB-00 (a) 16.11.; log only, default 0)
     activityTraceIdleDetail = config.GetBoolDefault("AiPlayerbot.ActivityTrace.IdleDetail", false);   // twow-repo#601 (OB-00 28.10.2026)
+    activityTraceGrindIdleDetail = config.GetBoolDefault("AiPlayerbot.ActivityTrace.GrindIdleDetail", false);   // twow-repo#601 (OB-00 20.11.2026)
     botUpdateTrace = config.GetBoolDefault("AiPlayerbot.BotUpdateTrace", false);
     // twow-repo#597 (TICK-01): log-only extensions of [BotUpdateSlow] and [WorldBots], default 0.
     botUpdateTraceTick = config.GetBoolDefault("AiPlayerbot.BotUpdateTraceTick", false);
@@ -719,6 +722,16 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[UnreachableGiveUp] config key=Rotation.UnreachableGiveUp value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", rotationUnreachableGiveUp);
         rotationUnreachableGiveUp = 0;
     }
+    rotationUnreachableLock = config.GetIntDefault("AiPlayerbot.Rotation.UnreachableLock", 0);   // twow-repo#703 item 4b
+    if (rotationUnreachableLock > 3)
+    {
+        sLog.outError("[UnreachableLock] config key=Rotation.UnreachableLock value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", rotationUnreachableLock);
+        rotationUnreachableLock = 0;
+    }
+    if (rotationUnreachableLock && !rotationUnreachableGiveUp)
+        sLog.outError("[UnreachableLock] config key=Rotation.UnreachableLock value=%u giveup=0 result=inert (only Rotation.UnreachableGiveUp arms it)", rotationUnreachableLock);
+    else if (rotationUnreachableLock >= 2 && rotationUnreachableGiveUp >= 2 && rotationUnreachableLock != rotationUnreachableGiveUp)
+        sLog.outError("[UnreachableLock] config key=Rotation.UnreachableLock value=%u giveup=%u result=inert (the two cohorts do not overlap)", rotationUnreachableLock, rotationUnreachableGiveUp);
     rotationDarkRuneGate = config.GetIntDefault("AiPlayerbot.Rotation.DarkRuneGate", 0);   // twow-repo#602 ROT-01 3c
     if (rotationDarkRuneGate > 2)
         rotationDarkRuneGate = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
@@ -1055,6 +1068,20 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[Supervisor] config key=Supervisor.ArbiterProbe value=%u result=off (0 off, 1 probe)", supervisorArbiterProbe);
         supervisorArbiterProbe = 0;
     }
+    // T33-1 silent trap (OB-00 20.11.2026, R3 logging only): the lever is on but can never act (GroupGatherPolicy.h
+    // LeverInertReasons). One note line, no clamp, no ERROR prefix (kits read "ERROR:[GroupMgr] config key=" as a clamp line);
+    // the arbiter alone can be lifted later by the console: then the soft tag (LeverInertHard false; OB-60 R3 20.11.).
+    if (std::uint32_t const leverInert = ai::group_mgr::LeverInertReasons(botGroupsManagerGatherLever, botGroupsManagerGather,
+            botGroupsManager, botGroupsManagerTypes, supervisor, supervisorArbiter))
+    {
+        std::string names;
+        for (std::uint32_t bit = 1u; bit <= ai::group_mgr::kLeverInertCohorts; bit <<= 1)
+            if ((leverInert & bit) && ai::group_mgr::LeverInertName(bit))
+                names += (names.empty() ? "" : ",") + std::string(ai::group_mgr::LeverInertName(bit));
+        sLog.outBasic("[GroupMgr] %s reasons=%s lever=%u gather=%u manager=%u types=%u supervisor=%u arbiter=%u",
+            ai::group_mgr::LeverInertHard(leverInert) ? "lever_inert" : "lever_pending", names.c_str(), botGroupsManagerGatherLever,
+            botGroupsManagerGather, botGroupsManager, botGroupsManagerTypes, supervisor, supervisorArbiter);
+    }
     // A3 step 3 planner P-1: the band table path (BandTable.cpp); "" = off.
     plannerBandTable = config.GetStringDefault("AiPlayerbot.Planner.BandTable", "");
     // A3 step 3 planner P-2b (A3-S3-PLANER-ENTWURF.md v0.3 section 8): the planner in the supervisor tick (PlannerShadow.cpp).
@@ -1087,6 +1114,29 @@ bool PlayerbotAIConfig::Initialize()
     plannerRelocSlack = config.GetFloatDefault("AiPlayerbot.Planner.RelocSlack", 1.5f);
     if (plannerMaxCandidates > 64)
         plannerMaxCandidates = 64;   // the candidate array of the tick (PlannerShadow.cpp kMaxCandidates)
+    // A3 step 3 planner P-3a (P3-ENTWURF-v0.2 section 8, OB-00 F2 (a)): the write cohort of Planner = 2; above 3 is 0 (fail closed,
+    // never "all"). [ArbiterMin] gets plan= only at Planner = 2.
+    plannerWriteCohort = uint32(config.GetIntDefault("AiPlayerbot.Planner.WriteCohort", 0));
+    if (plannerWriteCohort > ai::planner::kWriteCohortMax)
+    {
+        sLog.outError("[Planner] config key=Planner.WriteCohort value=%u result=0 (0 none, 1 all, 2 cohort B, 3 cohort A)",
+            plannerWriteCohort);
+        plannerWriteCohort = ai::planner::WriteCohortOf(plannerWriteCohort);
+    }
+    ai::supervisor::SetArbiterPlanField(planner == 2);
+    // A3 R9 / R2 wiring pair R9-2 (twow-repo#575, R9-PREREG C2): the progress meter's switch (a cohort mode) and its shadow key.
+    replan = uint32(config.GetIntDefault("AiPlayerbot.Replan", 0));
+    if (replan > 3)
+    {
+        sLog.outError("[Replan] config key=Replan value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", replan);
+        replan = 0;
+    }
+    replanShadow = uint32(config.GetIntDefault("AiPlayerbot.Replan.Shadow", 0));
+    if (replanShadow > 1)
+    {
+        sLog.outError("[Replan] config key=Replan.Shadow value=%u result=off (0 off, 1 shadow)", replanShadow);
+        replanShadow = 0;
+    }
     // A3 step 5 (ADR-0041): the combat rule, parts HealerStart, PriestOverlay, RestBeforePull and ProgressGuard (CombatRulePolicy.h); an unknown
     // mode is off.
     combatRuleHealerStart = uint32(config.GetIntDefault("AiPlayerbot.CombatRule.HealerStart", 0));
@@ -1223,7 +1273,8 @@ bool PlayerbotAIConfig::Initialize()
     }
     // twow-repo#601 cand4 (i) StaleObjectiveFilter: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B); the parameters
     // are clamped (failures and bots fit the 8 failures kept per objective; window and mark 60 s .. 1 day).
-    questFirstProgressionStaleObjectiveFilter = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter", 0);
+    // Default 1 since the owner adoption "ja bringen" 04.11.2026 (cand4G RESULT ADOPT fad2d62a, twow-repo#601); 0 = rollback.
+    questFirstProgressionStaleObjectiveFilter = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter", 1);
     // twow-repo#601 crossover (OB-00 31.10.2026): 3 = only cohort A (CohortPolicy ModeOnlyA).
     if (questFirstProgressionStaleObjectiveFilter > 3)
     {
@@ -1981,7 +2032,7 @@ bool PlayerbotAIConfig::Initialize()
     if (buyVendorTemplateItems > 2)
         buyVendorTemplateItems = 1;   // an unknown mode is the default (0 off = rollback, 1 all, 2 cohort B)
     // twow-repo#333 P1-v (OB-00 26.10.2026): the area level of an RPG target from its spawn, not from the map origin; an unknown mode is off.
-    travelRpgAreaLevelFromSpawn = config.GetIntDefault("AiPlayerbot.Travel.RpgAreaLevelFromSpawn", 0);
+    travelRpgAreaLevelFromSpawn = config.GetIntDefault("AiPlayerbot.Travel.RpgAreaLevelFromSpawn", 1);
     if (travelRpgAreaLevelFromSpawn > 2)
         travelRpgAreaLevelFromSpawn = 0;
     // BOT-12 (twow-repo#677): the elevator branch of getTransports from a per-map spawn list, built once (WorldPosition.cpp).
@@ -2268,6 +2319,7 @@ bool PlayerbotAIConfig::Initialize()
             {"ActionLog.DamageSampleEvery", Value(actionLogDamageSampleEvery)},
             {"ActionLog.Guids.count", Value(uint32(actionLogGuids.size()))},
             {"ActivityTrace", Value(activityTrace)},
+            {"ActivityTrace.GrindIdleDetail", Value(activityTraceGrindIdleDetail)},
             {"ActivityTrace.IdleDetail", Value(activityTraceIdleDetail)},
             {"ActivityTrace.StuckDetail", Value(activityTraceStuckDetail)},
             {"ActivityTrace.StuckReason", Value(activityTraceStuckReason)},
@@ -2383,6 +2435,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Planner.RouteFactor", Value(plannerRouteFactor)},
             {"Planner.SwitchCost", Value(plannerSwitchCost)},
             {"Planner.TurnInWorkSec", Value(plannerTurnInWorkSec)},
+            {"Planner.WriteCohort", Value(plannerWriteCohort)},
             {"PotionFind.BySpell", Value(potionFindBySpell)},
             {"ProfessionTraining.NearRadius", Value(professionTrainingNearRadius)},
             {"ProfessionTraining.Travel", Value(professionTrainingTravel)},
@@ -2469,6 +2522,8 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestRescue.KeepRequestWhenFull", Value(questRescueKeepRequestWhenFull)},
             {"QuestRescue.NoTargetFreeSlot", Value(questRescueNoTargetFreeSlot)},
             {"QuestTurnIn.RepeatableAutoComplete", Value(questTurnInRepeatableAutoComplete)},
+            {"Replan", Value(replan)},
+            {"Replan.Shadow", Value(replanShadow)},
             {"Rescue.RepopDeadOnly", Value(rescueRepopDeadOnly)},
             {"Revive.CorpseRunFirst", Value(reviveCorpseRunFirst)},
             {"Revive.CorpseRunFirst.MaxSeconds", Value(reviveCorpseRunFirstMaxSeconds)},
@@ -2521,6 +2576,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Rotation.TankKitFromLevel", Value(rotationTankKitFromLevel)},
             {"Rotation.TankRoguePoison", Value(rotationTankRoguePoison)},
             {"Rotation.UnreachableGiveUp", Value(rotationUnreachableGiveUp)},
+            {"Rotation.UnreachableLock", Value(rotationUnreachableLock)},
             {"Rpg.TurnInFirst", Value(rpgTurnInFirst)},
             {"Supervisor", Value(supervisor)},
             {"Supervisor.Arbiter", Value(supervisorArbiter)},

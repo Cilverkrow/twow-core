@@ -1,7 +1,8 @@
 // A3 R9 / R2 producer (R9-REPLAN-INTERFACE v5 9575095d; v4 d44daade normative in A3-BOT-LOGIK 4.3): the pure progress meter
 // (ReplanPolicy.h). The header names no game type, so this suite compiles it standalone. Cases 1-7 are v4 7.5, cases 8-11 and
-// 14 are v5 8.3; cases 12-13 (rescue trigger and rescue episode) come with the S4-3 pair. Nothing in the game calls the meter
-// yet; t/contracts.d/r9_replan_policy_source_contract_tests.cmake pins the header pure and inert.
+// 14 are v5 8.3; cases 12-13 (rescue trigger and rescue episode) come with the S4-3 pair. Since R9-2 (twow-repo#575) the planner
+// tick calls the meter (PlannerShadow.cpp, AiPlayerbot.Replan / Replan.Shadow, default 0; t/replan_wire_policy_tests.cpp);
+// t/contracts.d/r9_replan_policy_source_contract_tests.cmake pins the header pure and its callers.
 
 #include "ReplanPolicy.h"
 
@@ -166,6 +167,7 @@ void Case2LoopWithCap()
             "case 2: the forced reloc_loop is never rate_limited");
     Counters const c = m.TakeCounters();
     Require(c.rateLimited == 2 && c.forced == 1, "case 2: rate_limited 2, forced 1");
+    Require(c.forcedAfterRateLimited == 1, "case 2: the forced reloc_loop right after a rate_limited Keep (OB-10 nit 2)");
 }
 
 void Case3ClockContinuity()
@@ -257,7 +259,9 @@ void Case7CappedReplans()
     Require(replan.stalls[2].forced == Reason::KeepLimit && got[2].rec.verdict.d == Decision::Replan &&
                 got[2].rec.verdict.why == Reason::KeepLimit,
             "case 7: the 3rd is keep_limit (forced), never a 3rd rate_limited");
-    Require(m.TakeCounters().rateLimited == 2, "case 7: rate_limited exactly 2");
+    Counters const c = m.TakeCounters();
+    Require(c.rateLimited == 2 && c.forced == 1 && c.forcedAfterRateLimited == 1,
+            "case 7: rate_limited exactly 2, the keep_limit right after them counts as forced_after_rate_limited");
 }
 
 // ---- v5 8.3 -----------------------------------------------------------------------------------------------------------
@@ -565,6 +569,101 @@ void KeysAndCells()
     Require(TargetKey(0, 0, 0.0f, 0.0f, 0.0f) != 0, "key: never 0");
 }
 
+// ---- R9-2 (twow-repo#575, OB-10 nits 1 and 2) ------------------------------------------------------------------------------
+// Nit 1: a forced reloc_loop Replan is no give-up, so the next stall of the same key is its first (no second_stall Close).
+void RelocLoopNoGiveUp()
+{
+    ProgressMeter m;
+    Sink keep(Decision::Keep, Reason::LongRouteKnown);
+    m.Feed(S(0), keep);
+    FeedRange(m, keep, 0, 30000);
+    m.OnRelocate(R(30000, RelocSource::FarMoveArrival), keep);
+    FeedRange(m, keep, 30000, 60000);
+    m.OnRelocate(R(60000, RelocSource::FarMoveArrival), keep);
+    FeedRange(m, keep, 60000, 90000);
+    Outcome const loop = m.OnRelocate(R(90000, RelocSource::FarMoveArrival), keep);
+    Require(loop.rec.forced && loop.rec.verdict.why == Reason::RelocLoop, "nit 1: the 3rd arrival is the forced reloc_loop");
+    Outcome const o = FeedRange(m, keep, 90000, 700000);
+    Require(o.decided && keep.stalls.size() == 1, "nit 1: the stall of the same key fires");
+    Require(keep.stalls[0].stallsThisTarget == 1 && keep.stalls[0].forced != Reason::SecondStall &&
+                o.rec.verdict.why != Reason::SecondStall,
+            "nit 1: a reloc_loop Replan is no give-up (stalls_target 1, no second_stall)");
+}
+
+// Nit 2: forced_after_rate_limited counts a forced decision right after a rate_limited Keep; progress or another Keep in between
+// clears the mark.
+void ForcedAfterRateLimitedResets()
+{
+    for (int variant = 0; variant < 3; ++variant)
+    {
+        Params p;
+        p.maxReplansPerHour = 1;
+        ProgressMeter m(p);
+        Sink replan(Decision::Replan, Reason::PlannerChoice);
+        Sink keep(Decision::Keep, Reason::LongRouteKnown);
+        m.Feed(S(0), replan);
+        Outcome const first = FeedRange(m, replan, 0, 600000);
+        Require(first.decided && first.rec.verdict.d == Decision::Replan, "nit 2: the 1st stall is a planner Replan");
+        Outcome const capped = m.OnRelocate(R(600500, RelocSource::FarMoveArrival), replan);
+        Require(capped.rec.verdict.why == Reason::RateLimited, "nit 2: the relocation's Replan is over the cap");
+        std::uint32_t from = 600000;
+        float rem = 500.0f;
+        if (variant == 1)
+        {
+            rem = 480.0f;   // progress clears the mark
+            m.Feed(S(601000, K, rem), replan);
+            from = 601000;
+        }
+        else if (variant == 2)
+            m.OnRelocate(R(600700, RelocSource::FarMoveArrival), keep);   // a Keep with a keep reason clears the mark
+        Outcome const second = FeedRange(m, replan, from, from + 700000, K, rem);
+        Require(second.decided && second.rec.forced && second.rec.verdict.why == Reason::SecondStall,
+                "nit 2: the 2nd stall of the key is the forced second_stall");
+        Counters const c = m.TakeCounters();
+        std::uint32_t const want = variant == 0 ? 1u : 0u;
+        Require(c.forced == 1 && c.forcedAfterRateLimited == want, "nit 2: forced_after_rate_limited only right after rate_limited");
+    }
+}
+
+// OB-10 R-2, the meter side: the Dead clock is frozen at a constant held distance, and a revive closer by re-bases downward
+// without credit. The shrinking ghost distance through the dead hold (and a revive farther away) is tested in
+// t/replan_wire_policy_tests.cpp GhostRunThroughHold.
+void GhostRunNoStall()
+{
+    ProgressMeter m;
+    Sink keep(Decision::Keep, Reason::RespawnWait);
+    m.Feed(S(0), keep);
+    FeedRange(m, keep, 0, 20000);
+    m.OnRelocate(R(20000, RelocSource::Death), keep);
+    std::uint32_t const before = m.StallMs();
+    Outcome const ghost = FeedRange(m, keep, 20000, 20000 + 2 * 600000, K, 500.0f, ClockState::Dead);
+    Require(!ghost.decided && keep.stalls.empty(), "R-2: a ghost run longer than N gives no stall");
+    Require(m.StallMs() <= before + 1000, "R-2: the clock pauses while dead");
+    m.OnRelocate(R(20000 + 2 * 600000 + 500, RelocSource::Revive, K, 300.0f), keep);
+    Require(m.BestRemaining() == 300.0f && m.StallMs() == before + 1000, "R-2: the revive re-bases the best distance");
+    Counters const c = m.TakeCounters();
+    Require(c.plannedCredit == 0 && m.RelocsNoProgress() == 0, "R-2: the revive gives no credit and is not loop-counted");
+    m.Feed(S(20000 + 2 * 600000 + 1000, K, 300.0f), keep);
+    Require(m.StallMs() == before + 1000, "R-2: no progress reset after the revive (re-based, not credited)");
+}
+
+void AddCounters()
+{
+    Counters a;
+    Counters b;
+    a.stalls = 1; a.relocates = 2; a.keep = 3; a.replan = 4; a.close = 5;
+    a.forced = 6; a.rateLimited = 7; a.forcedAfterRateLimited = 8; a.gaps = 9; a.plannedCredit = 10;
+    a.hops = 11; a.grindNoKill = 12; a.offMap = 13;
+    b.stalls = 10; b.relocates = 20; b.keep = 30; b.replan = 40; b.close = 50;
+    b.forced = 60; b.rateLimited = 70; b.forcedAfterRateLimited = 80; b.gaps = 90; b.plannedCredit = 100;
+    b.hops = 110; b.grindNoKill = 120; b.offMap = 130;
+    Add(a, b);
+    Require(a.stalls == 11 && a.relocates == 22 && a.keep == 33 && a.replan == 44 && a.close == 55 && a.forced == 66 &&
+                a.rateLimited == 77 && a.forcedAfterRateLimited == 88 && a.gaps == 99 && a.plannedCredit == 110 && a.hops == 121 &&
+                a.grindNoKill == 132 && a.offMap == 143,
+            "counters: Add sums every field");
+}
+
 void Lines()
 {
     ProgressMeter m;
@@ -578,13 +677,21 @@ void Lines()
             "line: tag first, then bot, cohort, arbiter, shadow");
     Require(Has(l, " decision=keep reason=long_route_known forced=0 close_s=0") && Has(l, " keeps_in_row=0 "),
             "line: decision fields");
+    Require(l.size() > 9 && l.compare(l.size() - 9, 9, " offmap=0") == 0, "line: offmap=0 last (R9-2, OB-10 R-6)");
+    LineCtx off;
+    off.offmap = true;
+    char wide[1024];
+    FormatReplanLine(wide, sizeof(wide), off, o.rec);
+    std::string const lo = wide;
+    Require(lo.size() > 9 && lo.compare(lo.size() - 9, 9, " offmap=1") == 0, "line: an off-map target is tagged offmap=1");
     Counters k;
     k.stalls = 1;
     k.forced = 2;
     char buf[256];
     FormatReplanMinLine(buf, sizeof(buf), 'A', false, k, 3);
     Require(std::string(buf) == "[ReplanMin] cohort=A shadow=0 stalls=1 relocates=0 keep=0 replan=0 close=0 forced=2 "
-                                "rate_limited=0 gaps=0 planned_credit=0 dropped=3",
+                                "rate_limited=0 forced_after_rate_limited=0 gaps=0 planned_credit=0 hops=0 grind_nokill=0 offmap=0 "
+                                "dropped=3",
             "line: [ReplanMin]");
     char small[16];
     std::size_t volatile smallN = sizeof(small);   // runtime size: the truncation is the point of the check
@@ -621,6 +728,10 @@ int main()
     KeyEviction();
     KeysAndCells();
     Lines();
+    RelocLoopNoGiveUp();
+    ForcedAfterRateLimitedResets();
+    GhostRunNoStall();
+    AddCounters();
     std::cout << "replan_policy: " << g_checks << " checks passed\n";
     return 0;
 }

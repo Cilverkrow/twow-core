@@ -585,7 +585,7 @@ public:
     // twow-repo#333 P1-z (OB-00 31.10.2026, bug fix: code default 1, 0 = rollback, 2 cohort B): BuyAction "vendor" also reads the
     // vendor template items (creature_template.vendor_id), as the player's buy, the by-name buy and the vendor map already do.
     uint32 buyVendorTemplateItems = 1;
-    uint32 travelRpgAreaLevelFromSpawn = 0;  // twow-repo#333 P1-v: RpgTravelDestination::IsPossible reads the area level at the spawn nearest to the bot, not at the map origin (RpgAreaLevelPolicy.h); 0 off, 1 all, 2 cohort B (odd guid)
+    uint32 travelRpgAreaLevelFromSpawn = 1;  // twow-repo#333 P1-v: RpgTravelDestination::IsPossible reads the area level at the spawn nearest to the bot, not at the map origin (RpgAreaLevelPolicy.h); 0 off (rollback), 1 all (default since the RALS-ABN acceptance unit 20.11.2026), 2 cohort B (odd guid)
     bool travelElevatorScanCache = false;  // BOT-12 (twow-repo#677): WorldPosition::getTransports' elevator branch walks a per-map list of the transport-type gameobject spawns, built once, instead of all gameobject spawn data on every call
     uint32 gatherQuestHerbFilter = 0;  // twow-repo#333 P1-f: a quest herb (lock 259) is picked only with its quest active (modes 0/1/2)
     // #333: roster bots use their professions while levelling.
@@ -674,6 +674,7 @@ public:
     bool activityTraceStuckDetail = false;  // twow-repo#601: AiPlayerbot.ActivityTrace.StuckDetail - [StuckDetail] per stuck episode
     bool activityTraceStuckReason = false;  // A3-HARM-UPSTREAM T40 follow-up (OB-00 (a) 16.11.): AiPlayerbot.ActivityTrace.StuckReason - [StuckReason] after each [StuckDetail] (log only, default 0)
     bool activityTraceIdleDetail = false;  // twow-repo#601: AiPlayerbot.ActivityTrace.IdleDetail - [IdleDetail] per idle episode (start, end)
+    bool activityTraceGrindIdleDetail = false;  // twow-repo#601: AiPlayerbot.ActivityTrace.GrindIdleDetail - [GrindIdleDetail] per grind_idle episode (start with cause, end)
     bool botUpdateTrace = false;  // twow-repo#541: [BotUpdate] per-minute distribution of PlayerbotAI::UpdateAI wall time
     bool botUpdateTraceTick = false;  // twow-repo#597 (TICK-01): [BotUpdateSlow] ends with " tick=<world loop> region=<map>.<inst>"
     bool botUpdateTraceCohort = false;  // A3 step 0 (e), twow-repo#601: with BotUpdateTrace, two [BotUpdateCohort] lines (A, B) per minute
@@ -760,6 +761,7 @@ public:
     uint32 rotationReachDropEngagement = 0;  // twow-repo#630 follow-up (owner repro 25.10.): that drop also clears attack/pull/old target, selection and swing (combat ends, follow resumes; ReachDropPolicy.h); 0 off, 1 all, 2 cohort B
     uint32 rotationFollowUnstealth = 0;  // twow-repo#630 follow-up: a rogue following a real player out of combat, dungeons and BGs drops stealth while the master moves or it catches up, above follow (ReachDropPolicy.h); 0 off, 1 all, 2 cohort B
     uint32 rotationUnreachableGiveUp = 0;  // twow-repo#703 item 4: cohort mode (0 off, 1 all, 2 cohort B, 3 cohort A; other -> 0): a roster bot on its own (no group or not its leader) gives up a target after 3 [Unreachable] on its guid within 30 min - engagement dropped, 1800 s ignore, quest camp marked 1800 s (UnreachableGiveUpPolicy.h)
+    uint32 rotationUnreachableLock = 0;  // twow-repo#703 item 4b: cohort mode (0 off, 1 all, 2 cohort B, 3 cohort A; other -> 0): after that give-up a bot on its own (no group) does not pick the guid, nor its entry within 100 yd of the spot, for 1800 s, self-defence excepted; needs Rotation.UnreachableGiveUp (UnreachableGiveUpPolicy.h)
     bool perfTravelRequestGate = false;  // twow-repo#541 (audit A18): travel request triggers skip their condition while the travel target is prepared or active (0 = off)
     bool perfPartyBuffKnownSpellGate = false;  // twow-repo#541 (audit A22): five party buff/cure triggers skip their party scan while the bot knows no rank of the action's spell (0 = off)
     bool perfLazyEngineInit = false;  // twow-repo#541 (audit A21): a strategy change rebuilds an engine that is not running (idle combat/non-combat, dead) only when it is activated (0 = off)
@@ -988,13 +990,13 @@ public:
     // once at boot, fail closed; "" = no file I/O, no line, no table (the planner then has no zone term).
     std::string plannerBandTable;
     // A3 step 3 planner P-2b (A3-S3-PLANER-ENTWURF.md v0.3 section 8, frozen d6e51878; AiPlayerbot.Planner, default 0): 0 off,
-    // 1 shadow (the planner plans and counts, writes nothing), 2 the plan pick acts (P-3; until then 2 is read as 1). Above 2 is
+    // 1 shadow (the planner plans and counts, writes nothing), 2 the plan pick acts (P-3a, for plannerWriteCohort). Above 2 is
     // off. The parameters below are the PREREG's; the defaults are the draft's proposals.
     uint32 planner = 0;
     float plannerMargin = 15.0f;
     uint32 plannerMinBindSec = 120;
     uint32 plannerMaxIdleSec = 300;
-    uint32 plannerMinDwellSec = 120;   // P-3: the QUEST/GRIND dwell of Decide(..., Requester::Planner); read, echoed, unused in P-2
+    uint32 plannerMinDwellSec = 120;   // P-3a: the QUEST -> GRIND dwell of Decide(..., Requester::Planner) (writing bots)
     uint32 plannerMaxCandidates = 32;
     uint32 plannerBudgetMs = 2;
     uint32 plannerDeadWaitMaxSec = 600;
@@ -1012,6 +1014,16 @@ public:
     uint32 plannerRepeatableMaxPerHour = 1;
     float plannerRelocMinYards = 60.0f;
     float plannerRelocSlack = 1.5f;
+    // A3 step 3 planner P-3a (P3-ENTWURF-v0.2 section 8, OB-00 F2 (a); AiPlayerbot.Planner.WriteCohort, default 0): which bots
+    // write at Planner = 2 (the shared cohort parity rule: 0 none, 1 all, 2 cohort B, 3 cohort A; above 3 is 0 with an error
+    // line). Planner = 2 alone writes nothing; a bot that does not write behaves as at Planner = 1.
+    uint32 plannerWriteCohort = 0;
+    // A3 R9 / R2 wiring pair R9-2 (twow-repo#575, R9-REPLAN-INTERFACE v5, R9-PREREG C2; default 0): the progress meter in the
+    // planner tick (needs AiPlayerbot.Supervisor and AiPlayerbot.Planner >= 1). Replan is a cohort mode: 0 off, 1 all, 2 cohort
+    // B, 3 cohort A (the active arm, shadow=0); above 3 is off. Replan.Shadow 0/1: 1 runs the meter in shadow for every other
+    // bot; above 1 is off. Lines and counters only until P-3 applies a verdict.
+    uint32 replan = 0;
+    uint32 replanShadow = 0;
     // A3 step 5 (ADR-0041, OB-00 07.11.2026): the combat rule (CombatRulePolicy.h, CombatRule.cpp), one switch per part.
     // HealerStart: a holy paladin / restoration druid may attack like a healer with "offdps" (their contexts have no offdps
     // creator, so the healer gate refused every attack). 0 off (default, the old rule), 1 all, 2 cohort B, 3 cohort A; other = 0.
@@ -1150,7 +1162,7 @@ public:
     // failures from at least Bots distinct roster bots within WindowSeconds and no credit of its quest since is skipped for Seconds;
     // any credit of the quest clears it. Mode 0 off (default), 1 all, 2 cohort B, 3 cohort A (crossover arm, OB-00 31.10.2026) - the skip
     // only; failures of every bot count.
-    uint32 questFirstProgressionStaleObjectiveFilter = 0;
+    uint32 questFirstProgressionStaleObjectiveFilter = 1;  // default 1 since the owner adoption 04.11.2026 (twow-repo#601); 0 = rollback
     uint32 questFirstProgressionStaleObjectiveFailures = 4;       // 1..8
     uint32 questFirstProgressionStaleObjectiveBots = 3;           // 1..8
     uint32 questFirstProgressionStaleObjectiveWindowSeconds = 3600;

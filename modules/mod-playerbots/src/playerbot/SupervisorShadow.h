@@ -128,6 +128,10 @@ bool OnOwnThread(PlayerbotAI const* ai);
 // A3 step 3 T02-GROUP (gate_offthread, design 7.12): the tag of the calling thread (Bot = some bot's map update, World, None).
 ThreadKind CurrentThreadKind();
 
+// A3 step 3 planner P-3a (P3-ENTWURF-v0.2 section 6.3): [ArbiterMin] ends with plan= while on (AiPlayerbot.Planner = 2). Set by
+// the config load (PlayerbotAIConfig::Initialize), read when the minute rolls; off (the default) keeps the line byte-identical.
+void SetArbiterPlanField(bool on);
+
 // The enforcement counters of the [ArbiterMin] minute (SupervisorPolicy.h ArbiterMinute), per cohort, under the shadow's mutex.
 // Counted only while a shadow minute runs (enforcement implies the shadow, 2 >= 1).
 // A3 step 3 T02-GROUP (AiPlayerbot.Supervisor.Arbiter = 2, BotGroups.Manager.Types > 0; default 0): the three gate_off_* fields

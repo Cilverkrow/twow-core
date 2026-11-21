@@ -26,22 +26,10 @@ Counters& Slot(std::uint8_t cls, bool cohortB)
 
 namespace ai::rest_gate_rt
 {
-void RecordEpisode(std::uint8_t cls, bool cohortB, End end, std::uint32_t durMs)
+void RecordEpisode(std::uint8_t cls, bool cohortB, ai::rest_gate::Closed const& closed)
 {
     std::lock_guard<std::mutex> lock(g_mutex);
-    Counters& c = Slot(cls, cohortB);
-    ++c.episodes;
-    c.restMs += durMs;
-    if (end == End::Done)
-        ++c.done;
-    else if (end == End::Combat)
-        ++c.combat;
-    else if (end == End::Death)
-        ++c.death;
-    else if (end == End::Stale)
-        ++c.stale;
-    else if (end == End::Timeout)
-        ++c.timeout;
+    ai::rest_gate::Count(Slot(cls, cohortB), closed);
 }
 
 void RecordCastFail(std::uint8_t cls, bool cohortB)

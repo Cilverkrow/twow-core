@@ -46,6 +46,7 @@ inline WriterLane LaneOfWriter(WriterId writer)
         case WriterId::Brain:
         case WriterId::GroupFollow:
         case WriterId::Errand:
+        case WriterId::Planner:   // A3 step 3 planner P-3a: the rank of Select (OB-00 20.11. F1 (a)), no own lane
             return {false, Lane::Questbook};
         case WriterId::Group:
             return {false, Lane::Group};

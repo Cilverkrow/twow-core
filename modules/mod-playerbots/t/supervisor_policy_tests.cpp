@@ -257,6 +257,23 @@ void TestFormatters()
         "fb=band_table_off margin=15 cut=2 skip=3 planner_limit=- wait=0 cycles=0 relocate_src=unknown floor=ok hold=switch "
         "write=0 ms=1") != std::string::npos && full.back() == '1', "planner line tail");
     Require(full.size() < 700, "the planner line fits the 1024 buffer with room for a 40 char kind and alternatives");
+
+    // A3 step 3 planner P-3a: the [Plan] format is unchanged (byte golden of the default line); P-3a only fills write=1, fb=cohort
+    // and the ev=mode line with the existing fields.
+    PlanLine g;
+    FormatPlanLine(big, sizeof(big), g);
+    Require(std::string(big) == "[Plan] bot=0 cohort=A arbiter=0 mode=QUEST pick=-:0:0 value=0.00 xpm=0.0 route_s=0 work_s=0 "
+        "rest_s=0 danger=0.00 turnin=0 brain=0 reason=- cands=0 alt1=- alt2=- alt3=- blocked=0 budget_ms=0 lvl=0 zone=0 band=0 "
+        "tier=- ev=- route=est fb=- margin=0 cut=0 skip=0 planner_limit=- wait=0 cycles=0 relocate_src=- floor=- hold=- write=0 ms=0",
+        "P-3a: the [Plan] golden line");
+    g.mode = Mode::Grind;
+    g.ev = "mode";
+    g.fb = "cohort";
+    g.write = 1;
+    FormatPlanLine(big, sizeof(big), g);
+    std::string const p3(big);
+    Require(p3.find(" mode=GRIND ") != std::string::npos && p3.find(" ev=mode ") != std::string::npos &&
+        p3.find(" fb=cohort ") != std::string::npos && p3.find(" write=1 ms=0") != std::string::npos, "P-3a: write=1, fb=cohort, ev=mode");
 }
 
 // Behaviour pair 1 (AiPlayerbot.Supervisor.Arbiter): the arbiter shadow's pure rules.
@@ -271,11 +288,14 @@ void TestArbiter()
 {
     Require(ValidArbiter(0) && ValidArbiter(1) && ValidArbiter(2), "arbiter 0, 1 and 2 (enforce) are valid");
     Require(!ValidArbiter(3) && !ValidArbiter(0xFFFFFFFFu), "arbiter 3 and above are off");
-    Require(kWriterIds == 12 && std::string(WriterName(WriterId::Group)) == "Group" &&
+    Require(kWriterIds == 13 && std::string(WriterName(WriterId::Group)) == "Group" &&
         std::string(WriterName(WriterId::Errand)) == "Errand", "A3 step 3 T02-a: Group and Errand writer names");
     Require(std::size_t(WriterId::Test) == 9 && std::size_t(WriterId::Group) == 10 && std::size_t(WriterId::Errand) == 11,
         "existing writer ids stay, Group = 10, Errand = 11");
     Require(CloserIsLine(WriterId::Group) && !CloserIsLine(WriterId::Errand), "Group closes with a line, Errand like Lifecycle");
+    // A3 step 3 planner P-3a: WriterId::Planner is appended (12), named, closes like Errand (no line: the planner writes its own).
+    Require(std::size_t(WriterId::Planner) == 12 && std::string(WriterName(WriterId::Planner)) == "Planner" &&
+        !CloserIsLine(WriterId::Planner), "P-3a: the Planner writer id 12");
 
     Require(IsOpen(kStatusReady, false) && IsOpen(kStatusTravel, false) && IsOpen(kStatusWork, false), "ready, travel, work are open");
     Require(IsOpen(kStatusCooldown, false), "a cooldown is no end");
@@ -429,6 +449,19 @@ void TestArbiter()
     Require(minN == 643 && minN == std::strlen(wide) && minN + 1 < sizeof(wide), "the longest minute line (643) fits 768, not cut");
     Require(std::string(wide).find(" gate_off_bot=4294967295") == minN - std::strlen(" gate_off_bot=4294967295"),
         "the longest minute line ends with the last field");
+    // A3 step 3 planner P-3a (Planner = 2 only): " plan=" (family Planner) ends the line; without planField the line above is
+    // byte-identical (643, and the golden line of m further up).
+    full.planField = true;
+    std::size_t const planN = FormatArbiterMin(wide, sizeof(wide), 'B', full);
+    Require(planN == 659 && planN == std::strlen(wide) && planN + 1 < sizeof(wide), "P-3a: the longest minute line (659) fits 768");
+    Require(std::string(wide).compare(planN - 16, 16, " plan=4294967295") == 0, "P-3a: plan= ends the line");
+    ArbiterMinute pm = m;
+    pm.family[std::size_t(WriterId::Planner)] = 5;
+    FormatArbiterMin(buf, sizeof(buf), 'B', pm);
+    Require(std::string(buf) == min, "P-3a: Planner 0 / 1 (no planField): the line is byte-identical, plan= not printed");
+    pm.planField = true;
+    FormatArbiterMin(buf, sizeof(buf), 'B', pm);
+    Require(std::string(buf) == min + " plan=5", "P-3a: Planner = 2: the same line with plan=5 appended");
 
     // Buffers: cut and terminated, a zero buffer writes nothing, no line break survives.
     char small[16];
@@ -478,7 +511,7 @@ void TestArbiterLanes()
     Require(std::string(LaneName(Lane::None)) == "none" && std::string(LaneName(Lane::Questbook)) == "questbook" &&
         std::string(LaneName(Lane::Group)) == "group" && std::string(LaneName(Lane::Command)) == "command", "lane names");
 
-    // LaneOfWriter, every id 0..11 and beyond.
+    // LaneOfWriter, every id 0..12 and beyond (P-3a: Planner in the quest book lane, OB-00 20.11. F1 (a)).
     struct Row { WriterId w; bool neutral; Lane lane; };
     Row const rows[] = {
         {WriterId::Unknown, false, Lane::None}, {WriterId::Select, false, Lane::Questbook},
@@ -487,6 +520,7 @@ void TestArbiterLanes()
         {WriterId::GroupFollow, false, Lane::Questbook}, {WriterId::Command, true, Lane::None},
         {WriterId::Brain, false, Lane::Questbook}, {WriterId::Test, false, Lane::None},
         {WriterId::Group, false, Lane::Group}, {WriterId::Errand, false, Lane::Questbook},
+        {WriterId::Planner, false, Lane::Questbook},
     };
     Require(sizeof(rows) / sizeof(rows[0]) == kWriterIds, "the table covers every writer id");
     for (std::size_t i = 0; i < kWriterIds; ++i)

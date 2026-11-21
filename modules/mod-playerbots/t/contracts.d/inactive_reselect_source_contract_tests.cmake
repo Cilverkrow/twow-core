@@ -105,10 +105,10 @@ require_order("${refresh}" "if (target->IsInactiveReselectMarked(oldDestination)
 #    choice takes the pending flag once (any purpose, also an invalid list) BEFORE it sets the status to NONE - the status can not
 #    tell it any more (pre-review 26.10.: a check on EXPIRED never held there).
 require_text("${travel_h}" "bool TakeInactiveReselectPending() { bool const pending = inactiveReselectPending; inactiveReselectPending = false; return pending; }" "taken once")
-between("${choose}" "bool ChooseTravelTargetAction::Execute(Event& event)" "if (!SetBestTarget(requester, &newTarget, destinationList, true, travelTarget))" execute_head)
+between("${choose}" "bool ChooseTravelTargetAction::Execute(Event& event)" "if (!planFeed.fed && !SetBestTarget(requester, &newTarget, destinationList, true, travelTarget))" execute_head)
 require_text("${execute_head}" "travelTarget->TakeInactiveReselectPending();   // twow-repo#601 (QuestLoop.InactiveReselect): no stale fallback\n        travelTarget->SetStatus(TravelStatus::TRAVEL_STATUS_NONE);" "an invalid list drops the flag")
 require_text("${execute_head}" "bool const reselectPending = travelTarget->TakeInactiveReselectPending();\n    travelTarget->SetStatus(TravelStatus::TRAVEL_STATUS_NONE);" "taken before the status goes to NONE")
-between("${choose}" "if (!SetBestTarget(requester, &newTarget, destinationList, true, travelTarget))" "SET_AI_VALUE2(bool, \"no active travel destinations\", futureTravelPurpose, true);" no_target)
+between("${choose}" "if (!planFeed.fed && !SetBestTarget(requester, &newTarget, destinationList, true, travelTarget))" "SET_AI_VALUE2(bool, \"no active travel destinations\", futureTravelPurpose, true);" no_target)
 require_order("${no_target}" "if (chooseBudgetExceeded)\n            return false;" "if (reselectPending && futureTravelPurpose == \"quest\" && travelTarget->FallBackToInactiveCooldown())" "quest choice right after the camp only")
 require_text("${no_target}" "\"inactive_reselect_fallback\", lastRejects.Format()" "rejected line names the fallback")
 require_text("${no_target}" "lastRejects.Format() + ai::contested_objective::FormatSources(lastSuppressSources));\n            return false;\n        }" "returns before widening")

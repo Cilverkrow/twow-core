@@ -140,6 +140,7 @@ enum class WriterId : std::uint8_t
     Test,
     Group,    // A3 step 3 T02-a: the group lane (AiPlayerbot.Supervisor.Arbiter = 2, default 0)
     Errand,   // A3 step 3 T02-a: the close-then-request errands (petition, guild trip, profession trip, station craft)
+    Planner,  // A3 step 3 planner P-3a: the planner's expire of the live target (PlannerWrite.cpp; AiPlayerbot.Planner = 2)
 };
 
 inline char const* ModeName(Mode mode)
@@ -583,7 +584,8 @@ inline bool IsOpen(std::uint8_t status, bool nullDest)
     return !nullDest && (status == kStatusReady || status == kStatusTravel || status == kStatusWork || status == kStatusCooldown);
 }
 
-constexpr std::size_t kWriterIds = 12;
+constexpr std::size_t kWriterIds = 13;   // A3 step 3 planner P-3a: WriterId::Planner is the 13th
+static_assert(std::size_t(WriterId::Planner) + 1 == kWriterIds, "every WriterId is below kWriterIds");
 
 inline char const* WriterName(WriterId writer)
 {
@@ -601,6 +603,7 @@ inline char const* WriterName(WriterId writer)
         case WriterId::Test: return "Test";
         case WriterId::Group: return "Group";
         case WriterId::Errand: return "Errand";
+        case WriterId::Planner: return "Planner";
     }
     return "Unknown";
 }
@@ -959,6 +962,9 @@ struct ArbiterMinute
     std::uint32_t gateOffNone = 0;
     std::uint32_t gateOffBot = 0;
     ArbiterGrpMinute grp;   // the [ArbiterGrp] line of the same minute
+    // A3 step 3 planner P-3a (P3-ENTWURF-v0.2 section 6.3): set when the minute rolls at AiPlayerbot.Planner = 2; then the line
+    // ends with plan= (family Planner). Planner 0 / 1: the line is byte-identical.
+    bool planField = false;
 };
 
 inline void CountBundle(ArbiterMinute& m, Bundle const& b)
@@ -991,7 +997,11 @@ inline std::size_t FormatArbiterMin(char* buf, std::size_t n, char cohort, Arbit
         f(WriterId::GroupFollow), f(WriterId::Command), f(WriterId::Brain), f(WriterId::Test), f(WriterId::Group),
         f(WriterId::Errand), m.deny, m.denyProbe, m.heldRequest, m.heldErrand, m.probePass, m.probeFail, m.probeShadow,
         m.depthOverflow, m.gateOffWorld, m.gateOffNone, m.gateOffBot);
-    return Sanitize(buf, w, n);
+    std::size_t const len = Sanitize(buf, w, n);
+    if (!m.planField || len + 1 >= n)
+        return len;
+    int const p = std::snprintf(buf + len, n - len, " plan=%u", f(WriterId::Planner));
+    return len + Sanitize(buf + len, p, n - len);
 }
 
 // T02-GROUP: "[ArbiterGrp] cohort=<c>" and then " name=<value>" for every GrpField in enum order (kArbiterGrpBuf fits all fields
