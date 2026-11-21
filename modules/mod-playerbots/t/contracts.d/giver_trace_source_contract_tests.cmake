@@ -87,7 +87,8 @@ require_text("${possible}" "ai::quest_search::GiverDropCounts* const giverDrops 
 require_text("${possible}" "if (!info.GetBoolValue2(\"has strategy\", \"rpg quest\"))\n        return refuse(ai::quest_search::GiverDropStrategy);" "strategy")
 require_text("${possible}" "if (forceThisQuest && !info.IsFocusQuest(GetQuestId()))\n        return refuse(ai::quest_search::GiverDropFocus);" "focus")
 require_text("${possible}" "(int32)info.GetLevel() + (int32)5)\n            return refuse(ai::quest_search::GiverDropQuestLevel);" "quest level")
-require_text("${possible}" "(int32)info.GetLevel() > quest->GetMaxLevel())\n            return refuse(ai::quest_search::GiverDropMinMaxLevel);" "min / max level")
+# twow-repo#738 L03 (QuestGiver.MaxLevelZeroFix): the min / max level rule is keyed (MaxLevel 0 = open with the bit); it is still counted.
+require_text("${possible}" "(int32)info.GetLevel() > quest->GetMaxLevel()))\n            return refuse(ai::quest_search::GiverDropMinMaxLevel);" "min / max level")
 require_text("${possible}" "quest->GetRequiredClasses() != 0))\n            return refuse(ai::quest_search::GiverDropBandGrey);" "band grey")
 require_text("${possible}" "if (quest->GetRequiredCondition())          //So we skip this quest for now.\n                return refuse(ai::quest_search::GiverDropCondition);" "condition")
 count_text("${possible}" "return refuse(ai::quest_search::GiverDropFreeSlots);" 2 "both free slot thresholds")
