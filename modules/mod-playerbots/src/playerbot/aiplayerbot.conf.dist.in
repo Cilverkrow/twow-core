@@ -2204,7 +2204,8 @@ AiPlayerbot.QuestFeasibility.Enable = 0
 # whose required item has no source but profession recipes (no loot, vendor, quest reward or other create spell; built once
 # at start from the world DB + SkillLineAbility.dbc) and does not travel to its giver while it does not hold that item in
 # the required count. Held quests stay (no abandon); bots do not craft for quests yet (W2), so holding the count is the only
-# way in. Restart-only. [QuestCraftOnly] init mode= craft_only_items= quests= once at start, [QuestFeasibility] state=skip
+# way in. The data is built once, at the first start or reload with the key on, and never rebuilt (a later reload logs
+# "init skipped"). [QuestCraftOnly] init mode= craft_only_items= quests= once, [QuestFeasibility] state=skip|held
 # ... reason=craft_only path=accept|giver|held item= held= required= once per bot, quest and path an hour,
 # [QuestCraftOnly] minute skips= giver_inactive= held_craft_only= once a minute.
 # 0 = off (default), 1 = all, 2 = cohort B (odd low guid), 3 = cohort A (even low guid); anything else = off.
