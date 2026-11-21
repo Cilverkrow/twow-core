@@ -421,20 +421,34 @@ private:
 
 // ---- close memory (per quest and source) ----------------------------------------------------------------------------------
 // Close(quest, source, until) is a time-bounded memory (R9 / R4 / R5: 7,200 s), never permanent: permanent only via the QB5 list
-// or a QB2 mark. A full memory replaces the entry that ends first.
+// or a QB2 mark. QB6/QB7 pair (A3 4.5 (8), CLI-Projekt 20.11. Q1-Q3 (a)): the planner's close memory moves here 1:1 later
+// (PlannerShadowPolicy.h MemorySlot / Close):
+// - sourceKey is opaque: the caller's key (the planner's TargetKey(kind, questId, destId)); the book never builds one;
+// - a full memory takes the same quest + key, else the first expired slot in field order, else the slot closed longest ago;
+// - an untilMs not after nowMs (closeMs 0) or reason None is no close;
+// - deadCycles stays with the key when it is closed again (also after it expired) and rises only on Dead (saturates at 255);
+// - closes counts every close of the key the same way (the caller's "2nd close of the same taker -> Park", 06.11. answer 4).
+enum class CloseReason : std::uint8_t
+{
+    None = 0,         // never stored
+    Dead = 1,         // values as planner::CloseReason
+    R9 = 2,
+    Suppressed = 3,
+};
+
 class CloseBook
 {
 public:
     static constexpr std::size_t Slots = 16;
 
-    void Close(std::uint32_t questId, std::uint32_t sourceKey, std::uint32_t untilMs, std::uint8_t reason, std::uint32_t nowMs)
+    void Close(std::uint32_t questId, std::uint32_t sourceKey, std::uint32_t untilMs, std::uint8_t reason, std::uint32_t nowMs,
+        bool dropQuest = false)
     {
-        if (!questId || !Before(nowMs, untilMs))
+        // untilMs - nowMs must be 1 .. 2^31 - 1 ms, so Before() stays exact (fail-closed: no open-ended close)
+        if (!questId || reason == std::uint8_t(CloseReason::None) || !Before(nowMs, untilMs) ||
+            std::uint32_t(untilMs - nowMs) >= 0x80000000u)
             return;
-        Entry* target = nullptr;
-        for (Entry& e : entries_)
-            if (e.questId == questId && e.sourceKey == sourceKey)
-                target = &e;
+        Entry* target = Find(questId, sourceKey);
         if (!target)
             for (Entry& e : entries_)
                 if (!Live(e, nowMs))
@@ -446,24 +460,30 @@ public:
         {
             target = &entries_[0];
             for (Entry& e : entries_)
-                if (Before(e.untilMs, target->untilMs))
+                if (Before(e.closedAtMs, target->closedAtMs))
                     target = &e;
         }
+        bool const same = target->questId == questId && target->sourceKey == sourceKey;
+        std::uint8_t const dead = same ? target->deadCycles : 0;
+        std::uint8_t const closes = same ? target->closes : 0;
         target->questId = questId;
         target->sourceKey = sourceKey;
+        target->closedAtMs = nowMs;
         target->untilMs = untilMs;
         target->reason = reason;
+        target->dropQuest = dropQuest;
+        target->deadCycles = reason == std::uint8_t(CloseReason::Dead) && dead < 255 ? std::uint8_t(dead + 1) : dead;
+        target->closes = closes < 255 ? std::uint8_t(closes + 1) : closes;
     }
 
     bool IsClosed(std::uint32_t questId, std::uint32_t sourceKey, std::uint32_t nowMs) const
     {
-        for (Entry const& e : entries_)
-            if (e.questId == questId && e.sourceKey == sourceKey && Live(e, nowMs))
-                return true;
-        return false;
+        Entry const* e = Find(questId, sourceKey);
+        return e && Live(*e, nowMs);
     }
 
-    // How many of the quest's sources are not closed; 0 means the quest goes to the park slots.
+    // How many of the quest's sources are not closed; 0 means the quest goes to the park slots. The caller passes its candidate
+    // keys (the book has no source list before QB1 / QB3; CLI-Projekt 20.11. Q1 (a)).
     std::size_t OpenSources(std::uint32_t questId, std::uint32_t const* sources, std::size_t n, std::uint32_t nowMs) const
     {
         std::size_t open = 0;
@@ -473,14 +493,56 @@ public:
         return open;
     }
 
+    // The key's counters while its slot is held (also after the close expired); 0 for a key the memory does not hold.
+    std::uint8_t DeadCycles(std::uint32_t questId, std::uint32_t sourceKey) const
+    {
+        Entry const* e = Find(questId, sourceKey);
+        return e ? e->deadCycles : 0;
+    }
+
+    std::uint8_t Closes(std::uint32_t questId, std::uint32_t sourceKey) const
+    {
+        Entry const* e = Find(questId, sourceKey);
+        return e ? e->closes : 0;
+    }
+
+    // A live close of the quest asked to drop it (QB8: the later left-log label; the label itself comes with the caller).
+    bool DropRequested(std::uint32_t questId, std::uint32_t nowMs) const
+    {
+        for (Entry const& e : entries_)
+            if (e.questId == questId && e.dropQuest && Live(e, nowMs))
+                return true;
+        return false;
+    }
+
 private:
     struct Entry
     {
         std::uint32_t questId = 0;
         std::uint32_t sourceKey = 0;
+        std::uint32_t closedAtMs = 0;
         std::uint32_t untilMs = 0;
         std::uint8_t reason = 0;
+        std::uint8_t deadCycles = 0;
+        std::uint8_t closes = 0;
+        bool dropQuest = false;
     };
+
+    Entry* Find(std::uint32_t questId, std::uint32_t sourceKey)
+    {
+        for (Entry& e : entries_)
+            if (e.questId && e.questId == questId && e.sourceKey == sourceKey)
+                return &e;
+        return nullptr;
+    }
+
+    Entry const* Find(std::uint32_t questId, std::uint32_t sourceKey) const
+    {
+        for (Entry const& e : entries_)
+            if (e.questId && e.questId == questId && e.sourceKey == sourceKey)
+                return &e;
+        return nullptr;
+    }
 
     static bool Live(Entry const& e, std::uint32_t nowMs)
     {
@@ -488,6 +550,99 @@ private:
     }
 
     Entry entries_[Slots];
+};
+
+// ---- QB6 / QB7 episode (A3 4.5 (8); QB-S3-ANTWORT-20261106.md section 5) ---------------------------------------------------
+// One episode per bot: QB6 (use a GO, then turn in to / accept from a summoned NPC while it lives) or QB7 (escort). While an
+// episode is active the planner does not re-plan. Fail-closed: every episode has a hard end; there is no lock without one.
+// - Start refuses quest 0, kind None, a duration of 0 and a second live episode (a restart needs End first); a duration above
+//   MaxEpisodeMs is cut to it.
+// - The end is checked as "elapsed since start < duration" (unsigned: exact across the getMSTime wrap for spans below ~49 days);
+//   an episode found expired is cleared on that look.
+// - Advance changes only the stage of the live episode of the same quest; it never moves the end.
+// - End(quest, why) clears that quest's episode (live or expired) and keeps the reason for the caller's line.
+enum class EpisodeKind : std::uint8_t
+{
+    None = 0,
+    GoSummon = 1,   // QB6
+    Escort = 2,     // QB7
+};
+
+enum class EpisodeEnd : std::uint8_t
+{
+    None = 0,
+    QuestComplete = 1,
+    QuestFailed = 2,
+    NpcDead = 3,
+    TooFar = 4,
+    Death = 5,            // the bot died
+    CombatLoop = 6,       // R8
+    GroupDirective = 7,
+    Expired = 8,
+};
+
+constexpr std::uint32_t MaxEpisodeMs = 7200000;   // 2 h: the hard cap of any episode (QB7 without a quest time limit included)
+
+struct Episode
+{
+    std::uint32_t questId = 0;
+    EpisodeKind kind = EpisodeKind::None;
+    std::uint8_t stage = 0;
+    std::uint32_t untilMs = 0;   // startMs + durationMs (for the lines; the check uses the elapsed time)
+};
+
+class EpisodeBook
+{
+public:
+    bool Start(std::uint32_t questId, EpisodeKind kind, std::uint32_t durationMs, std::uint32_t nowMs)
+    {
+        if (!questId || kind == EpisodeKind::None || !durationMs || Active(nowMs))
+            return false;
+        std::uint32_t const d = durationMs < MaxEpisodeMs ? durationMs : MaxEpisodeMs;
+        cur_ = Episode{questId, kind, 0, nowMs + d};
+        startMs_ = nowMs;
+        durationMs_ = d;
+        lastEnd_ = EpisodeEnd::None;
+        return true;
+    }
+
+    bool Advance(std::uint32_t questId, std::uint8_t stage, std::uint32_t nowMs)
+    {
+        Episode const* e = Active(nowMs);
+        if (!e || e->questId != questId)
+            return false;
+        cur_.stage = stage;
+        return true;
+    }
+
+    bool End(std::uint32_t questId, EpisodeEnd why)
+    {
+        if (!questId || cur_.questId != questId)
+            return false;
+        cur_ = Episode{};
+        lastEnd_ = why;
+        return true;
+    }
+
+    // nullptr when there is none or it reached its end.
+    Episode const* Active(std::uint32_t nowMs) const
+    {
+        if (!cur_.questId)
+            return nullptr;
+        if (std::uint32_t(nowMs - startMs_) < durationMs_)
+            return &cur_;
+        cur_ = Episode{};
+        lastEnd_ = EpisodeEnd::Expired;
+        return nullptr;
+    }
+
+    EpisodeEnd LastEnd() const { return lastEnd_; }
+
+private:
+    mutable Episode cur_;
+    mutable EpisodeEnd lastEnd_ = EpisodeEnd::None;
+    std::uint32_t startMs_ = 0;
+    std::uint32_t durationMs_ = 0;
 };
 
 // ---- QB8 detection: which quests left the log between two snapshots ---------------------------------------------------------

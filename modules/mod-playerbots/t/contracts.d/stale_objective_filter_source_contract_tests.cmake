@@ -63,13 +63,13 @@ read_source("strategy/actions/ChooseTravelTargetAction.h" choose_h)
 read_source("strategy/actions/QuestAction.cpp" quest_action)
 
 # 1. Keys: neutral default, an unknown mode is off, parameters clamped, documented, echoed.
-require_text("${config_h}" "uint32 questFirstProgressionStaleObjectiveFilter = 0;" "member default off")
-require_text("${config_cpp}" "questFirstProgressionStaleObjectiveFilter = config.GetIntDefault(\"AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter\", 0);" "default 0")
+require_text("${config_h}" "uint32 questFirstProgressionStaleObjectiveFilter = 1;" "member default 1 (owner adoption 04.11.2026)")
+require_text("${config_cpp}" "questFirstProgressionStaleObjectiveFilter = config.GetIntDefault(\"AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter\", 1);" "default 1 (owner adoption 04.11.2026; 0 = rollback)")
 require_text("${config_cpp}" "if (questFirstProgressionStaleObjectiveFilter > 3)" "unknown mode checked (3 = cohort A, the crossover arm)")
 require_text("${config_cpp}" "std::min<uint32>(8, uint32(std::max<int32>(1, config.GetIntDefault(\"AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter.Failures\", 4))))" "failures 1..8, default 4")
 require_text("${config_cpp}" "std::min<uint32>(8, uint32(std::max<int32>(1, config.GetIntDefault(\"AiPlayerbot.QuestFirstProgression.StaleObjectiveFilter.Bots\", 3))))" "bots 1..8, default 3")
 require_text("${config_cpp}" "{\"QuestFirstProgression.StaleObjectiveFilter\", Value(questFirstProgressionStaleObjectiveFilter)}," "ConfigEcho entry")
-require_text("${conf_dist}" "\nAiPlayerbot.QuestFirstProgression.StaleObjectiveFilter = 0\n" "documented off")
+require_text("${conf_dist}" "\nAiPlayerbot.QuestFirstProgression.StaleObjectiveFilter = 1\n" "documented default 1")
 require_text("${conf_dist}" "\nAiPlayerbot.QuestFirstProgression.StaleObjectiveFilter.Failures = 4\n" "documented failures")
 require_text("${conf_dist}" "\nAiPlayerbot.QuestFirstProgression.StaleObjectiveFilter.Bots = 3\n" "documented bots")
 

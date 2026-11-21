@@ -401,6 +401,15 @@ inline StuckDetailLimit& IdleDetailGlobal()
     return limit;
 }
 
+// twow-repo#601 (AiPlayerbot.ActivityTrace.GrindIdleDetail, OB-00 20.11.2026): a grind_idle episode (IdleEpisode with idle =
+// kind GrindIdle, IdleDetailSamples samples in a row) writes one [GrindIdleDetail] start line within this budget of
+// StuckDetailPerMinute lines a minute, and its end line outside it (at most one end per start). Log only.
+inline StuckDetailLimit& GrindIdleDetailGlobal()
+{
+    static StuckDetailLimit limit;
+    return limit;
+}
+
 // What the bot's pending travel destination search is doing: "none" (no search job), "pending" (running), "ready" (done, not
 // yet taken by the choose action).
 inline char const* FetchStateName(bool valid, bool ready)

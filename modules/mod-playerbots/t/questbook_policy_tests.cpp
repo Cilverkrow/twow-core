@@ -202,6 +202,87 @@ int main()
         Require(c.IsClosed(77, 1, 1000), "a full memory still takes a new close");
     }
 
+    // 9b) QB6/QB7 pair: the close memory follows the planner's rule 1:1 (PlannerShadowPolicy.h Close; CLI-Projekt 20.11. Q3 (a)).
+    {
+        std::uint8_t const dead = std::uint8_t(CloseReason::Dead), r9 = std::uint8_t(CloseReason::R9);
+        Require(dead == 1 && r9 == 2 && std::uint8_t(CloseReason::Suppressed) == 3 && std::uint8_t(CloseReason::None) == 0,
+            "reason values as planner::CloseReason");
+        CloseBook c;
+        c.Close(5, 11, 9000, std::uint8_t(CloseReason::None), 1000);
+        Require(!c.IsClosed(5, 11, 1000) && c.Closes(5, 11) == 0, "reason None is no close");
+        c.Close(5, 11, 1000, r9, 1000);
+        Require(!c.IsClosed(5, 11, 1000), "untilMs == nowMs (closeMs 0) is no close");
+        c.Close(0, 11, 9000, r9, 1000);
+        Require(!c.IsClosed(0, 11, 1000), "quest 0 is no close");
+        c.Close(5, 11, 1000 + 0x80000000u, r9, 1000);
+        Require(!c.IsClosed(5, 11, 1000), "a span of 2^31 ms or more is no close (fail-closed, never open-ended)");
+
+        // deadCycles: +1 only on Dead, kept on the same key across other reasons and after the close expired.
+        c.Close(5, 11, 3000, dead, 1000);
+        Require(c.IsClosed(5, 11, 2999) && c.DeadCycles(5, 11) == 1 && c.Closes(5, 11) == 1, "first dead close");
+        c.Close(5, 11, 9000, r9, 2000);
+        Require(c.DeadCycles(5, 11) == 1 && c.Closes(5, 11) == 2, "another reason keeps deadCycles, closes counts");
+        c.Close(5, 11, 20000, dead, 10000);   // the previous close expired at 9000
+        Require(c.DeadCycles(5, 11) == 2 && c.Closes(5, 11) == 3, "the counters survive an expired close of the same key");
+        Require(c.DeadCycles(5, 12) == 0 && c.Closes(6, 11) == 0, "other keys / quests have no counters");
+        Require(!c.DropRequested(5, 10000), "no drop asked");
+        c.Close(5, 12, 20000, r9, 10000, true);
+        Require(c.DropRequested(5, 19999) && !c.DropRequested(5, 20000) && !c.DropRequested(6, 10000), "drop asked while live");
+
+        // A full memory: the same key first, else the first expired slot in field order, else the slot closed longest ago.
+        CloseBook f;
+        for (std::uint32_t i = 0; i < CloseBook::Slots; ++i)
+            f.Close(100 + i, 1, i == 0 ? 60000 : 40000 + i * 100, r9, 1000 + i * 10);   // 100: closed first, ends last; 101 ends first
+        f.Close(200, 1, 60000, r9, 2000);
+        Require(f.IsClosed(200, 1, 2000) && !f.IsClosed(100, 1, 2000) && f.IsClosed(101, 1, 2000),
+            "no expired slot: the oldest closedAtMs goes (not the one that ends first)");
+        CloseBook g;
+        for (std::uint32_t i = 0; i < CloseBook::Slots; ++i)
+            g.Close(100 + i, 1, (i == 3 || i == 7) ? 1500 : 50000, r9, 1000);
+        g.Close(300, 1, 60000, r9, 2000);   // slots 3 and 7 expired at 1500: slot 3 (first in field order) is taken
+        Require(g.IsClosed(300, 1, 2000) && g.Closes(103, 1) == 0 && g.Closes(107, 1) == 1,
+            "the first expired slot in field order is taken");
+        g.Close(110, 1, 70000, r9, 3000);
+        Require(g.Closes(110, 1) == 2 && g.IsClosed(110, 1, 69999), "the same key is updated in place");
+        CloseBook s;
+        for (std::uint32_t i = 0; i < 300; ++i)
+            s.Close(9, 1, 5000 + i, dead, 1000 + i);
+        Require(s.DeadCycles(9, 1) == 255 && s.Closes(9, 1) == 255, "counters saturate at 255");
+    }
+
+    // 9c) QB6/QB7 episode: one, with a hard end (fail-closed).
+    {
+        EpisodeBook e;
+        Require(!e.Active(1000), "none at start");
+        Require(!e.Start(0, EpisodeKind::Escort, 60000, 1000), "quest 0 refused");
+        Require(!e.Start(80395, EpisodeKind::None, 60000, 1000), "kind None refused");
+        Require(!e.Start(80395, EpisodeKind::GoSummon, 0, 1000), "duration 0 refused (no lock without an end)");
+        Require(e.Start(80395, EpisodeKind::GoSummon, 90000, 1000), "QB6 started");
+        Episode const* a = e.Active(1000);
+        Require(a && a->questId == 80395 && a->kind == EpisodeKind::GoSummon && a->stage == 0 && a->untilMs == 91000, "active");
+        Require(!e.Start(4261, EpisodeKind::Escort, 60000, 2000), "a second live episode is refused");
+        Require(!e.Advance(4261, 1, 2000) && e.Advance(80395, 1, 2000) && e.Active(2000)->stage == 1,
+            "advance only the live episode of the same quest");
+        Require(e.Active(90999) && e.Active(90999)->untilMs == 91000, "advance never moves the end");
+        Require(!e.Active(91000) && e.LastEnd() == EpisodeEnd::Expired, "the hard end; found expired = cleared, reason Expired");
+        Require(!e.Advance(80395, 2, 91000) && !e.End(80395, EpisodeEnd::QuestComplete), "nothing left after the end");
+
+        Require(e.Start(4261, EpisodeKind::Escort, 10000000, 100000), "QB7 started with a too long duration");
+        Require(e.Active(100000) && e.Active(100000)->untilMs == 100000 + MaxEpisodeMs, "cut to MaxEpisodeMs");
+        Require(e.Active(100000 + MaxEpisodeMs - 1) && !e.Active(100000 + MaxEpisodeMs), "the cap is the end");
+
+        Require(e.Start(4261, EpisodeKind::Escort, 60000, 200000), "restart after the end");
+        Require(!e.End(5944, EpisodeEnd::NpcDead) && e.Active(200001), "End of another quest does nothing");
+        Require(e.End(4261, EpisodeEnd::NpcDead) && !e.Active(200001) && e.LastEnd() == EpisodeEnd::NpcDead, "End with reason");
+
+        EpisodeBook w;   // across the getMSTime wrap
+        Require(w.Start(7, EpisodeKind::Escort, 60000, 0xFFFFF000u), "start just before the wrap");
+        Require(w.Active(0xFFFFF000u + 59999u) && !w.Active(0xFFFFF000u + 60000u), "exact end across the wrap");
+        EpisodeBook z;   // an episode nobody looked at for a long time stays over (no wrap back to active within ~49 days)
+        Require(z.Start(8, EpisodeKind::GoSummon, 60000, 1000), "start");
+        Require(!z.Active(61000u + 0x80000000u), "2^31 ms after the end (where a Before() check would wrap back to active): not active");
+    }
+
     // 10) QB8 diff.
     {
         std::uint32_t const prev[4] = {1, 2, 3, 0};
