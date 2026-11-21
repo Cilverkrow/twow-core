@@ -7,8 +7,13 @@
 #include "playerbot/RandomPlayerbotMgr.h"
 #include "playerbot/RidingStagesBotPolicy.h"
 #include "playerbot/TrainableSpellsPrecheckPolicy.h"
+#include "playerbot/TrainerSpellKeyPolicy.h"
 
 using namespace ai;
+
+static_assert(ai::trainer_spell_key::TypeClass == TRAINER_TYPE_CLASS && ai::trainer_spell_key::TypeMounts == TRAINER_TYPE_MOUNTS &&
+    ai::trainer_spell_key::TypeTradeskills == TRAINER_TYPE_TRADESKILLS && ai::trainer_spell_key::TypePets == TRAINER_TYPE_PETS,
+    "TrainerSpellKeyPolicy.h mirrors the core TrainerType values");
 
 namespace
 {
@@ -63,14 +68,26 @@ trainableSpellMap* TrainableSpellMapValue::Calculate()
 
         TrainerType trainerType = (TrainerType)firstTrainer->TrainerType;
 
-        uint32 spellRequirement;
-        if (trainerType == TRAINER_TYPE_CLASS || trainerType == TRAINER_TYPE_PETS)
-            spellRequirement = firstTrainer->TrainerClass;
-        else if (trainerType == TRAINER_TYPE_MOUNTS)
-            spellRequirement = firstTrainer->TrainerRace;
-
         for (auto& [id, trainerSpell] : trainer_spells->spellList)
         {
+            // AUDIT-L03 B7: the bucket key is set per spell before the dedup loop reads (*spellMap)[trainerType][key]
+            // (tradeskills read it uninitialised / stale before; TrainerSpellKeyPolicy.h).
+            uint32 learnedSkill = 0;
+            if (ai::trainer_spell_key::NeedsLearnedSkill(trainerType, trainerSpell.reqSkill))
+            {
+                // exist, already checked at loading
+#ifdef MANGOSBOT_ZERO
+                SpellEntry const* spell = sSpellTemplate.LookupEntry<SpellEntry>(trainerSpell.learnedSpell);
+#else
+                SpellEntry const* spell = sSpellTemplate.LookupEntry<SpellEntry>(trainerSpell.learnedSpell[0]);
+#endif
+
+                learnedSkill = spell->EffectMiscValue[1];
+            }
+
+            const uint32 spellRequirement = ai::trainer_spell_key::Requirement(trainerType, firstTrainer->TrainerClass,
+                firstTrainer->TrainerRace, trainerSpell.reqSkill, learnedSkill);
+
             const TrainerSpell* sameTrainerSpell = &trainerSpell;
             for (auto& [otherTrainerSpell, trainers] : (*spellMap)[trainerType][spellRequirement])
             {
@@ -101,23 +118,6 @@ trainableSpellMap* TrainableSpellMapValue::Calculate()
 
                 sameTrainerSpell = otherTrainerSpell;
                 break;
-            }
-
-            if (trainerType == TRAINER_TYPE_TRADESKILLS)
-            {
-                if (trainerSpell.reqSkill)
-                    spellRequirement = trainerSpell.reqSkill;
-                else
-                {
-                    // exist, already checked at loading
-#ifdef MANGOSBOT_ZERO
-                    SpellEntry const* spell = sSpellTemplate.LookupEntry<SpellEntry>(trainerSpell.learnedSpell);
-#else
-                    SpellEntry const* spell = sSpellTemplate.LookupEntry<SpellEntry>(trainerSpell.learnedSpell[0]);
-#endif
-
-                    spellRequirement = spell->EffectMiscValue[1];
-                }
             }
 
             for (auto& trainer : trainers)
