@@ -4347,7 +4347,7 @@ add_test(NAME transport_board_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/transport_board_source_contract_tests.cmake")
 
-# twow-repo#342 (S3b-1, BEHAVIOUR CHANGE behind AiPlayerbot.Path.TransportBoardFix, default 0): bots board ships and
+# twow-repo#342 (S3b-1, BEHAVIOUR CHANGE behind AiPlayerbot.Path.TransportBoardFix, default 1 since DS6 bundle B 21.11.2026): bots board ships and
 # zeppelins (deck hit, paced stop gate, dock-hop entry inside the route, ride record, exit only at the stored arrival dock,
 # OB-10 #1 lost-ride recovery only with a ride record). The unit cases live in transport_board_policy_tests; this contract
 # pins that every behaviour sits behind the switch and that the legacy flow stays textually unchanged.
@@ -4417,7 +4417,7 @@ add_test(NAME cast_result_names
   COMMAND cast_result_names_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
-# twow-repo#602 ROT-01 (L1-b finding 19.10.2026, AiPlayerbot.CastWait.Preparing, default 0, behaviour change): hold the internal AI
+# twow-repo#602 ROT-01 (L1-b finding 19.10.2026, AiPlayerbot.CastWait.Preparing, default 1 since DS6 bundle B 21.11.2026, behaviour change): hold the internal AI
 # until the real end of the bot's own PREPARING cast (deadline once per spell, never shorten, release at the end).
 add_test(NAME cast_wait_source_contract
   COMMAND "${CMAKE_COMMAND}"

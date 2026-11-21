@@ -52,9 +52,9 @@ read_source("strategy/values/GrindTargetValue.cpp" grind_cpp)
 read_source("strategy/actions/ChooseTargetActions.cpp" choose_cpp)
 
 require_text("${policy}" "inline bool GreyByLevel(uint32_t mobLevel, uint32_t grayLevel)\n{\n    return mobLevel <= grayLevel;\n}" "grey = mob level <= grey level")
-require_text("${config_h}" "bool grindGreyByLevel = false;" "default off")
-require_text("${config_cpp}" "grindGreyByLevel = config.GetBoolDefault(\"AiPlayerbot.Grind.GreyByLevel\", false);" "config read")
-require_text("${conf_dist}" "AiPlayerbot.Grind.GreyByLevel = 0" "documented, 0 by default")
+require_text("${config_h}" "bool grindGreyByLevel = true;" "default on (DS6 bundle B, owner 21.11.2026)")
+require_text("${config_cpp}" "grindGreyByLevel = config.GetBoolDefault(\"AiPlayerbot.Grind.GreyByLevel\", true);" "config read")
+require_text("${conf_dist}" "AiPlayerbot.Grind.GreyByLevel = 1" "documented, 1 by default")
 
 set(by_level "ai::quest_search::GreyByLevel(creature->GetLevel(), MaNGOS::XP::GetGrayLevel(bot->GetLevel()))")
 # Diagnostics: [GreyTargets] and the #421 skip in GrindTargetValue, [GrindPick] and [GrindWindow] in ChooseTargetActions - by level.

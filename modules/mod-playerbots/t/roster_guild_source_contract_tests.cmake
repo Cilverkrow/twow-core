@@ -300,7 +300,7 @@ foreach(source_file ${module_sources})
 endforeach()
 
 foreach(pair
-    "\"AiPlayerbot.RosterGuild.GuildNote\", false)"
+    "\"AiPlayerbot.RosterGuild.GuildNote\", true)"
     "\"AiPlayerbot.RosterGuild.NoteRefreshSeconds\", 86400)")
   require_text("${config_source}" "${pair}" "guild note config default")
 endforeach()
@@ -308,7 +308,7 @@ reject_text("${config_source}" "\"AiPlayerbot.RosterGuild.NoteRefreshSeconds\", 
 foreach(member "bool rosterGuildNote;" "uint32 rosterGuildNoteRefreshSeconds;")
   require_text("${config_header}" "${member}" "guild note member")
 endforeach()
-foreach(line "AiPlayerbot.RosterGuild.GuildNote = 0" "AiPlayerbot.RosterGuild.NoteRefreshSeconds = 86400" "(60-604800, other values are clamped")
+foreach(line "AiPlayerbot.RosterGuild.GuildNote = 1" "AiPlayerbot.RosterGuild.NoteRefreshSeconds = 86400" "(60-604800, other values are clamped")
   require_text("${config_template}" "${line}" "documented guild note default")
 endforeach()
 

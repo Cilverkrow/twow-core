@@ -1,6 +1,6 @@
-# twow-repo#602 ROT-01 (L1-b finding 19.10.2026, OB-10): AiPlayerbot.CastWait.Preparing (default 0, behaviour change) holds the
+# twow-repo#602 ROT-01 (L1-b finding 19.10.2026, OB-10): AiPlayerbot.CastWait.Preparing (default 1 since DS6 bundle B, owner 21.11.2026; 0 = rollback; behaviour change) holds the
 # internal AI until the real end of the bot's own PREPARING cast instead of re-running the engine against it every ReactDelay.
-# Pins: switch default 0 and checked first; the CASTING branch unchanged; the release check before the reaction/internal gate;
+# Pins: switch default 1 and checked first; the CASTING branch unchanged; the release check before the reaction/internal gate;
 # the OB-10 guards (deadline once per spell, never shorten, release back to the pending delay); cohort mode; report; pure policy.
 # Every check runs once on the real sources and once per negative probe (a mutated copy that must fail).
 
@@ -80,10 +80,10 @@ endfunction()
 function(check policy ai_cpp ai_h config_h config_cpp dist mgr_cpp out_var)
   set(errors "")
 
-  # 1. Switch: default 0 in the dist, the member and the read; unknown modes are off.
-  need("${dist}" "\nAiPlayerbot.CastWait.Preparing = 0\n" "dist key, default 0")
-  need("${config_h}" "uint32 castWaitPreparing = 0;" "config member, default 0")
-  need("${config_cpp}" "castWaitPreparing = config.GetIntDefault(\"AiPlayerbot.CastWait.Preparing\", 0);\n    if (castWaitPreparing > 2)\n        castWaitPreparing = 0;" "config read, > 2 = off")
+  # 1. Switch: default 1 in the dist, the member and the read (DS6 bundle B, owner 21.11.2026); unknown modes are off.
+  need("${dist}" "\nAiPlayerbot.CastWait.Preparing = 1\n" "dist key, default 1")
+  need("${config_h}" "uint32 castWaitPreparing = 1;" "config member, default 1")
+  need("${config_cpp}" "castWaitPreparing = config.GetIntDefault(\"AiPlayerbot.CastWait.Preparing\", 1);\n    if (castWaitPreparing > 2)\n        castWaitPreparing = 0;" "config read, > 2 = off")
   need("${config_cpp}" "{\"CastWait.Preparing\", Value(castWaitPreparing)}," "parsed mode in [ConfigEcho] (owner rule #615)")
 
   # 2. Pure policy (std only).
@@ -146,7 +146,7 @@ function(probe label var from to)
   math(EXPR probes "${probes} + 1")
   set(probes "${probes}" PARENT_SCOPE)
 endfunction()
-probe("default on" dist "\nAiPlayerbot.CastWait.Preparing = 0\n" "\nAiPlayerbot.CastWait.Preparing = 1\n")
+probe("default off" dist "\nAiPlayerbot.CastWait.Preparing = 1\n" "\nAiPlayerbot.CastWait.Preparing = 0\n")
 probe("unknown mode kept" config_cpp "    if (castWaitPreparing > 2)\n        castWaitPreparing = 0;" "")
 probe("deadline per call" policy "    std::uint32_t const want = timerMs" "    w.deadline = now + CapMs(castTimeMs);\n    std::uint32_t const want = timerMs")
 probe("shortens a delay" policy "g.delay = wait == 0 ? 0u : (wait > currentDelay ? wait : currentDelay);" "g.delay = wait;")
