@@ -3830,6 +3830,19 @@ AiPlayerbot.ActivityTrace.StuckReason = 0
 # minute for all bots (its own budget); dropped= counts the lines refused since the previous one. Log only, no behaviour change.
 # 0 = off (default).
 AiPlayerbot.ActivityTrace.IdleDetail = 0
+# twow-repo#601 (OB-00 20.11.2026, deep research 1 NOTE-R1 section 4 no. 3): 1 = with ActivityTrace on, a roster bot that is
+# grind_idle (at its grind destination in WORK without a fight in the sample) two samples in a row writes one line for the episode:
+# "[GrindIdleDetail] state=start bot= level= map= zone= x= y= entry= tmpl_min= tmpl_max= grey_level= grey_spot= pass_age_s= cand=
+# picked= crowded= others= cause=no_pass|picked|respawn|crowded|grey|rules|other skip_unreach= skip_height= skip_range= skip_above=
+# skip_avoided= skip_elite= skip_invalid= skip_tapped= skip_critter= skip_rule= skip_notneeded= skip_grey= dropped=" - the
+# destination's creature entry and template levels against the bot's grey level (grey_spot=1: the spot itself is grey), the bot's
+# newest grind target pass (age, candidates, a pick, candidates already targeted by other bots, the refusals by reason), the
+# friendly players in sight and the cause derived from them (GrindIdlePolicy.h CauseOf: no pass within 120 s; a pick; no candidate
+# = respawn, or crowded with 2+ players in sight; else the refusal covering half the candidates: grey, tapped = crowded, the
+# quest-first rules). The first sample of another kind after it (or the first after a sampling gap: gap=1) writes
+# "[GrindIdleDetail] state=end bot= level= grind_idle_s= cause= next=<kind> gap= dropped=" (only after its start line, outside
+# the limit). At most 30 start lines a minute for all bots (its own budget). Log only, no behaviour change. 0 = off (default).
+AiPlayerbot.ActivityTrace.GrindIdleDetail = 0
 # twow-repo#541: 1 = one [WorldBots] line per minute with what the bot manager cost the serial world
 # thread (UpdateSessions, ProcessBot loop incl. logins, rest; max pass, share in per mille, logins,
 # teleport ACK calls). Log only; persistent roster and free random-bot path. 0 = off (default).

@@ -71,6 +71,7 @@
 #include "strategy/values/PositionValue.h"
 #include "playerbot/ServerFacade.h"
 #include "playerbot/TravelMgr.h"
+#include "Formulas.h"   // twow-repo#601 (ActivityTrace.GrindIdleDetail): the grey level on the [GrindIdleDetail] line
 #include "playerbot/strategy/values/TravelValues.h"   // twow-repo#333 P1-aa: ProfessionTripTick
 #include "playerbot/TravelNode.h"   // twow-repo#575 (PATH-01 F4): WalkToMachineByGraph
 #include "playerbot/DangerMapConfig.h"
@@ -1312,6 +1313,25 @@ void PlayerbotAI::SampleActivity(uint32 now)
                 ReportIdleDetail(state, kind, note, now);
         }
     }
+    // twow-repo#601 (AiPlayerbot.ActivityTrace.GrindIdleDetail, OB-00 20.11.2026): the same episode rule for grind_idle (a grind
+    // destination in WORK without a fight), its own per-minute limit; the start line names the cause from the bot's newest grind
+    // target pass. Off: nothing is read or written.
+    if (sPlayerbotAIConfig.activityTraceGrindIdleDetail)
+    {
+        ai::bot_activity::IdleNote const note = grindIdleEpisode.Note(kind == ai::bot_activity::Kind::GrindIdle, now,
+            ai::bot_activity::IdleWhy::Other);
+        if (note == ai::bot_activity::IdleNote::End && grindIdleEpisode.startLogged)
+        {
+            grindIdleEpisode.startLogged = false;
+            ReportGrindIdleDetail(kind, note, now);
+        }
+        else if (note == ai::bot_activity::IdleNote::Start)
+        {
+            grindIdleEpisode.startLogged = ai::bot_activity::GrindIdleDetailGlobal().Take(now);
+            if (grindIdleEpisode.startLogged)
+                ReportGrindIdleDetail(kind, note, now);
+        }
+    }
 
     // the seconds since the last sample still belong to its hour; the line for that hour follows
     if (uint32 const credited = activityClock.Add(kind, now))
@@ -1502,6 +1522,46 @@ void PlayerbotAI::ReportIdleDetail(ai::bot_activity::State const& state, ai::bot
         backoffUntil > int32(now) ? backoffUntil - int32(now) : 0,
         aiObjectContext->GetValue<int>("manual int", "quest search stage")->Get(), freeSlots, uint32(currentState),
         pick.action.c_str(), pick.trigger.c_str(), ai::bot_activity::IdleDetailGlobal().TakeDropped());
+}
+
+// twow-repo#601 (AiPlayerbot.ActivityTrace.GrindIdleDetail, OB-00 20.11.2026, deep research 1 NOTE-R1 section 4 no. 3): why a bot at
+// its grind destination does not fight. At the start of the episode: the destination's creature entry with its template levels
+// against the bot's grey level (grey_spot=1: the spot itself is grey, GrindTravelDestination::IsPossible), the bot's newest grind
+// target pass (its age, candidates, a pick, candidates already targeted by other bots, and the refusals by reason, GrindIdlePolicy.h
+// Skip), the friendly players in sight ("nearest friendly players", the bot's own cached value) and the cause (CauseOf). At its end
+// the seconds and the kind that ended it. Only values the bot holds and static creature templates; log only.
+void PlayerbotAI::ReportGrindIdleDetail(ai::bot_activity::Kind kind, ai::bot_activity::IdleNote note, uint32 now)
+{
+    if (note == ai::bot_activity::IdleNote::End)
+    {
+        sLog.outBasic("[GrindIdleDetail] state=end bot=%u level=%u grind_idle_s=%u cause=%s next=%s gap=%u dropped=%u",
+            bot->GetGUIDLow(), bot->GetLevel(), grindIdleEpisode.seconds, ai::grind_idle::CauseName(grindIdleCause),
+            ai::bot_activity::KindName(kind), grindIdleEpisode.endedByGap ? 1u : 0u,
+            ai::bot_activity::GrindIdleDetailGlobal().TakeDropped());
+        return;
+    }
+
+    int32 entry = 0;
+    if (TravelTarget* target = aiObjectContext->GetValue<TravelTarget*>("travel target")->Get())
+        entry = target->GetEntry();
+    CreatureInfo const* const info = entry > 0 ? sObjectMgr.GetCreatureTemplate(uint32(entry)) : nullptr;
+    uint32 const minLevel = info ? info->MinLevel : 0, maxLevel = info ? info->MaxLevel : 0;
+    uint32 const greyLevel = MaNGOS::XP::GetGrayLevel(bot->GetLevel());
+    uint32 const others = uint32(aiObjectContext->GetValue<std::list<ObjectGuid>>("nearest friendly players")->Get().size());
+    ai::grind_idle::PassTally const& t = grindPass;
+    grindIdleCause = ai::grind_idle::CauseOf(t, now, others);
+    using ai::grind_idle::Skip;
+    auto const n = [&t](Skip s) { return uint32(t.skips[uint8(s)]); };
+    sLog.outBasic("[GrindIdleDetail] state=start bot=%u level=%u map=%u zone=%u x=%.0f y=%.0f entry=%d tmpl_min=%u tmpl_max=%u"
+        " grey_level=%u grey_spot=%u pass_age_s=%d cand=%u picked=%u crowded=%u others=%u cause=%s"
+        " skip_unreach=%u skip_height=%u skip_range=%u skip_above=%u skip_avoided=%u skip_elite=%u skip_invalid=%u skip_tapped=%u"
+        " skip_critter=%u skip_rule=%u skip_notneeded=%u skip_grey=%u dropped=%u",
+        bot->GetGUIDLow(), bot->GetLevel(), bot->GetMapId(), bot->GetZoneId(), bot->GetPositionX(), bot->GetPositionY(), entry,
+        minLevel, maxLevel, greyLevel, ai::grind_idle::GreySpot(maxLevel, greyLevel) ? 1u : 0u,
+        t.at ? int32(now) - int32(t.at) : -1, uint32(t.candidates), t.picked ? 1u : 0u, uint32(t.crowded), others,
+        ai::grind_idle::CauseName(grindIdleCause), n(Skip::Unreachable), n(Skip::Height), n(Skip::FreeRange), n(Skip::LevelAbove),
+        n(Skip::Avoided), n(Skip::Elite), n(Skip::Invalid), n(Skip::Tapped), n(Skip::Critter), n(Skip::Rule), n(Skip::NotNeeded),
+        n(Skip::Grey), ai::bot_activity::GrindIdleDetailGlobal().TakeDropped());
 }
 
 bool PlayerbotAI::IsInGroupWithRealPlayer()

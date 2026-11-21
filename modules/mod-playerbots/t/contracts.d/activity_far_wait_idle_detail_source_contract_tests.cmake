@@ -105,7 +105,7 @@ require_text("${ai_cpp}" "                    if (sPlayerbotAIConfig.activityTra
 # 6. IdleDetail: the key (default 0), the episode at every sample behind the switch, its own limit, the lines.
 require_text("${config_h}" "bool activityTraceIdleDetail = false;" "member default off")
 require_text("${config_cpp}" "activityTraceIdleDetail = config.GetBoolDefault(\"AiPlayerbot.ActivityTrace.IdleDetail\", false);" "default 0")
-require_text("${config_cpp}" "            {\"ActivityTrace\", Value(activityTrace)},\n            {\"ActivityTrace.IdleDetail\", Value(activityTraceIdleDetail)},\n            {\"ActivityTrace.StuckDetail\", Value(activityTraceStuckDetail)}," "ConfigEcho entry, sorted")
+require_text("${config_cpp}" "            {\"ActivityTrace\", Value(activityTrace)},\n            {\"ActivityTrace.GrindIdleDetail\", Value(activityTraceGrindIdleDetail)},\n            {\"ActivityTrace.IdleDetail\", Value(activityTraceIdleDetail)},\n            {\"ActivityTrace.StuckDetail\", Value(activityTraceStuckDetail)}," "ConfigEcho entry, sorted")
 require_text("${conf_dist}" "\nAiPlayerbot.ActivityTrace.IdleDetail = 0\n" "documented")
 require_text("${policy}" "constexpr std::uint8_t IdleDetailSamples = 2;" "two idle samples in a row")
 require_text("${policy}" "inline StuckDetailLimit& IdleDetailGlobal()\n{\n    static StuckDetailLimit limit;" "its own budget")
