@@ -4187,6 +4187,20 @@ add_test(NAME cast_los_gate_policy
   COMMAND cast_los_gate_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#741 (AUDIT-L03-5): the custom cast targets the bot only for item-target spells and caster-source-only spells.
+add_executable(custom_cast_target_policy_tests
+  "${PB_MODULE_DIR}/t/custom_cast_target_policy_tests.cpp")
+
+target_include_directories(custom_cast_target_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(custom_cast_target_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME custom_cast_target_policy
+  COMMAND custom_cast_target_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # twow-repo#602 (AiPlayerbot.Rotation.InvalidTargetQuiet): "invalid target" stays quiet for an empty target while nothing attacks the bot.
 add_executable(invalid_target_policy_tests
   "${PB_MODULE_DIR}/t/invalid_target_policy_tests.cpp")
