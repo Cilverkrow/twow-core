@@ -142,12 +142,61 @@ int main()
         Require(SkipReason(facts) == Reason::Blocklist, "a listed class group quest is skipped (reason=blocklist)");
     }
 
+    // 4b) Escort / timed (DEEP7 item 5, OB-10 21.11. criterion (A) + K-4): a listed escort or LimitTime 1..bound, bot not in a
+    //     group, class quests exempt, only with the key (and Enable, Base); an empty list leaves the timed part.
+    {
+        Require(DefaultTimedMaxSeconds == 900, "default bound 900 s (fixed before data)");
+        Require(IsEscortOrShortTimed(true, 0, 900), "listed escort without a time limit");
+        Require(IsEscortOrShortTimed(false, 300, 900) && IsEscortOrShortTimed(false, 540, 900) && IsEscortOrShortTimed(false, 900, 900),
+            "300 / 540 / 900 s are short (3364, 938, the bound itself)");
+        Require(!IsEscortOrShortTimed(false, 901, 900) && !IsEscortOrShortTimed(false, 7200, 900), "901 s / 2 h are not short");
+        Require(!IsEscortOrShortTimed(false, 0, 900), "LimitTime 0 = no limit, not timed");
+        Require(!IsEscortOrShortTimed(false, 300, 0), "bound 0: no timed skip");
+
+        Facts facts = Base();
+        facts.limitTime = 300;
+        Require(SkipReason(facts) == Reason::None, "K-4 key off: a short timed quest is taken");
+        facts.escortListed = true;
+        Require(SkipReason(facts) == Reason::None, "K-4 key off: a listed escort is taken");
+        facts.soloSkipEscortTimed = true;
+        Require(SkipReason(facts) == Reason::EscortTimedSolo, "solo bot: listed escort / short timed quest skipped");
+        facts.escortListed = false;
+        Require(SkipReason(facts) == Reason::EscortTimedSolo, "K-4 empty list: the timed part still skips");
+        facts.limitTime = 7200;
+        Require(SkipReason(facts) == Reason::None, "K-4 empty list: a long timed quest is taken");
+        facts.limitTime = 0;
+        Require(SkipReason(facts) == Reason::None, "K-4 empty list: no limit, nothing skipped");
+        facts.escortListed = true;
+        facts.inGroup = true;
+        Require(SkipReason(facts) == Reason::None, "K-4 a bot in a group takes a listed escort (owner: group play)");
+        facts.limitTime = 300;
+        facts.escortListed = false;
+        Require(SkipReason(facts) == Reason::None, "K-4 a bot in a group takes a short timed quest");
+        facts.inGroup = false;
+        facts.classQuest = true;
+        Require(SkipReason(facts) == Reason::None, "K-4 a short timed class quest stays (class exemption)");
+        facts.classQuest = false;
+        facts.enabled = false;
+        Require(SkipReason(facts) == Reason::None, "K-4 Enable 0: nothing skipped");
+        facts.enabled = true;
+        facts.rosterOnItsOwn = false;
+        Require(SkipReason(facts) == Reason::None, "a bot led by a real player is out of scope");
+        facts.rosterOnItsOwn = true;
+        facts.type = TypeElite;
+        facts.soloSkipGroupQuests = true;
+        Require(SkipReason(facts) == Reason::GroupSolo, "a timed elite quest: the group rule names it first");
+        facts.listed = true;
+        Require(SkipReason(facts) == Reason::Blocklist, "a listed timed quest: reason=blocklist");
+    }
+
     // 5) Giver relation: every skip reason (review S3a F3: a solo bot does not walk to a group quest's giver to decline);
     //    drop: open quests only, both list reasons map to infeasible_blocklist, paths E / F are not undone (review S3a F2).
     {
         Require(GiverInactive(Reason::Blocklist) && GiverInactive(Reason::BlocklistCrsz0), "giver of a listed quest inactive");
         Require(GiverInactive(Reason::GroupSolo), "giver of a solo bot's group quest inactive (Type 0, SP >= 2 too)");
         Require(!GiverInactive(Reason::None), "feasible quest: giver unchanged");
+        Require(GiverInactive(Reason::EscortTimedSolo), "giver of a solo bot's escort / short timed quest inactive");
+        Require(!DropReasonName(Reason::EscortTimedSolo, false, false, false, false), "escort / timed: no drop step (the failure drops)");
 
         Require(Same(DropReasonName(Reason::Blocklist, false, false, false, false), "infeasible_blocklist"), "open listed quest dropped");
         Require(Same(DropReasonName(Reason::BlocklistCrsz0, false, false, false, false), "infeasible_blocklist"),
@@ -175,7 +224,9 @@ int main()
     // 6) Names and lines.
     {
         Require(Same(ReasonName(Reason::Blocklist), "blocklist") && Same(ReasonName(Reason::BlocklistCrsz0), "blocklist_crsz0") &&
-            Same(ReasonName(Reason::GroupSolo), "group_solo") && Same(ReasonName(Reason::None), "none"), "reason names");
+            Same(ReasonName(Reason::GroupSolo), "group_solo") && Same(ReasonName(Reason::None), "none") &&
+            Same(ReasonName(Reason::EscortTimedSolo), "escort_timed_solo"), "reason names");
+        Require(ReasonCount == 5 && std::size_t(Reason::EscortTimedSolo) + 1 == ReasonCount, "reason count");
         Require(Same(PathName(Path::Accept), "accept") && Same(PathName(Path::Item), "item") && Same(PathName(Path::Giver), "giver"),
             "path names");
         Require(FormatSkipLine(216, 12, 41169, Reason::BlocklistCrsz0, Path::Giver) ==

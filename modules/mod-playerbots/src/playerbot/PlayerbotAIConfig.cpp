@@ -1319,6 +1319,9 @@ bool PlayerbotAIConfig::Initialize()
     questFeasibilityBlocklist = ai::quest_feasibility::ParseQuestIdList(config.GetStringDefault("AiPlayerbot.QuestFeasibility.Blocklist", ""));
     questFeasibilityBlocklistWhileNoCustomStarts = ai::quest_feasibility::ParseQuestIdList(config.GetStringDefault("AiPlayerbot.QuestFeasibility.BlocklistWhileNoCustomStarts", ""));
     questFeasibilitySoloSkipGroupQuests = config.GetBoolDefault("AiPlayerbot.QuestFeasibility.SoloSkipGroupQuests", false);
+    questFeasibilitySoloSkipEscortTimed = config.GetBoolDefault("AiPlayerbot.QuestFeasibility.SoloSkipEscortTimed", false);
+    questFeasibilitySoloSkipEscortIds = ai::quest_feasibility::ParseQuestIdList(config.GetStringDefault("AiPlayerbot.QuestFeasibility.SoloSkipEscortIds", "155,898,938"));
+    questFeasibilitySoloSkipTimedMaxSeconds = std::min<uint32>(86400, uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.QuestFeasibility.SoloSkipTimedMaxSeconds", 900))));
     directTargetsEnabled = config.GetBoolDefault("AiPlayerbot.DirectTargets.Enable", false);
     directTargetsTraceInactive = config.GetBoolDefault("AiPlayerbot.DirectTargets.TraceInactive", false);
     directTargetsFreshMaxLevel = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.DirectTargets.FreshMaxLevel", 5)));
@@ -2407,7 +2410,10 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestFeasibility.Blocklist.count", Value(uint32(questFeasibilityBlocklist.size()))},
             {"QuestFeasibility.BlocklistWhileNoCustomStarts.count", Value(uint32(questFeasibilityBlocklistWhileNoCustomStarts.size()))},
             {"QuestFeasibility.Enable", Value(questFeasibilityEnable)},
+            {"QuestFeasibility.SoloSkipEscortIds.count", Value(uint32(questFeasibilitySoloSkipEscortIds.size()))},
+            {"QuestFeasibility.SoloSkipEscortTimed", Value(questFeasibilitySoloSkipEscortTimed)},
             {"QuestFeasibility.SoloSkipGroupQuests", Value(questFeasibilitySoloSkipGroupQuests)},
+            {"QuestFeasibility.SoloSkipTimedMaxSeconds", Value(questFeasibilitySoloSkipTimedMaxSeconds)},
             {"QuestFirstProgression.AbandonStructuralParked", Value(questFirstProgressionAbandonStructuralParked)},
             {"QuestFirstProgression.BandLadder", Value(questFirstProgressionBandLadder)},
             {"QuestFirstProgression.BandLadderSameZoneNext", Value(questFirstProgressionBandLadderSameZoneNext)},
