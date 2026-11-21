@@ -986,6 +986,10 @@ public:
     // guid pair; ArbiterLanePolicy.h IsProbeBot). 0 off, 1 probe (at arbiter 2 three refused writes every 10 minutes, at 1 only
     // the paired count); other = 0 + error line.
     uint32 supervisorArbiterProbe = 0;
+    // twow-repo#726 (AiPlayerbot.Supervisor.ArmLate, default 0; bug fix, default 1 after acceptance + OB-10): a bot the arming
+    // edge left Passive (parked, battleground, out of the quest book scope) is armed later, once eligible. 0 off (the edge only,
+    // as before), 1 on (retry at most every 5 s while enforcing; Supervisor::ArmLateTick); other = 0 + error line.
+    uint32 supervisorArmLate = 0;
     // A3 step 3 planner P-1 (AiPlayerbot.Planner.BandTable, default ""): path of the planner's band table (BandTable.cpp). Read
     // once at boot, fail closed; "" = no file I/O, no line, no table (the planner then has no zone term).
     std::string plannerBandTable;

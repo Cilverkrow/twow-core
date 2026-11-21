@@ -124,15 +124,17 @@ function(check_callers sup_h sup_cpp all_sources out)
     return()
   endif()
   # The bound (review 13.11.): DisarmEnforce has one caller (the enforce edge in Tick), WriteModeLine two (arming, disarming),
-  # so no other path, and no call with a variable for edgeLine, reaches the edge line.
+  # so no other path, and no call with a variable for edgeLine, reaches the edge line. twow-repo#726 (AiPlayerbot.Supervisor.ArmLate,
+  # default 0) adds the late arm's call (Supervisor::ArmLateTick, cause arbiter_arm_late, budgeted like the arming edge; pinned
+  # by a3s3_arm_late_source_contract_tests.cmake): 6 with the planner's mode switch (P-3a).
   count_text("${all_sources}" "DisarmEnforce(" n)
   if(NOT n EQUAL 3)
     set(${out} "DisarmEnforce( appears ${n} times in src/ (3 expected: declaration, definition, the Tick edge; one edge line per bot and edge)" PARENT_SCOPE)
     return()
   endif()
   count_text("${all_sources}" "WriteModeLine(" n)
-  if(NOT n EQUAL 5)
-    set(${out} "WriteModeLine( appears ${n} times in src/ (5 expected: declaration, definition, the arming and the disarming edge, the planner's mode switch)" PARENT_SCOPE)
+  if(NOT n EQUAL 6)
+    set(${out} "WriteModeLine( appears ${n} times in src/ (6 expected: declaration, definition, the arming and the disarming edge, the planner's mode switch, the late arm)" PARENT_SCOPE)
     return()
   endif()
   count_text("${all_sources}" "${PLANNER_CALL}" n_planner)

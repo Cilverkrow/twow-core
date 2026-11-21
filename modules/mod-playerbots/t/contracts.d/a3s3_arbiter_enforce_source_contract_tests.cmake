@@ -547,7 +547,7 @@ function(check_probe enforce_cpp sup_cpp sup_h config_h config_cpp conf_dist all
   endif()
   foreach(needle
       "    supervisorArbiterProbe = uint32(config.GetIntDefault(\"AiPlayerbot.Supervisor.ArbiterProbe\", 0));\n    if (supervisorArbiterProbe > 1)\n    {\n        sLog.outError(\"[Supervisor] config key=Supervisor.ArbiterProbe value=%u result=off (0 off, 1 probe)\", supervisorArbiterProbe);\n        supervisorArbiterProbe = 0;\n    }"
-      "            {\"Supervisor.Arbiter\", Value(supervisorArbiter)},\n            {\"Supervisor.ArbiterProbe\", Value(supervisorArbiterProbe)},\n            {\"ThreadSafeTeleportAck\"")
+      "            {\"Supervisor.Arbiter\", Value(supervisorArbiter)},\n            {\"Supervisor.ArbiterProbe\", Value(supervisorArbiterProbe)},\n            {\"Supervisor.ArmLate\", Value(supervisorArmLate)},\n            {\"ThreadSafeTeleportAck\"")
     string(FIND "${config_cpp}" "${needle}" at)
     if(at EQUAL -1)
       set(${out} "PlayerbotAIConfig.cpp: missing ${needle}" PARENT_SCOPE)

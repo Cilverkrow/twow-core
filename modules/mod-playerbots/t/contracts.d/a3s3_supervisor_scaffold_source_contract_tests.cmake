@@ -200,10 +200,12 @@ function(check_no_behaviour sup_h sup_cpp all_sources out)
   # A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2, default 0): the tick takes the gate's value (0, 1, 2). The shadow hand-over
   # stays; below 2 and without an edge the rest is the enforcement edge compare and the probe call (its first statement is the
   # ArbiterProbe key check, pinned by a3s3_arbiter_enforce_source_contract_tests.cmake). The enforcement writes live in
-  # ArmEnforce / DisarmEnforce / ProbeTick, not in the tick.
-  string(FIND "${sup_cpp}" "void Supervisor::Tick(std::uint32_t nowMs, std::uint32_t arbiter)\n{\n    ++ticks_;\n    TakeMail();\n    ShadowTick(ai_, shadow_, arbiter >= 1);\n    GroupTick(nowMs, arbiter);\n    bool const enforce = arbiter == 2;\n    if (enforce != enforce_)\n    {\n        enforce_ = enforce;\n        if (enforce)\n            ArmEnforce();\n        else\n            DisarmEnforce(arbiter);\n    }\n    if (arbiter >= 1)\n        ProbeTick(nowMs, arbiter);\n    PlanTick(nowMs, arbiter);\n}" at)
+  # ArmEnforce / DisarmEnforce / ProbeTick, not in the tick. twow-repo#726 (AiPlayerbot.Supervisor.ArmLate, default 0): the late
+  # arm call right after the edges (ArmLateTick, SupervisorEnforce.cpp; its first statement is the key poll, pinned by
+  # a3s3_arm_late_source_contract_tests.cmake).
+  string(FIND "${sup_cpp}" "void Supervisor::Tick(std::uint32_t nowMs, std::uint32_t arbiter)\n{\n    ++ticks_;\n    TakeMail();\n    ShadowTick(ai_, shadow_, arbiter >= 1);\n    GroupTick(nowMs, arbiter);\n    bool const enforce = arbiter == 2;\n    if (enforce != enforce_)\n    {\n        enforce_ = enforce;\n        if (enforce)\n            ArmEnforce();\n        else\n            DisarmEnforce(arbiter);\n    }\n    ArmLateTick(nowMs);\n    if (arbiter >= 1)\n        ProbeTick(nowMs, arbiter);\n    PlanTick(nowMs, arbiter);\n}" at)
   if(at EQUAL -1)
-    set(${out} "Supervisor.cpp: the tick is not the counter, the mail take, the shadow hand-over, GroupTick, the enforcement edges, the probe call and the planner (A3 step 3 planner P-2b: PlanTick is the last statement)" PARENT_SCOPE)
+    set(${out} "Supervisor.cpp: the tick is not the counter, the mail take, the shadow hand-over, GroupTick, the enforcement edges, the late arm, the probe call and the planner (A3 step 3 planner P-2b: PlanTick is the last statement)" PARENT_SCOPE)
     return()
   endif()
   # A3 step 3 T02-GROUP: Release leaves a held group first (GroupRelease does nothing without one); ~Supervisor also drops the
