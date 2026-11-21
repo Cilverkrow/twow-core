@@ -1012,6 +1012,12 @@ public:
     uint32 plannerRepeatableMaxPerHour = 1;
     float plannerRelocMinYards = 60.0f;
     float plannerRelocSlack = 1.5f;
+    // A3 R9 / R2 wiring pair R9-2 (twow-repo#575, R9-REPLAN-INTERFACE v5, R9-PREREG C2; default 0): the progress meter in the
+    // planner tick (needs AiPlayerbot.Supervisor and AiPlayerbot.Planner >= 1). Replan is a cohort mode: 0 off, 1 all, 2 cohort
+    // B, 3 cohort A (the active arm, shadow=0); above 3 is off. Replan.Shadow 0/1: 1 runs the meter in shadow for every other
+    // bot; above 1 is off. Lines and counters only until P-3 applies a verdict.
+    uint32 replan = 0;
+    uint32 replanShadow = 0;
     // A3 step 5 (ADR-0041, OB-00 07.11.2026): the combat rule (CombatRulePolicy.h, CombatRule.cpp), one switch per part.
     // HealerStart: a holy paladin / restoration druid may attack like a healer with "offdps" (their contexts have no offdps
     // creator, so the healer gate refused every attack). 0 off (default, the old rule), 1 all, 2 cohort B, 3 cohort A; other = 0.

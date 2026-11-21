@@ -46,6 +46,39 @@ using namespace ai;
 
 namespace
 {
+// A3 R9 / R2 wiring pair R9-2 (twow-repo#575, DESIGN-R9-2 D6/D12; AiPlayerbot.Replan / Replan.Shadow, default 0): the label of a
+// teleport whose return line is pinned by other contracts (shortcut S0, far-move ArriveSafe). Declared above that line; when the
+// scope ends it sets the far-move source or the hop mark only if Player::IsBeingTeleported() went from false to true, i.e. the
+// teleport started (TeleportTo sets the near flag, or the far flag / the pending far teleport, before it returns true).
+class RelocSiteMark
+{
+public:
+    RelocSiteMark(PlayerbotAI* ai, Player* bot, bool hop, ai::replan::RelocSource source)
+        : ai_(ai), bot_(bot), hop_(hop), source_(source), wired_(ai && bot && ai->ReplanWired()),
+          was_(wired_ && bot->IsBeingTeleported())
+    {
+    }
+    ~RelocSiteMark()
+    {
+        if (!wired_ || was_ || !bot_->IsBeingTeleported())
+            return;
+        if (hop_)
+            ai_->MarkRelocHop();
+        else
+            ai_->SetLastRelocSource(source_);
+    }
+    RelocSiteMark(RelocSiteMark const&) = delete;
+    RelocSiteMark& operator=(RelocSiteMark const&) = delete;
+
+private:
+    PlayerbotAI* ai_;
+    Player* bot_;
+    bool hop_;
+    ai::replan::RelocSource source_;
+    bool wired_;
+    bool was_;
+};
+
 // Hotfix 8.36 (twow-repo#544): a real player within visibility of the straight route start -> target
 // (same map) sees the bot walk; the few online real players are checked against the segment.
 bool FarMoveRouteWatched(WorldPosition const& from, WorldPosition const& to)
@@ -678,7 +711,10 @@ bool MovementAction::FlyDirect(const WorldPosition &startPosition, const WorldPo
 
         AI_VALUE(LastMovement&, "last movement").nextTeleport = now + (time_t)MoveDelay(startPosition.distance(movePosition));
 
-        return bot->TeleportTo(movePosition.getMapId(), movePosition.getX(), movePosition.getY(), movePosition.getZ(), startPosition.getAngleTo(movePosition));
+        bool const hopped = bot->TeleportTo(movePosition.getMapId(), movePosition.getX(), movePosition.getY(), movePosition.getZ(), startPosition.getAngleTo(movePosition));
+        if (hopped)
+            ai->MarkRelocHop();   // R9-2 (twow-repo#575, D6): the fly-direct hop is movement, no relocation
+        return hopped;
     }
 
     MotionMaster& mm = *bot->GetMotionMaster();
@@ -1398,7 +1434,8 @@ bool MovementAction::MinimalMove(PlayerbotAI* ai)
     {
         if (nextStep->point.sqDistance(bot) > INTERACTION_DISTANCE * INTERACTION_DISTANCE)
         {
-            bot->TeleportTo(nextStep->point);
+            if (bot->TeleportTo(nextStep->point))
+                ai->MarkRelocHop();   // R9-2 (twow-repo#575, D6): the minimal-move hop to the flight master, no relocation
 
             return true;
         }
@@ -1497,7 +1534,8 @@ bool MovementAction::MinimalMove(PlayerbotAI* ai)
     if (ai->HasPlayerNearby(nextStep->point, sWorld.getConfig(CONFIG_FLOAT_LISTEN_RANGE_YELL)))
         return true;
 
-    bot->TeleportTo(nextStep->point);
+    if (bot->TeleportTo(nextStep->point))
+        ai->MarkRelocHop();   // R9-2 (twow-repo#575, D6): the minimal-move step of a non-detailed bot, no relocation
 
     if (std::next(nextStep) == path.end())
     {
@@ -2393,6 +2431,7 @@ bool MovementAction::MoveTo2(const WorldPosition& endPos, bool idle, bool react,
                         arrive.getY(), farStart.distance(arrive), fromTravel ? "travel" : "other", islandField);
                 }
                 lastMove.farMoveArrivedAt = now;
+                RelocSiteMark const arrivalMark(ai, bot, false, ai::replan::RelocSource::FarMoveArrival);   // R9-2 (D12)
                 // twow-repo#595 P4 S0 (AiPlayerbot.Shortcut.Trace): counted only, the teleport below is unchanged.
                 if (sPlayerbotAIConfig.shortcutTrace)
                     sRandomPlayerbotMgr.CountShortcut(ai::shortcut::Mech::FarMove, bot, arrive.getMapId(), arrive.getX(), arrive.getY(), arrive.getZ());
@@ -2593,6 +2632,7 @@ bool MovementAction::MoveTo2(const WorldPosition& endPos, bool idle, bool react,
     if (totalDistance > sPlayerbotAIConfig.reactDistance && !detailedMove)
     {
         WorldPosition teleportPosition = movePath.getBack();
+        RelocSiteMark const hopMark(ai, bot, true, ai::replan::RelocSource::Unknown);   // R9-2 (D6): a hop, no relocation
         // Only skip the walk animation via a hard teleport if nobody is
         // watching from either end -- checking just the destination let a
         // bot teleport away in full view of a player standing at its
@@ -3463,7 +3503,10 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool idle, 
 
         lastMove.nextTeleport = now + (time_t)MoveDelay(startPosition.distance(movePosition));
 
-        return bot->TeleportTo(movePosition.getMapId(), movePosition.getX(), movePosition.getY(), movePosition.getZ(), startPosition.getAngleTo(movePosition));
+        bool const hopped = bot->TeleportTo(movePosition.getMapId(), movePosition.getX(), movePosition.getY(), movePosition.getZ(), startPosition.getAngleTo(movePosition));
+        if (hopped)
+            ai->MarkRelocHop();   // R9-2 (twow-repo#575, D6): the legacy MoveTo hop is movement, no relocation
+        return hopped;
     }
 
     // walk if master walks and is close
