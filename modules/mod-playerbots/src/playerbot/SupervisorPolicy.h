@@ -361,6 +361,40 @@ inline TransitionResult Decide(Mode from, Mode to, Requester who, Phase phase, s
     return Allow(to);
 }
 
+// ---- late arm (twow-repo#726; AiPlayerbot.Supervisor.ArmLate, default 0) -------------------------------------------------
+// The arming edge (Supervisor::ArmEnforce) checks a bot once, in the tick enforcement turns on. A bot that is parked, in a
+// battleground or out of the quest book scope in that tick stays Passive for as long as enforcement stays on: no other path
+// leads out of Passive (Decide: only External leaves it). With ArmLate = 1 the supervisor retries the same arm rule while
+// enforcement is on and the bot is still Passive, at most once per kArmLateRetryMs (5 s, the quest book's snapshot step); a
+// retry that finds the bot still ineligible writes no line and counts nothing. 0 = the edge only (as before).
+constexpr std::uint32_t kArmLateRetryMs = 5000;
+
+// The arm rule of the edge: in the quest book scope, not in a battleground, not parked (the Passive-by-design cases).
+inline bool ArmEligible(bool inQuestBookScope, bool inBattleGround, bool parked)
+{
+    return inQuestBookScope && !inBattleGround && !parked;
+}
+
+// true = check the arm rule now. armLate is the key (only 1 is on); enforce and mode are the supervisor's; nextMs is the bot's
+// retry deadline (0 = not scheduled). Off, not enforcing or not Passive: the deadline is dropped, nothing is due. The first
+// sight only schedules (the edge has just checked); a deadline more than one interval ahead is stale and scheduled anew.
+inline bool ArmLatePoll(std::uint32_t armLate, bool enforce, Mode mode, std::uint32_t nowMs, std::uint32_t& nextMs)
+{
+    if (armLate != 1 || !enforce || mode != Mode::Passive)
+    {
+        nextMs = 0;
+        return false;
+    }
+    std::int32_t const wait = std::int32_t(nextMs - nowMs);
+    if (nextMs != 0 && wait > 0 && wait <= std::int32_t(kArmLateRetryMs))
+        return false;
+    bool const due = nextMs != 0 && wait <= 0;
+    nextMs = nowMs + kArmLateRetryMs;
+    if (nextMs == 0)
+        nextMs = 1;
+    return due;
+}
+
 // ---- decision lines (section 4; emitted from the first behaviour pair on) -----------------------------------------------
 // Fixed buffers, tag first, then key=value; '\n' and '\r' become '_'. Each returns the length written (< n), 0 when n == 0.
 inline std::size_t Sanitize(char* buf, int written, std::size_t n)
@@ -928,7 +962,8 @@ inline bool GrpSilent(ArbiterGrpMinute const& g)
     return true;
 }
 
-// The buffers of the two minute lines: [ArbiterMin] with every field at 4294967295 needs 643 characters, [ArbiterGrp] 1085.
+// The buffers of the two minute lines: [ArbiterMin] with every field at 4294967295 needs 643 characters (663 with arm_late,
+// twow-repo#726, AiPlayerbot.Supervisor.ArmLate != 0), [ArbiterGrp] 1085.
 constexpr std::size_t kArbiterMinBuf = 768;
 constexpr std::size_t kArbiterGrpBuf = 1280;
 
@@ -961,10 +996,15 @@ struct ArbiterMinute
     std::uint32_t gateOffWorld = 0;
     std::uint32_t gateOffNone = 0;
     std::uint32_t gateOffBot = 0;
+    // twow-repo#726 (AiPlayerbot.Supervisor.ArmLate, default 0): bots the late arm moved out of Passive (arm_late).
+    std::uint32_t armLate = 0;
     ArbiterGrpMinute grp;   // the [ArbiterGrp] line of the same minute
     // A3 step 3 planner P-3a (P3-ENTWURF-v0.2 section 6.3): set when the minute rolls at AiPlayerbot.Planner = 2; then the line
     // ends with plan= (family Planner). Planner 0 / 1: the line is byte-identical.
     bool planField = false;
+    // twow-repo#726: set when the minute rolls while AiPlayerbot.Supervisor.ArmLate != 0 (SetArbiterArmLateField); then the line
+    // ends with arm_late= (after plan=). Key 0: the line is byte-identical.
+    bool armLateField = false;
 };
 
 inline void CountBundle(ArbiterMinute& m, Bundle const& b)
@@ -997,11 +1037,17 @@ inline std::size_t FormatArbiterMin(char* buf, std::size_t n, char cohort, Arbit
         f(WriterId::GroupFollow), f(WriterId::Command), f(WriterId::Brain), f(WriterId::Test), f(WriterId::Group),
         f(WriterId::Errand), m.deny, m.denyProbe, m.heldRequest, m.heldErrand, m.probePass, m.probeFail, m.probeShadow,
         m.depthOverflow, m.gateOffWorld, m.gateOffNone, m.gateOffBot);
-    std::size_t const len = Sanitize(buf, w, n);
-    if (!m.planField || len + 1 >= n)
+    std::size_t len = Sanitize(buf, w, n);
+    if (m.planField && len + 1 < n)
+    {
+        int const p = std::snprintf(buf + len, n - len, " plan=%u", f(WriterId::Planner));
+        len += Sanitize(buf + len, p, n - len);
+    }
+    // twow-repo#726: arm_late only while AiPlayerbot.Supervisor.ArmLate != 0 (armLateField), after plan=; key 0 = byte-identical.
+    if (!m.armLateField || len + 1 >= n)
         return len;
-    int const p = std::snprintf(buf + len, n - len, " plan=%u", f(WriterId::Planner));
-    return len + Sanitize(buf + len, p, n - len);
+    int const a = std::snprintf(buf + len, n - len, " arm_late=%u", m.armLate);
+    return len + Sanitize(buf + len, a, n - len);
 }
 
 // T02-GROUP: "[ArbiterGrp] cohort=<c>" and then " name=<value>" for every GrpField in enum order (kArbiterGrpBuf fits all fields

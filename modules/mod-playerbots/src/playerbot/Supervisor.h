@@ -112,6 +112,10 @@ private:
     // A3 step 3 T02-a: the arming (false -> true) and disarming (true -> false) edges of enforcement, and the mode line of a Decide.
     void ArmEnforce();
     void DisarmEnforce(std::uint32_t arbiter);
+    // twow-repo#726 (AiPlayerbot.Supervisor.ArmLate, default 0): the late arm, every tick after the edges. Defined in
+    // SupervisorEnforce.cpp (the key is read there); its first statement is the key and state poll (SupervisorPolicy.h
+    // ArmLatePoll): off = one config read. On: while enforcing and Passive, the arm rule again at most every 5 s.
+    void ArmLateTick(std::uint32_t nowMs);
     // edgeLine: R9b V12, only the disarming edge's line goes outside the line budget (EmitEdgeLine, SupervisorShadow.h).
     void WriteModeLine(Mode from, Mode to, TransitionResult const& result, char const* cause, std::uint32_t arbiter,
         bool edgeLine = false);
@@ -170,6 +174,7 @@ private:
     bool staged_ = false;
     bool inProbe_ = false;
     std::uint32_t nextProbeMs_ = 0;   // 0 = not scheduled yet
+    std::uint32_t armLateNextMs_ = 0;   // twow-repo#726: the late arm's retry deadline, 0 = not scheduled
     // A3 step 3 T02-GROUP (AiPlayerbot.Supervisor.Arbiter = 2, BotGroups.Manager.Types > 0; default 0): plain fields, bot thread.
     // The mailbox registration (R10): the guid and the token of this instance (0 = not registered).
     std::uint32_t mailGuid_ = 0;

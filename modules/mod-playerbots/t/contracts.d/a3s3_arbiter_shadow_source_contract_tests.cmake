@@ -534,7 +534,7 @@ function(check_switch config_h config_cpp conf_dist ai_cpp policy all_sources ou
   endif()
   foreach(needle
       "    supervisorArbiter = uint32(config.GetIntDefault(\"AiPlayerbot.Supervisor.Arbiter\", 2));\n    if (!ai::supervisor::ValidArbiter(supervisorArbiter))\n    {\n        sLog.outError(\"[Supervisor] config key=Supervisor.Arbiter value=%u result=off (0 off, 1 shadow, 2 enforce; default 2)\", supervisorArbiter);\n        supervisorArbiter = 0;\n    }"
-      "            {\"Supervisor\", Value(supervisor)},\n            {\"Supervisor.Arbiter\", Value(supervisorArbiter)},\n            {\"Supervisor.ArbiterProbe\", Value(supervisorArbiterProbe)},\n            {\"ThreadSafeTeleportAck\"")
+      "            {\"Supervisor\", Value(supervisor)},\n            {\"Supervisor.Arbiter\", Value(supervisorArbiter)},\n            {\"Supervisor.ArbiterProbe\", Value(supervisorArbiterProbe)},\n            {\"Supervisor.ArmLate\", Value(supervisorArmLate)},\n            {\"ThreadSafeTeleportAck\"")
     string(FIND "${config_cpp}" "${needle}" at)
     if(at EQUAL -1)
       set(${out} "PlayerbotAIConfig.cpp: missing ${needle}" PARENT_SCOPE)

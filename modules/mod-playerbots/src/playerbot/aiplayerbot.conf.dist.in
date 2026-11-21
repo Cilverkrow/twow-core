@@ -1641,6 +1641,13 @@ AiPlayerbot.Supervisor.Arbiter = 2
 # nothing and only counts probe_shadow (the paired control). 0 = off (default), 1 = probe. Any other value acts like 0
 # (one error line at load).
 AiPlayerbot.Supervisor.ArbiterProbe = 0
+# twow-repo#726 (bug fix, default 0 until acceptance + OB-10): the late arm. With AiPlayerbot.Supervisor.Arbiter = 2 the arming
+# edge checks each bot once; a bot that is parked, in a battleground or out of the quest book scope in that one tick stays
+# PASSIVE (never plans) for as long as enforcement stays on. 1 = while enforcing, a still PASSIVE bot is checked again at most
+# every 5 s and leaves PASSIVE for QUEST once eligible (one [Supervisor] ev=mode line with cause=arbiter_arm_late,
+# arm_late in [ArbiterMin]); a still ineligible bot writes nothing. 0 = off (default, the edge only, as before). Any other value
+# acts like 0 (one error line at load).
+AiPlayerbot.Supervisor.ArmLate = 0
 # A3 step 3 planner P-1 (A3-S3-PLANER-ENTWURF.md §6): path of the planner's band table, a TSV file. Line 1 "# version=2", line 2
 # "# source=...", line 3 the header with the columns (by name, extra columns ignored) key, min_level, max_level, zone_id,
 # rank, hub_map, hub_x, hub_y, hub_z, mob_level, z2_sec, r1_min_level. key "1".."10" = race (levels 1-12), "A0" "A1" "H0" "H1"

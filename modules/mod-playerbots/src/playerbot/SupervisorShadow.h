@@ -155,6 +155,8 @@ enum class EnforceCount : std::uint8_t
     GateOffWorld,
     GateOffNone,
     GateOffBot,
+    // twow-repo#726 (AiPlayerbot.Supervisor.ArmLate, default 0): [ArbiterMin] arm_late (before kGrpFirst: not a group field).
+    ArmLate,
     // T02-GROUP [ArbiterGrp] (design 7.11), GrpField order.
     DirEnter,
     DirUpdate,
@@ -212,6 +214,9 @@ constexpr EnforceCount kGrpFirst = EnforceCount::DirEnter;
 static_assert(std::size_t(EnforceCount::GatherKind3) - std::size_t(kGrpFirst) + 1 == kGrpFields,
     "the [ArbiterGrp] block of EnforceCount spans every GrpField");
 void CountEnforce(std::uint32_t guidLow, EnforceCount what);
+// twow-repo#726 (AiPlayerbot.Supervisor.ArmLate, default 0): [ArbiterMin] ends with arm_late= only while the key is not 0 (set by
+// PlayerbotAIConfig::Initialize; taken when the minute rolls). Key 0: the line is byte-identical.
+void SetArbiterArmLateField(bool on);
 
 // One enforcement line (ev=deny, ev=probe, ev=mode) from the shared budget of 300 lines per minute; a refused line counts as
 // dropped. The text is written as given (already formatted and sanitized by the caller).

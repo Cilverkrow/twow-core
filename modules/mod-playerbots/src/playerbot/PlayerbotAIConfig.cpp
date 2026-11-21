@@ -70,6 +70,7 @@
 #include <sstream>
 #include "PlayerbotLoginMgr.h"
 #include "playerbot/DeferredLog.h"   // s7r: lines of a world-thread manager scope go to the bot
+#include "playerbot/SupervisorShadow.h"   // twow-repo#726: SetArbiterArmLateField
 
 std::vector<std::string> ConfigAccess::GetValues(const std::string& name) const
 {
@@ -1068,6 +1069,14 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[Supervisor] config key=Supervisor.ArbiterProbe value=%u result=off (0 off, 1 probe)", supervisorArbiterProbe);
         supervisorArbiterProbe = 0;
     }
+    // twow-repo#726: the late arm (Supervisor::ArmLateTick, SupervisorEnforce.cpp); above 1 is off.
+    supervisorArmLate = uint32(config.GetIntDefault("AiPlayerbot.Supervisor.ArmLate", 0));
+    if (supervisorArmLate > 1)
+    {
+        sLog.outError("[Supervisor] config key=Supervisor.ArmLate value=%u result=off (0 off, 1 late arm)", supervisorArmLate);
+        supervisorArmLate = 0;
+    }
+    ai::supervisor::SetArbiterArmLateField(supervisorArmLate != 0);
     // T33-1 silent trap (OB-00 20.11.2026, R3 logging only): the lever is on but can never act (GroupGatherPolicy.h
     // LeverInertReasons). One note line, no clamp, no ERROR prefix (kits read "ERROR:[GroupMgr] config key=" as a clamp line);
     // the arbiter alone can be lifted later by the console: then the soft tag (LeverInertHard false; OB-60 R3 20.11.).
@@ -2581,6 +2590,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Supervisor", Value(supervisor)},
             {"Supervisor.Arbiter", Value(supervisorArbiter)},
             {"Supervisor.ArbiterProbe", Value(supervisorArbiterProbe)},
+            {"Supervisor.ArmLate", Value(supervisorArmLate)},
             {"ThreadSafeTeleportAck", Value(threadSafeTeleportAck)},
             {"ThrownUsageFix", Value(thrownUsageFix)},
             {"Travel.ElevatorScanCache", Value(travelElevatorScanCache)},
