@@ -462,6 +462,27 @@ void TestArbiter()
     pm.planField = true;
     FormatArbiterMin(buf, sizeof(buf), 'B', pm);
     Require(std::string(buf) == min + " plan=5", "P-3a: Planner = 2: the same line with plan=5 appended");
+    // twow-repo#726 with P-3a: both tails on, plan= first, then arm_late=.
+    pm.armLate = 3;
+    pm.armLateField = true;
+    FormatArbiterMin(buf, sizeof(buf), 'B', pm);
+    Require(std::string(buf) == min + " plan=5 arm_late=3", "P-3a + ArmLate: plan= then arm_late= after the base line");
+    // twow-repo#726 (AiPlayerbot.Supervisor.ArmLate, default 0): key 0 (armLateField false) = the base line byte for byte, even
+    // with a count; key != 0 appends " arm_late=N" after gate_off_bot.
+    std::string const baseLine = gmin;
+    e.armLate = 24;
+    FormatArbiterMin(buf, sizeof(buf), 'A', e);
+    Require(std::string(buf) == baseLine, "key 0: the minute line is byte-identical (no arm_late)");
+    e.armLateField = true;
+    std::size_t const an = FormatArbiterMin(buf, sizeof(buf), 'A', e);
+    std::string const amin(buf);
+    Require(an == amin.size() && amin == baseLine + " arm_late=24", "key 1: the base line, then arm_late=N");
+    full.armLate = 4294967295u;
+    full.armLateField = true;
+    std::size_t const aN = FormatArbiterMin(wide, sizeof(wide), 'B', full);
+    Require(aN == 679 && aN == std::strlen(wide) && aN + 1 < sizeof(wide), "with plan= and arm_late the longest line (679) fits 768");
+    char const* const wideTail = " gate_off_bot=4294967295 plan=4294967295 arm_late=4294967295";
+    Require(std::string(wide).find(wideTail) == aN - std::strlen(wideTail), "with plan= and arm_late the longest line ends plan=, arm_late=");
 
     // Buffers: cut and terminated, a zero buffer writes nothing, no line break survives.
     char small[16];
@@ -649,6 +670,149 @@ void TestArbiterGrp()
     Require(GrpSilent(m.grp) && m.gateOffWorld == 0 && m.gateOffNone == 0 && m.gateOffBot == 0, "new minute fields start at 0");
 }
 
+// twow-repo#726 (AiPlayerbot.Supervisor.ArmLate, default 0): the late arm. ArmSim models the arm paths of Supervisor::Tick:
+// the edges (ArmEnforce: the arm rule once; DisarmEnforce: back to Passive), then ArmLateTick (ArmLatePoll, ArmEligible, Decide).
+struct ArmSim
+{
+    bool enforce = false;
+    Mode mode = Mode::Passive;
+    std::uint32_t nextMs = 0;
+    bool scope = true;
+    bool bg = false;
+    bool parked = false;
+    int checks = 0;      // eligibility reads (the poll said due)
+    int lateArms = 0;    // arm_late
+    int edgeArms = 0;
+
+    void Tick(std::uint32_t key, std::uint32_t nowMs, bool arbiter2)
+    {
+        if (arbiter2 != enforce)
+        {
+            enforce = arbiter2;
+            if (enforce && mode == Mode::Passive && ArmEligible(scope, bg, parked))
+            {
+                mode = Decide(Mode::Passive, Mode::Quest, Requester::External, Phase::Plan, 0, Cadence{}).to;
+                ++edgeArms;
+            }
+            else if (!enforce && mode != Mode::Passive)
+                mode = Decide(mode, Mode::Passive, Requester::External, Phase::Plan, 0, Cadence{}).to;
+        }
+        if (!ArmLatePoll(key, enforce, mode, nowMs, nextMs))
+            return;
+        ++checks;
+        if (!ArmEligible(scope, bg, parked))
+            return;
+        TransitionResult const r = Decide(Mode::Passive, Mode::Quest, Requester::External, Phase::Plan, 0, Cadence{});
+        if (r.allowed)
+        {
+            mode = r.to;
+            ++lateArms;
+        }
+    }
+};
+
+void TestArmLate()
+{
+    Require(kArmLateRetryMs == 5000, "the late arm retries at most every 5 s");
+    Require(ArmEligible(true, false, false), "in scope, no battleground, not parked: eligible");
+    Require(!ArmEligible(false, false, false) && !ArmEligible(true, true, false) && !ArmEligible(true, false, true),
+        "out of scope, battleground or parked: not eligible (the edge's Passive-by-design cases)");
+
+    // Parked at the edge: no arm, the first sight only schedules; unparked, the next due retry arms it, once.
+    {
+        ArmSim s;
+        s.parked = true;
+        s.Tick(1, 1000, true);
+        Require(s.mode == Mode::Passive && s.edgeArms == 0 && s.checks == 0 && s.nextMs == 6000, "parked at the edge: Passive, scheduled");
+        s.Tick(1, 3000, true);
+        Require(s.checks == 0, "no check before the deadline");
+        s.Tick(1, 6000, true);
+        Require(s.mode == Mode::Passive && s.checks == 1 && s.lateArms == 0 && s.nextMs == 11000, "still parked: one silent check");
+        s.parked = false;
+        s.Tick(1, 8000, true);
+        Require(s.mode == Mode::Passive && s.checks == 1, "unparked: waits for the deadline");
+        s.Tick(1, 11000, true);
+        Require(s.mode == Mode::Quest && s.lateArms == 1 && s.checks == 2, "unparked: the next retry arms (QUEST)");
+        s.Tick(1, 16000, true);
+        Require(s.mode == Mode::Quest && s.lateArms == 1 && s.checks == 2 && s.nextMs == 0, "armed: no more retries");
+    }
+    // In a battleground at the edge: armed after leaving it.
+    {
+        ArmSim s;
+        s.bg = true;
+        for (std::uint32_t t = 1000; t <= 30000; t += 250)
+            s.Tick(1, t, true);
+        Require(s.mode == Mode::Passive && s.lateArms == 0 && s.checks == 5, "in a battleground: Passive, a check every 5 s");
+        s.bg = false;
+        for (std::uint32_t t = 30250; t <= 40000; t += 250)
+            s.Tick(1, t, true);
+        Require(s.mode == Mode::Quest && s.lateArms == 1 && s.edgeArms == 0, "left the battleground: armed late");
+    }
+    // Out of the quest book scope: stays Passive and silent; 2401 ticks in 10 minutes cost 120 eligibility reads.
+    {
+        ArmSim s;
+        s.scope = false;
+        for (std::uint32_t t = 1000; t <= 601000; t += 250)
+            s.Tick(1, t, true);
+        Require(s.mode == Mode::Passive && s.lateArms == 0 && s.checks == 120, "out of scope: Passive, rate-limited, no arm");
+    }
+    // Key 0: never a late arm, never a check, no deadline.
+    {
+        ArmSim s;
+        s.parked = true;
+        s.Tick(0, 1000, true);
+        s.parked = false;
+        for (std::uint32_t t = 1250; t <= 60000; t += 250)
+            s.Tick(0, t, true);
+        Require(s.mode == Mode::Passive && s.checks == 0 && s.lateArms == 0 && s.nextMs == 0, "key 0: the edge only, as before");
+    }
+    // Other key values are off too (the config clamps them to 0 with an error line).
+    {
+        std::uint32_t next = 0;
+        Require(!ArmLatePoll(2, true, Mode::Passive, 1000, next) && next == 0, "key 2 acts like 0");
+    }
+    // The intentional Passive: the disarming edge (arbiter away from 2) is never undone by the late arm.
+    {
+        ArmSim s;
+        s.Tick(1, 1000, true);
+        Require(s.mode == Mode::Quest && s.edgeArms == 1, "eligible at the edge: armed by the edge");
+        s.Tick(1, 2000, false);
+        Require(s.mode == Mode::Passive, "disarmed: Passive");
+        for (std::uint32_t t = 2250; t <= 60000; t += 250)
+            s.Tick(1, t, false);
+        Require(s.mode == Mode::Passive && s.checks == 0 && s.lateArms == 0 && s.nextMs == 0, "disarmed: no late arm");
+        s.Tick(1, 61000, true);
+        Require(s.mode == Mode::Quest && s.edgeArms == 2 && s.lateArms == 0, "armed again: by the edge");
+    }
+    // Not Passive (Quest, Group, Rescue, Rest, Grind): never due, the deadline is dropped.
+    {
+        Mode const others[] = {Mode::Quest, Mode::Grind, Mode::Rest, Mode::Group, Mode::Rescue};
+        for (Mode m : others)
+        {
+            std::uint32_t next = 4242;
+            Require(!ArmLatePoll(1, true, m, 1000, next) && next == 0, "outside Passive the late arm does nothing");
+        }
+    }
+    // The 32 bit clock: a deadline across the wrap; a deadline that would be 0 becomes 1; a stale deadline is scheduled anew.
+    {
+        ArmSim s;
+        s.parked = true;
+        s.Tick(1, 0xFFFFF000u, true);
+        Require(s.nextMs == 0xFFFFF000u + 5000u, "the deadline wraps");
+        s.Tick(1, 0xFFFFFF00u, true);
+        Require(s.checks == 0, "before a wrapped deadline: no check");
+        s.parked = false;
+        s.Tick(1, 0xFFFFF000u + 5000u, true);
+        Require(s.mode == Mode::Quest && s.lateArms == 1, "after the wrap: armed");
+        std::uint32_t next = 0;
+        Require(!ArmLatePoll(1, true, Mode::Passive, 0u - 5000u, next) && next == 1, "a deadline of 0 becomes 1");
+        next = 1000000;
+        Require(!ArmLatePoll(1, true, Mode::Passive, 1000, next) && next == 6000, "a stale far deadline is scheduled anew");
+        next = 900;
+        Require(ArmLatePoll(1, true, Mode::Passive, 1000, next) && next == 6000, "a passed deadline is due");
+    }
+}
+
 // T33-1 3:Y (17.11.2026): the [ArbiterMin] minute rolls only forward; a stale minute (time() read before the mutex) never rolls.
 void TestArbiterMinuteRoll()
 {
@@ -686,6 +850,7 @@ int main()
     TestArbiterLanes();
     TestArbiterGrp();
     TestArbiterMinuteRoll();
+    TestArmLate();
     std::cout << "supervisor_policy_tests: OK\n";
     return 0;
 }
