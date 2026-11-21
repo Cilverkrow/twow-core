@@ -444,20 +444,27 @@ void DarkmoonFaire::Disable()
 
 DarkmoonState DarkmoonFaire::GetDarkmoonState()
 {
-    time_t rawtime;
-    time(&rawtime);
+    // twow-repo#727: weekly rhythm in server time UTC (see DarkmoonSchedule.h).
+    // Mon setup, Tue-Fri open, Sat teardown (setup event again), Sun no faire.
+    DarkmoonSchedule::State const state = DarkmoonSchedule::At(static_cast<int64_t>(time(nullptr)));
 
-    struct tm* timeinfo;
-    timeinfo = localtime(&rawtime);
-    int weekOfTheYear = (((timeinfo->tm_yday - timeinfo->tm_wday + 7) / 7)) + 1;
+    switch (state.phase)
+    {
+        case DarkmoonSchedule::Phase::Setup:
+        case DarkmoonSchedule::Phase::Teardown:
+            return state.mulgore ? DARKMOON_H2_INSTALLATION : DARKMOON_A2_INSTALLATION;
+        case DarkmoonSchedule::Phase::Open:
+            return state.mulgore ? DARKMOON_H2 : DARKMOON_A2;
+        case DarkmoonSchedule::Phase::None:
+        default:
+            return DARKMOON_NONE;
+    }
+}
 
-    // Even week of the year = Horde, otherwise Alliance
-    bool isHorde = weekOfTheYear % 2 == 0;
-
-    if (timeinfo->tm_wday == 3) // Wednesday is installation time! :P
-        return isHorde ? DARKMOON_H2_INSTALLATION : DARKMOON_A2_INSTALLATION;
-    else
-        return isHorde ? DARKMOON_H2 : DARKMOON_A2;
+uint32 DarkmoonFaire::GetNextUpdateDelay()
+{
+    // Switch right after 00:00 UTC instead of up to max_ge_check_delay late.
+    return DarkmoonSchedule::SecondsUntilNextDay(static_cast<int64_t>(time(nullptr)));
 }
 
 /*

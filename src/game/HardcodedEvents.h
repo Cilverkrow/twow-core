@@ -3,6 +3,7 @@
 
 #include "GameEventMgr.h"
 #include "ObjectMgr.h"
+#include "DarkmoonSchedule.h"
 #include <queue>
 #include <optional>
 
@@ -162,6 +163,7 @@ struct DarkmoonFaire : WorldEvent
     void Update() override;
     void Enable() override;
     void Disable() override;
+    uint32 GetNextUpdateDelay() override; // twow-repo#727: next 00:00 UTC
 
 private:
     uint32 FindMonthFirstMonday(bool &foireAlly, struct tm *timeinfo);

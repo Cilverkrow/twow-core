@@ -1052,6 +1052,15 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
     COMMAND "${CMAKE_COMMAND}"
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_bg_scheduler_lock_517_contract.cmake")
+  # twow-repo#727: weekly Darkmoon Faire rhythm (UTC, Mon setup / Tue-Fri open / Sat teardown / Sun none,
+  # Mon 30.11.2026 = Mulgore, alternation across the turn of the year).
+  add_executable(darkmoon_schedule_727_test
+    "${TW_CORE_ROOT}/t/darkmoon_schedule_727_test.cpp")
+  add_test(NAME darkmoon_schedule_727_test COMMAND darkmoon_schedule_727_test)
+  add_test(NAME darkmoon_schedule_727_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_darkmoon_schedule_727_contract.cmake")
   # twow-repo#592 PATH-02 PR pair 0: `.mmaps replay` (name guard, fixture rows, hexfloats, 500 lines / 200 ms, chain rule).
   add_executable(path_replay_test
     "${TW_CORE_ROOT}/t/path_replay_test.cpp")

@@ -238,6 +238,7 @@ set (game_SRCS
     GMTicketMgr.h
     GossipDef.h
     HardcodedEvents.h
+    DarkmoonSchedule.h
     HonorMgr.h
     ItemEnchantmentMgr.h
     Language.h
