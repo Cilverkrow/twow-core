@@ -753,6 +753,14 @@ struct PlanMinCounts
     std::uint32_t modeQuestGrind = 0;
     std::uint32_t modeGrindQuest = 0;
     std::uint32_t modeDenied = 0;
+    // twow-repo#726 (OB-60 review 9f5669b7, OB-10 5a445aa4 + Nachtrag 1 1e3b50d1), printed after mode_denied at Planner = 2 only:
+    // F3 the quest pick's target not in the choice's list (non-locking, disjoint from fallback_reject); a grind pick's zone empty
+    // again for the same pick (non-locking, disjoint from fallback_zone_empty, which counts the first one per pick); F1 the
+    // FeedTakes filter loop's microseconds, the sum and the slowest choice of the minute.
+    std::uint32_t fallbackRejectEmpty = 0;
+    std::uint32_t zoneEmptyHeld = 0;
+    std::uint32_t feedUs = 0;
+    std::uint32_t feedUsMax = 0;
 };
 
 // The [PlanMin] buffer of the minute emitter: every field at 4294967295 with the P-3a fields fits (the unit test checks it).
@@ -838,6 +846,11 @@ inline void Add(PlanMinCounts& into, PlanMinCounts const& c)
     into.modeQuestGrind += c.modeQuestGrind;
     into.modeGrindQuest += c.modeGrindQuest;
     into.modeDenied += c.modeDenied;
+    into.fallbackRejectEmpty += c.fallbackRejectEmpty;
+    into.zoneEmptyHeld += c.zoneEmptyHeld;
+    into.feedUs += c.feedUs;
+    if (c.feedUsMax > into.feedUsMax)
+        into.feedUsMax = c.feedUsMax;
 }
 
 // p3 (AiPlayerbot.Planner = 2, the key value only, never the cohort; section 7.5): the P-3a fields after the P-2b ones. Without
@@ -868,13 +881,14 @@ inline std::size_t FormatPlanMin(char* buf, std::size_t n, char cohort, std::uin
         "expire_repeat=%u expire_blocked_fb=%u expire_pending=%u expire_after_work=%u fed=%u applied_quest=%u applied_grind=%u "
         "applied_live_quest=%u applied_live_grind=%u fallback_reject=%u fallback_stale=%u fallback_none=%u fallback_purpose=%u "
         "fallback_budget=%u fallback_denied=%u fallback_parked=%u fallback_zone_empty=%u fb_arbiter=%u fb_cohort=%u "
-        "turnin_unreached=%u mem_evict=%u mode_quest_grind=%u mode_grind_quest=%u mode_denied=%u",
+        "turnin_unreached=%u mem_evict=%u mode_quest_grind=%u mode_grind_quest=%u mode_denied=%u"
+        " fallback_reject_empty=%u zone_empty_held=%u feed_us=%u feed_us_max=%u",
         c.expired, c.expireDenied, c.expireDeniedCooldown, c.expireDeniedWork, c.expireDeniedLane, c.expireDeniedGroup,
         c.expireDeniedThread, c.expireDeniedZoneUnknown, c.expireWorkOverride, c.expireRepeat, c.expireBlockedFb, c.expirePending,
         c.expireAfterWork, c.fed, c.appliedQuest, c.appliedGrind, c.appliedLiveQuest, c.appliedLiveGrind, c.fallbackReject,
         c.fallbackStale, c.fallbackNone, c.fallbackPurpose, c.fallbackBudget, c.fallbackDenied, c.fallbackParked,
         c.fallbackZoneEmpty, c.fbArbiter, c.fbCohort, c.turninUnreached, c.memEvict, c.modeQuestGrind, c.modeGrindQuest,
-        c.modeDenied);
+        c.modeDenied, c.fallbackRejectEmpty, c.zoneEmptyHeld, c.feedUs, c.feedUsMax);
     if (t < 0)
         return len;
     len += std::size_t(t);
@@ -991,6 +1005,15 @@ enum class FeedFallback : std::uint8_t
     Parked = 5,
     Denied = 6,
     ZoneEmpty = 7,
+    // twow-repo#726 (OB-60 review 9f5669b7, OB-10 5a445aa4): two reasons that never lock. BudgetHeld: the feed skipped because a
+    // budget abort of this pick is held or a full-list resume is pending (F2: only the abort itself, Budget, locks - a held skip
+    // on every choice would renew rule 5 for ever). RejectEmpty: the quest pick's target is not in this choice's list (F3: the
+    // plan attempt never ran; on every choice it would renew rule 5 for ever).
+    BudgetHeld = 8,
+    RejectEmpty = 9,
+    // OB-10 Nachtrag 1 (1e3b50d1, Q2 (c)): a grind pick's zone empty locks (ZoneEmpty, V-3) once per pick; again for the same pick
+    // (key and sinceMs) it is ZoneEmptyHeld: zone_empty_held, no lock. A new pick locks once again.
+    ZoneEmptyHeld = 10,
 };
 
 inline bool FallbackLocks(FeedFallback f)
@@ -1004,6 +1027,20 @@ inline void NoteFallback(std::uint32_t& fallbackAtMs, FeedFallback f, std::uint3
 {
     if (FallbackLocks(f))
         fallbackAtMs = nowMs ? nowMs : 1u;
+}
+
+// twow-repo#726 F2 (OB-10 5a445aa4): the #416 hold of a pick whose plan attempt ran out of time. It holds only for the same pick
+// (key and sinceMs) and only for MinBindSec after the abort (wrap-safe); otherwise FeedBegin clears it and the pick is fed again.
+inline bool BudgetHolds(std::uint32_t heldKey, std::uint32_t heldSinceMs, std::uint32_t heldAtMs, std::uint32_t pickKey,
+    std::uint32_t pickSinceMs, std::uint32_t nowMs, std::uint32_t minBindMs)
+{
+    return heldKey && heldKey == pickKey && heldSinceMs == pickSinceMs && nowMs - heldAtMs < minBindMs;
+}
+
+// OB-10 Nachtrag 1 (Q2 (c)): the zone-empty fallback of this pick already locked once (same key and sinceMs).
+inline bool ZoneEmptySeen(std::uint32_t seenKey, std::uint32_t seenSinceMs, std::uint32_t pickKey, std::uint32_t pickSinceMs)
+{
+    return seenKey && seenKey == pickKey && seenSinceMs == pickSinceMs;
 }
 
 // The back_to_band pick of a writing bot (section 2.5, deviation 5): the forced band hub is not in the tier's pool, so it holds
@@ -1075,6 +1112,19 @@ inline FeedSkip FeedCheck(bool questPurpose, bool grindPurpose, bool forcedTarge
     if (resumePending || budgetHeld)
         return FeedSkip::Budget;
     return FeedSkip::Feed;
+}
+
+// twow-repo#726 F2 (OB-10 Nachtrag 1 Q1 (a)): the fallback reason of a skipped feed. No skip locks rule 5: a held budget or a
+// pending resume is BudgetHeld (fallback_budget, no lock); the abort itself (FeedEnd::Budget) locked once.
+inline FeedFallback SkipFallback(FeedSkip skip)
+{
+    switch (skip)
+    {
+        case FeedSkip::Purpose: return FeedFallback::Purpose;
+        case FeedSkip::Stale: return FeedFallback::Stale;
+        case FeedSkip::Budget: return FeedFallback::BudgetHeld;
+        default: return FeedFallback::None;
+    }
 }
 
 // The mode switch (section 2.6, P3-3): only out of a pick change (switch or forced), never out of same / margin / bind; a grind
