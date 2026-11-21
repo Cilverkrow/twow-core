@@ -1100,13 +1100,25 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[Planner] config key=Planner value=%u result=off (0 off, 1 shadow, 2 plan pick acts)", planner);
         planner = 0;
     }
+    // twow-repo#726 F4 (OB-60 review 9f5669b7, OB-10 5a445aa4 + Nachtrag 1): the P-2b seconds keys are read signed and clamped to
+    // the nearest bound with one error line (a negative value no longer wraps at * 1000u, MinBindSec 0 no longer turns the feed
+    // and rule 5 off). 0 stays valid where the conf.dist documents it (MaxIdleSec 0 = never, MaxHoldSec 0 = off). The echo shows
+    // the clamped value.
+    auto const plannerSec = [this](char const* key, int32 def, int32 lo, int32 hi) -> uint32
+    {
+        int32 const raw = config.GetIntDefault(key, def);
+        int32 const v = raw < lo ? lo : (raw > hi ? hi : raw);
+        if (v != raw)
+            sLog.outError("[Planner] config key=%s value=%d result=%d (%d..%d)", key + 12, raw, v, lo, hi);
+        return uint32(v);
+    };
     plannerMargin = config.GetFloatDefault("AiPlayerbot.Planner.Margin", 15.0f);
-    plannerMinBindSec = uint32(config.GetIntDefault("AiPlayerbot.Planner.MinBindSec", 120));
-    plannerMaxIdleSec = uint32(config.GetIntDefault("AiPlayerbot.Planner.MaxIdleSec", 300));
-    plannerMinDwellSec = uint32(config.GetIntDefault("AiPlayerbot.Planner.MinDwellSec", 120));
+    plannerMinBindSec = plannerSec("AiPlayerbot.Planner.MinBindSec", 120, 1, 3600);
+    plannerMaxIdleSec = plannerSec("AiPlayerbot.Planner.MaxIdleSec", 300, 0, 3600);
+    plannerMinDwellSec = plannerSec("AiPlayerbot.Planner.MinDwellSec", 120, 0, 3600);
     plannerMaxCandidates = uint32(config.GetIntDefault("AiPlayerbot.Planner.MaxCandidates", 32));
     plannerBudgetMs = uint32(config.GetIntDefault("AiPlayerbot.Planner.BudgetMs", 2));
-    plannerDeadWaitMaxSec = uint32(config.GetIntDefault("AiPlayerbot.Planner.DeadWaitMaxSec", 600));
+    plannerDeadWaitMaxSec = plannerSec("AiPlayerbot.Planner.DeadWaitMaxSec", 600, 0, 3600);
     plannerDeadProbeYards = config.GetFloatDefault("AiPlayerbot.Planner.DeadProbeYards", 40.0f);
     plannerRouteFactor = config.GetFloatDefault("AiPlayerbot.Planner.RouteFactor", 1.3f);
     plannerDangerCells = uint32(config.GetIntDefault("AiPlayerbot.Planner.DangerCells", 8));
@@ -1116,8 +1128,8 @@ bool PlayerbotAIConfig::Initialize()
     plannerBrainBonusMax = config.GetFloatDefault("AiPlayerbot.Planner.BrainBonusMax", 0.0f);
     plannerTurnInWorkSec = config.GetFloatDefault("AiPlayerbot.Planner.TurnInWorkSec", 0.0f);
     plannerGrindKillsPerMin = config.GetFloatDefault("AiPlayerbot.Planner.GrindKillsPerMin", 2.0f);
-    plannerMaxHoldSec = uint32(config.GetIntDefault("AiPlayerbot.Planner.MaxHoldSec", 1800));
-    plannerRepeatableRetakeSec = uint32(config.GetIntDefault("AiPlayerbot.Planner.RepeatableRetakeSec", 1800));
+    plannerMaxHoldSec = plannerSec("AiPlayerbot.Planner.MaxHoldSec", 1800, 0, 86400);
+    plannerRepeatableRetakeSec = plannerSec("AiPlayerbot.Planner.RepeatableRetakeSec", 1800, 0, 86400);
     plannerRepeatableMaxPerHour = uint32(config.GetIntDefault("AiPlayerbot.Planner.RepeatableMaxPerHour", 1));
     plannerRelocMinYards = config.GetFloatDefault("AiPlayerbot.Planner.RelocMinYards", 60.0f);
     plannerRelocSlack = config.GetFloatDefault("AiPlayerbot.Planner.RelocSlack", 1.5f);

@@ -50,6 +50,8 @@ struct Feed
     std::uint32_t destKey = 0;
     std::uint32_t zone = 0;       // a grind pick: the zone
     std::uint32_t key = 0;        // the pick key (feedBudgetKey)
+    std::uint32_t sinceMs = 0;    // the pick's sinceMs (twow-repo#726 F2 / Q2 (c): key and sinceMs name one pick)
+    std::uint32_t takesUs = 0;    // twow-repo#726 F1: microseconds of the FeedTakes filter loop (feed_us / feed_us_max)
     bool turnIn = false;
     std::uint32_t guardLogged = 0;   // [FarMoveGuard] lines of this choice, shared by both calls (LogsPerChoice per choice)
     std::uint32_t checked = 0;       // travel_choose checked of the plan attempt, added only when it chose
@@ -100,9 +102,10 @@ void CommitFeasibility(FeasibilityCounts const& buffer);
 enum class FeedEnd : std::uint8_t
 {
     Fed = 0,         // the plan attempt chose: fed
-    Reject = 1,      // SetBestTarget said no (also an empty quest list): fallback_reject
-    ZoneEmpty = 2,   // a grind pick without a point in its zone: fallback_zone_empty
-    Budget = 3,      // #416 in the plan attempt: fallback_budget, no second attempt for this pick
+    Reject = 1,      // SetBestTarget said no: fallback_reject
+    ZoneEmpty = 2,   // a grind pick without a point in its zone: fallback_zone_empty once per pick, then zone_empty_held
+    Budget = 3,      // #416 in the plan attempt: fallback_budget, no second attempt for this pick (until a pick change / MinBind)
+    RejectEmpty = 4, // twow-repo#726 F3: a quest pick's target not in this choice's list: fallback_reject_empty, no lock
 };
 void FeedResult(PlayerbotAI* ai, Feed const& feed, FeedEnd end);
 
