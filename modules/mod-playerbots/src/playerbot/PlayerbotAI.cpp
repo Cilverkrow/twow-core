@@ -42,6 +42,8 @@
 #include <cstdint>
 #include <iomanip>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 
 #include "playerbot/AiFactory.h"
 
@@ -2046,6 +2048,171 @@ std::string PlayerbotAI::TakeQuestFeasibilityMinuteLine()
     return ai::quest_feasibility::FormatMinuteLine(questFeasibilitySkips.exchange(0, std::memory_order_relaxed),
         questFeasibilityDrops.exchange(0, std::memory_order_relaxed),
         questFeasibilityGiverInactive.exchange(0, std::memory_order_relaxed));
+}
+
+// twow-repo#750 (AiPlayerbot.QuestFeasibility.CraftOnlySkip, QuestCraftOnlyPolicy.h; OB-10 840bcbdf / be58c794): the craft-only
+// quest items, built once by the world thread at start (key on only) and read-only afterwards; the counters are taken by the
+// world thread once a minute (atomics, no lock).
+namespace
+{
+std::unordered_map<uint32, std::vector<ai::quest_craft_only::Need>> craftOnlyQuests;
+std::atomic<uint32> craftOnlySkips{0};
+std::atomic<uint32> craftOnlyGiverInactive{0};
+std::atomic<uint32> craftOnlyHeld{0};
+
+// The quest's craft-only objectives with what this bot holds; false = the quest has none.
+bool CraftOnlyNeeds(Player* bot, uint32 questId, std::vector<ai::quest_craft_only::Need>& needs)
+{
+    auto const it = craftOnlyQuests.find(questId);
+    if (it == craftOnlyQuests.end())
+        return false;
+    needs = it->second;
+    for (ai::quest_craft_only::Need& need : needs)
+        need.held = bot->GetItemCount(need.itemId);
+    return true;
+}
+}
+
+void PlayerbotAI::BuildCraftOnlyQuests()
+{
+    craftOnlyQuests.clear();
+    std::unordered_map<uint32, ai::quest_craft_only::Sources> sources;
+
+    // Profession recipes: the spells on a profession / secondary skill line (SkillLineAbility.dbc).
+    std::unordered_set<uint32> professionSpells;
+    for (uint32 j = 0; j < sSkillLineAbilityStore.GetNumRows(); ++j)
+    {
+        SkillLineAbilityEntry const* ability = sSkillLineAbilityStore.LookupEntry(j);
+        if (!ability)
+            continue;
+        SkillLineEntry const* line = sSkillLineStore.LookupEntry(ability->skillId);
+        if (line && ai::quest_craft_only::IsProfessionCategory(line->categoryId))
+            professionSpells.insert(ability->spellId);
+    }
+
+    // Every create-item spell: a profession recipe or another source (quest / event spells, item use).
+    for (uint32 spellId = 1; spellId < sSpellTemplate.GetMaxEntry(); ++spellId)
+    {
+        SpellEntry const* spell = sSpellTemplate.LookupEntry<SpellEntry>(spellId);
+        if (!spell)
+            continue;
+        bool const profession = professionSpells.count(spellId) != 0;
+        for (uint32 i = 0; i < MAX_EFFECT_INDEX; ++i)
+            if (spell->Effect[i] == SPELL_EFFECT_CREATE_ITEM && spell->EffectItemType[i])
+                (profession ? sources[spell->EffectItemType[i]].professionRecipe : sources[spell->EffectItemType[i]].otherSpell) = true;
+    }
+
+    // Loot of any kind and vendors; a reference row's id counts as a source too (errs towards "has another source").
+    std::unique_ptr<QueryResult> loot(WorldDatabase.Query("SELECT item FROM creature_loot_template UNION SELECT item FROM gameobject_loot_template "
+            "UNION SELECT item FROM item_loot_template UNION SELECT item FROM reference_loot_template "
+            "UNION SELECT item FROM pickpocketing_loot_template UNION SELECT item FROM fishing_loot_template "
+            "UNION SELECT item FROM skinning_loot_template UNION SELECT item FROM disenchant_loot_template "
+            "UNION SELECT item FROM mail_loot_template"));
+    if (QueryResult* result = loot.get())
+    {
+        do
+        {
+            auto const it = sources.find(result->Fetch()[0].GetUInt32());
+            if (it != sources.end())
+                it->second.loot = true;
+        } while (result->NextRow());
+    }
+    std::unique_ptr<QueryResult> vendors(WorldDatabase.Query("SELECT item FROM npc_vendor UNION SELECT item FROM npc_vendor_template"));
+    if (QueryResult* result = vendors.get())
+    {
+        do
+        {
+            auto const it = sources.find(result->Fetch()[0].GetUInt32());
+            if (it != sources.end())
+                it->second.vendor = true;
+        } while (result->NextRow());
+    }
+
+    // Quest rewards, choice rewards and source items.
+    for (auto const& [questId, quest] : sObjectMgr.GetQuestTemplates())
+    {
+        auto const mark = [&sources](uint32 itemId)
+        {
+            auto const it = itemId ? sources.find(itemId) : sources.end();
+            if (it != sources.end())
+                it->second.questGiven = true;
+        };
+        for (uint32 i = 0; i < QUEST_REWARDS_COUNT; ++i)
+            mark(quest->RewItemId[i]);
+        for (uint32 i = 0; i < QUEST_REWARD_CHOICES_COUNT; ++i)
+            mark(quest->RewChoiceItemId[i]);
+        mark(quest->GetSrcItemId());
+    }
+
+    // The quests that ask for a craft-only item.
+    uint32 items = 0;
+    for (auto const& [itemId, source] : sources)
+        if (ai::quest_craft_only::CraftOnly(source))
+            ++items;
+    for (auto const& [questId, quest] : sObjectMgr.GetQuestTemplates())
+        for (uint32 i = 0; i < QUEST_ITEM_OBJECTIVES_COUNT; ++i)
+        {
+            uint32 const itemId = quest->ReqItemId[i];
+            auto const it = itemId ? sources.find(itemId) : sources.end();
+            if (it == sources.end() || !ai::quest_craft_only::CraftOnly(it->second))
+                continue;
+            ai::quest_craft_only::Need need;
+            need.itemId = itemId;
+            need.required = std::max<uint32>(1, quest->ReqItemCount[i]);
+            craftOnlyQuests[questId].push_back(need);
+        }
+
+    sLog.outBasic("%s", ai::quest_craft_only::FormatInitLine(items, uint32(craftOnlyQuests.size()),
+        sPlayerbotAIConfig.questFeasibilityCraftOnlySkip).c_str());
+}
+
+bool PlayerbotAI::SkipCraftOnlyQuest(Quest const* quest, ai::quest_craft_only::Path path)
+{
+    // twow-repo#750: key first - off or another cohort, nothing else is read.
+    if (!bot || !quest || !ai::cohort::Applies(sPlayerbotAIConfig.questFeasibilityCraftOnlySkip, bot->GetGUIDLow()))
+        return false;
+    if (!sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) || HasRealPlayerMaster())
+        return false;
+
+    std::vector<ai::quest_craft_only::Need> needs;
+    if (!CraftOnlyNeeds(bot, quest->GetQuestId(), needs))
+        return false;
+    int const unmet = ai::quest_craft_only::FirstUnmet(needs.data(), needs.size());
+    if (unmet < 0)
+        return false;
+
+    (path == ai::quest_craft_only::Path::Giver ? craftOnlyGiverInactive : craftOnlySkips).fetch_add(1, std::memory_order_relaxed);
+    ai::quest_feasibility::Path const ring = path == ai::quest_craft_only::Path::Giver ? ai::quest_feasibility::Path::Giver :
+        ai::quest_feasibility::Path::Accept;
+    if (ai::quest_feasibility::LogDue(craftOnlyLog, quest->GetQuestId(), ring, uint32(time(nullptr))))
+        sLog.outBasic("%s", ai::quest_craft_only::FormatSkipLine(bot->GetGUIDLow(), bot->GetLevel(), quest->GetQuestId(), path,
+            needs[std::size_t(unmet)]).c_str());
+    return true;
+}
+
+void PlayerbotAI::NoteCraftOnlyHeld(uint32 questId)
+{
+    // twow-repo#750 F2 (a): diagnosis only - the held quest and its other objectives stay as they are.
+    if (!bot || !ai::cohort::Applies(sPlayerbotAIConfig.questFeasibilityCraftOnlySkip, bot->GetGUIDLow()))
+        return;
+    if (!sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) || HasRealPlayerMaster())
+        return;
+
+    std::vector<ai::quest_craft_only::Need> needs;
+    if (!CraftOnlyNeeds(bot, questId, needs))
+        return;
+    int const unmet = ai::quest_craft_only::FirstUnmet(needs.data(), needs.size());
+    if (unmet < 0 || !ai::quest_feasibility::LogDue(craftOnlyLog, questId, ai::quest_feasibility::Path::Item, uint32(time(nullptr))))
+        return;
+    craftOnlyHeld.fetch_add(1, std::memory_order_relaxed);
+    sLog.outBasic("%s", ai::quest_craft_only::FormatSkipLine(bot->GetGUIDLow(), bot->GetLevel(), questId,
+        ai::quest_craft_only::Path::Held, needs[std::size_t(unmet)]).c_str());
+}
+
+std::string PlayerbotAI::TakeCraftOnlyMinuteLine()
+{
+    return ai::quest_craft_only::FormatMinuteLine(craftOnlySkips.exchange(0, std::memory_order_relaxed),
+        craftOnlyGiverInactive.exchange(0, std::memory_order_relaxed), craftOnlyHeld.exchange(0, std::memory_order_relaxed));
 }
 
 // twow-repo#517 stage a: called by RandomPlayerbotMgr (world thread, the bot's map idle) once a fill bot is out of its

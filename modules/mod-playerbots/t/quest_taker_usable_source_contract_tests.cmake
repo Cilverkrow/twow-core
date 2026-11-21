@@ -87,7 +87,8 @@ string(FIND "${travel_mgr}" "bool QuestRelationTravelDestination::IsActive(" act
 if(active_at EQUAL -1)
   message(FATAL_ERROR "Missing QuestRelationTravelDestination::IsActive")
 endif()
-string(SUBSTRING "${travel_mgr}" ${active_at} 1500 active_window)
+# twow-repo#750: 2200 (was 1500) - the CraftOnlySkip giver block before the map checks moved the needle to ~1700.
+string(SUBSTRING "${travel_mgr}" ${active_at} 2200 active_window)
 require_text("${active_window}" "if (!closestPoint || closestPoint->getMapId() != bot->GetMapId())" "giver without points is no crash")
 reject_text("${travel_mgr}" "(GetClosestPoint(bot)->getMapId() != bot->GetMapId())" "unchecked closest point")
 require_text("${world_square}" "return subSquares.empty() ? 0 : subSquares.begin()->second.GetSize();" "size of an empty destination")

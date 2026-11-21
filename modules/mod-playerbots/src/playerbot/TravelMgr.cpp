@@ -404,6 +404,10 @@ bool QuestRelationTravelDestination::IsActive(Player* bot, const PlayerTravelInf
         if (sPlayerbotAIConfig.questFeasibilityEnable && ai->SkipInfeasibleQuest(GetQuestTemplate(), ai::quest_feasibility::Path::Giver))
             return false;
 
+        // twow-repo#750 (QuestFeasibility.CraftOnlySkip, its own key): no trip to the giver of a quest it would not take; never the taker.
+        if (ai->SkipCraftOnlyQuest(GetQuestTemplate(), ai::quest_craft_only::Path::Giver))
+            return false;
+
         if (!bot->GetMap()->IsContinent())
         {
             // twow-repo#485: a giver can have no point (a script-only game object with
