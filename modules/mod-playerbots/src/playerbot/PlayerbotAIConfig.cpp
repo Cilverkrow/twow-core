@@ -1379,7 +1379,14 @@ bool PlayerbotAIConfig::Initialize()
     questFeasibilityBlocklist = ai::quest_feasibility::ParseQuestIdList(config.GetStringDefault("AiPlayerbot.QuestFeasibility.Blocklist", ""));
     questFeasibilityBlocklistWhileNoCustomStarts = ai::quest_feasibility::ParseQuestIdList(config.GetStringDefault("AiPlayerbot.QuestFeasibility.BlocklistWhileNoCustomStarts", ""));
     questFeasibilitySoloSkipGroupQuests = config.GetBoolDefault("AiPlayerbot.QuestFeasibility.SoloSkipGroupQuests", false);
-    questFeasibilitySoloSkipEscortTimed = config.GetBoolDefault("AiPlayerbot.QuestFeasibility.SoloSkipEscortTimed", false);
+    // OB-10 21.11. Q1 (a): a cohort mode for the in-realm A/B (QuestFeasibilityPolicy.h); an unknown mode is off.
+    questFeasibilitySoloSkipEscortTimed = uint32(config.GetIntDefault("AiPlayerbot.QuestFeasibility.SoloSkipEscortTimed", 0));
+    if (!ai::quest_feasibility::ValidEscortTimedMode(questFeasibilitySoloSkipEscortTimed))
+    {
+        sLog.outError("[QuestFeasibility] config key=SoloSkipEscortTimed value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)",
+            questFeasibilitySoloSkipEscortTimed);
+        questFeasibilitySoloSkipEscortTimed = 0;
+    }
     questFeasibilitySoloSkipEscortIds = ai::quest_feasibility::ParseQuestIdList(config.GetStringDefault("AiPlayerbot.QuestFeasibility.SoloSkipEscortIds", "155,898,938"));
     questFeasibilitySoloSkipTimedMaxSeconds = std::min<uint32>(86400, uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.QuestFeasibility.SoloSkipTimedMaxSeconds", 900))));
     directTargetsEnabled = config.GetBoolDefault("AiPlayerbot.DirectTargets.Enable", false);

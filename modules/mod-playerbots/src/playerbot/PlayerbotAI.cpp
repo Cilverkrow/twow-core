@@ -2006,7 +2006,9 @@ ai::quest_feasibility::Reason PlayerbotAI::QuestFeasibilityReason(Quest const* q
     facts.type = quest->GetType();
     facts.suggestedPlayers = quest->GetSuggestedPlayers();
     // DEEP7 item 5 (OB-10 21.11. criterion (A), a lever): listed escort quests and short timed quests, a bot not in a group
-    facts.soloSkipEscortTimed = sPlayerbotAIConfig.questFeasibilitySoloSkipEscortTimed;
+    // OB-10 21.11. Q1 (a): a cohort mode, the shared cohort rule (CohortPolicy.h)
+    facts.soloSkipEscortTimed = ai::quest_feasibility::EscortTimedApplies(sPlayerbotAIConfig.questFeasibilitySoloSkipEscortTimed,
+        bot->GetGUIDLow());
     facts.escortListed = sPlayerbotAIConfig.questFeasibilitySoloSkipEscortIds.count(questId) != 0;
     facts.limitTime = quest->GetLimitTime();
     facts.timedMaxSeconds = sPlayerbotAIConfig.questFeasibilitySoloSkipTimedMaxSeconds;
