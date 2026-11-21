@@ -546,7 +546,7 @@ bool PlayerbotAIConfig::Initialize()
     parkQuiet = config.GetBoolDefault("AiPlayerbot.Park.Quiet", false);
     parkQuietIdleEmoteSeconds = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.Park.QuietIdleEmoteSeconds", 600)));
     parkPersist = config.GetBoolDefault("AiPlayerbot.Park.Persist", false);
-    parkSeats = config.GetBoolDefault("AiPlayerbot.Park.Seats", false);
+    parkSeats = config.GetBoolDefault("AiPlayerbot.Park.Seats", true);
     worldBotsTrace = config.GetBoolDefault("AiPlayerbot.WorldBotsTrace", false);
     activityTrace = config.GetBoolDefault("AiPlayerbot.ActivityTrace", false);   // twow-repo#601 R01 L1
     activityTraceStuckDetail = config.GetBoolDefault("AiPlayerbot.ActivityTrace.StuckDetail", false);   // twow-repo#601 (OB-00 26.10.2026)
@@ -675,9 +675,9 @@ bool PlayerbotAIConfig::Initialize()
     rotationReleaseStaleTargetStillSeconds = config.GetIntDefault("AiPlayerbot.Rotation.ReleaseStaleTarget.StillSeconds", 60);
     rotationReleaseStaleTargetStoppedSeconds = config.GetIntDefault("AiPlayerbot.Rotation.ReleaseStaleTarget.StoppedSeconds", 5);
     perfCombatIdleYield = config.GetBoolDefault("AiPlayerbot.Perf.CombatIdleYield", false);
-    castWaitPreparing = config.GetIntDefault("AiPlayerbot.CastWait.Preparing", 0);
+    castWaitPreparing = config.GetIntDefault("AiPlayerbot.CastWait.Preparing", 1);
     if (castWaitPreparing > 2)
-        castWaitPreparing = 0;   // twow-repo#602: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B)
+        castWaitPreparing = 1;   // twow-repo#602: an unknown mode is the default (0 off = rollback, 1 all, 2 cohort B; DS6 bundle B, owner 21.11.2026)
     rotationHunterMeleeStart = config.GetIntDefault("AiPlayerbot.Rotation.HunterMeleeStart", 0);   // twow-repo#602 hunter deaths
     if (rotationHunterMeleeStart > 2)
         rotationHunterMeleeStart = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
@@ -707,9 +707,9 @@ bool PlayerbotAIConfig::Initialize()
     rotationReachLosClose = config.GetIntDefault("AiPlayerbot.Rotation.ReachLosClose", 0);   // twow-repo#594
     if (rotationReachLosClose > 2)
         rotationReachLosClose = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
-    rotationReachPlayerMaster = config.GetIntDefault("AiPlayerbot.Rotation.ReachPlayerMaster", 0);   // twow-repo#630
+    rotationReachPlayerMaster = config.GetIntDefault("AiPlayerbot.Rotation.ReachPlayerMaster", 1);   // twow-repo#630
     if (rotationReachPlayerMaster > 2)
-        rotationReachPlayerMaster = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
+        rotationReachPlayerMaster = 1;   // an unknown mode is the default (0 off = rollback, 1 all, 2 cohort B; DS6 bundle B, owner 21.11.2026)
     rotationReachDropEngagement = config.GetIntDefault("AiPlayerbot.Rotation.ReachDropEngagement", 0);   // twow-repo#630 follow-up
     if (rotationReachDropEngagement > 2)
         rotationReachDropEngagement = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
@@ -1445,7 +1445,7 @@ bool PlayerbotAIConfig::Initialize()
     pathTransportEdgeTrace = config.GetBoolDefault("AiPlayerbot.Path.TransportEdgeTrace", false);
     pathTransportDeckProbe = config.GetBoolDefault("AiPlayerbot.Path.TransportDeckProbe", false);
     pathTransportWaitTimeoutMin = ai::transport_board::ClampWaitTimeoutMin(config.GetIntDefault("AiPlayerbot.Path.TransportWaitTimeoutMin", 15));
-    pathTransportBoardFix = config.GetBoolDefault("AiPlayerbot.Path.TransportBoardFix", false);
+    pathTransportBoardFix = config.GetBoolDefault("AiPlayerbot.Path.TransportBoardFix", true);
     pathTransportSameMapGuard = config.GetBoolDefault("AiPlayerbot.Path.TransportSameMapGuard", true);   // twow-repo#575 H4
     if (pathTransportBoardFix && transportTeleportType == 0)   // twow-repo#342 (S3b-1)
         sLog.outError("AiPlayerbot.Path.TransportBoardFix is built for TransportTeleportType 1 / 2; walking onto transports (0) is not supported");
@@ -1744,7 +1744,7 @@ bool PlayerbotAIConfig::Initialize()
     enableActionLog = config.GetBoolDefault("AiPlayerbot.EnableActionLog", false);
     actionLogGuids = ai::action_log::ParseSample(config.GetStringDefault("AiPlayerbot.ActionLog.Guids", ""));   // twow-repo#601 / #614
     actionLogDamageSampleEvery = ai::damage_log::Every(config.GetIntDefault("AiPlayerbot.ActionLog.DamageSampleEvery", 5));   // twow-repo#653
-    grindGreyByLevel = config.GetBoolDefault("AiPlayerbot.Grind.GreyByLevel", false);   // twow-repo#601 / #614
+    grindGreyByLevel = config.GetBoolDefault("AiPlayerbot.Grind.GreyByLevel", true);   // twow-repo#601 / #614
     grindQuestFirstOrder = config.GetIntDefault("AiPlayerbot.Grind.QuestFirstOrder", 0);   // twow-repo#601 decision order
     if (grindQuestFirstOrder > 2)
         grindQuestFirstOrder = 0;   // an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B)
@@ -1848,7 +1848,7 @@ bool PlayerbotAIConfig::Initialize()
     rosterGuildNamesAlliance = config.GetStringDefault("AiPlayerbot.RosterGuild.NamesAlliance", "");
     rosterGuildNamesHorde = config.GetStringDefault("AiPlayerbot.RosterGuild.NamesHorde", "");
     rosterGuildSnapshotSeconds = config.GetIntDefault("AiPlayerbot.RosterGuild.SnapshotSeconds", 60);
-    rosterGuildNote = config.GetBoolDefault("AiPlayerbot.RosterGuild.GuildNote", false);
+    rosterGuildNote = config.GetBoolDefault("AiPlayerbot.RosterGuild.GuildNote", true);
     rosterGuildNoteRefreshSeconds = config.GetIntDefault("AiPlayerbot.RosterGuild.NoteRefreshSeconds", 86400);
     // twow-repo#485 / #518: role fill of roster guilds. Defaults = owner rules of 04.10. (assignment v3):
     // 7/10/28, a healer of every healer class, tank mix 2-3 warriors + 1 bear/rogue/paladin/shaman, rare
@@ -1891,7 +1891,7 @@ bool PlayerbotAIConfig::Initialize()
         }
     }
     std::atomic_store(&rosterGuildPlanLines, std::shared_ptr<const std::vector<std::string>>(planLines));
-    rosterGuildAllowPoaching = config.GetBoolDefault("AiPlayerbot.RosterGuild.AllowPoaching", false);
+    rosterGuildAllowPoaching = config.GetBoolDefault("AiPlayerbot.RosterGuild.AllowPoaching", true);
     rosterGuildPoachCooldownSeconds = config.GetIntDefault("AiPlayerbot.RosterGuild.PoachCooldownSeconds", 86400);
     rosterGuildMinLevel = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.RosterGuild.MinLevel", 0)));
     // owner 04.11.2026: JoinMinLevel (join, sign, be offered a charter or invited by bot officers); not set (or negative) = MinLevel.
@@ -1901,11 +1901,11 @@ bool PlayerbotAIConfig::Initialize()
     }
     rosterGuildFoundTravel = config.GetBoolDefault("AiPlayerbot.RosterGuild.FoundTravel", false);
     // twow-repo#485: bandages and potions of roster bots from the bags. 0 / 100 / 2 = legacy.
-    rosterConsumablesUseReal = config.GetBoolDefault("AiPlayerbot.RosterConsumables.UseReal", false);
+    rosterConsumablesUseReal = config.GetBoolDefault("AiPlayerbot.RosterConsumables.UseReal", true);
     rosterConsumablesHealingPotionPct = config.GetIntDefault("AiPlayerbot.RosterConsumables.HealingPotionPct", 100);
     rosterConsumablesManaPotionPct = config.GetIntDefault("AiPlayerbot.RosterConsumables.ManaPotionPct", 100);
     rosterConsumablesKeepStacks = config.GetIntDefault("AiPlayerbot.RosterConsumables.KeepStacks", 2);
-    rosterConsumablesBuy = config.GetBoolDefault("AiPlayerbot.RosterConsumables.Buy", false);
+    rosterConsumablesBuy = config.GetBoolDefault("AiPlayerbot.RosterConsumables.Buy", true);
     rosterConsumablesTrace = config.GetBoolDefault("AiPlayerbot.RosterConsumables.Trace", false);
     rosterConsumablesTraceCooldownSeconds = config.GetIntDefault("AiPlayerbot.RosterConsumables.TraceCooldownSeconds", 300);
 
@@ -2037,9 +2037,9 @@ bool PlayerbotAIConfig::Initialize()
         travelRpgAreaLevelFromSpawn = 0;
     // BOT-12 (twow-repo#677): the elevator branch of getTransports from a per-map spawn list, built once (WorldPosition.cpp).
     travelElevatorScanCache = config.GetBoolDefault("AiPlayerbot.Travel.ElevatorScanCache", false);
-    gatherQuestHerbFilter = config.GetIntDefault("AiPlayerbot.Gather.QuestHerbFilter", 0);
+    gatherQuestHerbFilter = config.GetIntDefault("AiPlayerbot.Gather.QuestHerbFilter", 1);
     if (gatherQuestHerbFilter > 2)
-        gatherQuestHerbFilter = 0;
+        gatherQuestHerbFilter = 1;   // an unknown mode is the default (0 off = rollback, 1 all, 2 cohort B; DS6 bundle B, owner 21.11.2026)
     professionUseGatherDistance = std::max(0.0f, config.GetFloatDefault("AiPlayerbot.ProfessionUse.GatherDistance", 0.0f));
     professionUseCraft = config.GetBoolDefault("AiPlayerbot.ProfessionUse.Craft", false);
     professionUseCraftIntervalSeconds = std::max<uint32>(10, config.GetIntDefault("AiPlayerbot.ProfessionUse.CraftIntervalSeconds", 300));
