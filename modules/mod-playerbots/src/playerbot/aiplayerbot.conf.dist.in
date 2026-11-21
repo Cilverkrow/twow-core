@@ -2194,7 +2194,7 @@ AiPlayerbot.QuestFirstProgression.BandQueuedFreeMinutes = 0
 # side is never blocked). The two lists apply to class quests too (explicit ids); SoloSkipGroupQuests spares class
 # quests. Shares by a player, the catch-up, the escort confirm and guild quest orders stay untouched (a player's
 # decision): the cleanup keeps listed quests while the bot is in a group and never drops its guild quest order's quest.
-# [QuestFeasibility] state=skip bot= level= quest= reason=blocklist|blocklist_crsz0|group_solo path=accept|item|giver
+# [QuestFeasibility] state=skip bot= level= quest= reason=blocklist|blocklist_crsz0|group_solo|escort_timed_solo path=accept|item|giver
 # once per bot, quest and path an hour (at most 4 lines per bot a minute), [QuestFeasibility] minute skips= drops=
 # giver_inactive= once a minute; skips= and giver_inactive= count checks (one quest can count several times a minute),
 # not distinct quests. 0 = off (default).
@@ -2210,6 +2210,18 @@ AiPlayerbot.QuestFeasibility.BlocklistWhileNoCustomStarts =
 # dungeon (81) or raid (62) and quests with SuggestedPlayers >= 2 (class quests excepted), does not travel to their
 # givers, and drops them while open. 0 = off (default).
 AiPlayerbot.QuestFeasibility.SoloSkipGroupQuests = 0
+# SoloSkipEscortTimed = 1 (acts only with Enable = 1; DEEP7 item 5, OB-10 21.11.2026, a lever: A/B before any default
+# change): a bot that is not in a group does not take a listed escort quest (SoloSkipEscortIds) or a quest with a time limit
+# of 1..SoloSkipTimedMaxSeconds seconds (class quests excepted) and does not travel to their givers - solo bots took
+# them and dropped them again on the escort's failure or the timer. A bot in a group still takes them. The log cleanup
+# does not drop such quests (the failure already does). reason=escort_timed_solo in the skip line. 0 = off (default).
+AiPlayerbot.QuestFeasibility.SoloSkipEscortTimed = 0
+# SoloSkipEscortIds (acts only with SoloSkipEscortTimed = 1): the escort quests of that rule, a comma list of quest ids
+# (decimal, > 0, at most 512). The core has no escort flag. Seed: the DEEP7 loops 155, 898, 938.
+AiPlayerbot.QuestFeasibility.SoloSkipEscortIds = 155,898,938
+# SoloSkipTimedMaxSeconds (acts only with SoloSkipEscortTimed = 1): a quest with LimitTime 1..this is a short timed quest
+# (the DEEP7 loops: 300 s, 540 s). 0 = no timed skip (the escort list only); at most 86400. Default 900.
+AiPlayerbot.QuestFeasibility.SoloSkipTimedMaxSeconds = 900
 
 # twow-repo#594 / P3 (owner 15.10.2026, direct travel targets). Enable = master switch (0 = off, default); the fresh-bot
 # rules below act only with it. A fresh bot is a quest-first roster bot at or below FreshMaxLevel (live 14.10.: L1-3 bots
