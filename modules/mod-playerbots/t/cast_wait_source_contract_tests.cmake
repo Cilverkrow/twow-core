@@ -80,10 +80,12 @@ endfunction()
 function(check policy ai_cpp ai_h config_h config_cpp dist mgr_cpp out_var)
   set(errors "")
 
-  # 1. Switch: default 1 in the dist, the member and the read (DS6 bundle B, owner 21.11.2026); unknown modes are off.
+  # 1. Switch: default 1 in the dist, the member and the read (DS6 bundle B, owner 21.11.2026); an unknown mode is the default 1
+  # (#740/#742 template), 0 = rollback.
   need("${dist}" "\nAiPlayerbot.CastWait.Preparing = 1\n" "dist key, default 1")
+  need("${dist}" "Any other value acts like 1.\nAiPlayerbot.CastWait.Preparing = 1\n" "dist: unknown mode = 1")
   need("${config_h}" "uint32 castWaitPreparing = 1;" "config member, default 1")
-  need("${config_cpp}" "castWaitPreparing = config.GetIntDefault(\"AiPlayerbot.CastWait.Preparing\", 1);\n    if (castWaitPreparing > 2)\n        castWaitPreparing = 0;" "config read, > 2 = off")
+  need("${config_cpp}" "castWaitPreparing = config.GetIntDefault(\"AiPlayerbot.CastWait.Preparing\", 1);\n    if (castWaitPreparing > 2)\n        castWaitPreparing = 1;" "config read, > 2 = default 1")
   need("${config_cpp}" "{\"CastWait.Preparing\", Value(castWaitPreparing)}," "parsed mode in [ConfigEcho] (owner rule #615)")
 
   # 2. Pure policy (std only).
@@ -147,7 +149,8 @@ function(probe label var from to)
   set(probes "${probes}" PARENT_SCOPE)
 endfunction()
 probe("default off" dist "\nAiPlayerbot.CastWait.Preparing = 1\n" "\nAiPlayerbot.CastWait.Preparing = 0\n")
-probe("unknown mode kept" config_cpp "    if (castWaitPreparing > 2)\n        castWaitPreparing = 0;" "")
+probe("unknown mode kept" config_cpp "    if (castWaitPreparing > 2)\n        castWaitPreparing = 1;" "")
+probe("unknown mode off" config_cpp "        castWaitPreparing = 1;   //" "        castWaitPreparing = 0;   //")
 probe("deadline per call" policy "    std::uint32_t const want = timerMs" "    w.deadline = now + CapMs(castTimeMs);\n    std::uint32_t const want = timerMs")
 probe("shortens a delay" policy "g.delay = wait == 0 ? 0u : (wait > currentDelay ? wait : currentDelay);" "g.delay = wait;")
 probe("release resets to 0" ai_cpp "aiInternalUpdateDelay = ai::cast_wait::ReleasedDelay(castWait, WorldTimer::getMSTime(), aiInternalUpdateDelay);" "aiInternalUpdateDelay = 0;")

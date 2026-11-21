@@ -3852,13 +3852,13 @@ AiPlayerbot.BotUpdateTraceTriggers = 0
 # (zone base skill - 5, as intended). Before, a shadowed variable left the requirement at 0, so a bot with fishing skill 1
 # could choose every fishing zone. 0 = as before (default).
 AiPlayerbot.Gather.FishingSkillCheck = 0
-# twow-repo#333 Berufe P1-f (owner 25.10.2026): the quest plants (Serpentbloom, Bloodpetal Sprout, Gloom Weed, Doom Weed,
+# twow-repo#333 Berufe P1-f (owner 25.10.2026; DS6 bundle B, owner 21.11.2026: BEHAVIOUR CHANGE, ON by default, 0 = rollback): the quest plants (Serpentbloom, Bloodpetal Sprout, Gloom Weed, Doom Weed,
 # Incendia Agave, Plant Bundle, Violet Tragan, Hyjalroot ...: lock 259, a herbalism slot next to "open kneeling", the loot
 # is a quest item) are picked only while one of the bot's quests wants them. Before, a herbalist without the quest picked
 # them on the way (passive gathering). The gather travel targets have left them out since #414. Real herbs (Peacebloom,
 # Silverleaf ...) stay as they are. No log line (the check runs on every loot scan).
 # Mode: 1 = on for every bot (default since DS6 bundle B, owner 21.11.2026), 0 = off (rollback): as before,
-# 2 = only cohort B (odd low guid). Any other value acts like 0.
+# 2 = only cohort B (odd low guid). Any other value acts like 1.
 AiPlayerbot.Gather.QuestHerbFilter = 1
 # twow-repo#596 D: 1 = the zone-escape trigger and the hearthstone check take the home bind's area from the area the core
 # stored at bind time, instead of a terrain lookup at the bind position (which loaded that far grid from disk again and
@@ -4281,7 +4281,7 @@ AiPlayerbot.Rotation.ReleaseStaleTarget.StoppedSeconds = 5
 # leaves melee reach or the auto attack stops (not on new attackers or trigger changes). Reactions and the
 # 500 ms facing correction are unchanged. One [CombatIdle] line per minute. 0 = as before (default).
 AiPlayerbot.Perf.CombatIdleYield = 0
-# twow-repo#602 ROT-01 (L1-b finding 19.10.2026, BEHAVIOUR CHANGE, enable only after A/B + owner go): a bot AI holds
+# twow-repo#602 ROT-01 (L1-b finding 19.10.2026; DS6 bundle B, owner 21.11.2026: BEHAVIOUR CHANGE, ON by default, 0 = rollback): a bot AI holds
 # its internal AI pass until the real end of its own cast while that cast is PREPARING (spells with a cast time:
 # Smite, Lesser Heal, Frostbolt, ...). Today the wait ends after the nominal cast time and the combat engine re-runs
 # every ReactDelay until the pushed-back cast lands, getting SPELL_IN_PROGRESS for its own cast each time. The wait
@@ -4291,7 +4291,7 @@ AiPlayerbot.Perf.CombatIdleYield = 0
 # (they answer their master at once). Channels and auto-repeat are unchanged. One [CastWait] line per minute;
 # CAST_WAIT lines in the action log of sampled bots.
 # 1 = on for all bots (default since DS6 bundle B, owner 21.11.2026), 0 = off (rollback): as before,
-# 2 = only cohort B (odd guid, for an A/B in one realm).
+# 2 = only cohort B (odd guid, for an A/B in one realm). Any other value acts like 1.
 AiPlayerbot.CastWait.Preparing = 1
 
 # twow-repo#602 ROT-01 hunter deaths (focus check 25.10.2026, OB-00, BEHAVIOUR CHANGE, enable only after A/B + owner go): hunters
@@ -4387,14 +4387,14 @@ AiPlayerbot.Rotation.OomBackoff.DelayMs = 1000
 # the floor) per evaluation, stood= per evaluation, episodes= / in_los_after= (back in sight within 5 s) per episode
 # (closed_A stays 0 with mode 2 by construction).
 AiPlayerbot.Rotation.ReachLosClose = 0
-# twow-repo#630 GRP-REACH-01 (BUG FIX, enable after the test-realm repro + owner go): the reach progress check of hotfix 8.2 (no
+# twow-repo#630 GRP-REACH-01 (BUG FIX; DS6 bundle B, owner 21.11.2026: BEHAVIOUR CHANGE, ON by default, 0 = rollback): the reach progress check of hotfix 8.2 (no
 # yard closer for 20 s = unreachable) also for a bot with a real player as master. Before, such a bot returned from the check at
 # once, so "reach melee/spell" on a hostile target it could never get to ran forever (with or without Rotation.ReachLosClose).
 # With the mode on the bot drops only its own current target and ignores it for 30 s instead of 5 min, so it follows a player
 # command on that target again soon; the player's group, master and target stay untouched. "[Unreachable] ... master=player
 # ignore_s=30 cohort=" (one line per bot per 5 min, as before; bots without a player master log master=bot ignore_s=300).
 # 1 = on for every bot (default since DS6 bundle B, owner 21.11.2026), 0 = off (rollback): as before,
-# 2 = only cohort B (odd low guid). Any other value acts like 0.
+# 2 = only cohort B (odd low guid). Any other value acts like 1.
 AiPlayerbot.Rotation.ReachPlayerMaster = 1
 # twow-repo#630 follow-up (BUG FIX, owner repro 25.10.2026 on C; enable with ReachPlayerMaster after the test-realm repro + owner
 # go): the drop of ReachPlayerMaster cleared only the bot's "current target". A rogue sent with "attack" while stealthed kept the

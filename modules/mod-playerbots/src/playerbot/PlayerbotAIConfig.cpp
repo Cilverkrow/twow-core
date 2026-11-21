@@ -674,7 +674,7 @@ bool PlayerbotAIConfig::Initialize()
     perfCombatIdleYield = config.GetBoolDefault("AiPlayerbot.Perf.CombatIdleYield", false);
     castWaitPreparing = config.GetIntDefault("AiPlayerbot.CastWait.Preparing", 1);
     if (castWaitPreparing > 2)
-        castWaitPreparing = 0;   // twow-repo#602: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B)
+        castWaitPreparing = 1;   // twow-repo#602: an unknown mode is the default (0 off = rollback, 1 all, 2 cohort B; DS6 bundle B, owner 21.11.2026)
     rotationHunterMeleeStart = config.GetIntDefault("AiPlayerbot.Rotation.HunterMeleeStart", 0);   // twow-repo#602 hunter deaths
     if (rotationHunterMeleeStart > 2)
         rotationHunterMeleeStart = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
@@ -706,7 +706,7 @@ bool PlayerbotAIConfig::Initialize()
         rotationReachLosClose = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
     rotationReachPlayerMaster = config.GetIntDefault("AiPlayerbot.Rotation.ReachPlayerMaster", 1);   // twow-repo#630
     if (rotationReachPlayerMaster > 2)
-        rotationReachPlayerMaster = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
+        rotationReachPlayerMaster = 1;   // an unknown mode is the default (0 off = rollback, 1 all, 2 cohort B; DS6 bundle B, owner 21.11.2026)
     rotationReachDropEngagement = config.GetIntDefault("AiPlayerbot.Rotation.ReachDropEngagement", 0);   // twow-repo#630 follow-up
     if (rotationReachDropEngagement > 2)
         rotationReachDropEngagement = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
@@ -1985,7 +1985,7 @@ bool PlayerbotAIConfig::Initialize()
     travelElevatorScanCache = config.GetBoolDefault("AiPlayerbot.Travel.ElevatorScanCache", false);
     gatherQuestHerbFilter = config.GetIntDefault("AiPlayerbot.Gather.QuestHerbFilter", 1);
     if (gatherQuestHerbFilter > 2)
-        gatherQuestHerbFilter = 0;
+        gatherQuestHerbFilter = 1;   // an unknown mode is the default (0 off = rollback, 1 all, 2 cohort B; DS6 bundle B, owner 21.11.2026)
     professionUseGatherDistance = std::max(0.0f, config.GetFloatDefault("AiPlayerbot.ProfessionUse.GatherDistance", 0.0f));
     professionUseCraft = config.GetBoolDefault("AiPlayerbot.ProfessionUse.Craft", false);
     professionUseCraftIntervalSeconds = std::max<uint32>(10, config.GetIntDefault("AiPlayerbot.ProfessionUse.CraftIntervalSeconds", 300));
