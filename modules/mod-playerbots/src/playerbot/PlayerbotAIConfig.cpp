@@ -719,6 +719,16 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[UnreachableGiveUp] config key=Rotation.UnreachableGiveUp value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", rotationUnreachableGiveUp);
         rotationUnreachableGiveUp = 0;
     }
+    rotationUnreachableLock = config.GetIntDefault("AiPlayerbot.Rotation.UnreachableLock", 0);   // twow-repo#703 item 4b
+    if (rotationUnreachableLock > 3)
+    {
+        sLog.outError("[UnreachableLock] config key=Rotation.UnreachableLock value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", rotationUnreachableLock);
+        rotationUnreachableLock = 0;
+    }
+    if (rotationUnreachableLock && !rotationUnreachableGiveUp)
+        sLog.outError("[UnreachableLock] config key=Rotation.UnreachableLock value=%u giveup=0 result=inert (only Rotation.UnreachableGiveUp arms it)", rotationUnreachableLock);
+    else if (rotationUnreachableLock >= 2 && rotationUnreachableGiveUp >= 2 && rotationUnreachableLock != rotationUnreachableGiveUp)
+        sLog.outError("[UnreachableLock] config key=Rotation.UnreachableLock value=%u giveup=%u result=inert (the two cohorts do not overlap)", rotationUnreachableLock, rotationUnreachableGiveUp);
     rotationDarkRuneGate = config.GetIntDefault("AiPlayerbot.Rotation.DarkRuneGate", 0);   // twow-repo#602 ROT-01 3c
     if (rotationDarkRuneGate > 2)
         rotationDarkRuneGate = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
@@ -2530,6 +2540,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Rotation.TankKitFromLevel", Value(rotationTankKitFromLevel)},
             {"Rotation.TankRoguePoison", Value(rotationTankRoguePoison)},
             {"Rotation.UnreachableGiveUp", Value(rotationUnreachableGiveUp)},
+            {"Rotation.UnreachableLock", Value(rotationUnreachableLock)},
             {"Rpg.TurnInFirst", Value(rpgTurnInFirst)},
             {"Supervisor", Value(supervisor)},
             {"Supervisor.Arbiter", Value(supervisorArbiter)},

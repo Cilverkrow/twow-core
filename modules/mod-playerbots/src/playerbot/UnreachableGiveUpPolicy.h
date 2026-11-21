@@ -151,4 +151,177 @@ inline bool MarkEvictsLive(quest_loop::EmptyCamps const& camps, std::uint32_t qu
             return false;
     return true;
 }
+
+// ---- AiPlayerbot.Rotation.UnreachableLock (twow-repo#703 item 4b, design 20.11.2026 L1-L8; cohort mode 0 off (default) / 1 all /
+// 2 cohort B / 3 cohort A, other values -> 0; only the give-up above arms it).
+//
+// 703H u4: 8 [StuckCombat] stops followed a same-bot [UnreachableGiveUp] (1.77 by chance), 5 on the given-up entry: the bot
+// picked the given-up guid or a sibling of the same camp again. After a give-up a bot on its own (no group) locks that guid
+// anywhere, and the same entry on the same map within EntryRadiusYards of the give-up spot, for LockSeconds on its own clock
+// (an IgnoreList overwrite cannot shorten it). A locked unit is still picked in self-defence (MayDefend).
+
+constexpr std::uint32_t LockSeconds = LongIgnoreSeconds;   // 1800, the span of the give-up ignore
+constexpr float EntryRadiusYards = 100.0f;                 // a same-entry sibling counts within this 2D radius of the spot
+constexpr std::size_t LockSlots = 4;                       // locks per bot
+constexpr std::uint32_t LockLogSeconds = 60;               // at most one state=block line per bot per span
+
+// The pick paths that read the lock (the path= and n_* fields of the block line).
+enum class Path : std::uint8_t { GrindAttacker, GrindCandidate, Assist, Attack, Pull, Count };
+enum class Match : std::uint8_t { None, Guid, Entry };
+
+inline char const* PathName(Path path)
+{
+    switch (path)
+    {
+        case Path::GrindAttacker: return "grind_att";
+        case Path::GrindCandidate: return "grind_cand";
+        case Path::Assist: return "assist";
+        case Path::Attack: return "attack";
+        case Path::Pull: return "pull";
+        default: return "none";
+    }
+}
+
+inline char const* MatchName(Match match)
+{
+    return match == Match::Guid ? "guid" : match == Match::Entry ? "entry" : "none";
+}
+
+// The arm gate: mode 0 = no lock for any bot (the caller passes cohort::Applies(mode, guid)); a bot in a group never (L3).
+inline bool LockActive(std::uint32_t mode, bool cohortApplies, bool inGroup)
+{
+    return mode != 0 && cohortApplies && !inGroup;
+}
+
+// Self-defence per match type (L2): a sibling (Entry) when its victim is the bot or its pet; the given-up guid only when it
+// attacks the bot or its pet AND the bot can hit it now (reach to it stays blocked). The caller computes hittableNow lazily.
+inline bool MayDefend(Match match, bool attacksBotOrPet, bool hittableNow)
+{
+    if (match == Match::Entry)
+        return attacksBotOrPet;
+    if (match == Match::Guid)
+        return attacksBotOrPet && hittableNow;
+    return true;
+}
+
+struct Lock
+{
+    std::uint64_t guid = 0;     // the given-up unit (0 = no guid match)
+    std::int32_t entry = 0;     // its entry (0 = no sibling match)
+    std::uint32_t map = 0;
+    float x = 0.0f;             // the give-up spot
+    float y = 0.0f;
+    std::uint32_t until = 0;    // seconds; live while until > now (0 = free)
+};
+
+// The per-bot locks (the bot's own thread).
+struct Locks
+{
+    Lock slots[LockSlots];
+    std::uint32_t latest = 0;   // the latest until (the fast path)
+
+    // Locks guid, and its entry near (map, x, y), until now + LockSeconds: its own slot again, else a free or run-out one, else
+    // the one that runs out first. Returns true when that pushed out a live lock.
+    bool Arm(std::uint64_t guid, std::int32_t entry, std::uint32_t map, float x, float y, std::uint32_t now)
+    {
+        Lock* slot = nullptr;
+        for (Lock& l : slots)
+            if (guid && l.guid == guid)
+                slot = &l;
+        for (Lock& l : slots)
+            if (!slot && l.until <= now)
+                slot = &l;
+        bool evicted = false;
+        if (!slot)
+        {
+            slot = &slots[0];
+            for (Lock& l : slots)
+                if (l.until < slot->until)
+                    slot = &l;
+            evicted = true;
+        }
+        *slot = Lock{ guid, entry, map, x, y, now + LockSeconds };
+        if (slot->until > latest)
+            latest = slot->until;
+        return evicted;
+    }
+
+    bool Any(std::uint32_t now) const { return latest > now; }
+
+    // Guid: a live lock of this guid, anywhere (guid 0 never). Entry: a live lock of this entry (0 never) on the same map within
+    // EntryRadiusYards (2D) of its spot. Guid wins over Entry.
+    Match Find(std::uint64_t guid, std::int32_t entry, std::uint32_t map, float x, float y, std::uint32_t now) const
+    {
+        Match match = Match::None;
+        for (Lock const& l : slots)
+        {
+            if (l.until <= now)
+                continue;
+            if (guid && l.guid == guid)
+                return Match::Guid;
+            if (entry && l.entry == entry && l.map == map && Near(l, x, y))
+                match = Match::Entry;
+        }
+        return match;
+    }
+
+    // The seconds left of the longest live lock of that match type (0 = none).
+    std::uint32_t LeftFor(Match match, std::uint64_t guid, std::int32_t entry, std::uint32_t map, float x, float y,
+        std::uint32_t now) const
+    {
+        std::uint32_t left = 0;
+        for (Lock const& l : slots)
+        {
+            if (l.until <= now)
+                continue;
+            bool const hit = match == Match::Guid ? (guid && l.guid == guid) :
+                (match == Match::Entry && entry && l.entry == entry && l.map == map && Near(l, x, y));
+            if (hit && l.until - now > left)
+                left = l.until - now;
+        }
+        return left;
+    }
+
+    static bool Near(Lock const& l, float x, float y)
+    {
+        float const dx = l.x - x;
+        float const dy = l.y - y;
+        return dx * dx + dy * dy <= EntryRadiusYards * EntryRadiusYards;
+    }
+};
+
+// The state=block line budget (L6 visibility): blocks per path and defended verdicts since the last line. A line is due for a
+// block (never for a defended verdict), the first at once, then at most one per LockLogSeconds; the caller then calls Reset.
+// The n_* counts are read calls, not units (FindTarget asks once per target value and tick), and blocks after the last line
+// are not flushed when no later block comes: they overstate the units and miss the tail.
+struct BlockLog
+{
+    std::uint32_t blocked[std::size_t(Path::Count)] = {};
+    std::uint32_t defended = 0;
+    std::uint32_t last = 0;
+    bool logged = false;
+
+    bool Note(Path path, bool defend, std::uint32_t now)
+    {
+        if (defend)
+        {
+            ++defended;
+            return false;
+        }
+        if (path < Path::Count)
+            ++blocked[std::size_t(path)];
+        return !logged || now - last >= LockLogSeconds;
+    }
+
+    void Reset(std::uint32_t now)
+    {
+        for (std::uint32_t& n : blocked)
+            n = 0;
+        defended = 0;
+        last = now;
+        logged = true;
+    }
+
+    std::uint32_t Blocked(Path path) const { return path < Path::Count ? blocked[std::size_t(path)] : 0; }
+};
 }
