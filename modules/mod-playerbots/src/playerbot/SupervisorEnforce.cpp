@@ -166,9 +166,11 @@ bool LaneFree(PlayerbotAI* ai, Lane lane, char const* site)
         return true;
     char const* const where = site ? site : "";
     std::uint32_t const guid = ai->GetBot()->GetGUIDLow();
+    // A3 step 3 planner P-3a (P3-ENTWURF-v0.2 section 2.2): the planner's expire counts nothing here (it counts
+    // expire_denied_lane itself), so held_errand stays the T02-a errands' number.
     if (std::strcmp(where, "request") == 0)
         CountEnforce(guid, EnforceCount::HeldRequest);
-    else if (std::strcmp(where, "probe") != 0)
+    else if (std::strcmp(where, "probe") != 0 && std::strcmp(where, "planner") != 0)
         CountEnforce(guid, EnforceCount::HeldErrand);
     return false;
 }

@@ -30,11 +30,18 @@ class TravelTarget;
 // T02-GROUP A/B. Legacy writers are deleted only after adoption.
 namespace ai::supervisor
 {
-class Supervisor
+// A3 R9 / R2 wiring pair R9-2 (twow-repo#575, R9 v5 3): the supervisor is the sink of the bot's progress meter; it asks the
+// planner and returns its verdict. The two bodies live in PlannerShadow.cpp with the planner. Before P-3 no verdict acts (D1).
+class Supervisor : public ai::replan::IReplanSink
 {
 public:
     explicit Supervisor(PlayerbotAI* ai);
     ~Supervisor();   // out of line in Supervisor.cpp: PlayerbotAI.h holds a unique_ptr to the incomplete type
+
+    // R9-2: the planner's answer to a stall or a relocation of the live target (Keep with group_member or respawn_wait, else
+    // Replan planner_choice). Read only; bot thread (the planner tick).
+    ai::replan::Verdict OnStall(ai::replan::StallEvent const& e) override;
+    ai::replan::Verdict OnRelocate(ai::replan::RelocationEvent const& e) override;
 
     Supervisor(Supervisor const&) = delete;
     Supervisor& operator=(Supervisor const&) = delete;
@@ -92,6 +99,10 @@ public:
     // thread only; and the writer of the last admitted write (overwritten_shadow).
     ai::planner::PlanState& Plan() { return plan_; }
     WriterId LastWriter() const { return lastWriter_; }
+    // A3 step 3 planner P-3a (P3-ENTWURF-v0.2 section 2.6): the planner's QUEST <-> GRIND switch, Decide(mode_, to,
+    // Requester::Planner, phase_, dwellMs, minDwell = Planner.MinDwellSec) and its ev=mode line (cause=planner). Defined in
+    // PlannerWrite.cpp; called only by the planner tick (PlannerShadow.cpp) for a writing bot after a pick change.
+    TransitionResult PlannerMode(Mode to, std::uint32_t dwellMs, std::uint32_t arbiter);
 
 private:
     // Mailbox pair: takes this bot's mail, oldest first, once per tick; the mailbox counts it (GroupDirective separately).
@@ -110,7 +121,8 @@ private:
     // A3 step 3 planner P-2b (AiPlayerbot.Planner, default 0): the planner, the last statement of Tick. Defined in
     // PlannerShadow.cpp (config, log and the game reads live there). Off: one config read. On: the snapshot comparison every
     // tick (also in Group, Rest and Passive, so no old event fires on the return), a plan only in Quest or Grind on an event or
-    // after MaxIdleSec. It writes nothing of the bot: [Plan] and [PlanMin] lines and its own state only.
+    // after MaxIdleSec. It writes nothing of the bot: [Plan] and [PlanMin] lines and its own state only. P-3a (Planner = 2 with
+    // Planner.WriteCohort, default 0): a writing bot acts through PlannerWrite.cpp only (expire, PlannerMode).
     void PlanTick(std::uint32_t nowMs, std::uint32_t arbiter);
 
     // ---- A3 step 3 T02-GROUP (AiPlayerbot.Supervisor.Arbiter = 2, BotGroups.Manager.Types > 0; default 0) ----------------

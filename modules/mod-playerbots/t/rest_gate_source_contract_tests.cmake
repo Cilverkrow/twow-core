@@ -199,4 +199,25 @@ require_text("${trace_cpp}" "constexpr std::uint32_t LinesPerMinute = 300;" "lin
 require_text("${trace_h}" "Never included from PlayerbotAI.h or PlayerbotAIConfig.h" "trace header note")
 require_text("${value_h}" "static bool Resting(PlayerbotAI* ai);" "Resting helper")
 
+# 8. DEEP7 finding 3 (20.11.2026, measurement only): the late read of a stale episode is logged, never decided on. The stale test, the
+#    stale duration, the timeout flag and the travel give-back stay as before; late / gapMs / lateMs reach only the line and the counters
+#    (the decisions are compared with the old Step / Close in t/rest_gate_policy_tests.cpp section 11).
+region("${policy}" "inline Closed Step(" "inline bool Resting(" step)
+require_text("${step}" "        End const end = std::uint32_t(nowMs - ep.lastSeenMs) > StaleGapMs ? End::Stale : EndOf(r, t, nowMs, ep.startMs);" "the unchanged stale test")
+require_order("${step}" "        End const late = end == End::Stale ? EndOf(r, t, nowMs, ep.startMs) : End::None;\n        c = Close(ep, end, nowMs);\n        c.late = late;" "    if (RestartBlocked(ep.timedOut, nowMs, ep.endMs) || !StartRest(r, t))\n        return c;" "the late read only fills the closed record, before the unchanged restart rule")
+require_count("${step}" "late" 3 "late appears only in its one computation and the one copy into the closed record")
+region("${policy}" "inline Closed Close(" "inline Closed Step(" close)
+require_text("${close}" "    c.durMs = (end == End::Stale ? ep.lastSeenMs : nowMs) - ep.startMs;" "the stale duration still ends at the last read")
+require_text("${close}" "    c.gapMs = nowMs - ep.lastSeenMs;   // measurement only\n    c.lateMs = nowMs - ep.startMs;     // measurement only\n    ep.open = false;\n    ep.timedOut = end == End::Timeout;\n    ep.endMs = nowMs;" "the measurement fields are read before the unchanged episode writes")
+forbid_text("${policy}" "ep.late" "a late field in the episode state")
+forbid_text("${policy}" "ep.gapMs" "a gap field in the episode state")
+require_text("${policy}" "    if (end == End::Stale && n > 0 && std::size_t(n) < sizeof(buf))\n        std::snprintf(buf + n, sizeof(buf) - std::size_t(n), \" late=%s gap_ms=%u dur_late_ms=%u\", LateName(late), gapMs, lateMs);" "only a stale line gets the late fields")
+require_text("${policy}" "\"timeout=%llu stale=%llu rest_s=%llu cast_fail=%llu dropped=%u stale_rested=%llu stale_combat=%llu stale_timeout=%llu \"" "the stale_* totals after dropped=")
+require_text("${trace_cpp}" "    std::lock_guard<std::mutex> lock(g_mutex);\n    ai::rest_gate::Count(Slot(cls, cohortB), closed);" "the counters through the pure Count under the lock")
+require_count("${value_cpp}" "closed.late" 2 "late only in the line (closed.late and closed.lateMs, both in the one call)")
+require_count("${value_cpp}" "closed.gapMs" 1 "gap only in the line")
+require_count("${value_cpp}" "closed.lateMs" 1 "dur_late only in the line")
+require_text("${value_cpp}" "            !ai->AllowActivity(), closed.late, closed.gapMs, closed.lateMs).c_str());" "the late fields passed to the line")
+require_text("${conf}" "a stale line ends with \" late=rested|combat|\n# timeout|low gap_ms= dur_late_ms=\"" "line format change documented")
+
 message(STATUS "REST_GATE_SOURCE_CONTRACT=PASS")

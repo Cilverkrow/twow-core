@@ -85,11 +85,11 @@ void RestGateValue::Finish(ai::rest_gate::Closed const& closed, ai::rest_gate::R
     if (!closed.closed)
         return;
     uint32 const guid = bot->GetGUIDLow();
-    ai::rest_gate_rt::RecordEpisode(bot->getClass(), ai::cohort::InB(guid), closed.end, closed.durMs);
+    ai::rest_gate_rt::RecordEpisode(bot->getClass(), ai::cohort::InB(guid), closed);
     if (ai::rest_gate_rt::TakeLineBudget(uint32(time(nullptr))))
         sLog.outBasic("%s", ai::rest_gate::FormatEpisodeLine(guid, bot->GetName(), bot->getClass(), bot->GetLevel(), ai::cohort::Letter(guid),
             closed.applied, closed.startHp, closed.startMana, r.hp, r.manaPool ? int(r.mana) : -1, closed.durMs, closed.end,
-            !ai->AllowActivity()).c_str());
+            !ai->AllowActivity(), closed.late, closed.gapMs, closed.lateMs).c_str());   // late / gap / dur_late: stale lines only (DEEP7 3)
     if (closed.applied)
         if (TravelTarget* target = AI_VALUE(TravelTarget*, "travel target"))
             target->OnRestEnded(closed.durMs);

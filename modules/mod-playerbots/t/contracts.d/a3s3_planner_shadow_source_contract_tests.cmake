@@ -64,7 +64,8 @@ read_file("${PB_SOURCE_DIR}/strategy/actions/ChooseTravelTargetAction.cpp" choos
 set(PLANNER_KEYS Planner Planner.BrainBonusMax Planner.BudgetMs Planner.DangerCells Planner.DangerPenalty Planner.DangerTopN
   Planner.DeadProbeYards Planner.DeadWaitMaxSec Planner.GrindKillsPerMin Planner.Margin Planner.MaxCandidates Planner.MaxHoldSec
   Planner.MaxIdleSec Planner.MinBindSec Planner.MinDwellSec Planner.RelocMinYards Planner.RelocSlack Planner.RepeatableMaxPerHour
-  Planner.RepeatableRetakeSec Planner.RouteFactor Planner.SwitchCost Planner.TurnInWorkSec)
+  Planner.RepeatableRetakeSec Planner.RouteFactor Planner.SwitchCost Planner.TurnInWorkSec Planner.WriteCohort
+  Replan Replan.Shadow)   # R9-2 (twow-repo#575): the progress meter keys in the planner tick
 
 # ---- (a) writes nothing -----------------------------------------------------------------------------------------------------
 function(check_writes_nothing text out)
@@ -93,11 +94,11 @@ endfunction()
 
 # ---- (b) the tick, the budget, the minute -----------------------------------------------------------------------------------
 function(check_tick text out)
-  set(gate "void Supervisor::PlanTick(std::uint32_t nowMs, std::uint32_t arbiter)\n{\n    if (!sPlayerbotAIConfig.planner)\n        return;\n    PlanTickImpl(ai_, plan_, mode_, owner_, lastWriter_, nowMs, arbiter);\n}")
+  set(gate "void Supervisor::PlanTick(std::uint32_t nowMs, std::uint32_t arbiter)\n{\n    if (!sPlayerbotAIConfig.planner)\n        return;\n    PlanTickImpl(*this, ai_, plan_, mode_, owner_, lastWriter_, nowMs, arbiter);\n}")
   set(budget "constexpr std::uint32_t kPlanLinesPerMinute = 300;")
   set(take "    return ai::rot_cast::BudgetTake(g_window, g_used, std::uint32_t(time(nullptr)), kPlanLinesPerMinute);")
   set(dropped "    else\n        ++c.planDropped;")
-  set(write0 "        l.write = 0;   // P-2: the shadow writes nothing")
+  set(write0 "        l.write = wrote ? 1u : 0u;   // P-3a: 1 = this plan expired the live target (writing bot); the shadow writes nothing")
   foreach(v gate budget take dropped write0)
     count_text("${text}" ${v} n)
     if(NOT n EQUAL 1)
@@ -235,7 +236,7 @@ expect_caught("another line budget" "${r}")
 string(REPLACE "    if (!sPlayerbotAIConfig.planner)\n        return;\n    PlanTickImpl(" "    PlanTickImpl(" m "${shadow_cpp}")
 check_tick("${m}" r)
 expect_caught("PlanTick without the off gate" "${r}")
-string(REPLACE "        l.write = 0;   // P-2: the shadow writes nothing" "        l.write = 1;" m "${shadow_cpp}")
+string(REPLACE "        l.write = wrote ? 1u : 0u;   // P-3a: 1 = this plan expired the live target (writing bot); the shadow writes nothing" "        l.write = 1;" m "${shadow_cpp}")
 check_tick("${m}" r)
 expect_caught("the line says write=1" "${r}")
 string(REPLACE "    if (sPlayerbotAIConfig.planner)\n        ai::planner_shadow::NoteChoice(ai, futureTravelPurpose.c_str(), newTarget.GetDestination());\n" "" m "${choose_cpp}")

@@ -10,8 +10,8 @@
 // RelocationEvent.planned, A3-GERUEST-L60 E2). The meter measures counted time without progress per target key and asks the sink
 // (the supervisor, which asks the planner) for a Keep / Replan / Close verdict; the planner decides, the meter only enforces the
 // forced rules (keep_limit, second_stall, reloc_loop) and the hourly cap on planner-choice decisions. No game types, no config
-// reads, no locks, no log calls; <cstdio> is only for the two line formatters. Nothing in the game calls this yet: R9-2 wires it
-// into the planner tick behind its own switch (default 0) and a shadow key (R9-PREREG C2).
+// reads, no locks, no log calls; <cstdio> is only for the two line formatters. R9-2 (PlannerShadow.cpp) is the caller: the
+// planner tick feeds it behind AiPlayerbot.Replan (default 0) and AiPlayerbot.Replan.Shadow (R9-PREREG C2).
 //
 // planned = false everywhere gives exactly the v4 behaviour. Not here: the S4-3 rescue trigger and the rescue episode (v5 8.2
 // conditions 1 and 2) come with the S4-3 pair; v5 8.2 condition 3 (Rescue relocations are not loop-counted) is here.
@@ -135,7 +135,7 @@ inline bool EffectivePlanned(bool planned, std::uint8_t legIndex, RelocSource s)
     return planned && legIndex != NoLeg && (s == RelocSource::Hearth || s == RelocSource::TeleportAck);
 }
 
-// ---- parameters (the defaults are the spec's; R9-2 reads the keys) -------------------------------------------------------
+// ---- parameters (the spec defaults; R9-2 reads only the switch and the shadow key) -----------------------------------------
 struct Params
 {
     std::uint32_t stallMs = 600000;            // N (5.2)
@@ -306,12 +306,33 @@ struct Outcome
     Record rec;
 };
 
-// Per-minute counters for [ReplanMin]; the caller sums them per cohort.
+// Per-minute counters for [ReplanMin]; the caller sums them per cohort (Add). forcedAfterRateLimited (OB-10 nit 2): a forced
+// decision whose decision right before, at the same key, in the same episode and without progress in between, was a rate_limited
+// Keep. The last three are the caller's (R9-2, OB-10 R-3 / R-5 / R-6; the meter never counts them): hops = jumps that were a
+// movement hop (no relocation), grindNoKill = ticks with a grind target the meter was not fed (no kill counter yet), offMap =
+// decisions while the target was on another map (tagged offmap=1, kept out of C1/C2).
 struct Counters
 {
-    std::uint32_t stalls = 0, relocates = 0, keep = 0, replan = 0, close = 0, forced = 0, rateLimited = 0, gaps = 0,
-                  plannedCredit = 0;
+    std::uint32_t stalls = 0, relocates = 0, keep = 0, replan = 0, close = 0, forced = 0, rateLimited = 0, forcedAfterRateLimited = 0,
+                  gaps = 0, plannedCredit = 0, hops = 0, grindNoKill = 0, offMap = 0;
 };
+
+inline void Add(Counters& a, Counters const& b)
+{
+    a.stalls += b.stalls;
+    a.relocates += b.relocates;
+    a.keep += b.keep;
+    a.replan += b.replan;
+    a.close += b.close;
+    a.forced += b.forced;
+    a.rateLimited += b.rateLimited;
+    a.forcedAfterRateLimited += b.forcedAfterRateLimited;
+    a.gaps += b.gaps;
+    a.plannedCredit += b.plannedCredit;
+    a.hops += b.hops;
+    a.grindNoKill += b.grindNoKill;
+    a.offMap += b.offMap;
+}
 
 // ---- the meter (one per bot, held by the supervisor) ---------------------------------------------------------------------
 class ProgressMeter
@@ -428,6 +449,9 @@ public:
     }
 
     // Every relocation goes to the sink and gives one decision (7.3: never silent).
+    // OB-10 nit 1 (twow-repo#575): a relocate-triggered Replan or Close (reloc_loop included) is not recorded as a give-up. Only a
+    // stall decision in Feed records one, so a relocation never feeds second_stall or stalls_target; it does fill the hourly
+    // slots (Apply).
     Outcome OnRelocate(RelocationEvent const& in, IReplanSink& sink)
     {
         Outcome out;
@@ -558,6 +582,7 @@ private:
     std::uint32_t m_hour[HourSlots] = {};
     std::size_t m_hourNext = 0, m_hourUsed = 0;
     Counters m_counters;
+    bool m_lastRateLimited = false;   // the last decision of this episode was a rate_limited Keep (no progress since)
 
     // Ends the episode without starting one: no key, no clock, no per-episode counters (the per-key give-up history and the
     // hourly decisions stay).
@@ -575,6 +600,7 @@ private:
         m_hasCredit = false;
         m_winCombatMs = 0;
         m_winDeadMs = 0;
+        m_lastRateLimited = false;
     }
 
     void StartEpisode(Sample const& s)
@@ -593,6 +619,7 @@ private:
         m_epPartial = s.routePartial;
         m_epFails = s.routeFails;
         m_needBaseline = false;
+        m_lastRateLimited = false;
         NewWindow(s);
     }
 
@@ -614,6 +641,7 @@ private:
         m_plannedNp = 0;
         m_hasCredit = true;
         m_creditAtMs = nowMs;
+        m_lastRateLimited = false;
     }
 
     // The interval since the last sample, in the state of the last sample (6.2).
@@ -805,13 +833,18 @@ private:
     void Apply(Verdict const& v, std::uint32_t now, Record& r)
     {
         if (r.forced)
+        {
             ++m_counters.forced;
+            if (m_lastRateLimited)
+                ++m_counters.forcedAfterRateLimited;
+        }
         switch (v.d)
         {
             case Decision::Keep:
                 ++m_counters.keep;
                 if (v.why == Reason::RateLimited)
                     ++m_counters.rateLimited;
+                m_lastRateLimited = v.why == Reason::RateLimited;
                 ++m_keepsInRow;
                 break;
             case Decision::Replan:
@@ -820,6 +853,7 @@ private:
                     ++m_counters.replan;
                 else
                     ++m_counters.close;
+                m_lastRateLimited = false;
                 m_keepsInRow = 0;
                 m_hour[m_hourNext] = now;
                 m_hourNext = (m_hourNext + 1) % HourSlots;
@@ -852,6 +886,7 @@ struct LineCtx
     std::uint32_t arbiter = 0;
     bool shadow = false;
     std::uint32_t level = 0;
+    bool offmap = false;   // R9-2 (OB-10 R-6): the target is on another map (no route estimate); out of C1/C2
 };
 
 inline std::size_t FormatReplanLine(char* buf, std::size_t n, LineCtx const& c, Record const& r)
@@ -868,12 +903,12 @@ inline std::size_t FormatReplanLine(char* buf, std::size_t n, LineCtx const& c, 
         "[Replan] bot=%u cohort=%c arbiter=%u shadow=%u trigger=%s level=%u quest=%u target_entry=%d cell=%d:%d:%d kind=%s "
         "episode=%u stall_s=%u age_s=%u best_rem=%.0f cur_rem=%.0f route=%u credit_age_s=%u xp_gain=%u unreach=%u "
         "route_partial=%u route_fails=%u combat_s=%u dead_s=%u stalls_target=%u keeps_in_row=%u relocs_np=%u planned_np=%u "
-        "planned=%u decision=%s reason=%s forced=%u close_s=%u",
+        "planned=%u decision=%s reason=%s forced=%u close_s=%u offmap=%u",
         c.guid, c.cohort, c.arbiter, c.shadow ? 1u : 0u, trig, c.level, r.quest, r.targetEntry, cell.x, cell.y, cell.z,
         KindName(r.kind), r.episode, r.stallS, r.ageS, double(r.bestRemaining), double(r.curRemaining), r.routeKnown ? 1u : 0u,
         r.creditAgeS, r.xpGain, r.unreachable, r.routePartial, r.routeFails, r.combatS, r.deadS, r.stallsTarget, r.keepsInRow,
         r.relocsNoProgress, r.plannedNoProgress, r.planned ? 1u : 0u, DecisionName(r.verdict.d), ReasonName(r.verdict.why),
-        r.forced ? 1u : 0u, r.verdict.closeForS);
+        r.forced ? 1u : 0u, r.verdict.closeForS, c.offmap ? 1u : 0u);
     return SanitizeLine(buf, w, n);
 }
 
@@ -883,10 +918,10 @@ inline std::size_t FormatReplanMinLine(char* buf, std::size_t n, char cohort, bo
     if (n == 0)
         return 0;
     int const w = std::snprintf(buf, n,
-        "[ReplanMin] cohort=%c shadow=%u stalls=%u relocates=%u keep=%u replan=%u close=%u forced=%u rate_limited=%u gaps=%u "
-        "planned_credit=%u dropped=%u",
-        cohort, shadow ? 1u : 0u, k.stalls, k.relocates, k.keep, k.replan, k.close, k.forced, k.rateLimited, k.gaps,
-        k.plannedCredit, dropped);
+        "[ReplanMin] cohort=%c shadow=%u stalls=%u relocates=%u keep=%u replan=%u close=%u forced=%u rate_limited=%u "
+        "forced_after_rate_limited=%u gaps=%u planned_credit=%u hops=%u grind_nokill=%u offmap=%u dropped=%u",
+        cohort, shadow ? 1u : 0u, k.stalls, k.relocates, k.keep, k.replan, k.close, k.forced, k.rateLimited,
+        k.forcedAfterRateLimited, k.gaps, k.plannedCredit, k.hops, k.grindNoKill, k.offMap, dropped);
     return SanitizeLine(buf, w, n);
 }
 }   // namespace ai::replan

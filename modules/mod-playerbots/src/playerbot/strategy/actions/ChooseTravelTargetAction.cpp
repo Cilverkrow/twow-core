@@ -3,6 +3,7 @@
 #include "playerbot/SupervisorShadow.h"   // A3 step 3 arbiter shadow: writer scopes
 #include "playerbot/SupervisorEnforce.h"  // A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2, default 0): the request lane check
 #include "playerbot/ArbiterLanePolicy.h"  // A3 step 3 T02-a: Lane
+#include "playerbot/PlannerWrite.h"       // A3 step 3 planner P-3a: the F1 feed (AiPlayerbot.Planner = 2, default 0)
 #include "playerbot/LootObjectStack.h"
 #include "ChooseTravelTargetAction.h"
 #include "playerbot/BotUpdateTrace.h"   // OB-10 18.10.: NowUs/SinceUs/Prevalidate for "TIME:prevalidate" and [PreValidate]
@@ -54,6 +55,11 @@ using namespace ai;
 
 namespace
 {
+// A3 step 3 planner P-3a (P3-ENTWURF-v0.2 Nachtrag 3, class P): while the plan attempt's SetBestTarget runs, the process-wide
+// level guard counters of this thread go to the attempt's own buffer (ai::level_guard::SharedCounters below); a chosen attempt
+// adds the buffer to the shared counters, a failed one drops it (never a restore, never a fetch_sub). nullptr = the shared ones.
+thread_local ai::level_guard::Counters* t_planGuardSink = nullptr;
+
 // A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2, default 0): the null target is neutral for the arbiter (the same rule as
 // TravelMgr.cpp and the shadow's IsNullDest).
 bool IsNullDest(TravelDestination const* dest)
@@ -882,7 +888,7 @@ namespace ai::level_guard
     Counters& SharedCounters()
     {
         static Counters counters;
-        return counters;
+        return t_planGuardSink ? *t_planGuardSink : counters;   // A3 step 3 planner P-3a: the plan attempt's buffer (class P)
     }
 
     Grid const& SharedGrid() { return sharedGrid; }
@@ -1053,7 +1059,84 @@ bool ChooseTravelTargetAction::Execute(Event& event)
     if (ai->IsQuestGapGrind() && futureTravelPurpose == std::to_string(uint32(TravelDestinationPurpose::Grind)))
         newTarget.SetGapGrindChoice(true);
 
-    if (!SetBestTarget(requester, &newTarget, destinationList, true, travelTarget))
+    // A3 step 3 planner P-3a (P3-ENTWURF-v0.2 section 2.4, Nachtraege 2 and 3; AiPlayerbot.Planner = 2, a bot of
+    // Planner.WriteCohort with arbiter 2, default 0): the F1 feed. A quest or grind choice with a fresh plan pick first runs
+    // SetBestTarget on the pick's entries only (a quest pick: DestKey AND quest, OB-60 H1; a grind pick: the points in its zone),
+    // with the partition keys of the full list. Chosen: the full search does not run (fed). Not chosen: everything the attempt
+    // changed is undone and the full list runs as before. Class B (this bot's / this action's state: lastRejects,
+    // lastSuppressSources, lastSkillLocked, lastStaleObjective, chooseBudgetExceeded, chooseResume) is saved and restored; checked
+    // is buffered (planFeed_->checked). Class P (the process-wide level guard atomics: checked, skip, skipB, zFiltered,
+    // eventFiltered; the quest feasibility atomics of PlayerbotAI.cpp: skips, giverInactive) goes to local buffers
+    // (t_planGuardSink, SetFeasibilitySink) that are added on success and dropped on failure - never a restore or a fetch_sub.
+    // Shared, not restored: the [FarMoveGuard] cap of the choice (levelGuardLogged), the [TravelChoose] budget line time
+    // (lastChooseBudgetLog) and the per-bot feasibility skip log ring (questFeasibilityLog). #416: an attempt out of time ends the pass (return false), no second call; the next pass runs
+    // the full list (feedBudgetKey). Planner 0 / 1, WriteCohort 0, other bots: one config read, nothing else.
+    ai::planner_write::Feed planFeed;
+    struct PlanFeedScope
+    {
+        ChooseTravelTargetAction* action;
+        ~PlanFeedScope()
+        {
+            action->planFeed_ = nullptr;
+            action->planFedTarget_ = nullptr;
+        }
+    } const planFeedScope{this};
+    if (sPlayerbotAIConfig.planner == 2 && ai::planner_write::FeedBegin(ai, futureTravelPurpose.c_str(), newTarget.IsForced(),
+            chooseResume.SkipFor(futureTravelPurpose) != 0, planFeed))
+    {
+        planFeed_ = &planFeed;
+        PartitionedTravelList planList;
+        for (auto const& [partition, travelPoints] : destinationList)
+            for (TravelPoint const& travelPoint : travelPoints)
+                if (ai::planner_write::FeedTakes(planFeed, std::get<0>(travelPoint), std::get<1>(travelPoint)))
+                    planList[partition].push_back(travelPoint);
+        if (planList.empty())
+            ai::planner_write::FeedResult(ai, planFeed,
+                planFeed.grind ? ai::planner_write::FeedEnd::ZoneEmpty : ai::planner_write::FeedEnd::Reject);
+        else
+        {
+            // Class B (Nachtrag 3): saved here, restored when the attempt does not choose.
+            ai::planner_write::AttemptRestore<ai::quest_search::RejectCounts, ai::contested_objective::SourceCounts, uint32, uint32,
+                bool, ai::travel_choose::Resume> classB(lastRejects, lastSuppressSources, lastSkillLocked, lastStaleObjective,
+                chooseBudgetExceeded, chooseResume);
+            // Class P (Nachtrag 3): the attempt's own buffers of the level guard counters and of the quest feasibility counters
+            // (PlayerbotAI::SkipInfeasibleQuest, reached through IsActive).
+            ai::level_guard::Counters planGuard;
+            ai::planner_write::FeasibilityCounts planFeasibility;
+            t_planGuardSink = &planGuard;
+            ai::planner_write::SetFeasibilitySink(&planFeasibility);
+            planFeed.attempt = true;
+            bool const planChosen = SetBestTarget(requester, &newTarget, planList, true, travelTarget);
+            planFeed.attempt = false;
+            ai::planner_write::SetFeasibilitySink(nullptr);
+            t_planGuardSink = nullptr;
+            bool const planBudget = chooseBudgetExceeded;
+            if (planChosen)
+            {
+                planFeed.fed = true;
+                planFedTarget_ = &newTarget;
+                ai->AddTravelChooseChecked(planFeed.checked);
+                ai::level_guard::Counters& shared = ai::level_guard::SharedCounters();
+                ai::planner_write::CommitBuffered(shared.checked, planGuard.checked);
+                ai::planner_write::CommitBuffered(shared.skip, planGuard.skip);
+                ai::planner_write::CommitBuffered(shared.skipB, planGuard.skipB);
+                ai::planner_write::CommitBuffered(shared.zFiltered, planGuard.zFiltered);
+                ai::planner_write::CommitBuffered(shared.eventFiltered, planGuard.eventFiltered);
+                ai::planner_write::CommitFeasibility(planFeasibility);
+                ai::planner_write::FeedResult(ai, planFeed, ai::planner_write::FeedEnd::Fed);
+            }
+            else
+            {
+                classB.Restore();   // planGuard and planFeasibility are dropped (class P)
+                ai::planner_write::FeedResult(ai, planFeed,
+                    planBudget ? ai::planner_write::FeedEnd::Budget : ai::planner_write::FeedEnd::Reject);
+                if (planBudget)
+                    return false;   // #416: out of time in the plan attempt; no second call in this pass
+            }
+        }
+    }
+
+    if (!planFeed.fed && !SetBestTarget(requester, &newTarget, destinationList, true, travelTarget))
     {
         // #416: out of time, not out of targets - the next list goes on.
         if (chooseBudgetExceeded)
@@ -1540,6 +1623,9 @@ bool ChooseTravelTargetAction::setNewTarget(Player* requester, TravelTarget* new
 {
     // A3 step 3 arbiter shadow: every module caller has its own scope; an empty stack here is the bot brain's override.
     ai::supervisor::WriterScope const writerScope = ai::supervisor::WriterScope::IfEmpty(ai::supervisor::WriterId::Brain);
+    // A3 step 3 planner P-3a (AiPlayerbot.Planner = 2, default 0): the outcome of the plan attempt's own target at the end of this
+    // call - a new write generation is applied_*, none fallback_parked / fallback_denied. Not armed for any other target.
+    ai::planner_write::ApplyWatch const planApply(ai, planFeed_, oldTarget, planFeed_ && newTarget == planFedTarget_);
     // A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2, default 0): no report and no ignore-list cleanup for a choice the
     // arbiter denies below (the same decision, read only). Always true below 2.
     bool const admitted = ai::supervisor::WouldAdmitTargetWrite(ai, oldTarget, IsNullDest(newTarget->GetDestination()));
@@ -1824,7 +1910,10 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
     lastStaleObjective = 0;
     uint32 deferredCrossMap = 0, deferredZoneLevel = 0;
     uint32 deferredDeathCluster = 0, deathClusterCells = 0, deathClusterWorstKillerLevel = 0;
-    uint32 levelGuardLogged = 0;   // twow-repo#601 cand4 lever (ii): [FarMoveGuard] lines of this choice
+    // twow-repo#601 cand4 lever (ii): [FarMoveGuard] lines of this choice. A3 step 3 planner P-3a (Nachtrag 2 F1-OB60): a choice
+    // with a plan attempt shares one cap between its two SetBestTarget calls (the feed's guardLogged); otherwise per call as before.
+    uint32 ownGuardLogged = 0;
+    uint32& levelGuardLogged = planFeed_ && planFeed_->tried ? planFeed_->guardLogged : ownGuardLogged;
     // Re-deaths at camps (DestinationDeaths.CampBlock): skipped candidates, quest destinations ranked lower and the kept fallback.
     uint32 campSkipped = 0, campRankedLower = 0;
     TravelDestination* campFallbackDestination = nullptr;
@@ -2197,7 +2286,11 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
         ai->NoteQuestIdle(uint8(ai::quest_grind_mode::Reason::NoTarget),
             ai::quest_grind_mode::TargetText("forced_kill_trip", forcedKillEntry > 0 ? uint32(forcedKillEntry) : 0u));
 
-    ai->AddTravelChooseChecked(checked);
+    // A3 step 3 planner P-3a (Nachtrag 2/3, class B): the plan attempt's checked count is buffered and added only when it chose.
+    if (planFeed_ && planFeed_->attempt)
+        planFeed_->checked += checked;
+    else
+        ai->AddTravelChooseChecked(checked);
     if (!chooseBudgetExceeded)
         chooseResume.Clear();
     else

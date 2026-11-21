@@ -319,6 +319,11 @@ endforeach()
 file(READ "${MIG1}" mig1)
 file(STRINGS "${DUMP_TN}" dl REGEX "^\t\\(([0-9]+, )?${RANGE_RX}, ")
 file(STRINGS "${DUMP_TN}" dnodes_raw REGEX "^\t\\([0-9]+, '")
+# Later appends (ids above ${HI}, e.g. the ship pair 1864-1870, 20261121010000) are their own contract's rows: a link
+# between a wave-0 node and a later node, and the later nodes themselves, are left out here.
+set(LATER_RX "(18(6[4-9]|[7-9][0-9])|19[0-9][0-9])")
+list(FILTER dl EXCLUDE REGEX "^\t\\(([0-9]+, )?${LATER_RX}, ")
+list(FILTER dnodes_raw EXCLUDE REGEX "^\t\\(${LATER_RX}, '")
 tuples_of("${dnodes_raw}" dnodes)
 
 check_mig1("${mig1}" e)

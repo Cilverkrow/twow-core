@@ -23,6 +23,9 @@ Unit* TargetValue::FindTarget(FindTargetStrategy* strategy)
         for (ObjectGuid const& guid : attackers)
             if (!ai->IsUnreachableTarget(guid) && ai->GetUnit(guid))
             {
+                // twow-repo#703 4b: a unit the lock skips below is no reachable alternative (log-free verdict).
+                if (ai->UnreachableLockWouldBlock(ai->GetUnit(guid)))
+                    continue;
                 reachable = true;
                 break;
             }
@@ -30,6 +33,11 @@ Unit* TargetValue::FindTarget(FindTargetStrategy* strategy)
     {
         Unit* unit = ai->GetUnit(*i);
         if (!unit)
+            continue;
+
+        // twow-repo#703 4b (Rotation.UnreachableLock): before the CastLosGate skip (its pre-scan above ignores locked units);
+        // self-defence stays (MayDefend).
+        if (ai->UnreachableLockBlocks(unit, ai::unreachable_giveup::Path::Assist))
             continue;
 
         if (ai::cast_los_gate::SkipUnreachable(losGate, losGate && ai->IsUnreachableTarget(*i), reachable))

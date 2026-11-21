@@ -295,7 +295,9 @@ count_text("${choose}" "PlayerTravelInfo(bot, true)" 0 "a window snapshot built 
 count_text("${choose}" "emplace(bot, true)" 1 "one window snapshot in the choice")
 require_text("${travel_h}" "void SetGapGrindChoice(bool gapGrindChoice1) { gapGrindChoice = gapGrindChoice1; }" "the choice flag setter")
 require_text("${travel_h}" "bool gapGrindChoice = false;" "no gap grind choice by default")
-require_text("${choose}" "    if (ai->IsQuestGapGrind() && futureTravelPurpose == std::to_string(uint32(TravelDestinationPurpose::Grind)))\n        newTarget.SetGapGrindChoice(true);\n\n    if (!SetBestTarget(requester, &newTarget, destinationList, true, travelTarget))" "the gap grind choice flag only behind GrindMode 1, the grind fetch, right before the choice")
+# A3 step 3 planner P-3a: the F1 feed (its plan attempt and the main call) follows the flag, so both calls see it.
+require_text("${choose}" "    if (ai->IsQuestGapGrind() && futureTravelPurpose == std::to_string(uint32(TravelDestinationPurpose::Grind)))\n        newTarget.SetGapGrindChoice(true);\n\n    // A3 step 3 planner P-3a (P3-ENTWURF-v0.2 section 2.4" "the gap grind choice flag only behind GrindMode 1, the grind fetch, right before the choice")
+require_order("${choose}" "        newTarget.SetGapGrindChoice(true);\n" "    if (!planFeed.fed && !SetBestTarget(requester, &newTarget, destinationList, true, travelTarget))" "the gap grind choice flag before the main choice")
 count_text("${choose}" "SetGapGrindChoice(" 1 "one choice flag site")
 foreach(src values travel_mgr ai_cpp grind_target choose_target)
   forbid_text("${${src}}" "SetGapGrindChoice(" "a choice flag set elsewhere (${src})")
