@@ -10,7 +10,7 @@ cmake_policy(VERSION 3.16)
 #   (c) every call of SetTarget / setNewTarget / CopyTarget in the module is either an explicit live-target site that evaluates
 #       the result, or an excluded local-target line; a new call fails here until it is listed (per-file census);
 #   (d) LaneFree( call sites exactly: Request isUseful, the four errands (petition, guild_trip twice, profession_trip,
-#       station_craft) and the probe; Errand writers use WriterId::Errand;
+#       station_craft), the probe and the planner's expire (P-3a, PlannerWrite.cpp); Errand writers use WriterId::Errand;
 #   (e) the closers census: every SetStatus(EXPIRED|COOLDOWN|NONE) outside TravelMgr.cpp, per file; a new one fails;
 #   (f) the probe runs only under AiPlayerbot.Supervisor.ArbiterProbe (default 0, echoed, documented);
 #   (g) ~Supervisor and Supervisor.h/.cpp hold no gate call (the destructor runs on any thread);
@@ -384,7 +384,8 @@ endfunction()
 # Per file: the calls of LaneFree( (the definition and the declaration of SupervisorEnforce.* included).
 set(LANE_FREE_CENSUS
   "strategy/actions/ChooseTravelTargetAction.cpp=1" "strategy/actions/GuildCreateActions.cpp=3"
-  "strategy/triggers/StationCraftTrigger.cpp=1" "strategy/values/TravelValues.cpp=1" "SupervisorEnforce.cpp=2" "SupervisorEnforce.h=1")
+  "strategy/triggers/StationCraftTrigger.cpp=1" "strategy/values/TravelValues.cpp=1" "SupervisorEnforce.cpp=2" "SupervisorEnforce.h=1"
+  "PlannerWrite.cpp=1")   # A3 step 3 planner P-3a: the planner's expire (site "planner", a3s3_planner_write)
 
 function(check_lane_free all_sources choose_cpp guild_cpp station_cpp travel_values_cpp enforce_cpp out)
   set(census "")
@@ -474,7 +475,8 @@ set(CLOSER_CENSUS
   "strategy/actions/DebugAction.cpp=1" "strategy/actions/FollowActions.cpp=1" "strategy/actions/GuildCreateActions.cpp=2"
   "strategy/actions/MoveToTravelTargetAction.cpp=1" "strategy/actions/ReleaseSpiritAction.h=1"
   "strategy/actions/WorldBuffTravelActions.cpp=3" "strategy/actions/ZoneEscapeActions.cpp=1" "SupervisorGroup.cpp=2"
-  "strategy/triggers/StationCraftTrigger.cpp=1" "strategy/values/TravelValues.cpp=1")
+  "strategy/triggers/StationCraftTrigger.cpp=1" "strategy/values/TravelValues.cpp=1"
+  "PlannerWrite.cpp=1")   # A3 step 3 planner P-3a: the planner's expire (WriterId::Planner, a3s3_planner_write)
 
 function(check_closers census out)
   list(SORT census)

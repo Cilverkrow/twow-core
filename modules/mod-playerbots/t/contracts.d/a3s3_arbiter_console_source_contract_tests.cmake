@@ -167,13 +167,14 @@ function(check_switch shadow_h shadow_cpp policy ai_cpp config_h all_sources out
   # read (CLI-GRP T30-1c: LiveTypesNow in GroupManager.cpp, Types acts like 0 below 2; pinned by a3s6_t30_directives
   # check_t30_1c) (5; agreed with CLI-Projekt 10.11.), plus A3 step 3 T02-GROUP's GateOffThread (SupervisorEnforce.cpp: the
   # gate-off counter reads the arbiter value, first statement, pinned by a3s3_arbiter_enforce_source_contract_tests.cmake) = 6;
-  # ArbiterOn( is only declared and defined (2): no second reader.
+  # A3 step 3 planner P-3a: plus the two reads of the write condition (PlannerShadow.cpp NoteChoiceImpl, PlannerWrite.cpp FeedBegin;
+  # pinned by a3s3_planner_write) = 8. ArbiterOn( is only declared and defined (2): no second reader.
   count_text("${all_sources}" "SetArbiterOverride(" w)
   count_text("${all_sources}" "ArbiterValue(" r)
   count_text("${all_sources}" "ArbiterOn(" o)
   count_text("${all_sources}" "g_arbiterOverride" g)
-  if(NOT w EQUAL 3 OR NOT r EQUAL 6 OR NOT o EQUAL 2 OR NOT g EQUAL 4)
-    set(${out} "SetArbiterOverride( ${w} (3: decl, def, console), ArbiterValue( ${r} (6: decl, def, ArbiterOn, gate, group manager, GateOffThread), ArbiterOn( ${o} (2: decl, def), g_arbiterOverride ${g} (4: atomic, ArbiterValue, the refusal read, the exchange)" PARENT_SCOPE)
+  if(NOT w EQUAL 3 OR NOT r EQUAL 8 OR NOT o EQUAL 2 OR NOT g EQUAL 4)
+    set(${out} "SetArbiterOverride( ${w} (3: decl, def, console), ArbiterValue( ${r} (8: decl, def, ArbiterOn, gate, group manager, GateOffThread, planner NoteChoice, planner feed), ArbiterOn( ${o} (2: decl, def), g_arbiterOverride ${g} (4: atomic, ArbiterValue, the refusal read, the exchange)" PARENT_SCOPE)
     return()
   endif()
   # T02-a default pair (OB-00 12.11.2026): the config key is the start value, default 2 (0 = rollback).
@@ -217,7 +218,7 @@ set(FORMAT_PINS
   "policy|inline std::size_t FormatWriters(|\n}\n|f8fe1a3a2e87fc9a"
   "policy|inline std::size_t FormatWriteLine(|\n}\n|fc8202db453ccdae"
   "policy|inline std::size_t FormatExpireLine(|\n}\n|db084e74f526c99e"
-  "policy|inline std::size_t FormatArbiterMin(|\n}\n|f97a1cf8b51cb368"
+  "policy|inline std::size_t FormatArbiterMin(|\n}\n|e32e54fad16b17e3"
   "shadow|void Emit(Closed const& closed|\n}\n|31c2f479f3780942"
   "shadow|void EmitMinute(MinuteOut const& minute)|\n}\n|2d883ad779779e5b"
   "mgr|sLog.outBasic(\"[BotUpdate] calls=|)@SEMI@\n|614c24fe1571082d"
@@ -243,6 +244,9 @@ function(check_formats policy shadow mgr out)
   # purpose: FormatArbiterMin (gate_off_world / gate_off_none / gate_off_bot appended after depth_overflow; the prefix pin below
   # is unchanged) and EmitMinute (buffer 768, the [ArbiterGrp] line after an active cohort's [ArbiterMin] line, silent minutes
   # print nothing).
+  # A3 step 3 planner P-3a (AiPlayerbot.Planner = 2, default 0) changed the FormatArbiterMin sha above on purpose (f97a1cf8b51cb368
+  # -> e32e54fad16b17e3): " plan=%u" is appended only when ArbiterMinute::planField is set (Planner = 2); otherwise the line is
+  # byte-identical (t/supervisor_policy_tests.cpp checks both).
   # A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2, default 0) changed the FormatArbiterMin sha above on purpose: the new fields
   # are appended at the end, and the frozen text up to test=%u must stay the same bytes (the evaluator reads fields by key).
   string(FIND "${policy}" "\"[ArbiterMin] cohort=%c bundles=%u lines=%u dropped=%u unknown=%u offthread_writes=%u \"\n        \"cross_writes=%u gaps=%u closes_open=%u expire_cooldown=%u sel=%u req=%u exe=%u life=%u mgr=%u grp=%u cmd=%u brain=%u test=%u\"\n        \" grp_t02=%u errand=%u" prefix_at)

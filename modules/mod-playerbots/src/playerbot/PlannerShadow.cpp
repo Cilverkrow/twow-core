@@ -1,5 +1,6 @@
 #include "playerbot/playerbot.h"
 #include "playerbot/PlannerShadow.h"
+#include "playerbot/PlannerWrite.h"   // A3 step 3 planner P-3a: the write path (Planner = 2, WriteCohort)
 #include "playerbot/Supervisor.h"
 #include "playerbot/PlayerbotAI.h"
 #include "playerbot/PlayerbotAIConfig.h"
@@ -120,8 +121,9 @@ void EmitMinute(MinuteOut const& out)
     {
         if (!out.active[i])
             continue;
-        char buf[1280];
-        FormatPlanMin(buf, sizeof(buf), i ? 'B' : 'A', out.minute, out.sums[i]);
+        // P-3a: the P-3a fields only at Planner = 2 (section 7.5: the key value, never the cohort); Planner 0 / 1 byte-identical.
+        char buf[kPlanMinBuf];
+        FormatPlanMin(buf, sizeof(buf), i ? 'B' : 'A', out.minute, out.sums[i], sPlayerbotAIConfig.planner == 2);
         sLog.outBasic("%s", buf);
     }
 }
@@ -397,6 +399,12 @@ std::uint32_t QuestsInLog(Snapshot const& s)
 {
     return std::uint32_t(kQuestSlots) - FreeQuestSlots(s);
 }
+// P-3a: the planner writes for this bot (condition 1 of section 2.3). Planner 0 / 1: false after one config read.
+bool WritingBot(PlayerbotAI* ai, ai::supervisor::Supervisor const& sup, std::uint32_t arbiter)
+{
+    return sPlayerbotAIConfig.planner == 2 && ai::planner_write::Writes(ai, sup, arbiter);
+}
+
 // One number per destination: its purpose, entry and quest (FNV-1a). 0 = no destination or the null target.
 std::uint32_t DestKeyOf(ai::TravelDestination const* dest)
 {
@@ -446,7 +454,37 @@ void NoteChoiceImpl(PlayerbotAI* ai, char const* purpose, ai::TravelDestination 
         // back_to_band_would: once per bot and bind time (the episodes, the loop guard of P-3); the purpose fields count every
         // failed choice (the distribution OB-00 asked for, section 14.4). back_to_band_repeat stays 0 in the shadow: nothing acts, so
         // a stranded bot fails again by construction (the guard "= 0" is P-3's).
-        if (BackToBandAllowed(st.lastBackMs, nowMs, sPlayerbotAIConfig.plannerMinBindSec * 1000u))
+        bool const allowed = BackToBandAllowed(st.lastBackMs, nowMs, sPlayerbotAIConfig.plannerMinBindSec * 1000u);
+        // P-3a (section 2.5, B15; Planner = 2, writing bot, quest or grind search): back_to_band acts - the pick becomes the band
+        // hub (grind, forced), EvMode plans in the next tick and holds it (Bind; OB-10 V-1: no mode switch and no expire from
+        // back_to_band - the mode stays, the grind comes through the existing grind fallback), the next grind choice is fed. lastBackMs
+        // is set only by the effect, so back_to_band_repeat (guard = 0) is live. Every other bot keeps the shadow rule below.
+        if ((quest || grind) && WritingBot(ai, *supervisor, ai::supervisor::ArbiterValue(sPlayerbotAIConfig.supervisorArbiter)))
+        {
+            if (allowed && band)
+            {
+                st.lastBackMs = nowMs ? nowMs : 1u;
+                ++c.backToBand;
+                ++c.backToBandWould;
+                Pick p;
+                p.has = true;
+                p.kind = Kind::Grind;
+                p.key = TargetKey(std::uint8_t(Kind::Grind), 0, band->zoneId | kGrindTag);
+                p.sinceMs = st.lastBackMs;
+                p.atMs = st.lastBackMs;
+                p.zone = band->zoneId;
+                p.map = band->hubMap;
+                p.x = band->hubX;
+                p.y = band->hubY;
+                p.forced = true;
+                st.pick = p;
+                st.expirePending = 0;
+                st.evNext |= EvMode;
+            }
+            else
+                ++c.backToBandRepeat;
+        }
+        else if (allowed)
         {
             st.lastBackMs = nowMs ? nowMs : 1u;
             ++c.backToBandWould;
@@ -492,6 +530,53 @@ void NoteChoiceImpl(PlayerbotAI* ai, char const* purpose, ai::TravelDestination 
         case Compare::NaStale: ++c.naStale; break;
     }
     Flush(bot->GetGUIDLow(), c, -1);
+}
+
+// P-3a: the counts of one expire step (section 6.1). The switch tick counts every step; a pending expire counts only its end.
+void CountExpireStep(PlanMinCounts& c, ExpireStep step, ExpireGate gate, bool grind)
+{
+    switch (step)
+    {
+        case ExpireStep::Expired:
+            ++c.expired;
+            if (gate == ExpireGate::WorkOverride)
+                ++c.expireWorkOverride;
+            break;
+        case ExpireStep::AppliedLive: ++(grind ? c.appliedLiveGrind : c.appliedLiveQuest); break;
+        case ExpireStep::ZoneUnknown: ++c.expireDeniedZoneUnknown; break;
+        case ExpireStep::DeniedCooldown: ++c.expireDenied; ++c.expireDeniedCooldown; break;
+        case ExpireStep::DeniedWork: ++c.expireDenied; ++c.expireDeniedWork; break;
+        case ExpireStep::DeniedLane: ++c.expireDenied; ++c.expireDeniedLane; break;
+        case ExpireStep::DeniedGroup: ++c.expireDenied; ++c.expireDeniedGroup; break;
+        case ExpireStep::DeniedThread: ++c.expireDenied; ++c.expireDeniedThread; break;
+        case ExpireStep::Repeat: ++c.expireRepeat; break;
+        case ExpireStep::BlockedFb: ++c.expireBlockedFb; break;
+        case ExpireStep::Go:
+        case ExpireStep::NotOpen:
+            break;
+    }
+}
+
+// P-3a: after an expire (rule 4 and switch_ms).
+void NoteExpired(PlanState& st, PlanMinCounts& c, std::uint32_t nowMs)
+{
+    st.expiredKey = st.pick.key;
+    st.expiredSinceMs = st.pick.sinceMs;
+    st.expirePending = 0;
+    st.pendingSawWork = false;
+    std::uint32_t const switchMs = nowMs - st.pick.sinceMs;
+    if (switchMs > c.switchMsMax)
+        c.switchMsMax = switchMs;
+}
+
+// P-3a: expire_pending, once per bot and minute.
+void NotePending(PlanState& st, PlanMinCounts& c)
+{
+    std::uint32_t const minute = std::uint32_t(time(nullptr)) / 60;
+    if (st.pendingMinute == minute)
+        return;
+    st.pendingMinute = minute;
+    ++c.expirePending;
 }
 
 // ---- R9 / R2 (twow-repo#575; R9-REPLAN-INTERFACE v5; DESIGN-R9-2-20261120.md D1-D13) ----------------------------------------
@@ -711,10 +796,10 @@ void ReplanTick(PlayerbotAI* ai_, Player* bot, PlanState& st, Snapshot const& cu
     }
 }
 
-// The body of Supervisor::PlanTick (file-local, so the planner names never meet the supervisor ones): the supervisor passes its
-// planner state, mode, lane owner and last writer.
-void PlanTickImpl(PlayerbotAI* ai_, PlanState& plan_, Mode mode_, Lane owner_, WriterId lastWriter, std::uint32_t nowMs,
-    std::uint32_t arbiter)
+// The body of Supervisor::PlanTick (file-local, so the planner names never meet the supervisor ones): the supervisor passes
+// itself (P-3a: condition 1 and PlannerMode), its planner state, mode, lane owner and last writer.
+void PlanTickImpl(ai::supervisor::Supervisor& sup, PlayerbotAI* ai_, PlanState& plan_, Mode mode_, Lane owner_, WriterId lastWriter,
+    std::uint32_t nowMs, std::uint32_t arbiter)
 {
     if (!sPlayerbotAIConfig.planner)
         return;
@@ -725,6 +810,19 @@ void PlanTickImpl(PlayerbotAI* ai_, PlanState& plan_, Mode mode_, Lane owner_, W
     std::uint32_t const guid = bot->GetGUIDLow();
     if (!nowMs)
         nowMs = 1;
+    // P-3a (AiPlayerbot.Planner = 2, Planner.WriteCohort; default 0): the write cohort and condition 1. A bot that does not write
+    // plans as at Planner = 1 with the shadow's 8 memory slots; a writing bot has 16 (section 5.4).
+    bool const p3 = sPlayerbotAIConfig.planner == 2;
+    bool const inCohort = p3 && ai::planner_write::InWriteCohort(guid);
+    bool const writes = p3 && WritingBot(ai_, sup, arbiter);
+    std::size_t const memSlots = writes ? kMemorySlots : kShadowMemorySlots;
+    if (!writes)
+    {
+        st.expirePending = 0;
+        st.appliedAtMs = 0;
+        st.turninQuest = 0;
+        st.evNext = 0;
+    }
 
     // ---- the snapshot (every tick, also outside QUEST and GRIND: no old event fires on the return) ----
     ai::TravelTarget* const target = LiveTarget(ai_);
@@ -760,6 +858,12 @@ void PlanTickImpl(PlayerbotAI* ai_, PlanState& plan_, Mode mode_, Lane owner_, W
     bool dirty = false;
     GoneList gone;
     std::uint32_t ev = Diff(st.prev, cur, gone, sPlayerbotAIConfig.plannerRelocMinYards, sPlayerbotAIConfig.plannerRelocSlack);
+    // P-3a: events of the choice for this tick (back_to_band: EvMode, section 2.5; writing bots only), and the dwell of the mode
+    // the snapshot sees (section 2.6; Planner = 2).
+    ev |= st.evNext;
+    st.evNext = 0;
+    if (p3 && (!st.prev.valid || cur.mode != st.prev.mode))
+        st.modeSinceMs = nowMs;
 
     // Quests that left the log: reward (core status or the planner's note, B2), drop, or gone (repeatable without a note).
     RewardNotes& notes = ai_->PlannerRewardNotes();
@@ -836,6 +940,99 @@ void PlanTickImpl(PlayerbotAI* ai_, PlanState& plan_, Mode mode_, Lane owner_, W
             break;
     }
 
+    // ---- P-3a (Planner = 2): fb ticks, overwritten*, turnin_unreached and the pending expire, before the plan gate ----
+    if (p3)
+    {
+        // fb_arbiter / fb_cohort (section 2.6): ticks of a bot with the ArmEnforce facts that does not write; a bot that is
+        // Passive by design (real player master, battleground, parked) never counts. Flushed at the first tick of a later minute.
+        std::uint32_t const minute = std::uint32_t(time(nullptr)) / 60;
+        if ((st.fbArbiterTicks || st.fbCohortTicks) && minute != st.fbMinute)
+        {
+            c.fbArbiter += st.fbArbiterTicks;
+            c.fbCohort += st.fbCohortTicks;
+            st.fbArbiterTicks = 0;
+            st.fbCohortTicks = 0;
+            dirty = true;
+        }
+        st.fbMinute = minute;
+        if (!writes && ai_->InQuestBookScope() && !bot->InBattleGround() && !ai_->IsParked())
+            ++(inCohort ? st.fbArbiterTicks : st.fbCohortTicks);
+    }
+    if (writes && st.appliedAtMs)
+    {
+        // overwritten / _group / _neutral (section 6.1): inside the bind time a new write generation with another destination
+        // replaced the open applied plan target; the lane of the last writer names it (None = neutral). The same destination
+        // only moves the generation; a target that was no longer open ended (no count).
+        std::uint32_t const gen = target ? target->WriteGen() : st.appliedGen;
+        if (nowMs - st.appliedAtMs >= minBindMs)
+            st.appliedAtMs = 0;
+        else if (gen != st.appliedGen)
+        {
+            WorldPosition const* const livePos = target ? target->GetPosition() : nullptr;
+            std::uint32_t const liveDest = st.appliedGrindZone ? (livePos ? ZoneOfPoint(*livePos) : 0u) : cur.travelDest;
+            bool const open = st.prev.valid && (st.prev.travel == TravelPhase::Travel || st.prev.travel == TravelPhase::Work);
+            if (liveDest && liveDest == st.appliedDest)
+                st.appliedGen = gen;
+            else
+            {
+                if (open)
+                {
+                    Lane const lane = ai::supervisor::LaneOfWriter(lastWriter).lane;
+                    ++(lane == Lane::Questbook ? c.overwritten : (lane == Lane::Group ? c.overwrittenGroup : c.overwrittenNeutral));
+                    dirty = true;
+                }
+                st.appliedAtMs = 0;
+            }
+        }
+    }
+    if (writes && st.turninQuest)
+    {
+        // turnin_unreached (B12): an applied turn-in whose quest is still in the log MaxHoldSec later.
+        std::uint32_t const maxHoldMs = sPlayerbotAIConfig.plannerMaxHoldSec * 1000u;
+        if (!HasQuest(cur, st.turninQuest))
+            st.turninQuest = 0;
+        else if (maxHoldMs && nowMs - st.turninAtMs >= maxHoldMs)
+        {
+            ++c.turninUnreached;
+            st.turninQuest = 0;
+            dirty = true;
+        }
+    }
+    if (writes && st.expirePending)
+    {
+        // The pending expire (section 2.3, F8): conditions 1-7 again every tick; only its end counts (expired /
+        // expire_after_work) and the once-a-minute gauge expire_pending. It ends with a new pick, the expire, the live target
+        // being the pick, or a live target that is no longer open (also WORK -> COOLDOWN).
+        if (!st.pick.has || st.pick.key != st.expirePending)
+            st.expirePending = 0;
+        else
+        {
+            ExpireGate gate = ExpireGate::Allowed;
+            bool sawTravel = false;
+            ExpireStep const step = ai::planner_write::Expire(ai_, st.pick, st, nowMs, minBindMs, gate, sawTravel);
+            if (step == ExpireStep::Expired)
+            {
+                ++c.expired;
+                if (gate == ExpireGate::WorkOverride)
+                    ++c.expireWorkOverride;
+                if (st.pendingSawWork && sawTravel)
+                    ++c.expireAfterWork;
+                NoteExpired(st, c, nowMs);
+                dirty = true;
+            }
+            else if (PendingKeeps(st.expirePending, st.pick.key, step))
+            {
+                if (step == ExpireStep::DeniedWork)
+                    st.pendingSawWork = true;
+                std::uint32_t const before = c.expirePending;
+                NotePending(st, c);
+                dirty = dirty || c.expirePending != before;
+            }
+            else
+                st.expirePending = 0;
+        }
+    }
+
     // W8 (section 5): at the objective pick, probe the bot's own grid for a living target (at most every kProbeEveryMs).
     std::uint32_t waitSec = 0, cycles = 0;
     if (st.pick.has && st.pick.kind == Kind::QuestObjective && st.pick.entry && cur.alive && st.pick.map == cur.map &&
@@ -884,17 +1081,22 @@ void PlanTickImpl(PlayerbotAI* ai_, PlanState& plan_, Mode mode_, Lane owner_, W
                     }
                     break;
                 case DeadStep::Close:
-                    Close(st.memory, kMemorySlots, st.pick.key, st.pick.questId, std::uint8_t(st.pick.kind), CloseReason::Dead, nowMs,
-                        waitMs ? waitMs : 1u);
-                    for (MemorySlot const& m : st.memory)
-                        if (m.key == st.pick.key)
-                            cycles = m.deadCycles;
+                {
+                    // P-3a (section 5.4): a writing bot keeps 16 slots and a saturating deadCycles (N1); mem_evict counts every
+                    // replaced slot that had not expired (N2; printed at Planner = 2 only).
+                    bool evicted = false;
+                    Close(st.memory, memSlots, st.pick.key, st.pick.questId, std::uint8_t(st.pick.kind), CloseReason::Dead, nowMs,
+                        waitMs ? waitMs : 1u, writes, &evicted);
+                    if (evicted)
+                        ++c.memEvict;
+                    cycles = DeadCycles(st.memory, memSlots, st.pick.key);
                     waitSec = (nowMs - st.deadWaitSinceMs) / 1000u;
                     st.deadWaitSinceMs = 0;
                     ++c.deadClose;
                     dirty = true;
                     ev |= EvClosed;
                     break;
+                }
             }
         }
     }
@@ -1046,7 +1248,7 @@ void PlanTickImpl(PlayerbotAI* ai_, PlanState& plan_, Mode mode_, Lane owner_, W
             f.inLog = true;
             f.complete = StateOf(cur, questId) == QuestState::Complete;
             f.canReward = PlannerCanReward(bot, quest);
-            f.closed = IsClosed(st.memory, kMemorySlots, TargetKey(std::uint8_t(Kind::QuestTurnIn), questId, s.c.destId), nowMs);
+            f.closed = IsClosed(st.memory, memSlots, TargetKey(std::uint8_t(Kind::QuestTurnIn), questId, s.c.destId), nowMs);
             ai::questbook::Answer const a = ai::questbook::CanTurnIn(f);   // takerSpawned stays Unknown: CheckAtRuntime counts
             s.canRewardTurnIn = f.canReward;
             if (a.IsNo())
@@ -1081,7 +1283,7 @@ void PlanTickImpl(PlayerbotAI* ai_, PlanState& plan_, Mode mode_, Lane owner_, W
             ai::questbook::Facts f = BaseFacts(bot, quest);
             f.inLog = true;
             std::uint32_t const k = TargetKey(std::uint8_t(Kind::QuestObjective), questId, s.c.destId);
-            f.closed = IsClosed(st.memory, kMemorySlots, k, nowMs);
+            f.closed = IsClosed(st.memory, memSlots, k, nowMs);
             ai::questbook::Answer const a = ai::questbook::CanTarget(f, ai::questbook::Purpose::Objective, qbParams);
             if (a.IsNo())
             {
@@ -1222,6 +1424,15 @@ void PlanTickImpl(PlayerbotAI* ai_, PlanState& plan_, Mode mode_, Lane owner_, W
             inc.stillEligible = true;
             inc.value = ranked[i].value;
         }
+    // P-3a (section 2.5): the back_to_band pick of a writing bot (the forced band hub) is not in the tier's pool; it holds its
+    // bind time like an eligible incumbent (then Bind, or Forced for a max_hold), so the EvMode plan does not drop it at once.
+    // OB-10 V-1: kept by Bind / Same, it never reaches the mode switch or the expire below (BackToBandHolds, unit-tested).
+    if (BackToBandHolds(writes, inc.stillEligible, st.pick.has, st.pick.forced, st.pick.kind == Kind::Grind, st.pick.sinceMs,
+            nowMs, minBindMs))
+    {
+        inc.stillEligible = true;
+        inc.value = st.pick.value;
+    }
     std::uint32_t skip = 0;
     if (DangerGate(ai_, bot) && nRanked)
     {
@@ -1286,6 +1497,8 @@ void PlanTickImpl(PlayerbotAI* ai_, PlanState& plan_, Mode mode_, Lane owner_, W
     // ---- the hysteresis (section 4) ----
     Hold hold = Hold::Switch;
     Slot const* pickSlot = nullptr;
+    bool wrote = false;         // P-3a: this plan expired the live target ([Plan] write=1)
+    bool modeChanged = false;   // P-3a: this plan switched QUEST <-> GRIND (one more [Plan] line, ev=mode)
     if (top)
     {
         Candidate const* const cand = top->c;
@@ -1333,7 +1546,50 @@ void PlanTickImpl(PlayerbotAI* ai_, PlanState& plan_, Mode mode_, Lane owner_, W
                 p.map = cand->mapId;
                 p.x = cand->x;
                 p.y = cand->y;
+                p.forced = forced;
                 st.pick = p;
+                if (writes)
+                {
+                    // P-3a (section 2.3): the expire of the live target, conditions 2-7 (PlannerWrite.cpp); a denial by WORK,
+                    // the fallback block, the lane, the group copy or the thread leaves it pending for this pick.
+                    st.expirePending = 0;
+                    st.pendingSawWork = false;
+                    ExpireGate gate = ExpireGate::Allowed;
+                    bool sawTravel = false;
+                    ExpireStep const step = ai::planner_write::Expire(ai_, st.pick, st, nowMs, minBindMs, gate, sawTravel);
+                    CountExpireStep(c, step, gate, p.kind == Kind::Grind);
+                    if (step == ExpireStep::Expired)
+                    {
+                        NoteExpired(st, c, nowMs);
+                        wrote = true;
+                    }
+                    else if (PendingStarts(step))
+                    {
+                        st.expirePending = p.key;
+                        st.pendingSawWork = step == ExpireStep::DeniedWork;
+                        NotePending(st, c);
+                    }
+                    // P-3a (section 2.6, P3-3): the mode follows only a pick change (switch, or forced: max_hold); a grind pick
+                    // of tier C wants GRIND, every other pick QUEST. Decide with Requester::Planner and the dwell decides.
+                    // OB-10 V-1: back_to_band never gets here (its pick is set outside the hysteresis, then held by Bind, no
+                    // tier C): it switches no mode and expires nothing; the mode line stays QUEST.
+                    if (ModeSwitchFrom(hold))
+                    {
+                        Mode const want = PickWantsGrind(p.kind == Kind::Grind, tier.tier) ? Mode::Grind : Mode::Quest;
+                        Mode const from = sup.CurrentMode();
+                        if (want != from)
+                        {
+                            if (sup.PlannerMode(want, nowMs - st.modeSinceMs, arbiter).allowed)
+                            {
+                                ++(want == Mode::Grind ? c.modeQuestGrind : c.modeGrindQuest);
+                                st.modeSinceMs = nowMs;
+                                modeChanged = true;
+                            }
+                            else
+                                ++c.modeDenied;
+                        }
+                    }
+                }
             }
         }
     }
@@ -1402,7 +1658,9 @@ void PlanTickImpl(PlayerbotAI* ai_, PlanState& plan_, Mode mode_, Lane owner_, W
         l.tier = TierName(tier.tier);
         l.ev = EvName(ev);
         l.route = "est";
-        l.fb = FallbackName(arbiter != 2 && sPlayerbotAIConfig.planner == 2 ? Fallback::Arbiter : tier.fb);
+        // P-3a (section 2.6): at Planner = 2 a bot outside the write cohort shows fb=cohort, one in it that does not write (arbiter
+        // below 2 or Passive) fb=arbiter; Planner 0 / 1 show the tier's fallback as before.
+        l.fb = FallbackName(p3 ? (!inCohort ? Fallback::Cohort : (!writes ? Fallback::Arbiter : tier.fb)) : tier.fb);
         l.marginPct = h.marginPct;
         l.cut = cut;
         l.skip = skip;
@@ -1412,7 +1670,7 @@ void PlanTickImpl(PlayerbotAI* ai_, PlanState& plan_, Mode mode_, Lane owner_, W
         l.relocSrc = (ev & EvRelocate) ? ai::replan::SourceName(relocSrc) : "-";
         l.floor = table ? FloorName(floorHere) : "-";
         l.hold = top ? HoldName(hold) : "-";
-        l.write = 0;   // P-2: the shadow writes nothing
+        l.write = wrote ? 1u : 0u;   // P-3a: 1 = this plan expired the live target (writing bot); the shadow writes nothing
         l.ms = ms;
         char buf[1024];
         FormatPlanLine(buf, sizeof(buf), l);
@@ -1420,6 +1678,41 @@ void PlanTickImpl(PlayerbotAI* ai_, PlanState& plan_, Mode mode_, Lane owner_, W
     }
     else
         ++c.planDropped;
+
+    // P-3a (section 2.6): one more [Plan] line per applied mode switch (ev=mode, the new mode; the per-bot hour view of P3-3), from
+    // the same budget (plan_dropped when it is used up).
+    if (modeChanged)
+    {
+        if (TakePlanLine())
+        {
+            PlanLine m;
+            m.guid = guid;
+            m.cohort = ai::cohort::Letter(guid);
+            m.arbiter = arbiter;
+            m.mode = sup.CurrentMode();
+            m.kind = KindName(st.pick.kind);
+            m.id = st.pick.questId;
+            m.destId = st.pick.kind == Kind::Grind ? (st.pick.zone | kGrindTag) : st.pick.destKey;
+            m.value = st.pick.value;
+            m.reason = ReasonName(reason);
+            m.budgetMs = budgetMs;
+            m.level = cur.level;
+            m.zone = cur.zone;
+            m.band = band ? band->zoneId : 0;
+            m.tier = TierName(tier.tier);
+            m.ev = EvName(EvMode);
+            m.fb = FallbackName(tier.fb);
+            m.marginPct = h.marginPct;
+            m.hold = HoldName(hold);
+            m.write = wrote ? 1u : 0u;
+            m.ms = ms;
+            char buf[1024];
+            FormatPlanLine(buf, sizeof(buf), m);
+            sLog.outBasic("%s", buf);
+        }
+        else
+            ++c.planDropped;
+    }
 
     Flush(guid, c, int(ms));
 }
@@ -1435,6 +1728,21 @@ std::uint32_t DestKey(ai::TravelDestination const* dest)
 void NoteChoice(PlayerbotAI* ai, char const* purpose, ai::TravelDestination const* chosen)
 {
     NoteChoiceImpl(ai, purpose, chosen);
+}
+
+std::uint32_t QuestOfDest(ai::TravelDestination const* dest)
+{
+    return QuestOf(dest);
+}
+
+std::uint32_t ZoneOf(ai::WorldPosition const* point)
+{
+    return point ? ZoneOfPoint(*point) : 0u;
+}
+
+void Count(std::uint32_t guidLow, PlanMinCounts const& c)
+{
+    Flush(guidLow, c, -1);
 }
 }
 
@@ -1456,6 +1764,6 @@ void Supervisor::PlanTick(std::uint32_t nowMs, std::uint32_t arbiter)
 {
     if (!sPlayerbotAIConfig.planner)
         return;
-    PlanTickImpl(ai_, plan_, mode_, owner_, lastWriter_, nowMs, arbiter);
+    PlanTickImpl(*this, ai_, plan_, mode_, owner_, lastWriter_, nowMs, arbiter);
 }
 }

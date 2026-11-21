@@ -990,13 +990,13 @@ public:
     // once at boot, fail closed; "" = no file I/O, no line, no table (the planner then has no zone term).
     std::string plannerBandTable;
     // A3 step 3 planner P-2b (A3-S3-PLANER-ENTWURF.md v0.3 section 8, frozen d6e51878; AiPlayerbot.Planner, default 0): 0 off,
-    // 1 shadow (the planner plans and counts, writes nothing), 2 the plan pick acts (P-3; until then 2 is read as 1). Above 2 is
+    // 1 shadow (the planner plans and counts, writes nothing), 2 the plan pick acts (P-3a, for plannerWriteCohort). Above 2 is
     // off. The parameters below are the PREREG's; the defaults are the draft's proposals.
     uint32 planner = 0;
     float plannerMargin = 15.0f;
     uint32 plannerMinBindSec = 120;
     uint32 plannerMaxIdleSec = 300;
-    uint32 plannerMinDwellSec = 120;   // P-3: the QUEST/GRIND dwell of Decide(..., Requester::Planner); read, echoed, unused in P-2
+    uint32 plannerMinDwellSec = 120;   // P-3a: the QUEST -> GRIND dwell of Decide(..., Requester::Planner) (writing bots)
     uint32 plannerMaxCandidates = 32;
     uint32 plannerBudgetMs = 2;
     uint32 plannerDeadWaitMaxSec = 600;
@@ -1014,6 +1014,10 @@ public:
     uint32 plannerRepeatableMaxPerHour = 1;
     float plannerRelocMinYards = 60.0f;
     float plannerRelocSlack = 1.5f;
+    // A3 step 3 planner P-3a (P3-ENTWURF-v0.2 section 8, OB-00 F2 (a); AiPlayerbot.Planner.WriteCohort, default 0): which bots
+    // write at Planner = 2 (the shared cohort parity rule: 0 none, 1 all, 2 cohort B, 3 cohort A; above 3 is 0 with an error
+    // line). Planner = 2 alone writes nothing; a bot that does not write behaves as at Planner = 1.
+    uint32 plannerWriteCohort = 0;
     // A3 R9 / R2 wiring pair R9-2 (twow-repo#575, R9-REPLAN-INTERFACE v5, R9-PREREG C2; default 0): the progress meter in the
     // planner tick (needs AiPlayerbot.Supervisor and AiPlayerbot.Planner >= 1). Replan is a cohort mode: 0 off, 1 all, 2 cohort
     // B, 3 cohort A (the active arm, shadow=0); above 3 is off. Replan.Shadow 0/1: 1 runs the meter in shadow for every other

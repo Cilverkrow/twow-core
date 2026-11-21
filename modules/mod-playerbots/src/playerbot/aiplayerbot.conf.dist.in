@@ -1655,11 +1655,12 @@ AiPlayerbot.Planner.BandTable = ""
 # the zone hub) by value, keeps its pick with Margin and MinBindSec, and writes "[Plan]" lines (300 per minute, own budget) and
 # "[PlanMin]" counter lines per cohort and minute. Acts only where the supervisor runs (AiPlayerbot.Supervisor) and in QUEST or
 # GRIND mode (AiPlayerbot.Supervisor.Arbiter = 2 moves a bot out of PASSIVE). 0 off (default), 1 shadow: plans and counts,
-# writes nothing of the bot; 2 the plan pick acts (pair P-3; until then 2 works as 1). Above 2 is off.
+# writes nothing of the bot; 2 the plan pick acts for the bots of AiPlayerbot.Planner.WriteCohort (P-3a; default 0 = none, so
+# 2 alone works as 1). Above 2 is off.
 AiPlayerbot.Planner = 0
 # The planner's parameters (the PREREG sets them; the defaults are the draft's proposals). Margin: percent a new pick must beat
 # the current one by. MinBindSec: a new pick is kept at least this long. MaxIdleSec: plan again after this long without an
-# event (0 = never). MinDwellSec: QUEST/GRIND switch dwell (pair P-3; read, unused before). MaxCandidates: candidates per plan (turn-ins, then objectives, then pickups by distance; at most 64).
+# event (0 = never). MinDwellSec: QUEST -> GRIND switch dwell (P-3a, writing bots only). MaxCandidates: candidates per plan (turn-ins, then objectives, then pickups by distance; at most 64).
 # BudgetMs: compute time per plan; the list ends there (over_budget). DeadWaitMaxSec / DeadProbeYards: wait at a dead target
 # at most min(2 x respawn, this) seconds, probing this radius. RouteFactor: route seconds = straight distance / run speed x
 # this. DangerCells: danger = cells on the line / this, capped at 1; DangerTopN: only the best N ask the danger map.
@@ -1689,6 +1690,17 @@ AiPlayerbot.Planner.RepeatableRetakeSec = 1800
 AiPlayerbot.Planner.RepeatableMaxPerHour = 1
 AiPlayerbot.Planner.RelocMinYards = 60
 AiPlayerbot.Planner.RelocSlack = 1.5
+# A3 step 3 planner P-3a (P3-ENTWURF-v0.2, frozen d45c4961, Nachtraege 1-3; OB-00 F2 (a)): which bots the plan pick acts for at
+# AiPlayerbot.Planner = 2, in the cohort mode: 0 = no bot (default: Planner = 2 alone writes nothing), 1 = every bot, 2 = only
+# cohort B (odd low guid), 3 = only cohort A. Any other value acts like 0 (one error line at load). A writing bot needs
+# AiPlayerbot.Supervisor.Arbiter = 2 (enforcement on and the bot out of PASSIVE); then the planner (a) expires the live travel
+# target when its pick changes (never in COOLDOWN, in WORK only for max_hold / back_to_band, once per pick, not within MinBindSec
+# after a fallback, only with a free quest book lane, never a group copy), (b) lets the travel choice try the plan pick first
+# (one SetBestTarget call on the pick's entries; not chosen: the full list as before), (c) switches QUEST <-> GRIND on a pick
+# change (QUEST -> GRIND after MinDwellSec) and (d) makes back_to_band act. Bots that do not write behave as at Planner = 1 and
+# count fb_cohort / fb_arbiter. [PlanMin] gets the P-3a fields (expired, expire_denied*, applied_*, fallback_*, fb_*, mem_evict,
+# mode_*) and [ArbiterMin] plan= at Planner = 2 only. Kits set it explicitly together with Planner.MaxIdleSec = 100.
+AiPlayerbot.Planner.WriteCohort = 0
 # A3 R9 / R2 (twow-repo#575, R9-REPLAN-INTERFACE v5, R9-PREREG C2; pair R9-2): the progress meter. It runs in the planner tick, so
 # both keys need AiPlayerbot.Supervisor to apply to the bot and AiPlayerbot.Planner >= 1; set alone they log nothing. Each tick it
 # measures the progress toward the bot's live travel target (distance, quest credit, skill for professions) and,
