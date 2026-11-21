@@ -2005,6 +2005,11 @@ ai::quest_feasibility::Reason PlayerbotAI::QuestFeasibilityReason(Quest const* q
     facts.soloSkipGroupQuests = sPlayerbotAIConfig.questFeasibilitySoloSkipGroupQuests;
     facts.type = quest->GetType();
     facts.suggestedPlayers = quest->GetSuggestedPlayers();
+    // DEEP7 item 5 (OB-10 21.11. criterion (A), a lever): listed escort quests and short timed quests, a bot not in a group
+    facts.soloSkipEscortTimed = sPlayerbotAIConfig.questFeasibilitySoloSkipEscortTimed;
+    facts.escortListed = sPlayerbotAIConfig.questFeasibilitySoloSkipEscortIds.count(questId) != 0;
+    facts.limitTime = quest->GetLimitTime();
+    facts.timedMaxSeconds = sPlayerbotAIConfig.questFeasibilitySoloSkipTimedMaxSeconds;
     return ai::quest_feasibility::SkipReason(facts);
 }
 
