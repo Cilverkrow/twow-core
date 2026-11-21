@@ -41,6 +41,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <iomanip>
+#include <memory>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -2051,22 +2053,37 @@ std::string PlayerbotAI::TakeQuestFeasibilityMinuteLine()
 }
 
 // twow-repo#750 (AiPlayerbot.QuestFeasibility.CraftOnlySkip, QuestCraftOnlyPolicy.h; OB-10 840bcbdf / be58c794): the craft-only
-// quest items, built once by the world thread at start (key on only) and read-only afterwards; the counters are taken by the
-// world thread once a minute (atomics, no lock).
+// quest items. OB-60 pre-review F1: built into a local map and published once (release store); readers on the map threads only
+// load the pointer (acquire) and never see a map being built. A later Initialize (.playerbot reload / console reload) does not
+// rebuild - the published map stays as it is (one allocation, process lifetime). The counters are taken by the world thread
+// once a minute (atomics, no lock).
 namespace
 {
-std::unordered_map<uint32, std::vector<ai::quest_craft_only::Need>> craftOnlyQuests;
+typedef std::unordered_map<uint32, std::vector<ai::quest_craft_only::Need>> CraftOnlyQuestMap;
+std::atomic<CraftOnlyQuestMap const*> craftOnlyQuests{nullptr};
+std::mutex craftOnlyBuildLock;
 std::atomic<uint32> craftOnlySkips{0};
 std::atomic<uint32> craftOnlyGiverInactive{0};
 std::atomic<uint32> craftOnlyHeld{0};
 
-// The quest's craft-only objectives with what this bot holds; false = the quest has none.
+// The quest's craft-only objectives, nullptr = not built or the quest has none (cheap: one pointer load and one find).
+std::vector<ai::quest_craft_only::Need> const* CraftOnlyObjectives(uint32 questId)
+{
+    CraftOnlyQuestMap const* const quests = craftOnlyQuests.load(std::memory_order_acquire);
+    if (!quests)
+        return nullptr;
+    auto const it = quests->find(questId);
+    return it == quests->end() ? nullptr : &it->second;
+}
+
+// The quest's craft-only objectives with what this bot holds; false = the quest has none. Bags only, as
+// Player::CanCompleteQuest counts them (OB-60 F4: the bank does not complete a quest).
 bool CraftOnlyNeeds(Player* bot, uint32 questId, std::vector<ai::quest_craft_only::Need>& needs)
 {
-    auto const it = craftOnlyQuests.find(questId);
-    if (it == craftOnlyQuests.end())
+    std::vector<ai::quest_craft_only::Need> const* const objectives = CraftOnlyObjectives(questId);
+    if (!objectives)
         return false;
-    needs = it->second;
+    needs = *objectives;
     for (ai::quest_craft_only::Need& need : needs)
         need.held = bot->GetItemCount(need.itemId);
     return true;
@@ -2075,7 +2092,12 @@ bool CraftOnlyNeeds(Player* bot, uint32 questId, std::vector<ai::quest_craft_onl
 
 void PlayerbotAI::BuildCraftOnlyQuests()
 {
-    craftOnlyQuests.clear();
+    std::lock_guard<std::mutex> const guard(craftOnlyBuildLock);
+    if (craftOnlyQuests.load(std::memory_order_acquire))
+    {
+        sLog.outBasic("[QuestCraftOnly] init skipped: already built (no rebuild on reload)");
+        return;
+    }
     std::unordered_map<uint32, ai::quest_craft_only::Sources> sources;
 
     // Profession recipes: the spells on a profession / secondary skill line (SkillLineAbility.dbc).
@@ -2108,25 +2130,26 @@ void PlayerbotAI::BuildCraftOnlyQuests()
             "UNION SELECT item FROM pickpocketing_loot_template UNION SELECT item FROM fishing_loot_template "
             "UNION SELECT item FROM skinning_loot_template UNION SELECT item FROM disenchant_loot_template "
             "UNION SELECT item FROM mail_loot_template"));
-    if (QueryResult* result = loot.get())
-    {
-        do
-        {
-            auto const it = sources.find(result->Fetch()[0].GetUInt32());
-            if (it != sources.end())
-                it->second.loot = true;
-        } while (result->NextRow());
-    }
     std::unique_ptr<QueryResult> vendors(WorldDatabase.Query("SELECT item FROM npc_vendor UNION SELECT item FROM npc_vendor_template"));
-    if (QueryResult* result = vendors.get())
+    // OB-60 F2: no loot or vendor rows would make nearly every recipe item craft-only - nothing is published, the gate stays inert.
+    if (!loot || !vendors)
     {
-        do
-        {
-            auto const it = sources.find(result->Fetch()[0].GetUInt32());
-            if (it != sources.end())
-                it->second.vendor = true;
-        } while (result->NextRow());
+        sLog.outError("[QuestCraftOnly] init failed: %s query returned no rows - nothing built, the gate stays inert",
+            !loot ? "loot" : "vendor");
+        return;
     }
+    do
+    {
+        auto const it = sources.find(loot->Fetch()[0].GetUInt32());
+        if (it != sources.end())
+            it->second.loot = true;
+    } while (loot->NextRow());
+    do
+    {
+        auto const it = sources.find(vendors->Fetch()[0].GetUInt32());
+        if (it != sources.end())
+            it->second.vendor = true;
+    } while (vendors->NextRow());
 
     // Quest rewards, choice rewards and source items.
     for (auto const& [questId, quest] : sObjectMgr.GetQuestTemplates())
@@ -2149,6 +2172,8 @@ void PlayerbotAI::BuildCraftOnlyQuests()
     for (auto const& [itemId, source] : sources)
         if (ai::quest_craft_only::CraftOnly(source))
             ++items;
+    std::unique_ptr<CraftOnlyQuestMap> built(new CraftOnlyQuestMap());
+    CraftOnlyQuestMap& quests = *built;
     for (auto const& [questId, quest] : sObjectMgr.GetQuestTemplates())
         for (uint32 i = 0; i < QUEST_ITEM_OBJECTIVES_COUNT; ++i)
         {
@@ -2159,11 +2184,12 @@ void PlayerbotAI::BuildCraftOnlyQuests()
             ai::quest_craft_only::Need need;
             need.itemId = itemId;
             need.required = std::max<uint32>(1, quest->ReqItemCount[i]);
-            craftOnlyQuests[questId].push_back(need);
+            quests[questId].push_back(need);
         }
 
-    sLog.outBasic("%s", ai::quest_craft_only::FormatInitLine(items, uint32(craftOnlyQuests.size()),
-        sPlayerbotAIConfig.questFeasibilityCraftOnlySkip).c_str());
+    uint32 const questCount = uint32(quests.size());
+    craftOnlyQuests.store(built.release(), std::memory_order_release);
+    sLog.outBasic("%s", ai::quest_craft_only::FormatInitLine(items, questCount, sPlayerbotAIConfig.questFeasibilityCraftOnlySkip).c_str());
 }
 
 bool PlayerbotAI::SkipCraftOnlyQuest(Quest const* quest, ai::quest_craft_only::Path path)
@@ -2194,6 +2220,9 @@ void PlayerbotAI::NoteCraftOnlyHeld(uint32 questId)
 {
     // twow-repo#750 F2 (a): diagnosis only - the held quest and its other objectives stay as they are.
     if (!bot || !ai::cohort::Applies(sPlayerbotAIConfig.questFeasibilityCraftOnlySkip, bot->GetGUIDLow()))
+        return;
+    // OB-60 F3: per travel candidate - the cheap map lookup first, the roster scope only for the few craft-only quests.
+    if (!CraftOnlyObjectives(questId))
         return;
     if (!sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) || HasRealPlayerMaster())
         return;
