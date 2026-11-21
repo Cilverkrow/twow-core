@@ -17,7 +17,8 @@ namespace ai::rest_gate
 //          death   the bot died (closed on the death event),
 //          timeout MaxRestSeconds ran out (no food, a shapeshifted druid): the bot may pull again, and no new episode
 //                  starts for RestartCooldownMs, so a bot that cannot regenerate is never held for good,
-//          stale   the value was not evaluated for StaleGapMs (an inactive or parked bot): dropped without a cooldown.
+//          stale   the value was not evaluated for StaleGapMs (an inactive or parked bot, or the bot's own eat / drink wait): dropped
+//                  without a cooldown; the line says what the late read shows (late=, Closed below, measurement only).
 // While an episode runs the bot neither pulls nor travels (can move around = false) and eats / drinks up to the targets.
 struct Thresholds
 {
@@ -105,6 +106,12 @@ struct Episode
 };
 
 // What an evaluation or an event closed.
+//
+// Measurement only (DEEP7 finding 3, 20.11.2026): a resting bot that eats / drinks waits DurationMs (up to the 25 s / 30 s aura; about
+// 15 s or more for any start below 70 % HP, 30 s for a start below 40 % mana) with its AI update delay set, so no engine pass reads the
+// value and the next read finds a gap above StaleGapMs: "stale" then mostly means "rested through the wait", not "went away", and durMs
+// (to the last read) is cut to the first read. late, gapMs and lateMs describe that late read. They change no decision (end, durMs, the
+// episode state and Resting stay as before) and only feed the [RestGate] stale line and the [RestGateTotal] stale_* counters.
 struct Closed
 {
     bool closed = false;
@@ -113,6 +120,9 @@ struct Closed
     std::uint32_t durMs = 0;
     std::uint32_t startHp = 0;
     int startMana = -1;
+    End late = End::None;       // stale only: what the late read shows (Done = rested, Combat, Timeout, None = still below target)
+    std::uint32_t gapMs = 0;    // the close time minus the last read of the open episode
+    std::uint32_t lateMs = 0;   // the close time minus the episode start (= durMs except for stale)
 };
 
 inline Closed Close(Episode& ep, End end, std::uint32_t nowMs)
@@ -127,6 +137,8 @@ inline Closed Close(Episode& ep, End end, std::uint32_t nowMs)
     c.durMs = (end == End::Stale ? ep.lastSeenMs : nowMs) - ep.startMs;
     c.startHp = ep.startHp;
     c.startMana = ep.startMana;
+    c.gapMs = nowMs - ep.lastSeenMs;   // measurement only
+    c.lateMs = nowMs - ep.startMs;     // measurement only
     ep.open = false;
     ep.timedOut = end == End::Timeout;
     ep.endMs = nowMs;
@@ -146,7 +158,10 @@ inline Closed Step(Episode& ep, Reading const& r, Thresholds const& t, std::uint
             ep.lastSeenMs = nowMs;
             return c;
         }
+        // Measurement only: the reading a stale close skips (EndOf is pure; the start is read before Close).
+        End const late = end == End::Stale ? EndOf(r, t, nowMs, ep.startMs) : End::None;
         c = Close(ep, end, nowMs);
+        c.late = late;
     }
     if (RestartBlocked(ep.timedOut, nowMs, ep.endMs) || !StartRest(r, t))
         return c;
@@ -193,31 +208,77 @@ inline char const* EndName(End e)
         e == End::Stale ? "stale" : "none";
 }
 
-// One line per finished episode. mana = -1 without a mana pool.
-inline std::string FormatEpisodeLine(std::uint32_t guid, std::string const& name, std::uint32_t cls, std::uint32_t level, char cohort,
-    bool applied, std::uint32_t startHp, int startMana, std::uint32_t endHp, int endMana, std::uint32_t durMs, End end, bool minimal)
+// The late read of a stale episode (Closed::late): rested = at the targets, so the bot rested through the gap (the eat / drink wait);
+// combat; timeout = below target after MaxRestSeconds (away / parked, or no regeneration); low = below target within MaxRestSeconds.
+inline char const* LateName(End e)
 {
-    char buf[320];
-    std::snprintf(buf, sizeof(buf), "[RestGate] bot=%u name=%.40s cls=%u level=%u cohort=%c applied=%u start_hp=%u start_mana=%d end_hp=%u "
-        "end_mana=%d dur_ms=%u reason=%s minimal=%u", guid, name.c_str(), cls, level, cohort, applied ? 1u : 0u, startHp, startMana, endHp,
-        endMana, durMs, EndName(end), minimal ? 1u : 0u);
+    return e == End::Done ? "rested" : e == End::Combat ? "combat" : e == End::Timeout ? "timeout" : "low";
+}
+
+// One line per finished episode. mana = -1 without a mana pool. Only a stale line gets three more fields at the end (measurement, DEEP7
+// finding 3): late= (LateName), gap_ms= (the time since the last read) and dur_late_ms= (start to the late read; dur_ms stays the time
+// to the last read). Every other line is unchanged.
+inline std::string FormatEpisodeLine(std::uint32_t guid, std::string const& name, std::uint32_t cls, std::uint32_t level, char cohort,
+    bool applied, std::uint32_t startHp, int startMana, std::uint32_t endHp, int endMana, std::uint32_t durMs, End end, bool minimal,
+    End late = End::None, std::uint32_t gapMs = 0, std::uint32_t lateMs = 0)
+{
+    char buf[384];
+    int const n = std::snprintf(buf, sizeof(buf), "[RestGate] bot=%u name=%.40s cls=%u level=%u cohort=%c applied=%u start_hp=%u "
+        "start_mana=%d end_hp=%u end_mana=%d dur_ms=%u reason=%s minimal=%u", guid, name.c_str(), cls, level, cohort, applied ? 1u : 0u,
+        startHp, startMana, endHp, endMana, durMs, EndName(end), minimal ? 1u : 0u);
+    if (end == End::Stale && n > 0 && std::size_t(n) < sizeof(buf))
+        std::snprintf(buf + n, sizeof(buf) - std::size_t(n), " late=%s gap_ms=%u dur_late_ms=%u", LateName(late), gapMs, lateMs);
     return buf;
 }
 
-// Per class and cohort counters of one hour.
+// Per class and cohort counters of one hour. stale = all stale episodes as before; staleRested + staleCombat + staleTimeout + staleLow
+// = stale (by the late read), staleGapMs = their summed gaps (rest_s + stale_gap_s = the rest time to the late reads).
 struct Counters
 {
     std::uint64_t episodes = 0, done = 0, combat = 0, death = 0, timeout = 0, stale = 0, restMs = 0, castFail = 0;
+    std::uint64_t staleRested = 0, staleCombat = 0, staleTimeout = 0, staleLow = 0, staleGapMs = 0;
     bool Empty() const { return !episodes && !castFail; }
 };
 
+// One finished episode into the counters (RestGateTrace's RecordEpisode, under its lock).
+inline void Count(Counters& c, Closed const& closed)
+{
+    ++c.episodes;
+    c.restMs += closed.durMs;
+    if (closed.end == End::Done)
+        ++c.done;
+    else if (closed.end == End::Combat)
+        ++c.combat;
+    else if (closed.end == End::Death)
+        ++c.death;
+    else if (closed.end == End::Stale)
+    {
+        ++c.stale;
+        c.staleGapMs += closed.gapMs;
+        if (closed.late == End::Done)
+            ++c.staleRested;
+        else if (closed.late == End::Combat)
+            ++c.staleCombat;
+        else if (closed.late == End::Timeout)
+            ++c.staleTimeout;
+        else
+            ++c.staleLow;
+    }
+    else if (closed.end == End::Timeout)
+        ++c.timeout;
+}
+
+// The stale_* fields come after dropped= so the fields before keep their place.
 inline std::string FormatTotalLine(std::uint32_t windowMin, char cohort, std::uint32_t cls, Counters const& c, std::uint32_t dropped)
 {
-    char buf[320];
+    char buf[512];
     std::snprintf(buf, sizeof(buf), "[RestGateTotal] window_min=%u cohort=%c cls=%u episodes=%llu done=%llu combat=%llu death=%llu "
-        "timeout=%llu stale=%llu rest_s=%llu cast_fail=%llu dropped=%u", windowMin, cohort, cls, (unsigned long long)c.episodes,
+        "timeout=%llu stale=%llu rest_s=%llu cast_fail=%llu dropped=%u stale_rested=%llu stale_combat=%llu stale_timeout=%llu "
+        "stale_low=%llu stale_gap_s=%llu", windowMin, cohort, cls, (unsigned long long)c.episodes,
         (unsigned long long)c.done, (unsigned long long)c.combat, (unsigned long long)c.death, (unsigned long long)c.timeout,
-        (unsigned long long)c.stale, (unsigned long long)(c.restMs / 1000), (unsigned long long)c.castFail, dropped);
+        (unsigned long long)c.stale, (unsigned long long)(c.restMs / 1000), (unsigned long long)c.castFail, dropped,
+        (unsigned long long)c.staleRested, (unsigned long long)c.staleCombat, (unsigned long long)c.staleTimeout,
+        (unsigned long long)c.staleLow, (unsigned long long)(c.staleGapMs / 1000));
     return buf;
 }
 }
