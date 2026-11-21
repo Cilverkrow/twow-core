@@ -1041,6 +1041,131 @@ void PlayerbotAI::UnreachableGiveUp(Unit* target, uint32 now)
         " reason=unreachable_k cohort=%c",
         bot->GetGUIDLow(), target->GetObjectGuid().GetCounter(), target->GetEntry(), quest, count, ug::LongIgnoreSeconds, markSeconds,
         mark, evicted ? 1u : 0u, ai::cohort::Letter(bot->GetGUIDLow()));
+
+    // 4. twow-repo#703 item 4b (Rotation.UnreachableLock): lock this guid and its entry near the spot, solo only; the key first.
+    if (sPlayerbotAIConfig.rotationUnreachableLock &&
+        ug::LockActive(sPlayerbotAIConfig.rotationUnreachableLock, ai::cohort::Applies(sPlayerbotAIConfig.rotationUnreachableLock, bot->GetGUIDLow()),
+            group != nullptr))
+        ArmUnreachableLock(target, entry, now);
+}
+
+// twow-repo#703 item 4b (AiPlayerbot.Rotation.UnreachableLock, design 20.11.2026 L1-L8): the only writer of the locks, called
+// from UnreachableGiveUp after its line. (1) The lock. (2) A swing on a same-entry unit near the spot that is not hitting the bot
+// or its pet stops (an earlier [Unreachable] on a sibling left it). (3) The pet stops the same way, and on the given-up unit.
+// (4) One line. No threat change, no combat stop (L1, L4). Creatures only, as in the read (a player or pet target arms nothing).
+void PlayerbotAI::ArmUnreachableLock(Unit* target, int32 entry, uint32 now)
+{
+    if (!target->GetObjectGuid().IsCreature())
+        return;
+
+    namespace ug = ai::unreachable_giveup;
+    bool const evicted = unreachableLocks.Arm(target->GetObjectGuid().GetRawValue(), entry, target->GetMapId(),
+        target->GetPositionX(), target->GetPositionY(), now);
+
+    Pet* const pet = bot->GetPet();
+    auto attacksUs = [this, pet](Unit* unit)
+    {
+        Unit* const its = unit->GetVictim();
+        return its && (its == bot || (pet && its == pet));
+    };
+    auto lockMatch = [this, now](Unit* unit)
+    {
+        if (!unit->GetObjectGuid().IsCreature())
+            return ug::Match::None;
+        return unreachableLocks.Find(unit->GetObjectGuid().GetRawValue(), int32(unit->GetEntry()), unit->GetMapId(),
+            unit->GetPositionX(), unit->GetPositionY(), now);
+    };
+
+    bool victimStop = false;
+    if (Unit* const victim = bot->GetVictim())
+        if (lockMatch(victim) == ug::Match::Entry && !ug::MayDefend(ug::Match::Entry, attacksUs(victim), false))
+        {
+            bot->AttackStop();
+            victimStop = true;
+        }
+
+    bool petStop = false;
+    if (Unit* const petVictim = pet ? pet->GetVictim() : nullptr)
+        if (petVictim == target ||
+            (lockMatch(petVictim) == ug::Match::Entry && !ug::MayDefend(ug::Match::Entry, attacksUs(petVictim), false)))
+        {
+            pet->AttackStop();
+            petStop = true;
+        }
+
+    sLog.outBasic("[UnreachableLock] state=arm bot=%u guid=%u entry=%u map=%u x=%.0f y=%.0f lock_s=%u radius=%.0f victim_stop=%u pet_stop=%u"
+        " evicted=%u cohort=%c",
+        bot->GetGUIDLow(), target->GetObjectGuid().GetCounter(), uint32(entry), target->GetMapId(), target->GetPositionX(),
+        target->GetPositionY(), ug::LockSeconds, ug::EntryRadiusYards, victimStop ? 1u : 0u, petStop ? 1u : 0u, evicted ? 1u : 0u,
+        ai::cohort::Letter(bot->GetGUIDLow()));
+}
+
+// twow-repo#703 item 4b (Rotation.UnreachableLock): the read of the locks at the pick sites; true = skip the unit. Mode 0
+// returns in the first statement. Bot thread, no game-state writes. Not gated on purpose (self-defence and "has attackers"
+// stay): the attackers list and the closest attacker targeting the bot. UnreachableLockWouldBlock below is its log-free twin.
+bool PlayerbotAI::UnreachableLockBlocks(Unit* unit, ai::unreachable_giveup::Path path)
+{
+    if (!sPlayerbotAIConfig.rotationUnreachableLock || !unit)
+        return false;
+
+    namespace ug = ai::unreachable_giveup;
+    uint32 const now = uint32(time(nullptr));
+    if (!unreachableLocks.Any(now) || !unit->GetObjectGuid().IsCreature() || bot->GetGroup())
+        return false;
+
+    uint64 const guid = unit->GetObjectGuid().GetRawValue();
+    int32 const entry = int32(unit->GetEntry());
+    uint32 const map = unit->GetMapId();
+    float const x = unit->GetPositionX();
+    float const y = unit->GetPositionY();
+    ug::Match const match = unreachableLocks.Find(guid, entry, map, x, y, now);
+    if (match == ug::Match::None)
+        return false;
+
+    Pet* const pet = bot->GetPet();
+    Unit* const victim = unit->GetVictim();
+    bool const attacksBotOrPet = victim && (victim == bot || (pet && victim == pet));
+    // Hittable now only for the given-up unit when it attacks the bot or its pet (L2): no line-of-sight test per candidate.
+    bool const hittableNow = match == ug::Match::Guid && attacksBotOrPet &&
+        (bot->CanReachWithMeleeAttack(unit) || (IsRanged(bot) && bot->IsWithinLOSInMap(unit) && bot->GetDistance(unit) <= GetRange("spell")));
+    bool const defend = ug::MayDefend(match, attacksBotOrPet, hittableNow);
+    if (unreachableLockLog.Note(path, defend, now))
+    {
+        sLog.outBasic("[UnreachableLock] state=block bot=%u guid=%u entry=%u match=%s path=%s attacks_bot=%u left_s=%u"
+            " n_grind_att=%u n_grind_cand=%u n_assist=%u n_attack=%u n_pull=%u defended=%u cohort=%c",
+            bot->GetGUIDLow(), unit->GetObjectGuid().GetCounter(), unit->GetEntry(), ug::MatchName(match), ug::PathName(path),
+            attacksBotOrPet ? 1u : 0u, unreachableLocks.LeftFor(match, guid, entry, map, x, y, now),
+            unreachableLockLog.Blocked(ug::Path::GrindAttacker), unreachableLockLog.Blocked(ug::Path::GrindCandidate),
+            unreachableLockLog.Blocked(ug::Path::Assist), unreachableLockLog.Blocked(ug::Path::Attack),
+            unreachableLockLog.Blocked(ug::Path::Pull), unreachableLockLog.defended, ai::cohort::Letter(bot->GetGUIDLow()));
+        unreachableLockLog.Reset(now);
+    }
+    return !defend;
+}
+
+// twow-repo#703 item 4b: the verdict of UnreachableLockBlocks without its block line and counts, for the CastLosGate pre-scan in
+// TargetValue::FindTarget (a locked unit is no reachable alternative there). Same gates, same rule; reads only.
+bool PlayerbotAI::UnreachableLockWouldBlock(Unit* unit)
+{
+    if (!sPlayerbotAIConfig.rotationUnreachableLock || !unit)
+        return false;
+
+    namespace ug = ai::unreachable_giveup;
+    uint32 const now = uint32(time(nullptr));
+    if (!unreachableLocks.Any(now) || !unit->GetObjectGuid().IsCreature() || bot->GetGroup())
+        return false;
+
+    ug::Match const match = unreachableLocks.Find(unit->GetObjectGuid().GetRawValue(), int32(unit->GetEntry()), unit->GetMapId(),
+        unit->GetPositionX(), unit->GetPositionY(), now);
+    if (match == ug::Match::None)
+        return false;
+
+    Pet* const pet = bot->GetPet();
+    Unit* const victim = unit->GetVictim();
+    bool const attacksBotOrPet = victim && (victim == bot || (pet && victim == pet));
+    bool const hittableNow = match == ug::Match::Guid && attacksBotOrPet &&
+        (bot->CanReachWithMeleeAttack(unit) || (IsRanged(bot) && bot->IsWithinLOSInMap(unit) && bot->GetDistance(unit) <= GetRange("spell")));
+    return !ug::MayDefend(match, attacksBotOrPet, hittableNow);
 }
 
 // twow-repo#630 follow-up (AiPlayerbot.Rotation.ReachDropEngagement): the caller dropped only "current target"; every other
