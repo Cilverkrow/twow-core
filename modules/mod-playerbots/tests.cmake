@@ -3086,6 +3086,20 @@ add_test(NAME party_scan_policy
   COMMAND party_scan_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#742 (AUDIT-L03-6): AllowableClass is a class mask; -1 / all-class masks are not class items, 0 is nobody.
+add_executable(class_mask_policy_tests
+  "${PB_MODULE_DIR}/t/class_mask_policy_tests.cpp")
+
+target_include_directories(class_mask_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(class_mask_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME class_mask_policy
+  COMMAND class_mask_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 add_test(NAME give_item_group_scan_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
