@@ -13,6 +13,7 @@
 #include "playerbot/ServerFacade.h"
 #include "playerbot/ProfessionUsePolicy.h"
 #include "playerbot/ConsumablesPolicy.h"
+#include "playerbot/ClassMaskPolicy.h"
 #include "playerbot/strategy/triggers/ProfessionUseTriggers.h"
 #include "playerbot/strategy/actions/UseConsumableAction.h"
 
@@ -551,7 +552,9 @@ if ((proto->Class == ITEM_CLASS_PROJECTILE ||
 #endif
 
         //keep relevant class consumables (e.g. rogue poisons)
-        if (proto->AllowableClass == bot->getClass() && proto->RequiredLevel + 6 >= bot->GetLevel())
+        // twow-repo#742 (AUDIT-L03-6): AllowableClass is a mask (the ID compare only matched warrior/paladin); all-class masks
+        // (-1) are not class consumables (ClassMaskPolicy.h).
+        if (ai::class_mask::IsRestrictedTo(proto->AllowableClass, bot->getClassMask(), CLASSMASK_ALL_PLAYABLE) && proto->RequiredLevel + 6 >= bot->GetLevel())
         {
             if (bot->GetLevel() == maxExpansionCharacterLevel && proto->RequiredLevel + 6 >= bot->GetLevel())
             {

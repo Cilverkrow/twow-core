@@ -16,6 +16,7 @@
 #include "strategy/values/SharedValueContext.h"
 #include "playerbot/LootRolePolicy.h"
 #include "playerbot/LootRoleV2Weights.h"
+#include "playerbot/ClassMaskPolicy.h"
 
 char * strstri (const char* str1, const char* str2);
 
@@ -1417,7 +1418,9 @@ void RandomItemMgr::BuildItemInfoCache()
                 if (cacheInfo->slot == EQUIPMENT_SLOT_TRINKET1 ||
                     cacheInfo->slot == EQUIPMENT_SLOT_TRINKET2)
                 {
-                    if (statW == 0 && proto->AllowableClass == uint32(clazz) && proto->Spells[0].SpellId)
+                    // twow-repo#742 (AUDIT-L03-6): a class trinket is one whose AllowableClass mask is restricted and holds this
+                    // class (the ID compare only matched warrior/paladin; ClassMaskPolicy.h).
+                    if (statW == 0 && ai::class_mask::IsRestrictedTo(proto->AllowableClass, 1u << (clazz - 1), CLASSMASK_ALL_PLAYABLE) && proto->Spells[0].SpellId)
                     {
                         statW = (uint32)(proto->Quality + proto->ItemLevel);
                     }
