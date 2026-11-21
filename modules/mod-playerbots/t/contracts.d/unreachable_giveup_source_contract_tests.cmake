@@ -307,7 +307,8 @@ function(check_lock dist config_h config_cpp policy ai_cpp ai_h grind_cpp target
   lock_need("${grind_att}" "        if (ai->UnreachableLockBlocks(unit, ai::unreachable_giveup::Path::GrindAttacker))\n        {\n            logGrind(unit, \"(hostile) ignored (unreachable lock).\");\n            continue;\n        }" "L1a check")
   lock_before("${grind_att}" "Path::GrindAttacker" "CanFreeMoveValue::CanFreeTarget(ai, GuidPosition(unit))" "L1a before the free-range check")
   lock_before("${grind_att}" "Path::GrindAttacker" "logGrind(unit, \"(hostile) selected.\");" "L1a before the attacker pick")
-  lock_need("${grind_cpp}" "        if (ai->IsUnreachableTarget(unit->GetObjectGuid()))\n            continue;\n\n        // twow-repo#703 4b" "L1b directly after the hotfix 8.2 skip")
+  # The hotfix 8.2 skip block counts its skip since ActivityTrace.GrindIdleDetail (#1122): the anchor is the whole block.
+  lock_need("${grind_cpp}" "        if (ai->IsUnreachableTarget(unit->GetObjectGuid()))\n        {\n            skip(ai::grind_idle::Skip::Unreachable);\n            continue;\n        }\n\n        // twow-repo#703 4b" "L1b directly after the hotfix 8.2 skip")
   lock_need("${grind_cpp}" "        if (ai->UnreachableLockBlocks(unit, ai::unreachable_giveup::Path::GrindCandidate))\n            continue;\n" "L1b check")
   lock_before("${grind_cpp}" "if (ai->IsUnreachableTarget(unit->GetObjectGuid()))" "Path::GrindCandidate" "L1b after the hotfix 8.2 skip")
   lock_before("${grind_cpp}" "Path::GrindCandidate" "needForQuestCache[entry] = needForQuest;" "L1b before the quest preference")
