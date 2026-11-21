@@ -170,7 +170,7 @@ require_text("${conf}" "\nAiPlayerbot.QuestFeasibility.SoloSkipEscortTimed = 0\n
 require_text("${conf}" "\nAiPlayerbot.QuestFeasibility.SoloSkipEscortIds = 155,898,938\n" "escort ids documented with the seed")
 require_text("${conf}" "\nAiPlayerbot.QuestFeasibility.SoloSkipTimedMaxSeconds = 900\n" "bound documented with 900")
 forbid_text("${conf}" "AiPlayerbot.QuestFeasibility.SoloSkipEscortTimed = 1" "SoloSkipEscortTimed shipped as 1")
-count_text("${conf}" "\nAiPlayerbot.QuestFeasibility." 7 "exactly the four S3a keys and the three escort / timed keys, once each")
+count_text("${conf}" "\nAiPlayerbot.QuestFeasibility." 8 "exactly the four S3a keys, the three escort / timed keys and CraftOnlySkip (twow-repo#750, own contract), once each")
 require_order("${conf}" "AiPlayerbot.QuestFirstProgression.GrindMode = 0" "AiPlayerbot.QuestFeasibility.Enable = 0" "documented next to the S1 / GrindMode keys")
 
 # ---- 3. The game-side helper: Enable first, the S3a scope, atomics, bounded line ------------------------

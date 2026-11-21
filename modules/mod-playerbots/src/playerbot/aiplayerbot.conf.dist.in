@@ -2200,6 +2200,15 @@ AiPlayerbot.QuestFirstProgression.BandQueuedFreeMinutes = 0
 # giver_inactive= once a minute; skips= and giver_inactive= count checks (one quest can count several times a minute),
 # not distinct quests. 0 = off (default).
 AiPlayerbot.QuestFeasibility.Enable = 0
+# CraftOnlySkip (twow-repo#750; its own key, does NOT need Enable): a persistent roster bot on its own does not take a quest
+# whose required item has no source but profession recipes (no loot, vendor, quest reward or other create spell; built once
+# at start from the world DB + SkillLineAbility.dbc) and does not travel to its giver while it does not hold that item in
+# the required count. Held quests stay (no abandon); bots do not craft for quests yet (W2), so holding the count is the only
+# way in. Restart-only. [QuestCraftOnly] init mode= craft_only_items= quests= once at start, [QuestFeasibility] state=skip
+# ... reason=craft_only path=accept|giver|held item= held= required= once per bot, quest and path an hour,
+# [QuestCraftOnly] minute skips= giver_inactive= held_craft_only= once a minute.
+# 0 = off (default), 1 = all, 2 = cohort B (odd low guid), 3 = cohort A (even low guid); anything else = off.
+AiPlayerbot.QuestFeasibility.CraftOnlySkip = 0
 # Blocklist (acts only with Enable = 1): a comma list of quest ids (decimal, > 0, at most 512; anything else is
 # ignored). The profile carries the list. Empty = none (default).
 AiPlayerbot.QuestFeasibility.Blocklist =

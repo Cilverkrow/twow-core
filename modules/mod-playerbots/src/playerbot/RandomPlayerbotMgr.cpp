@@ -1924,6 +1924,27 @@ void ReportQuestFeasibility()
     sLog.outBasic("%s", PlayerbotAI::TakeQuestFeasibilityMinuteLine().c_str());
 }
 
+// twow-repo#750 (AiPlayerbot.QuestFeasibility.CraftOnlySkip): one "[QuestCraftOnly] minute skips= giver_inactive= held_craft_only="
+// line per minute, same pattern as ReportQuestFeasibility (its own key, independent of Enable). Nothing with the key 0.
+void ReportQuestCraftOnly()
+{
+    if (!sPlayerbotAIConfig.questFeasibilityCraftOnlySkip)
+        return;   // key 0: not even the clock is read
+
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (!lastReport)
+    {
+        lastReport = now;
+        return;
+    }
+    if (now < lastReport + 60)
+        return;
+    lastReport = now;
+
+    sLog.outBasic("%s", PlayerbotAI::TakeCraftOnlyMinuteLine().c_str());
+}
+
 // twow-repo#592 (PATH-02): the bot side of pathfinding without a Unit, no switch - every counted case crashed before
 // #592 or does not happen with today's data. At most once a minute, and only while one of the rare counters is above 0
 // (until then no clock read): "[PathUnitlessBot] reject=bot_transport n=" (a map-mode PathFinder met a bot on a
@@ -2194,6 +2215,7 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     ReportEmergencyLadder(); // twow-repo#602 ROT-01 X3: [EmergencyLadderTotal] once per hour (AiPlayerbot.Rotation.EmergencyLadder)
     ReportRestGate();     // twow-repo#602 ROT-01 X1: [RestGateTotal] once per hour (AiPlayerbot.Rotation.RestGate)
     ReportQuestFeasibility(); // twow-repo#601 S3a: [QuestFeasibility] minute once per minute (AiPlayerbot.QuestFeasibility.Enable)
+    ReportQuestCraftOnly(); // twow-repo#750: [QuestCraftOnly] minute once per minute (AiPlayerbot.QuestFeasibility.CraftOnlySkip)
     ReportPathUnitlessBot(); // twow-repo#592 (PATH-02): [PathUnitlessBot] at most once per minute, only with rare counts
 
 #ifdef MEMORY_MONITOR

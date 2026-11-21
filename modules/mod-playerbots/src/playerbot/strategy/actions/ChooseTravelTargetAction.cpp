@@ -529,6 +529,12 @@ CandidateSkip CandidateSkipOf(PlayerbotAI* ai, Player* bot, TravelTarget const* 
             if (ai::stale_objective::IsObjectiveStale(objective))
                 return CandidateSkip::StaleObjective;
 
+    // twow-repo#750 F2 (a) (QuestFeasibility.CraftOnlySkip): a held quest whose craft-only item is unmet is only counted
+    // (held_craft_only=, once per bot, quest and hour) - never skipped or dropped here. Off: not even the cast.
+    if (sPlayerbotAIConfig.questFeasibilityCraftOnlySkip)
+        if (QuestObjectiveTravelDestination const* objective = dynamic_cast<QuestObjectiveTravelDestination const*>(destination))
+            ai->NoteCraftOnlyHeld(objective->GetQuestId());
+
     return CandidateSkip::None;
 }
 

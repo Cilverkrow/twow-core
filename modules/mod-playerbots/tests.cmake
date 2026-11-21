@@ -3085,6 +3085,20 @@ add_test(NAME party_scan_policy
   COMMAND party_scan_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#750 (QuestFeasibility.CraftOnlySkip): craft-only item classification and the held-count rule.
+add_executable(quest_craft_only_policy_tests
+  "${PB_MODULE_DIR}/t/quest_craft_only_policy_tests.cpp")
+
+target_include_directories(quest_craft_only_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(quest_craft_only_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME quest_craft_only_policy
+  COMMAND quest_craft_only_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 add_test(NAME give_item_group_scan_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"

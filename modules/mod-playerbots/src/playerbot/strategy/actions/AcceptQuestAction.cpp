@@ -42,6 +42,11 @@ static bool SkipQuestForRosterBot(PlayerbotAI* ai, Player* bot, Quest const* que
     if (sPlayerbotAIConfig.questFeasibilityEnable && ai->SkipInfeasibleQuest(quest, ai::quest_feasibility::Path::Accept))
         return true;
 
+    // twow-repo#750 (QuestFeasibility.CraftOnlySkip, its own key; off = no change): not while a craft-only required item is
+    // not held in the required count - the same three accept paths (accept all, accept packet, details dialog).
+    if (ai->SkipCraftOnlyQuest(quest, ai::quest_craft_only::Path::Accept))
+        return true;
+
     bool const rosterOnItsOwn = sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster();
     // Hotfix 8.15: free quest log slots, for the accept limit that matches the cleanup.
     uint32 freeSlots = 0;

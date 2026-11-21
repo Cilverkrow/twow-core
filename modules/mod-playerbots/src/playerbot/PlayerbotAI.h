@@ -36,6 +36,7 @@
 #include <memory>
 #include "playerbot/QuestSearchPolicy.h"
 #include "playerbot/QuestFeasibilityPolicy.h"
+#include "playerbot/QuestCraftOnlyPolicy.h"   // twow-repo#750 QuestFeasibility.CraftOnlySkip (Path, plain rules)
 #include "playerbot/BotActivityPolicy.h"
 #include "playerbot/GrindIdlePolicy.h"   // twow-repo#601 (ActivityTrace.GrindIdleDetail): the grind pass tally (plain data)
 #include "playerbot/StuckReasonPolicy.h"   // A3-HARM-UPSTREAM T40 follow-up: the [StuckReason] records (plain data)
@@ -1470,6 +1471,17 @@ public:
     static void NoteQuestFeasibilityDrop();
     // S3a, world thread: "[QuestFeasibility] minute ..." with the counts since the last call (counters reset).
     static std::string TakeQuestFeasibilityMinuteLine();
+    // twow-repo#750 (AiPlayerbot.QuestFeasibility.CraftOnlySkip, QuestCraftOnlyPolicy.h; its own key, outside Enable / S3):
+    // world thread at start, only with the key on: quest id -> its craft-only required items (read-only afterwards).
+    static void BuildCraftOnlyQuests();
+    // Bot's own thread: a roster bot on its own in the key's cohort skips the quest (accept) / its giver (giver) while it does
+    // not hold a craft-only required item in the required count. Counts it, rate-limited [QuestFeasibility] skip line. True = skip.
+    bool SkipCraftOnlyQuest(Quest const* quest, ai::quest_craft_only::Path path);
+    // Bot's own thread: a held quest's objective was a trip candidate - count it once per bot, quest and hour when a craft-only
+    // item is unmet (held_craft_only=, diagnosis only: nothing is skipped or dropped).
+    void NoteCraftOnlyHeld(uint32 questId);
+    // World thread: "[QuestCraftOnly] minute ..." with the counts since the last call (counters reset).
+    static std::string TakeCraftOnlyMinuteLine();
 
 protected:
     // twow-repo#601 GrindMode: the reasons this bot already logged in its idle episode (bit mask of
@@ -1481,6 +1493,8 @@ protected:
     BandEpisode bandEpisode;     // twow-repo#601 S5a: the band episode (bot's own thread only)
     // twow-repo#601 S3a: the bot's recent [QuestFeasibility] skip lines (16 quests, bot's own thread only).
     ai::quest_feasibility::SkipLog questFeasibilityLog;
+    // twow-repo#750: the bot's recent craft-only skip / held lines (same ring type, bot's own thread only).
+    ai::quest_feasibility::SkipLog craftOnlyLog;
     std::deque<ai::death_loop::Death> recentDeaths;
     ai::corpse_first::Ring corpseFirstDeaths;   // S4-1: own deaths (Revive.CorpseRunFirst bots only)
     uint32 corpseFirstLoggedDeathAt = 0;          // S4-1: ghost time of the death whose decision was logged last
