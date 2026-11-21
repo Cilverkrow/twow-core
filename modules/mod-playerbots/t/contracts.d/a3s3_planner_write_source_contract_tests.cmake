@@ -383,7 +383,8 @@ function(check_arbiter_reads write shadow out)
 endfunction()
 
 # ---- (h) OB-10 pre-review 20.11.: V-3 rule 5 lock reasons, V-1 back_to_band never switches the mode -------------------------
-# V-3: the rule 5 time is set only through NoteFallback (5 calls: FeedBegin, FeedResult x3, ApplyWatch); FallbackLocks names the
+# V-3: the rule 5 time is set only through NoteFallback (7 calls: FeedBegin, FeedResult x5 - reject, reject_empty, zone_empty twice,
+# budget - and ApplyWatch; twow-repo#726, pinned by a3s3_planner_fix726); FallbackLocks names the
 # five lock reasons (reject, budget, parked, denied, zone_empty). V-1: the one PlannerMode call in PlannerShadow.cpp is the switch
 # branch's; the back_to_band hold goes through BackToBandHolds (no direct mode switch from back_to_band, P-3c with its own OK).
 function(check_v1_v3 write shadow policy out)
@@ -395,8 +396,8 @@ function(check_v1_v3 write shadow policy out)
   endif()
   set(note "NoteFallback(st.fallbackAtMs, ")
   count_text("${write}" note n)
-  if(NOT n EQUAL 5)
-    set(${out} "PlannerWrite.cpp: NoteFallback(st.fallbackAtMs, found ${n} times, want 5" PARENT_SCOPE)
+  if(NOT n EQUAL 7)
+    set(${out} "PlannerWrite.cpp: NoteFallback(st.fallbackAtMs, found ${n} times, want 7" PARENT_SCOPE)
     return()
   endif()
   foreach(t write shadow)
@@ -542,7 +543,7 @@ expect_caught("the feed reads the raw arbiter key (no console override)" "${r}")
 string(REPLACE "    return f == FeedFallback::Reject ||" "    return f == FeedFallback::Purpose || f == FeedFallback::Reject ||" m "${policy_h}")
 check_v1_v3("${write_cpp}" "${planner_shadow_cpp}" "${m}" r)
 expect_caught("V-3: purpose locks rule 5" "${r}")
-string(REPLACE "        NoteFallback(st.fallbackAtMs, fb, nowMs);" "        st.fallbackAtMs = nowMs;" m "${write_cpp}")
+string(REPLACE "        NoteFallback(st.fallbackAtMs, SkipFallback(skip), nowMs);" "        st.fallbackAtMs = nowMs;" m "${write_cpp}")
 check_v1_v3("${m}" "${planner_shadow_cpp}" "${policy_h}" r)
 expect_caught("V-3: every feed skip sets the rule 5 time" "${r}")
 string(REPLACE "                st.evNext |= EvMode;" "                st.evNext |= EvMode;\n                supervisor->PlannerMode(Mode::Grind, 0, 2);" m "${planner_shadow_cpp}")

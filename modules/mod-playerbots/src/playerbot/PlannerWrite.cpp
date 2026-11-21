@@ -130,21 +130,28 @@ bool FeedBegin(PlayerbotAI* ai, char const* purpose, bool forcedTarget, bool res
     Pick const& pick = st.pick;
     std::uint32_t const nowMs = NowMs();
     bool const pickGrind = pick.kind == Kind::Grind;
-    FeedSkip const skip = FeedCheck(quest, grind, forcedTarget, pick.has, pickGrind, pick.atMs, nowMs,
-        sPlayerbotAIConfig.plannerMinBindSec * 1000u, resumePending, st.feedBudgetKey && st.feedBudgetKey == pick.key);
+    std::uint32_t const minBindMs = sPlayerbotAIConfig.plannerMinBindSec * 1000u;
+    // twow-repo#726 F2 (OB-10 5a445aa4 + Nachtrag 1 Q1 (a)): the #416 hold ends with a pick change (key or sinceMs) and MinBindSec
+    // after the abort; then the pick is fed again.
+    if (st.feedBudgetKey && !BudgetHolds(st.feedBudgetKey, st.feedBudgetSinceMs, st.feedBudgetAtMs, pick.key, pick.sinceMs, nowMs,
+            minBindMs))
+        st.feedBudgetKey = 0;
+    FeedSkip const skip = FeedCheck(quest, grind, forcedTarget, pick.has, pickGrind, pick.atMs, nowMs, minBindMs, resumePending,
+        st.feedBudgetKey != 0);
     if (skip != FeedSkip::Feed)
     {
         PlanMinCounts c;
-        FeedFallback fb = FeedFallback::None;
         switch (skip)
         {
-            case FeedSkip::Purpose: ++c.fallbackPurpose; fb = FeedFallback::Purpose; break;
-            case FeedSkip::None: ++c.fallbackNone; fb = FeedFallback::None; break;
-            case FeedSkip::Stale: ++c.fallbackStale; fb = FeedFallback::Stale; break;
-            case FeedSkip::Budget: ++c.fallbackBudget; fb = FeedFallback::Budget; break;
+            case FeedSkip::Purpose: ++c.fallbackPurpose; break;
+            case FeedSkip::None: ++c.fallbackNone; break;
+            case FeedSkip::Stale: ++c.fallbackStale; break;
+            case FeedSkip::Budget: ++c.fallbackBudget; break;
             case FeedSkip::Feed: break;
         }
-        NoteFallback(st.fallbackAtMs, fb, nowMs);   // rule 5 (OB-10 V-3): only budget locks here; none, stale, purpose never
+        // Rule 5 (OB-10 V-3, Nachtrag 1 Q1 (a)): no skip locks - none, stale, purpose never, and a held budget or a pending resume
+        // only counts (SkipFallback: BudgetHeld; the abort itself locked once, in FeedResult).
+        NoteFallback(st.fallbackAtMs, SkipFallback(skip), nowMs);
         Count(ai, c);
         return false;
     }
@@ -154,6 +161,7 @@ bool FeedBegin(PlayerbotAI* ai, char const* purpose, bool forcedTarget, bool res
     feed.destKey = pickGrind ? 0 : pick.destKey;
     feed.zone = pickGrind ? pick.zone : 0;
     feed.key = pick.key;
+    feed.sinceMs = pick.sinceMs;
     feed.turnIn = pick.kind == Kind::QuestTurnIn;
     return true;
 }
@@ -176,6 +184,8 @@ void FeedResult(PlayerbotAI* ai, Feed const& feed, FeedEnd end)
     PlanState& st = sup->Plan();
     std::uint32_t const nowMs = NowMs();
     PlanMinCounts c;
+    c.feedUs = feed.takesUs;      // twow-repo#726 F1: the filter loop of this choice (FeedResult runs once per tried feed)
+    c.feedUsMax = feed.takesUs;
     switch (end)
     {
         case FeedEnd::Fed:
@@ -185,14 +195,31 @@ void FeedResult(PlayerbotAI* ai, Feed const& feed, FeedEnd end)
             ++c.fallbackReject;
             NoteFallback(st.fallbackAtMs, FeedFallback::Reject, nowMs);
             break;
+        case FeedEnd::RejectEmpty:
+            ++c.fallbackRejectEmpty;   // twow-repo#726 F3: the plan attempt never ran; no lock
+            NoteFallback(st.fallbackAtMs, FeedFallback::RejectEmpty, nowMs);
+            break;
         case FeedEnd::ZoneEmpty:
-            ++c.fallbackZoneEmpty;
-            NoteFallback(st.fallbackAtMs, FeedFallback::ZoneEmpty, nowMs);
+            // OB-10 Nachtrag 1 Q2 (c): locks once per pick; again for the same pick only zone_empty_held.
+            if (ZoneEmptySeen(st.zoneEmptyKey, st.zoneEmptySinceMs, feed.key, feed.sinceMs))
+            {
+                ++c.zoneEmptyHeld;
+                NoteFallback(st.fallbackAtMs, FeedFallback::ZoneEmptyHeld, nowMs);
+            }
+            else
+            {
+                ++c.fallbackZoneEmpty;
+                NoteFallback(st.fallbackAtMs, FeedFallback::ZoneEmpty, nowMs);
+                st.zoneEmptyKey = feed.key;
+                st.zoneEmptySinceMs = feed.sinceMs;
+            }
             break;
         case FeedEnd::Budget:
             ++c.fallbackBudget;
             NoteFallback(st.fallbackAtMs, FeedFallback::Budget, nowMs);
-            st.feedBudgetKey = feed.key;   // #416: no second attempt for this pick (the full list resumes)
+            st.feedBudgetKey = feed.key;   // #416: no second attempt for this pick (the full list resumes) ...
+            st.feedBudgetSinceMs = feed.sinceMs;   // ... until a pick change or MinBindSec (twow-repo#726 F2, BudgetHolds)
+            st.feedBudgetAtMs = nowMs;
             break;
     }
     Count(ai, c);

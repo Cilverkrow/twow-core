@@ -790,6 +790,8 @@ inline char const* ReasonFor(Bundle const& b)
         return "lifecycle";
     if (writer == WriterId::Group)
         return "group";
+    if (writer == WriterId::Planner)
+        return "planner";   // twow-repo#726 F6 (OB-60 review 9f5669b7): the planner's expire (Planner = 2 only), not "other"
     return "other";
 }
 
