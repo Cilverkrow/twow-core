@@ -9,22 +9,48 @@
 --    by Vyrin Swiftwind 1156, ends at Kathy Wake 80202) end at NPCs without a spawn (legacy goblin / high-elf starts), so
 --    a player can take them but never turn them in. Both are disabled: Method |= 1 (QUEST_METHOD_DISABLED, QuestDef.cpp
 --    sets m_isActive = false). Method 2 -> 3, which the core normalizes to 1.
+-- 3. The texts of 40679-40681 speak in Gowlfang's voice; Grimbite reads them now (OB-00 21.11.2026, option a: the name
+--    is replaced, the meaning stays). Fields: Details, Objectives, OfferRewardText, RequestItemsText, EndText,
+--    ObjectiveText1-4; the titles have no name; locales_quest has no text for these quests. None of the texts contains
+--    "Grimbite" before, so the replace is exactly reversible.
 -- Replay-safe (INSERT IGNORE, guarded UPDATE). End-state CHECK. Evidence: evidence/ws-30/tiefe4-blocker/
 -- npc-info-owner-20261121.md (52eb9d4b), ursachen-ob20-20261120.md (7b3ade07).
 -- Rollback (exact):
 --   DELETE FROM `creature_questrelation` WHERE `id` = 62636 AND `quest` IN (40679, 40680, 40681);
 --   DELETE FROM `creature_involvedrelation` WHERE `id` = 62636 AND `quest` IN (40679, 40680, 40681);
 --   UPDATE `quest_template` SET `Method` = 2 WHERE `entry` IN (80105, 80208) AND `Method` = 3;
+--   UPDATE `quest_template` SET `Details` = REPLACE(`Details`, 'Grimbite', 'Gowlfang'),
+--     `Objectives` = REPLACE(`Objectives`, 'Grimbite', 'Gowlfang'), `OfferRewardText` = REPLACE(`OfferRewardText`, 'Grimbite', 'Gowlfang'),
+--     `RequestItemsText` = REPLACE(`RequestItemsText`, 'Grimbite', 'Gowlfang'), `EndText` = REPLACE(`EndText`, 'Grimbite', 'Gowlfang'),
+--     `ObjectiveText1` = REPLACE(`ObjectiveText1`, 'Grimbite', 'Gowlfang'), `ObjectiveText2` = REPLACE(`ObjectiveText2`, 'Grimbite', 'Gowlfang'),
+--     `ObjectiveText3` = REPLACE(`ObjectiveText3`, 'Grimbite', 'Gowlfang'), `ObjectiveText4` = REPLACE(`ObjectiveText4`, 'Grimbite', 'Gowlfang')
+--    WHERE `entry` IN (40679, 40680, 40681);
 
 INSERT IGNORE INTO `creature_questrelation` (`id`, `quest`) VALUES (62636, 40679), (62636, 40680), (62636, 40681);
 INSERT IGNORE INTO `creature_involvedrelation` (`id`, `quest`) VALUES (62636, 40679), (62636, 40680), (62636, 40681);
 
 UPDATE `quest_template` SET `Method` = `Method` | 1 WHERE `entry` IN (80105, 80208) AND `Method` = 2;
 
+-- 3. Gowlfang -> Grimbite in the quest texts (no-op on a replay)
+UPDATE `quest_template` SET
+  `Details` = REPLACE(`Details`, 'Gowlfang', 'Grimbite'),
+  `Objectives` = REPLACE(`Objectives`, 'Gowlfang', 'Grimbite'),
+  `OfferRewardText` = REPLACE(`OfferRewardText`, 'Gowlfang', 'Grimbite'),
+  `RequestItemsText` = REPLACE(`RequestItemsText`, 'Gowlfang', 'Grimbite'),
+  `EndText` = REPLACE(`EndText`, 'Gowlfang', 'Grimbite'),
+  `ObjectiveText1` = REPLACE(`ObjectiveText1`, 'Gowlfang', 'Grimbite'),
+  `ObjectiveText2` = REPLACE(`ObjectiveText2`, 'Gowlfang', 'Grimbite'),
+  `ObjectiveText3` = REPLACE(`ObjectiveText3`, 'Gowlfang', 'Grimbite'),
+  `ObjectiveText4` = REPLACE(`ObjectiveText4`, 'Gowlfang', 'Grimbite')
+ WHERE `entry` IN (40679, 40680, 40681);
+
 DROP TEMPORARY TABLE IF EXISTS `_q579_check`;
 CREATE TEMPORARY TABLE `_q579_check` (`ok` TINYINT(1) NOT NULL CHECK (`ok` = 1));
 INSERT INTO `_q579_check` (`ok`) SELECT
   (SELECT COUNT(*) FROM `creature_questrelation` WHERE `id` = 62636 AND `quest` IN (40679, 40680, 40681)) = 3
   AND (SELECT COUNT(*) FROM `creature_involvedrelation` WHERE `id` = 62636 AND `quest` IN (40679, 40680, 40681)) = 3
-  AND (SELECT COUNT(*) FROM `quest_template` WHERE `entry` IN (80105, 80208) AND (`Method` & 1) = 1) = 2;
+  AND (SELECT COUNT(*) FROM `quest_template` WHERE `entry` IN (80105, 80208) AND (`Method` & 1) = 1) = 2
+  AND (SELECT COUNT(*) FROM `quest_template` WHERE `entry` IN (40679, 40680, 40681)
+       AND CONCAT_WS('', `Details`, `Objectives`, `OfferRewardText`, `RequestItemsText`, `EndText`,
+                     `ObjectiveText1`, `ObjectiveText2`, `ObjectiveText3`, `ObjectiveText4`) LIKE '%Gowlfang%') = 0;
 DROP TEMPORARY TABLE IF EXISTS `_q579_check`;
