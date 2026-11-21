@@ -311,8 +311,9 @@ AiPlayerbot.Park.Persist = 0
 # twow-repo#551 (owner 11.10.2026): Seats = 1: a parked bot takes a free chair or bench seat of its inn (CHAIR objects
 # within 15 yd of the innkeeper, upper floor included) and sits on it like a player (chair height and facing); a bot
 # without a free seat stands on the rings from 5.5 yd on, so the innkeeper stays reachable. A game_tele target within
-# 60 yd of an inn of the faction parks in that inn. Parked bots dismount and drop the mount strategy. 0 = as before.
-AiPlayerbot.Park.Seats = 0
+# 60 yd of an inn of the faction parks in that inn. Parked bots dismount and drop the mount strategy.
+# 1 = on (default since DS6 bundle B, owner 21.11.2026), 0 = off (rollback): as before.
+AiPlayerbot.Park.Seats = 1
 
 # Enable Auto join BG - bots randomly join WSG and 2v2 Arena if server is not lagging
 AiPlayerbot.RandomBotAutoJoinBG = 0
@@ -639,12 +640,12 @@ AiPlayerbot.RosterGuild.NamesHorde = ""
 # (10-3600, other values are clamped; in memory, no database query; also recounted after each founding).
 AiPlayerbot.RosterGuild.SnapshotSeconds = 60
 
-# Guild note of roster bots (twow-repo#485, owner 04.10.). 0 = off (default): guild notes stay as they
-# are. 1: every persistent roster bot in a guild keeps its public guild note as
+# Guild note of roster bots (twow-repo#485, owner 04.10.). 0 = off (rollback): guild notes stay as they
+# are. 1 = on (default since DS6 bundle B, owner 21.11.2026): every persistent roster bot in a guild keeps its public guild note as
 # "<Class> <Tank|talent tree> iLvl <average item level of the worn items>", e.g. "Priest Holy iLvl 23"
 # or "Warrior Tank iLvl 31" (at most 31 characters, no name). Bots without talents yet show no tree.
 # Independent of BotsPerGuild. Takes precedence over TalentsInPublicNote for roster bots.
-AiPlayerbot.RosterGuild.GuildNote = 0
+AiPlayerbot.RosterGuild.GuildNote = 1
 
 # Seconds between two note checks per bot (60-604800, other values are clamped; default 86400 = once
 # every 24 h, owner 04.10.: the item level is the only part that changes often). The first check runs
@@ -705,15 +706,15 @@ AiPlayerbot.RosterGuild.RareComboSpread = 0
 #   Tanks = 7, Healers = 10, Dps = 28, HealerClassMin = 1, TankClassSpread = 1, RareComboSpread = 1,
 #   PlanFile = "/opt/turtle/etc/roster-guilds.tsv"
 AiPlayerbot.RosterGuild.PlanFile = ""
-# Poaching (twow-repo#485, owner decision 5). 0 = off (default): a bot in a guild answers every guild
-# invitation and charter with "already in a guild", as before. 1: a persistent roster bot in a bot
+# Poaching (twow-repo#485, owner decision 5). 0 = off (rollback): a bot in a guild answers every guild
+# invitation and charter with "already in a guild", as before. 1 = on (default since DS6 bundle B, owner 21.11.2026): a persistent roster bot in a bot
 # guild (its guild master is a roster bot) takes the guild invitation or the charter of a real player
 # of the same faction whose guild is no bot guild, leaves its bot guild and joins (or signs). Never:
 # the guild master of a bot guild, a bot in a player guild (a bot never leaves a player guild on its
 # own), towards another bot or bot guild. PlayerbotSecurity still applies. The switch runs on the
 # world thread (GuildMgr); trace "[RosterGuild] event=poached bot=... from=... to=... via=invite|charter".
 # Independent of BotsPerGuild.
-AiPlayerbot.RosterGuild.AllowPoaching = 0
+AiPlayerbot.RosterGuild.AllowPoaching = 1
 
 # At most one switch per bot within this many seconds (3600-2592000, other values are clamped; in
 # memory, so a server restart clears it).
@@ -738,14 +739,14 @@ AiPlayerbot.RosterGuild.JoinMinLevel = -1
 # Without it a charter is bought only when a random rpg target is a guild master. 0 = off (default).
 AiPlayerbot.RosterGuild.FoundTravel = 0
 # Bandages and potions of roster bots (twow-repo#485, owner decision 9). Applies to persistent
-# roster bots without a real-player master only. UseReal 0 = off (default, legacy: under the item
+# roster bots without a real-player master only. UseReal 0 = off (rollback, legacy: under the item
 # cheat "item" a healing or mana potion, healthstone or bandage is cast without an item, and such
-# items in the bags are sold). 1: bandages, healing items (potions, healthstones) and mana potions
+# items in the bags are sold). 1 = on (default since DS6 bundle B, owner 21.11.2026): bandages, healing items (potions, healthstones) and mana potions
 # are used only from the bags and consumed; without one in the bags the action is not possible and
 # the next alternative runs. Healing/mana potions in combat at the existing triggers (critical
 # health, low mana), bandages at low health without attackers and without a damage-over-time
-# effect (Recently Bandaged respected), i.e. mostly right after a fight. Proposed: 1.
-AiPlayerbot.RosterConsumables.UseReal = 0
+# effect (Recently Bandaged respected), i.e. mostly right after a fight.
+AiPlayerbot.RosterConsumables.UseReal = 1
 # Extra gate on top of the trigger: a healing potion only at or below this health percent, a mana
 # potion only at or below this mana percent. 100 (default) = the trigger alone decides.
 # Proposed: 35 / 25 (owner decision 04.10).
@@ -754,12 +755,12 @@ AiPlayerbot.RosterConsumables.ManaPotionPct = 100
 # Stock under UseReal: a usable potion or bandage (level, First Aid skill, mana user) that no better
 # one of the same kind outclasses is kept, not sold, below KeepStacks stacks (used as at least 2,
 # since buying stops at one stack: no buy/sell loop). From KeepStacks on, or when outclassed, the
-# old rules apply (sold). Buy 1: below one stack it is bought at vendors from the existing
+# old rules apply (sold). Buy 1 = on (default since DS6 bundle B, owner 21.11.2026): below one stack it is bought at vendors from the existing
 # consumables budget (with AuctionHouse.Enabled also bid on) - only vendor goods (items some vendor
-# sells) and never bandages: bandages are only self-made (First Aid). 0 (default) = never bought.
-# Proposed: KeepStacks 2, Buy 1 (owner decision 04.10).
+# sells) and never bandages: bandages are only self-made (First Aid). 0 = off (rollback): never bought.
+# Proposed: KeepStacks 2 (owner decision 04.10).
 AiPlayerbot.RosterConsumables.KeepStacks = 2
-AiPlayerbot.RosterConsumables.Buy = 0
+AiPlayerbot.RosterConsumables.Buy = 1
 # Trace: [Consumable] lines at BASIC level, at most one per bot and kind per TraceCooldownSeconds
 # (uses = items used since the previous line). Never per tick.
 AiPlayerbot.RosterConsumables.Trace = 0
@@ -788,9 +789,9 @@ AiPlayerbot.ActionLog.DamageSampleEvery = 5
 # twow-repo#601 / #614 (L1 observation 19.10.2026, a bug fix): 1 = grey by the mob's level, as the core colours it (mob level <=
 # the grey level of the bot), for the grind skip "not xp and not needed for quest" (GrindTargetValue): the #421 rule for roster
 # bots on their own and the old 50-in-51 skip for all other bots; a mob without kill reward or with a zero XP template stays
-# "no XP". 0 = as before: MaNGOS::XP::Gain, which is 0 for every mob nobody has damaged yet, so almost every untouched
-# non-quest mob was skipped and bots could hardly grind.
-AiPlayerbot.Grind.GreyByLevel = 0
+# "no XP". 0 = off (rollback): as before, MaNGOS::XP::Gain, which is 0 for every mob nobody has damaged yet, so almost every
+# untouched non-quest mob was skipped and bots could hardly grind. 1 = on (default since DS6 bundle B, owner 21.11.2026).
+AiPlayerbot.Grind.GreyByLevel = 1
 
 # twow-repo#601 decision order (owner decision 20.10.2026: a quest-first bot always has a quest; L1-c: "attack anything" 5.0
 # ties with "move to rpg target" 5.0 and, with GreyByLevel 1, always wins - turn-ins per bot-h 2.5-3.9 -> 0.6): 1 = a quest-first
@@ -2400,8 +2401,9 @@ AiPlayerbot.Path.TransportWaitTimeoutMin = 15
 # a walking bot boards only within 20 yd of the dock (farther away it walks on); a failed boarding keeps the bot waiting (no
 # teleport onward); the bot gets off only at the arrival dock stored when it boarded (never at the departure side, never to
 # an unusable point); a bot that lost its ride (fell off) within 40 yd of the arrival dock moves on, else it searches one
-# route from where it is (none: the existing rescues); only vessels with a known entry are boarded. 0 = as before (default).
-AiPlayerbot.Path.TransportBoardFix = 0
+# route from where it is (none: the existing rescues); only vessels with a known entry are boarded.
+# 1 = on (default since DS6 bundle B, owner 21.11.2026), 0 = off (rollback): as before.
+AiPlayerbot.Path.TransportBoardFix = 1
 # twow-repo#575 H4 (BUG FIX, crash class; A3-HARM-UPSTREAM, OB-00 09.11.2026): a bot waiting for a ship, zeppelin
 # or lift scans the vessels at the dock only when the dock is on the bot's own map. Before, it first read the transports of
 # the dock's map, even when that map belongs to another update thread, and only then tested the map. A dock on another map
@@ -3859,8 +3861,9 @@ AiPlayerbot.Gather.FishingSkillCheck = 0
 # is a quest item) are picked only while one of the bot's quests wants them. Before, a herbalist without the quest picked
 # them on the way (passive gathering). The gather travel targets have left them out since #414. Real herbs (Peacebloom,
 # Silverleaf ...) stay as they are. No log line (the check runs on every loot scan).
-# Mode: 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
-AiPlayerbot.Gather.QuestHerbFilter = 0
+# Mode: 1 = on for every bot (default since DS6 bundle B, owner 21.11.2026), 0 = off (rollback): as before,
+# 2 = only cohort B (odd low guid). Any other value acts like 0.
+AiPlayerbot.Gather.QuestHerbFilter = 1
 # twow-repo#541: spread of the AI wait times out of combat by +-N percent (0 = off, max 50), plus a random
 # start offset after login and a spread of the parked bots' 10 s rhythm. Bots that came into phase
 # (login wave, park, shared fight) then no longer run their AI in the same tick. Mean unchanged.
@@ -4287,8 +4290,9 @@ AiPlayerbot.Perf.CombatIdleYield = 0
 # spell is no longer PREPARING (cast, interrupted, cancelled). Reactions are not held, nor bots of a real player
 # (they answer their master at once). Channels and auto-repeat are unchanged. One [CastWait] line per minute;
 # CAST_WAIT lines in the action log of sampled bots.
-# 0 = as before (default), 1 = all bots, 2 = only cohort B (odd guid, for an A/B in one realm).
-AiPlayerbot.CastWait.Preparing = 0
+# 1 = on for all bots (default since DS6 bundle B, owner 21.11.2026), 0 = off (rollback): as before,
+# 2 = only cohort B (odd guid, for an A/B in one realm).
+AiPlayerbot.CastWait.Preparing = 1
 
 # twow-repo#602 ROT-01 hunter deaths (focus check 25.10.2026, OB-00, BEHAVIOUR CHANGE, enable only after A/B + owner go): hunters
 # die about twice as often as the other classes, mostly alone against one weaker mob. One cause: "switch to melee" called
@@ -4389,8 +4393,9 @@ AiPlayerbot.Rotation.ReachLosClose = 0
 # With the mode on the bot drops only its own current target and ignores it for 30 s instead of 5 min, so it follows a player
 # command on that target again soon; the player's group, master and target stay untouched. "[Unreachable] ... master=player
 # ignore_s=30 cohort=" (one line per bot per 5 min, as before; bots without a player master log master=bot ignore_s=300).
-# 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
-AiPlayerbot.Rotation.ReachPlayerMaster = 0
+# 1 = on for every bot (default since DS6 bundle B, owner 21.11.2026), 0 = off (rollback): as before,
+# 2 = only cohort B (odd low guid). Any other value acts like 0.
+AiPlayerbot.Rotation.ReachPlayerMaster = 1
 # twow-repo#630 follow-up (BUG FIX, owner repro 25.10.2026 on C; enable with ReachPlayerMaster after the test-realm repro + owner
 # go): the drop of ReachPlayerMaster cleared only the bot's "current target". A rogue sent with "attack" while stealthed kept the
 # target as its "attack target", which counts as an attacker, so it never left combat (no follow there) and stood stealthed in

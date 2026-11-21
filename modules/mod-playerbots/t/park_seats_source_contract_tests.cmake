@@ -1,4 +1,4 @@
-# twow-repo#551 (owner 11.10.2026): AiPlayerbot.Park.Seats (default 0). Parked bots sit on inn chairs, dismount, keep the
+# twow-repo#551 (owner 11.10.2026): AiPlayerbot.Park.Seats (default 1 since DS6 bundle B, owner 21.11.2026; 0 = rollback). Parked bots sit on inn chairs, dismount, keep the
 # first ring around the innkeeper free; tele targets next to an inn park in it.
 
 # cmake 3.x script mode (Debian trixie builder / CI): policies as in the host cmake 4.x.
@@ -53,9 +53,9 @@ read_source("aiplayerbot.conf.dist.in" conf_dist)
 read_source("RandomPlayerbotMgr.cpp" mgr)
 read_source("ParkPolicy.h" policy)
 
-require_text("${config_h}" "bool parkSeats = false;" "switch default off")
-require_text("${config_cpp}" "parkSeats = config.GetBoolDefault(\"AiPlayerbot.Park.Seats\", false);" "config default 0")
-require_text("${conf_dist}" "AiPlayerbot.Park.Seats = 0" "documented")
+require_text("${config_h}" "bool parkSeats = true;" "switch default on")
+require_text("${config_cpp}" "parkSeats = config.GetBoolDefault(\"AiPlayerbot.Park.Seats\", true);" "config default 1")
+require_text("${conf_dist}" "AiPlayerbot.Park.Seats = 1" "documented")
 
 # Seats only with the switch, chair seat first, fallback rings otherwise.
 between("${mgr}" "// The bot's own place at the spot: rings around it" "parkedBots[bot->GetGUIDLow()] = entry;" place)
