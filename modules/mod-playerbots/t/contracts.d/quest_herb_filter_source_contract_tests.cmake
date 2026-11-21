@@ -40,12 +40,13 @@ read_source("aiplayerbot.conf.dist.in" conf_dist)
 read_source("LootObjectStack.cpp" loot_cpp)
 read_source("TravelMgr.cpp" travel_mgr)
 
-# Switch: a mode, default 1 (DS6 bundle B, owner 21.11.2026), unknown -> 0, documented, echoed.
+# Switch: a mode, default 1 (DS6 bundle B, owner 21.11.2026), unknown -> 1 (#740/#742 template), documented, echoed.
 require_text("${config_h}" "uint32 gatherQuestHerbFilter = 1;" "default on, a mode")
 require_text("${config_cpp}" "gatherQuestHerbFilter = config.GetIntDefault(\"AiPlayerbot.Gather.QuestHerbFilter\", 1);" "config read")
-require_text("${config_cpp}" "if (gatherQuestHerbFilter > 2)\n        gatherQuestHerbFilter = 0;" "unknown mode is off")
+require_text("${config_cpp}" "if (gatherQuestHerbFilter > 2)\n        gatherQuestHerbFilter = 1;" "unknown mode is the default 1")
 require_text("${config_cpp}" "{\"Gather.QuestHerbFilter\", Value(gatherQuestHerbFilter)}," "ConfigEcho entry")
 require_text("${conf_dist}" "\nAiPlayerbot.Gather.QuestHerbFilter = 1\n" "documented, 1 by default")
+require_text("${conf_dist}" "Any other value acts like 1.\nAiPlayerbot.Gather.QuestHerbFilter = 1\n" "dist: unknown mode = 1")
 forbid_text("${conf_dist}" "\nAiPlayerbot.Gather.QuestHerbFilter = 0" "default 0 in the dist")
 forbid_text("${conf_dist}" "\nAiPlayerbot.Gather.QuestHerbFilter = 2" "default 2 in the dist")
 
