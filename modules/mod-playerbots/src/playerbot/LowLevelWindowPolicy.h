@@ -46,16 +46,19 @@ inline std::uint32_t WindowHigh(std::uint32_t level)
 }
 
 // [LowLevelWindow] minute line, per cohort (a = even low guid, b = odd): the wiring proof of an A/B (treated > 0, control 0).
-//   fetches  grind fetch results of bots the switch applies to (each one asked the window),
-//   none     of them: no grind target chosen,
-//   trips    of them: a window grind trip set as the bot's travel target.
+//   fetches  grind fetch results taken by bots the switch applies to (each one asked the window),
+//   points   the window destination points those fetches returned (the number of window targets, OB-10 22.11.),
+//   none     of those choices: no grind target chosen,
+//   trips    of those choices: a window grind trip set as the bot's travel target.
+// fetches - none - trips = choices ended otherwise (choose budget, arbiter, plan feed).
 enum class Event : std::uint8_t
 {
     Fetches,
+    Points,
     None,
     Trips,
 };
-constexpr std::size_t EventCount = 3;
+constexpr std::size_t EventCount = 4;
 constexpr std::size_t SlotCount = 2 * EventCount;
 
 inline std::size_t Slot(Event event, std::uint32_t guidLow)
@@ -75,6 +78,7 @@ inline std::string FormatMinuteLine(std::array<std::uint32_t, SlotCount> const& 
         std::size_t const slot = std::size_t(event) * 2;
         return std::string(" ") + name + "_a=" + std::to_string(counts[slot]) + " " + name + "_b=" + std::to_string(counts[slot + 1]);
     };
-    return "[LowLevelWindow] minute" + pair(Event::Fetches, "fetches") + pair(Event::None, "none") + pair(Event::Trips, "trips");
+    return "[LowLevelWindow] minute" + pair(Event::Fetches, "fetches") + pair(Event::Points, "points") + pair(Event::None, "none") +
+        pair(Event::Trips, "trips");
 }
 }

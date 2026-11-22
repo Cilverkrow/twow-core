@@ -1057,9 +1057,17 @@ bool ChooseTravelTargetAction::Execute(Event& event)
 
     // AiPlayerbot.Grind.LowLevelWindow (OB-10 22.11.2026): an L1-10 quest-first bot's grind choice - it and its trip ask IsActive
     // with the window snapshot (no own-map skip, no other GrindMode 1 rule); a gap filler is never one (IsLowLevelWindow).
-    // Switch 0 and every other bot or purpose: false, as before.
+    // Switch 0 and every other bot or purpose: false, as before. Counted here (fetches= and points=, per cohort): the fetch and
+    // the window destination points it returned, whatever the choice then does.
     if (futureTravelPurpose == std::to_string(uint32(TravelDestinationPurpose::Grind)) && ai->IsLowLevelWindow())
+    {
         newTarget.SetLowLevelWindow(true);
+        uint32 windowPoints = 0;
+        for (auto const& [partition, travelPoints] : destinationList)
+            windowPoints += uint32(travelPoints.size());
+        PlayerbotAI::NoteLowLevelWindow(uint8(ai::low_level_window::Event::Fetches), bot->GetGUIDLow());
+        PlayerbotAI::NoteLowLevelWindow(uint8(ai::low_level_window::Event::Points), bot->GetGUIDLow(), windowPoints);
+    }
 
     // twow-repo#601 S2 R3 (GrindMode 1, review C-F2): the gap grind choice - only this one gets the R3 window snapshot and the
     // own-map skip in SetBestTarget; a quest choice of grind mobs keeps the old tests. GrindMode 0 / 2: false, as before.
@@ -1153,12 +1161,9 @@ bool ChooseTravelTargetAction::Execute(Event& event)
         if (chooseBudgetExceeded)
             return false;
 
-        // Grind.LowLevelWindow: a finished window grind choice without a target (fetches= and none=, per cohort).
+        // Grind.LowLevelWindow: a finished window grind choice without a target (none=, per cohort).
         if (newTarget.IsLowLevelWindow())
-        {
-            PlayerbotAI::NoteLowLevelWindow(uint8(ai::low_level_window::Event::Fetches), bot->GetGUIDLow());
             PlayerbotAI::NoteLowLevelWindow(uint8(ai::low_level_window::Event::None), bot->GetGUIDLow());
-        }
 
         // twow-repo#601 (QuestLoop.InactiveReselect): the search right after an emptied camp found no quest target - the bot goes
         // back to that camp in COOLDOWN for the time left, as without the switch (no widening, no empty-search count: the old
@@ -1589,12 +1594,9 @@ bool ChooseTravelTargetAction::Execute(Event& event)
     if (!setNewTarget(requester, &newTarget, travelTarget))
         return false;
     
-    // Grind.LowLevelWindow: a finished window grind choice that became the travel target (fetches= and trips=, per cohort).
+    // Grind.LowLevelWindow: a finished window grind choice that became the travel target (trips=, per cohort).
     if (newTarget.IsLowLevelWindow())
-    {
-        PlayerbotAI::NoteLowLevelWindow(uint8(ai::low_level_window::Event::Fetches), bot->GetGUIDLow());
         PlayerbotAI::NoteLowLevelWindow(uint8(ai::low_level_window::Event::Trips), bot->GetGUIDLow());
-    }
 
     return true;
 }

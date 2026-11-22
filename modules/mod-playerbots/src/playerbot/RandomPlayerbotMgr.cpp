@@ -1807,8 +1807,9 @@ void ReportGrindWindow()
         sLog.outBasic("%s", line.c_str());
 }
 
-// AiPlayerbot.Grind.LowLevelWindow (OB-10 22.11.2026): one "[LowLevelWindow] minute fetches_a= fetches_b= none_a= none_b=
-// trips_a= trips_b=" line per minute - the window grind fetches of L1-10 quest-first bots, those without a target and the
+// AiPlayerbot.Grind.LowLevelWindow (OB-10 22.11.2026): one "[LowLevelWindow] minute fetches_a= fetches_b= points_a=
+// points_b= none_a= none_b= trips_a= trips_b=" line per minute - the window grind fetches of L1-10 quest-first bots, their
+// window destination points, the choices without a target and the
 // window trips, per cohort (a = even low guid, b = odd), counted on the map threads since the last line (atomics in
 // PlayerbotAI.cpp). Gated by the switch alone and omitted when every count is 0. World thread only, as ReportGrindWindow.
 void ReportLowLevelWindow()

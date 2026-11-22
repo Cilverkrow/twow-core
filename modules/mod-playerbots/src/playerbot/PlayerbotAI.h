@@ -1370,9 +1370,9 @@ public:
     // 1..10, in the mode's cohort, whose grind travel uses the GrindMode 1 window - false for a bot IsQuestGapGrind already covers.
     // Always false with the switch 0 (the config is read first).
     bool IsLowLevelWindow();
-    // Grind.LowLevelWindow: adds 1 to one minute counter of the bot's cohort (ai::low_level_window::Event as uint8; any thread,
+    // Grind.LowLevelWindow: adds n to one minute counter of the bot's cohort (ai::low_level_window::Event as uint8; any thread,
     // relaxed); world thread: "[LowLevelWindow] minute ..." with the counts since the last call (reset), empty when all are 0.
-    static void NoteLowLevelWindow(uint8 event, uint32 guidLow);
+    static void NoteLowLevelWindow(uint8 event, uint32 guidLow, uint32 n = 1);
     static std::string TakeLowLevelWindowMinuteLine();
     // twow-repo#601 S5a (AiPlayerbot.QuestFirstProgression.BandLadder, QuestBand.cpp): the band step. Every member reads the switch
     // first or touches only state the band path writes; nothing with BandLadder 0.

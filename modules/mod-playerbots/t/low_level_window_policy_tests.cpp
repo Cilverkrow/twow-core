@@ -85,13 +85,18 @@ int main()
         std::array<std::uint32_t, SlotCount> counts = {};
         Require(FormatMinuteLine(counts).empty(), "all 0: no line");
         Require(Slot(Event::Fetches, 2) == 0 && Slot(Event::Fetches, 1) == 1, "fetches: a = even, b = odd");
-        Require(Slot(Event::None, 2) == 2 && Slot(Event::None, 1) == 3, "none slots");
-        Require(Slot(Event::Trips, 2) == 4 && Slot(Event::Trips, 1) == 5, "trips slots");
+        Require(Slot(Event::Points, 2) == 2 && Slot(Event::Points, 1) == 3, "points slots");
+        Require(Slot(Event::None, 2) == 4 && Slot(Event::None, 1) == 5, "none slots");
+        Require(Slot(Event::Trips, 2) == 6 && Slot(Event::Trips, 1) == 7, "trips slots");
+        Require(SlotCount == 8, "4 events x 2 cohorts");
         counts[Slot(Event::Fetches, 1)] = 3;
+        counts[Slot(Event::Points, 1)] = 412;
         counts[Slot(Event::Trips, 1)] = 2;
         counts[Slot(Event::None, 1)] = 1;
+        counts[Slot(Event::Fetches, 4)] = 1;
         Require(FormatMinuteLine(counts) ==
-            "[LowLevelWindow] minute fetches_a=0 fetches_b=3 none_a=0 none_b=1 trips_a=0 trips_b=2", "line format");
+            "[LowLevelWindow] minute fetches_a=1 fetches_b=3 points_a=0 points_b=412 none_a=0 none_b=1 trips_a=0 trips_b=2",
+            "line format");
         std::array<std::uint32_t, SlotCount> one = {};
         one[SlotCount - 1] = 1;
         Require(!FormatMinuteLine(one).empty(), "the last slot alone gives a line");

@@ -97,7 +97,7 @@ require_text("${travel_mgr}" "    gapWindowEnd = target->gapWindowEnd;\n    // G
 require_text("${travel_mgr}" "    return tDestination->IsActive(player, PlayerTravelInfo(player, gapWindowEnd != 0 || lowLevelWindow));" "trip judged with its window")
 
 # 5) The choice: flag before the GrindMode 1 choice, same snapshot in SetBestTarget, group check; own-map skip mode 1 only.
-require_text("${choose}" "    if (futureTravelPurpose == std::to_string(uint32(TravelDestinationPurpose::Grind)) && ai->IsLowLevelWindow())\n        newTarget.SetLowLevelWindow(true);" "choice flag on a grind fetch only")
+require_text("${choose}" "    if (futureTravelPurpose == std::to_string(uint32(TravelDestinationPurpose::Grind)) && ai->IsLowLevelWindow())\n    {\n        newTarget.SetLowLevelWindow(true);" "choice flag on a grind fetch only")
 require_order("${choose}" "        newTarget.SetLowLevelWindow(true);" "    if (ai->IsQuestGapGrind() && futureTravelPurpose == std::to_string(uint32(TravelDestinationPurpose::Grind)))" "lever choice before the GrindMode 1 choice")
 require_text("${choose}" "    bool const gapGrindChoice = target->IsGapGrindChoice() || target->IsLowLevelWindow();" "choice window snapshot")
 require_text("${choose}" "PlayerTravelInfo(player, groupTarget->GetGapWindowEnd() != 0 || groupTarget->IsLowLevelWindow())" "group member trip check")
@@ -106,17 +106,34 @@ set(n_llw "IsLowLevelWindow()")
 # choice + none + trips + SetBestTarget + group check: the own-map skip and every other GrindMode 1 rule read IsGapGrindChoice only.
 count_text("${choose}" n_llw 5 "window flag reads in the choose action")
 
-# 6) The minute line: none / trips counted per cohort, reported once a minute only with the switch.
+# 6) The minute line: fetches / points at the flag, none / trips at the outcome, per cohort; once a minute only with the switch.
+require_text("${choose}" "        newTarget.SetLowLevelWindow(true);\n        uint32 windowPoints = 0;\n        for (auto const& [partition, travelPoints] : destinationList)\n            windowPoints += uint32(travelPoints.size());\n        PlayerbotAI::NoteLowLevelWindow(uint8(ai::low_level_window::Event::Fetches), bot->GetGUIDLow());\n        PlayerbotAI::NoteLowLevelWindow(uint8(ai::low_level_window::Event::Points), bot->GetGUIDLow(), windowPoints);" "fetches and window points counted at the flag")
 require_text("${choose}" "            PlayerbotAI::NoteLowLevelWindow(uint8(ai::low_level_window::Event::None), bot->GetGUIDLow());" "none counted")
+set(n_note "PlayerbotAI::NoteLowLevelWindow(")
+count_text("${choose}" n_note 4 "four count sites")
 require_text("${choose}" "        PlayerbotAI::NoteLowLevelWindow(uint8(ai::low_level_window::Event::Trips), bot->GetGUIDLow());" "trips counted")
 require_order("${choose}" "    if (!setNewTarget(requester, &newTarget, travelTarget))\n        return false;" "        PlayerbotAI::NoteLowLevelWindow(uint8(ai::low_level_window::Event::Trips), bot->GetGUIDLow());" "trips only after the commit")
 require_text("${rpm}" "void ReportLowLevelWindow()\n{\n    if (!sPlayerbotAIConfig.grindLowLevelWindow)\n        return;" "minute line gated by the switch")
 require_text("${rpm}" "    std::string const line = PlayerbotAI::TakeLowLevelWindowMinuteLine();\n    if (!line.empty())" "no empty line")
 require_text("${rpm}" "    ReportGrindWindow();  // twow-repo#601 S2 / S4: [GrindWindow] minute once per minute, not when empty (GrindMode = 1)\n    ReportLowLevelWindow();" "reported from the world tick")
-require_text("${policy}" "return \"[LowLevelWindow] minute\" + pair(Event::Fetches, \"fetches\") + pair(Event::None, \"none\") + pair(Event::Trips, \"trips\");" "line format")
+require_text("${policy}" "return \"[LowLevelWindow] minute\" + pair(Event::Fetches, \"fetches\") + pair(Event::Points, \"points\") + pair(Event::None, \"none\") +\n        pair(Event::Trips, \"trips\");" "line format")
 
-# 7) Nothing beyond the window: no request gate, trip clock or own-map skip for the lever.
-forbid_text("${choose}" "IsLowLevelWindow() && ai->IsQuestGapGrind()" "GrindMode 1 rules joined to the lever")
-forbid_text("${travel_mgr}" "lowLevelWindow ? " "a window-dependent trip clock")
+# 7) Nothing beyond the window. The snapshot window has exactly two readers, both level tests: the template test of
+#    GrindTravelDestination::IsPossible and the area gate of IsLocationLevelValid (audit 22.11.2026). A new reader of the
+#    window (an on-site filter, a clock, a map rule keyed on "has a window") would reach the lever's bots too: it breaks here.
+#    R4 (GrindTargetValue) keys on IsQuestGapGrind, not on the snapshot, and stays GrindMode 1 only.
+read_source("strategy/values/GrindTargetValue.cpp" grind_target)
+set(n_has "HasGapWindow()")
+set(n_get_low "GetGapWindowLow()")
+set(n_get_high "GetGapWindowHigh()")
+count_text("${travel_mgr}" n_has 2 "window readers in TravelMgr.cpp (IsPossible, area gate)")
+count_text("${travel_mgr}" n_get_low 3 "window low reads in TravelMgr.cpp")
+count_text("${travel_mgr}" n_get_high 2 "window high reads in TravelMgr.cpp")
+count_text("${choose}" n_has 0 "window readers in the choose action")
+count_text("${choose}" n_get_low 0 "window reads in the choose action")
+count_text("${grind_target}" n_has 0 "window readers in GrindTargetValue.cpp")
+count_text("${grind_target}" n_llw 0 "the lever in the R4 on-site filter")
+count_text("${rpm}" n_has 0 "window readers in RandomPlayerbotMgr.cpp")
+count_text("${ai_cpp}" n_has 0 "window readers in PlayerbotAI.cpp")
 
 message(STATUS "LOW_LEVEL_WINDOW_SOURCE_CONTRACT=PASS")
