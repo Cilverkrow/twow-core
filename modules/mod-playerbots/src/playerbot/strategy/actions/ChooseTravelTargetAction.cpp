@@ -2283,10 +2283,11 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
                 if (!campApplies && campJudged == camp_block::Verdict::Fallback)
                     ++campWouldFallback;
 
+                campSelected = campJudged;
+
                 // local target, not live: no gate (A3 step 3 T02-a)
                 target->SetTarget(destination, position);
                 hasTarget = true;
-                campSelected = campJudged;
                 // A3 step 2 QB-S (AiPlayerbot.QuestBook.SourceChoice, default 0): one line per objective pick of a bot the switch
                 // applies to, with the load-time facts of the source. Every other bot: no line.
                 ai::questsource::NotePick(bot, ai, destination, position);
