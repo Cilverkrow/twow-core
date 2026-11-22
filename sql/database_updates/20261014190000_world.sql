@@ -11,9 +11,9 @@
 -- Lissandra Skysoar 62512 (Moonglade, Lunar Festival quests 41653-41655; owner GM check 11.11.2026:
 -- "event quests out for now").
 --   2990012 62209 Pietro Paraveno      Deadwind Pass (Karazhan quests)
---   2990013 62638 Okul                 Arathi Highlands
+--   2990013 62638 Okul                 Arathi Highlands, ground below the first position (owner GM check 2, 22.11.2026)
 --   2990014 62700 Jama'nali            Un'Goro Crater
---   2990015 62719 Markus Farwind       Dustwallow Marsh
+--   2990015 62719 Markus Farwind       Theramore, owner position in front of the bench (owner GM check 2, 22.11.2026)
 --   2990016 62726 Zalsu the Wanderer   Tanaris coast, open point of his OctoWoW wander path, random walk 10 yd
 --                                      (the first path point lay between rocks; owner GM check 11.11.2026)
 --   2990017 62741 Rethevus             Moonglade
@@ -33,9 +33,9 @@ CREATE TEMPORARY TABLE `tmp_spawn_579` (
   `wander` FLOAT NOT NULL, `movement` TINYINT UNSIGNED NOT NULL);
 INSERT INTO `tmp_spawn_579` (`guid`, `id`, `map`, `x`, `y`, `z`, `o`, `wander`, `movement`) VALUES
     (2990012, 62209, 0, -11175.0, -1845.83, 78.46, 3.4554, 0, 0),
-    (2990013, 62638, 0, -954.0, -3526.0, 71.02, 0.4135, 0, 0),
+    (2990013, 62638, 0, -955.30, -3524.35, 56.88, 0.4135, 0, 0),
     (2990014, 62700, 1, -7842.0, -2088.0, -271.8, 1.3808, 0, 0),
-    (2990015, 62719, 1, -3857.0, -4439.0, 17.33, 5.5002, 0, 0),
+    (2990015, 62719, 1, -3853.34, -4433.48, 10.41, 5.5002, 0, 0),
     (2990016, 62726, 1, -7443.0, -2945.0, 9.57, 5.5795, 10, 1),
     (2990017, 62741, 1, 7775.76, -2895.51, 466.09, 1.7373, 0, 0),
     (2990018, 62797, 0, -1468.0, -2617.0, 48.6, 4.1707, 0, 0),
