@@ -7,6 +7,7 @@
 #include "CheckMountStateAction.h"
 #include "playerbot/strategy/triggers/ProfessionUseTriggers.h"
 #include "playerbot/ProfessionUsePolicy.h"
+#include "playerbot/CustomCastTargetPolicy.h"
 
 using namespace ai;
 
@@ -170,7 +171,9 @@ bool CastCustomSpellAction::Execute(Event& event)
         itemTarget = nullptr;
     }
 
-    if ((pSpellInfo->Targets & TARGET_FLAG_ITEM) || (pSpellInfo->Targets & TARGET_FLAG_SELF))
+    // twow-repo#741 (AUDIT-L03-5): TARGET_FLAG_SELF is 0, so the old self test never fired; Targets 0 is not "self" either
+    // (Fireball has Targets 0). The core's caster-source reading decides (CustomCastTargetPolicy.h).
+    if (ai::custom_cast_target::UseBotAsTarget((pSpellInfo->Targets & TARGET_FLAG_ITEM) != 0, pSpellInfo->IsSpellWithCasterSourceTargetsOnly()))
         target = bot;
 
     WorldObject* woTarget = nullptr;
