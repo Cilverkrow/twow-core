@@ -111,6 +111,19 @@ region("${ai_cpp}" "bool CraftOnlyNeeds(Player* bot, uint32 questId, std::vector
 require_text("${needs_fn}" "need.held = bot->GetItemCount(need.itemId);" "held counts read at each check (no verdict cache)")
 require_text("${ai_h}" "bool SkipCraftOnlyQuest(Quest const* quest, ai::quest_craft_only::Path path);" "the gate declaration")
 
+# ---- 3a. OB-60 pre-review F1-F3: built once into a local map and published, no rebuild on reload, no publish on a failed query,
+#      held lookup before the roster scope ------------------------------------------------------------------------------------
+require_text("${ai_cpp}" "std::atomic<CraftOnlyQuestMap const*> craftOnlyQuests{nullptr};" "the published map pointer")
+forbid_text("${ai_cpp}" "craftOnlyQuests.clear()" "a rebuild in place while map threads read")
+region("${ai_cpp}" "void PlayerbotAI::BuildCraftOnlyQuests()" "\n}\n" build_fn)
+require_order("${build_fn}" "std::lock_guard<std::mutex> const guard(craftOnlyBuildLock);" "if (craftOnlyQuests.load(std::memory_order_acquire))" "lock before the built check")
+require_order("${build_fn}" "if (craftOnlyQuests.load(std::memory_order_acquire))" "init skipped: already built" "no rebuild on reload")
+require_order("${build_fn}" "if (!loot || !vendors)" "init failed: %s query returned no rows" "a failed query is reported")
+require_order("${build_fn}" "init failed: %s query returned no rows" "craftOnlyQuests.store(built.release(), std::memory_order_release);" "nothing is published after a failed query")
+count_text("${ai_cpp}" "craftOnlyQuests.store(" 1 "one publish site")
+region("${ai_cpp}" "void PlayerbotAI::NoteCraftOnlyHeld(uint32 questId)" "\n}\n" held_fn)
+require_order("${held_fn}" "if (!CraftOnlyObjectives(questId))" "IsPersistentRosterMember(bot->GetGUIDLow())" "held: map lookup before the roster scope")
+
 # ---- 4. Accept: inside the one accept rule, after S3a, before the roster accept rule ----------------------------------------
 region("${accept}" "static bool SkipQuestForRosterBot(PlayerbotAI* ai, Player* bot, Quest const* quest)" "\n}\n" skip_fn)
 require_order("${skip_fn}" "ai->SkipInfeasibleQuest(quest, ai::quest_feasibility::Path::Accept))\n        return true;" "if (ai->SkipCraftOnlyQuest(quest, ai::quest_craft_only::Path::Accept))\n        return true;" "craft-only after S3a")
