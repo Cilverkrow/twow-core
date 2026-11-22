@@ -98,6 +98,9 @@ namespace ai
 		// twow-repo#333 P1-v (AiPlayerbot.Travel.RpgAreaLevelFromSpawn): the area level of an RPG target from its spawn nearest to the
 		// bot (RpgAreaLevelPolicy.h), set in the constructor on the bot thread; false for every bot with the switch off.
 		bool UsesRpgAreaFromSpawn() const { return rpgAreaFromSpawn; }
+		// twow-repo#738 L03 (AiPlayerbot.QuestGiver.MaxLevelZeroFix): the giver trip check reads a quest MaxLevel of 0 as no upper
+		// limit for this bot; set in the constructor on the bot thread, false for every bot with the switch off.
+		bool UsesGiverMaxLevelZeroOpen() const { return giverMaxLevelZeroOpen; }
 		// twow-repo#601 quest acceptance lever (iv) (QuestFirstProgression.GiverFetchAnyQuest): the lever applies to this bot (a roster
 		// bot without a real player master in the mode's cohort), set in the constructor on the bot thread; false with the mode off.
 		bool HasGiverAnyQuest() const { return giverAnyQuest; }
@@ -153,6 +156,7 @@ namespace ai
 		bool bandGiverFilter = false;    // twow-repo#601 S5a: false for every bot but an in-scope BandLadder bot with a usable row
 		std::uint32_t groupGoalQuest = 0;   // A3 step 3 T02-GROUP: the group goal c (0 = no group goal)
 		bool rpgAreaFromSpawn = false;   // twow-repo#333 P1-v: Travel.RpgAreaLevelFromSpawn applies to this bot
+		bool giverMaxLevelZeroOpen = false;   // twow-repo#738 L03: QuestGiver.MaxLevelZeroFix applies to this bot
 		bool giverAnyQuest = false;     // twow-repo#601 lever (iv): QuestFirstProgression.GiverFetchAnyQuest applies to this bot
 		uint32 bandGreyLevel = 0;
 		bool questBook = false;          // A3 step 2: an active quest book (QuestBook applies to this roster bot on its own)
@@ -555,6 +559,11 @@ namespace ai
 		// new target only, never copied) - the R3 window snapshot and the own-map skip apply to it, not to a quest choice.
 		void SetGapGrindChoice(bool gapGrindChoice1) { gapGrindChoice = gapGrindChoice1; }
 		bool IsGapGrindChoice() const { return gapGrindChoice; }
+		// AiPlayerbot.Grind.LowLevelWindow (OB-10 22.11.2026): this choice / trip is a low-level window grind (set by
+		// ChooseTravelTargetAction on the new target of an L1-10 bot's grind fetch, copied with the choice, cleared when another
+		// destination replaces it) - its choice and its trip checks ask IsActive with the window snapshot, nothing else.
+		void SetLowLevelWindow(bool lowLevelWindow1) { lowLevelWindow = lowLevelWindow1; }
+		bool IsLowLevelWindow() const { return lowLevelWindow; }
 
 		void IncRetry(bool isMove) { if (isMove) moveRetryCount+=2; else extendRetryCount++; }
         void DecRetry(bool isMove);
@@ -661,6 +670,7 @@ namespace ai
 		uint32 bandWalkAt = 0;     // twow-repo#601 S5a F4: 0 for every target but a running backoff walk
 		uint32 bandWalkFromZone = 0;
 		bool gapGrindChoice = false;   // twow-repo#601 S2 R3: only the new target of a GrindMode 1 gap grind choice
+		bool lowLevelWindow = false;   // Grind.LowLevelWindow: only a low-level window grind choice and its trip
 		bool restPausePending = false;   // twow-repo#602 X1: a rest ended since the last turn-in observation
 		bool live_ = false;        // A3 step 3 arbiter shadow: the bot's own target (MarkLive, TravelTargetValue only)
 		bool shadowGap_ = false;   // A3 step 3 arbiter shadow: a write the shadow could not follow came before the next one

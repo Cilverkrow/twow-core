@@ -24,7 +24,7 @@ using namespace ai;
 
 constexpr std::string_view LOS_GOS_PARAM = "los gos";
 
-// twow-repo#485 (RosterConsumables.UseReal): the config check first, so the default costs nothing.
+// twow-repo#485 (RosterConsumables.UseReal): the config check first, so the switch off (0) costs nothing.
 bool ai::UsesRealConsumables(PlayerbotAI* ai)
 {
     return sPlayerbotAIConfig.rosterConsumablesUseReal && IsRosterBotOnItsOwn(ai);

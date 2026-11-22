@@ -32,7 +32,7 @@ int main()
     Require(std::strcmp(InventoryQuery(Kind::Mana), "mana potion") == 0, "query mana potion");
     Require(std::strcmp(InventoryQuery(Kind::Bandage), "bandage") == 0, "query bandage");
 
-    // UseReal 0 (default) or no roster bot on its own: legacy, the cheat path stays.
+    // UseReal 0 (rollback) or no roster bot on its own: legacy, the cheat path stays.
     Require(!UsesReal(false, true, Kind::Healing), "UseReal 0 keeps the legacy path");
     Require(!UsesReal(true, false, Kind::Healing), "other bots / a real master keep the legacy path");
     Require(!UsesReal(true, true, Kind::None), "food and buffs are not touched");

@@ -218,7 +218,7 @@ set(FORMAT_PINS
   "policy|inline std::size_t FormatWriters(|\n}\n|f8fe1a3a2e87fc9a"
   "policy|inline std::size_t FormatWriteLine(|\n}\n|fc8202db453ccdae"
   "policy|inline std::size_t FormatExpireLine(|\n}\n|db084e74f526c99e"
-  "policy|inline std::size_t FormatArbiterMin(|\n}\n|e32e54fad16b17e3"
+  "policy|inline std::size_t FormatArbiterMin(|\n}\n|489fc71ed55da726"
   "shadow|void Emit(Closed const& closed|\n}\n|31c2f479f3780942"
   "shadow|void EmitMinute(MinuteOut const& minute)|\n}\n|2d883ad779779e5b"
   "mgr|sLog.outBasic(\"[BotUpdate] calls=|)@SEMI@\n|614c24fe1571082d"
@@ -249,6 +249,10 @@ function(check_formats policy shadow mgr out)
   # byte-identical (t/supervisor_policy_tests.cpp checks both).
   # A3 step 3 T02-a (AiPlayerbot.Supervisor.Arbiter = 2, default 0) changed the FormatArbiterMin sha above on purpose: the new fields
   # are appended at the end, and the frozen text up to test=%u must stay the same bytes (the evaluator reads fields by key).
+  # twow-repo#726 (AiPlayerbot.Supervisor.ArmLate, default 0) changed it again on purpose (e32e54fad16b17e3 -> 489fc71ed55da726):
+  # the format text is the base's; a tail " arm_late=N" follows only while the key is not 0 (armLateField), after P-3a's plan=
+  # tail, so at key 0 the line is byte-identical (unit golden in t/supervisor_policy_tests.cpp; pinned by
+  # a3s3_arm_late_source_contract_tests.cmake). The prefix pin below is unchanged.
   string(FIND "${policy}" "\"[ArbiterMin] cohort=%c bundles=%u lines=%u dropped=%u unknown=%u offthread_writes=%u \"\n        \"cross_writes=%u gaps=%u closes_open=%u expire_cooldown=%u sel=%u req=%u exe=%u life=%u mgr=%u grp=%u cmd=%u brain=%u test=%u\"\n        \" grp_t02=%u errand=%u" prefix_at)
   if(prefix_at EQUAL -1)
     set(${out} "SupervisorPolicy.h: the [ArbiterMin] fields up to test=%u are not the frozen text with the T02-a fields appended after it" PARENT_SCOPE)

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "CohortPolicy.h"
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -17,6 +19,17 @@ namespace ai::quest_feasibility
 //   AiPlayerbot.QuestFeasibility.BlocklistWhileNoCustomStarts  the same, only while AiPlayerbot.CustomRaceStartZones = 0
 //   AiPlayerbot.QuestFeasibility.SoloSkipGroupQuests           a bot not in a group skips Type 1 / 81 / 62 and
 //                                                              SuggestedPlayers >= 2 quests (OB-20, OB-00 Q-O1)
+//   AiPlayerbot.QuestFeasibility.SoloSkipEscortTimed           a bot not in a group skips listed escort quests and
+//                                                              quests with a time limit <= SoloSkipTimedMaxSeconds; a
+//                                                              cohort mode: 0 off, 1 all, 2 cohort B, 3 cohort A
+//   AiPlayerbot.QuestFeasibility.SoloSkipEscortIds             the escort id list of that rule
+//   AiPlayerbot.QuestFeasibility.SoloSkipTimedMaxSeconds       its time limit bound (default 900)
+//
+// Escort / timed (DEEP7 item 5, CLI-Deep 20.11.2026; OB-10 decision 21.11. criterion (A), a lever: default 0 + A/B): a solo
+// roster bot took escort quests (155 / 898 / 938) and short timed quests (3364, 938) and dropped them again on the
+// failure (clean_failed) or the timer, then took them again. The core has no escort flag (QuestDef.h; the PARTY_ACCEPT +
+// EXPLORATION_OR_EVENT pair also marks ~135 scripted non-escort quests), so escorts come from an explicit id list; a timed
+// quest is one with LimitTime 1..SoloSkipTimedMaxSeconds. A bot in a group still takes them; class quests are exempt.
 //
 // Scope: a persistent roster bot on its own (no real player leads it), the scope of quest_accept::SkipForRosterBot.
 // Class quests are exempt from the generic solo group rule only; a listed id is a deliberate choice and applies to class
@@ -82,8 +95,32 @@ enum class Reason : std::uint8_t
     Blocklist,       // AiPlayerbot.QuestFeasibility.Blocklist
     BlocklistCrsz0,  // AiPlayerbot.QuestFeasibility.BlocklistWhileNoCustomStarts, CustomRaceStartZones = 0
     GroupSolo,       // SoloSkipGroupQuests, the bot is not in a group
+    EscortTimedSolo, // SoloSkipEscortTimed, the bot is not in a group
 };
-constexpr std::size_t ReasonCount = 4;
+constexpr std::size_t ReasonCount = 5;
+
+// The default bound of a short timed quest (OB-10 criterion (A), fixed before data): the DEEP7 loops are 300 s and 540 s.
+constexpr std::uint32_t DefaultTimedMaxSeconds = 900;
+
+// A listed escort quest, or a time limit in 1..timedMaxSeconds (LimitTime 0 = no limit).
+inline bool IsEscortOrShortTimed(bool escortListed, std::uint32_t limitTime, std::uint32_t timedMaxSeconds)
+{
+    return escortListed || (limitTime > 0 && limitTime <= timedMaxSeconds);
+}
+
+// SoloSkipEscortTimed is a cohort mode (OB-10 21.11. Q1 (a), for the in-realm AB/BA crossover): 0 off (default), 1 all bots,
+// 2 cohort B (odd low guid), 3 cohort A (even low guid). Any other value is 0 (the loader writes one error line). The
+// cohort is the shared rule of CohortPolicy.h, the same one QuestBook uses (questbook::Applies), so a bot is in the same
+// cohort for both switches.
+inline bool ValidEscortTimedMode(std::uint32_t mode)
+{
+    return mode <= cohort::ModeOnlyA;
+}
+
+inline bool EscortTimedApplies(std::uint32_t mode, std::uint32_t guidLow)
+{
+    return cohort::Applies(ValidEscortTimedMode(mode) ? mode : cohort::ModeOff, guidLow);
+}
 
 inline char const* ReasonName(Reason reason)
 {
@@ -92,6 +129,7 @@ inline char const* ReasonName(Reason reason)
         case Reason::Blocklist: return "blocklist";
         case Reason::BlocklistCrsz0: return "blocklist_crsz0";
         case Reason::GroupSolo: return "group_solo";
+        case Reason::EscortTimedSolo: return "escort_timed_solo";
         default: return "none";
     }
 }
@@ -128,6 +166,10 @@ struct Facts
     bool soloSkipGroupQuests = false;   // AiPlayerbot.QuestFeasibility.SoloSkipGroupQuests
     std::uint32_t type = 0;             // Quest::GetType()
     std::uint32_t suggestedPlayers = 0; // Quest::GetSuggestedPlayers()
+    bool soloSkipEscortTimed = false;   // AiPlayerbot.QuestFeasibility.SoloSkipEscortTimed
+    bool escortListed = false;          // in SoloSkipEscortIds
+    std::uint32_t limitTime = 0;        // Quest::GetLimitTime(), seconds (0 = no limit)
+    std::uint32_t timedMaxSeconds = DefaultTimedMaxSeconds;  // SoloSkipTimedMaxSeconds
 };
 
 // The one decision. Enable first, then the scope: nothing else is looked at with the switch off. The explicit lists come
@@ -143,6 +185,9 @@ inline Reason SkipReason(Facts const& facts)
         return Reason::BlocklistCrsz0;
     if (!facts.classQuest && facts.soloSkipGroupQuests && !facts.inGroup && IsGroupQuest(facts.type, facts.suggestedPlayers))
         return Reason::GroupSolo;
+    if (!facts.classQuest && facts.soloSkipEscortTimed && !facts.inGroup &&
+        IsEscortOrShortTimed(facts.escortListed, facts.limitTime, facts.timedMaxSeconds))
+        return Reason::EscortTimedSolo;
     return Reason::None;
 }
 
@@ -151,7 +196,8 @@ inline Reason SkipReason(Facts const& facts)
 // quest giver on a continent was a trip to a decline.
 inline bool GiverInactive(Reason reason)
 {
-    return reason == Reason::Blocklist || reason == Reason::BlocklistCrsz0 || reason == Reason::GroupSolo;
+    return reason == Reason::Blocklist || reason == Reason::BlocklistCrsz0 || reason == Reason::GroupSolo ||
+        reason == Reason::EscortTimedSolo;
 }
 
 // Drop step (OB-10 rev. 2): only open quests - a complete one may still be turned in. Never the quest of the bot's guild

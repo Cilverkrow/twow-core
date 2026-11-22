@@ -324,6 +324,22 @@ add_test(NAME quest_feasibility_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/quest_feasibility_source_contract_tests.cmake")
 
+# AiPlayerbot.Grind.LowLevelWindow (OB-10 22.11.2026, default 0): the GrindMode 1 window for L1-10 quest-first bots - mode,
+# population, window per level and the minute line (LowLevelWindowPolicy.h). The call sites are pinned by
+# t/contracts.d/low_level_window_source_contract_tests.cmake.
+add_executable(low_level_window_policy_tests
+  "${PB_MODULE_DIR}/t/low_level_window_policy_tests.cpp")
+
+target_include_directories(low_level_window_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(low_level_window_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME low_level_window_policy
+  COMMAND low_level_window_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # twow-repo#601 R01 v4: S1Cohort / S3Cohort - for which bots the S1 / S3 key groups act (cohort mode in one realm).
 add_executable(r01_cohort_policy_tests
   "${PB_MODULE_DIR}/t/r01_cohort_policy_tests.cpp")
@@ -3086,6 +3102,34 @@ add_test(NAME party_scan_policy
   COMMAND party_scan_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#750 (QuestFeasibility.CraftOnlySkip): craft-only item classification and the held-count rule.
+add_executable(quest_craft_only_policy_tests
+  "${PB_MODULE_DIR}/t/quest_craft_only_policy_tests.cpp")
+
+target_include_directories(quest_craft_only_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(quest_craft_only_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME quest_craft_only_policy
+  COMMAND quest_craft_only_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#742 (AUDIT-L03-6): AllowableClass is a class mask; -1 / all-class masks are not class items, 0 is nobody.
+add_executable(class_mask_policy_tests
+  "${PB_MODULE_DIR}/t/class_mask_policy_tests.cpp")
+
+target_include_directories(class_mask_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(class_mask_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME class_mask_policy
+  COMMAND class_mask_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # AUDIT-L03 B7: trainable spell map bucket key per trainer spell (all trainer types, reqSkill 0).
 add_executable(trainer_spell_key_policy_tests
   "${PB_MODULE_DIR}/t/trainer_spell_key_policy_tests.cpp")
@@ -4201,6 +4245,20 @@ add_test(NAME cast_los_gate_policy
   COMMAND cast_los_gate_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#741 (AUDIT-L03-5): the custom cast targets the bot only for item-target spells and caster-source-only spells.
+add_executable(custom_cast_target_policy_tests
+  "${PB_MODULE_DIR}/t/custom_cast_target_policy_tests.cpp")
+
+target_include_directories(custom_cast_target_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(custom_cast_target_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME custom_cast_target_policy
+  COMMAND custom_cast_target_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # twow-repo#602 (AiPlayerbot.Rotation.InvalidTargetQuiet): "invalid target" stays quiet for an empty target while nothing attacks the bot.
 add_executable(invalid_target_policy_tests
   "${PB_MODULE_DIR}/t/invalid_target_policy_tests.cpp")
@@ -4394,7 +4452,7 @@ add_test(NAME transport_board_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/transport_board_source_contract_tests.cmake")
 
-# twow-repo#342 (S3b-1, BEHAVIOUR CHANGE behind AiPlayerbot.Path.TransportBoardFix, default 0): bots board ships and
+# twow-repo#342 (S3b-1, BEHAVIOUR CHANGE behind AiPlayerbot.Path.TransportBoardFix, default 1 since DS6 bundle B 21.11.2026): bots board ships and
 # zeppelins (deck hit, paced stop gate, dock-hop entry inside the route, ride record, exit only at the stored arrival dock,
 # OB-10 #1 lost-ride recovery only with a ride record). The unit cases live in transport_board_policy_tests; this contract
 # pins that every behaviour sits behind the switch and that the legacy flow stays textually unchanged.
@@ -4464,7 +4522,7 @@ add_test(NAME cast_result_names
   COMMAND cast_result_names_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
-# twow-repo#602 ROT-01 (L1-b finding 19.10.2026, AiPlayerbot.CastWait.Preparing, default 0, behaviour change): hold the internal AI
+# twow-repo#602 ROT-01 (L1-b finding 19.10.2026, AiPlayerbot.CastWait.Preparing, default 1 since DS6 bundle B 21.11.2026, behaviour change): hold the internal AI
 # until the real end of the bot's own PREPARING cast (deadline once per spell, never shorten, release at the end).
 add_test(NAME cast_wait_source_contract
   COMMAND "${CMAKE_COMMAND}"
@@ -4954,6 +5012,21 @@ set_target_properties(rescue_hub_policy_tests PROPERTIES
 
 add_test(NAME rescue_hub_policy
   COMMAND rescue_hub_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#575 R2 (AiPlayerbot.QuestRescue.StartValleyFix, OB-10 22.11.2026): the rescue start-valley candidates (RescueValleyPolicy.h:
+# own race only, dedupe, last target without progress, rescue distance; human / dwarf / gnome / goblin); source contract in t/contracts.d.
+add_executable(rescue_valley_policy_tests
+  "${PB_MODULE_DIR}/t/rescue_valley_policy_tests.cpp")
+
+target_include_directories(rescue_valley_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(rescue_valley_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME rescue_valley_policy
+  COMMAND rescue_valley_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
 # twow-repo#703 item 1 (AiPlayerbot.QuestRescue.NoTargetFreeSlot, default 1 since 703G 18.11.2026): the rescue targets before the global limiter, no

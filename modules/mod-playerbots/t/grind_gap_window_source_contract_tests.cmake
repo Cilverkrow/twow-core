@@ -285,11 +285,11 @@ require_text("${info_ctor}" "    if (ai->IsQuestGapGrind() && gapGrind)\n    {\n
 # template test and area gate, so a quest objective fetch / choice / trip to grind mobs is unchanged. Asked only by the grind
 # fetch, the gap grind choice (SetBestTarget), the gap trip (IsDestinationActive) and a member's gap trip (group check).
 require_text("${travel_h}" "PlayerTravelInfo(Player* player, bool gapGrind = false);" "no window by default")
-require_text("${travel_mgr}" "    return tDestination->IsActive(player, PlayerTravelInfo(player, gapWindowEnd != 0));" "the gap trip judged with its window, every other trip without")
+require_text("${travel_mgr}" "    return tDestination->IsActive(player, PlayerTravelInfo(player, gapWindowEnd != 0 || lowLevelWindow));" "the gap trip (and a Grind.LowLevelWindow trip, OB-10 22.11.) judged with its window, every other trip without")
 require_text("${choose}" "[partitions = travelPartitions, travelInfo = PlayerTravelInfo(bot, actionPurpose == TravelDestinationPurpose::Grind), center, purpose = actionPurpose," "the window snapshot only for the grind fetch")
-require_text("${choose}" "        if (!groupTarget->GetDestination()->IsActive(player, PlayerTravelInfo(player, groupTarget->GetGapWindowEnd() != 0)) || !groupTarget->IsConditionsActive())" "a member's gap trip judged with its window")
+require_text("${choose}" "        if (!groupTarget->GetDestination()->IsActive(player, PlayerTravelInfo(player, groupTarget->GetGapWindowEnd() != 0 || groupTarget->IsLowLevelWindow())) || !groupTarget->IsConditionsActive())" "a member's gap trip (or Grind.LowLevelWindow trip) judged with its window")
 region("${choose}" "bool ChooseTravelTargetAction::SetBestTarget(" "\nstd::vector<std::string> split(" best0)
-require_text("${best0}" "    bool const gapGrindChoice = target->IsGapGrindChoice();\n    if (gapGrindChoice)\n        choiceTravelInfo.emplace(bot, true);" "the gap grind choice: one window snapshot per choice")
+require_text("${best0}" "    bool const gapGrindChoice = target->IsGapGrindChoice() || target->IsLowLevelWindow();\n    if (gapGrindChoice)\n        choiceTravelInfo.emplace(bot, true);" "the gap grind choice (or a Grind.LowLevelWindow choice): one window snapshot per choice")
 require_order("${best0}" "auto const reuseActive = [this, &isActive, &choiceInfo]" "choiceTravelInfo.emplace(bot, true);" "the window snapshot before any IsActive of the choice")
 count_text("${choose}" "PlayerTravelInfo(bot, true)" 0 "a window snapshot built outside the gap grind choice")
 count_text("${choose}" "emplace(bot, true)" 1 "one window snapshot in the choice")
@@ -315,8 +315,10 @@ require_order("${group_exec}" "GapGroupCopyAllowed(true," "groupTargets.push_bac
 count_text("${choose}" "GapGroupCopyAllowed(" 1 "one group copy rule")
 forbid_text("${group_exec}" "SetGapWindowEnd(" "a group copy with a window of its own (the bot's own R1 request opens it)")
 forbid_text("${group_exec}" "AI_VALUE2(bool, \"need for quest\"" "a value per creature in the group choice")
-count_text("${travel_mgr}" "gapWindowLow = " 1 "the window written only in the snapshot constructor")
-count_text("${travel_mgr}" "gapWindowHigh = " 1 "the window written only in the snapshot constructor")
+# 2: the GrindMode 1 block and its else branch for Grind.LowLevelWindow (OB-10 22.11.2026), both in the snapshot constructor.
+count_text("${travel_mgr}" "gapWindowLow = " 2 "the window written only in the snapshot constructor")
+count_text("${travel_mgr}" "gapWindowHigh = " 2 "the window written only in the snapshot constructor")
+count_text("${info_ctor}" "gapWindowLow = " 2 "both window writes inside the snapshot constructor")
 count_text("${travel_mgr}" "ai->IsQuestGapGrind()" 1 "the scope read once, in the constructor (never in the async job)")
 region("${travel_mgr}" "bool GrindTravelDestination::IsPossible(const PlayerTravelInfo& info) const\n{" "\n}\n" grind_possible)
 require_text("${grind_possible}" "    bool const gapWindow = info.HasGapWindow();\n    if (gapWindow && !ai::quest_grind_mode::InGapWindow(info.GetGapWindowLow(), info.GetGapWindowHigh(), cInfo->MaxLevel))\n        return false;" "R3: template MaxLevel inside the window for the scope")

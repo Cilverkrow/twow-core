@@ -1053,7 +1053,7 @@ static void NoteDeckProbe(PlayerbotAI* ai, GenericTransport* transport, uint32 e
         WorldPosition::GetTransporFloorOffset(transport->GetEntry()), probe));
 }
 
-// twow-repo#342 (S3b-1, AiPlayerbot.Path.TransportBoardFix, default 0): the boarding fix. Everything below is reached only
+// twow-repo#342 (S3b-1, AiPlayerbot.Path.TransportBoardFix, default 1, 0 = rollback): the boarding fix. Everything below is reached only
 // with the switch on (BoardFor answers nullptr off, the callers test the switch before the ride-record blocks). State in the
 // bot's LastMovement (transportBoard, bot thread); counters relaxed atomics. D7: the deck ray and the stop test read the
 // vessel without the map tree lock; the vessel relocates its model in sTransportMgr.Update on the world thread before the

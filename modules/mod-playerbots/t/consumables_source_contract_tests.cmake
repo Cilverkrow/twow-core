@@ -4,7 +4,8 @@ endif()
 
 # twow-repo#485 (owner decision 9): roster bots on their own use bandages, healing and mana potions
 # from their bags - no item cheat consumption, a small stock kept instead of sold, optional vendor
-# purchase, a cloth reserve for Tailoring. RosterConsumables.UseReal = 0 keeps the legacy path.
+# purchase, a cloth reserve for Tailoring. RosterConsumables.UseReal = 0 keeps the legacy path (rollback; default 1 since
+# DS6 bundle B, owner 21.11.2026).
 
 function(require_text text needle description)
   string(FIND "${text}" "${needle}" offset)
@@ -80,7 +81,7 @@ reject_text("${use_h}" "#include \"playerbot/ConsumablesPolicy.h\"" "policy incl
 require_text("${use_cpp}" "#include \"playerbot/ConsumablesPolicy.h\"" "policy include in UseItemAction.cpp")
 require_text("${usage}" "#include \"playerbot/ConsumablesPolicy.h\"" "policy include in ItemUsageValue.cpp")
 
-# 2. Switch: roster bot on its own only, config check first (the default costs nothing).
+# 2. Switch: roster bot on its own only, config check first (the switch off costs nothing).
 require_text("${use_cpp}" "return sPlayerbotAIConfig.rosterConsumablesUseReal && IsRosterBotOnItsOwn(ai);" "UsesRealConsumables gate")
 require_text("${use_cpp}" "return proto && sPlayerbotAIConfig.rosterConsumablesUseReal &&" "UsesRealConsumable config check first")
 
@@ -128,21 +129,22 @@ text_between("${triggers}" "uint32 ai::CraftableFromBags(" "return craftable;" c
 require_text("${craftable_section}" "material_reserve::UsableForRecipe(" "central reserve in CraftableFromBags")
 reject_text("${craftable_section}" "rosterConsumables" "consumables key in CraftableFromBags (no second reserve path)")
 reject_text("${triggers}" "consumables::" "consumables policy in ProfessionUseTriggers.cpp")
-# 7. Config: neutral defaults, documented in the template.
+# 7. Config: defaults (UseReal and Buy 1 since DS6 bundle B, owner 21.11.2026; 0 = rollback), documented in the template.
 foreach(entry
-    "rosterConsumablesUseReal = config.GetBoolDefault(\"AiPlayerbot.RosterConsumables.UseReal\", false)"
+    "rosterConsumablesUseReal = config.GetBoolDefault(\"AiPlayerbot.RosterConsumables.UseReal\", true)"
     "rosterConsumablesHealingPotionPct = config.GetIntDefault(\"AiPlayerbot.RosterConsumables.HealingPotionPct\", 100)"
     "rosterConsumablesManaPotionPct = config.GetIntDefault(\"AiPlayerbot.RosterConsumables.ManaPotionPct\", 100)"
     "rosterConsumablesKeepStacks = config.GetIntDefault(\"AiPlayerbot.RosterConsumables.KeepStacks\", 2)"
-    "rosterConsumablesBuy = config.GetBoolDefault(\"AiPlayerbot.RosterConsumables.Buy\", false)"
+    "rosterConsumablesBuy = config.GetBoolDefault(\"AiPlayerbot.RosterConsumables.Buy\", true)"
     "rosterConsumablesTrace = config.GetBoolDefault(\"AiPlayerbot.RosterConsumables.Trace\", false)"
     "rosterConsumablesTraceCooldownSeconds = config.GetIntDefault(\"AiPlayerbot.RosterConsumables.TraceCooldownSeconds\", 300)")
-  require_text("${config_source}" "${entry}" "neutral config default")
+  require_text("${config_source}" "${entry}" "config default")
 endforeach()
 foreach(key UseReal HealingPotionPct ManaPotionPct KeepStacks Buy Trace TraceCooldownSeconds)
   require_text("${config_template}" "AiPlayerbot.RosterConsumables.${key} = " "documented key ${key}")
 endforeach()
-require_text("${config_template}" "AiPlayerbot.RosterConsumables.UseReal = 0" "UseReal off by default")
+require_text("${config_template}" "AiPlayerbot.RosterConsumables.UseReal = 1" "UseReal on by default")
+require_text("${config_template}" "AiPlayerbot.RosterConsumables.Buy = 1" "Buy on by default")
 require_text("${config_header}" "bool rosterConsumablesUseReal;" "config member")
 
 # 8. OB-10 lane: crafting pick, crafting trip and material memory are not touched here.

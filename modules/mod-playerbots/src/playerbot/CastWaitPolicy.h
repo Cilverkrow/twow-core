@@ -5,7 +5,7 @@
 
 namespace ai::cast_wait
 {
-// twow-repo#602 ROT-01 (L1-b finding 19.10.2026, OB-10; AiPlayerbot.CastWait.Preparing, default 0, BEHAVIOUR-CHANGING):
+// twow-repo#602 ROT-01 (L1-b finding 19.10.2026, OB-10; AiPlayerbot.CastWait.Preparing, default 1, 0 = rollback, BEHAVIOUR-CHANGING):
 // PlayerbotAI::UpdateAI stretches the internal AI wait to the end of a running cast only while the spell is in
 // SPELL_STATE_CASTING. A spell with a cast time stays in SPELL_STATE_PREPARING until it is cast (Spell::update counts
 // m_timer down there, pushback adds to it), so for Smite, Lesser Heal, Frostbolt ... the wait ended after the nominal

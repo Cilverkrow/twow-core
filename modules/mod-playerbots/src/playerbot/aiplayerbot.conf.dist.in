@@ -311,8 +311,9 @@ AiPlayerbot.Park.Persist = 0
 # twow-repo#551 (owner 11.10.2026): Seats = 1: a parked bot takes a free chair or bench seat of its inn (CHAIR objects
 # within 15 yd of the innkeeper, upper floor included) and sits on it like a player (chair height and facing); a bot
 # without a free seat stands on the rings from 5.5 yd on, so the innkeeper stays reachable. A game_tele target within
-# 60 yd of an inn of the faction parks in that inn. Parked bots dismount and drop the mount strategy. 0 = as before.
-AiPlayerbot.Park.Seats = 0
+# 60 yd of an inn of the faction parks in that inn. Parked bots dismount and drop the mount strategy.
+# 1 = on (default since DS6 bundle B, owner 21.11.2026), 0 = off (rollback): as before.
+AiPlayerbot.Park.Seats = 1
 
 # Enable Auto join BG - bots randomly join WSG and 2v2 Arena if server is not lagging
 AiPlayerbot.RandomBotAutoJoinBG = 0
@@ -343,7 +344,7 @@ AiPlayerbot.RandomBotAccountCount = 500
 # With this enabled, if you get lags - then you need to reduce amount of online bots, rather than relying on optimizations
 # This will ingore the AiPlayerbot.botActiveAlone setting, all bots will be active regardless
 # Works best together with AiPlayerbot.DisableBotOptimizations = 1
-# (0-1), default 0
+# (0-1), default 1 (the code default is 1 too, twow-core#1156)
 AiPlayerbot.DisableActivityPriorities = 1
 
 # Force bots to become active when a player is nearby
@@ -529,7 +530,7 @@ AiPlayerbot.TurnInRpg = 0
 # Bots will make sounds when repairing, selling items ect.
 AiPlayerbot.GlobalSoundEffects = 0
 
-# Show progress bars for random bots (disabled by default)
+# Show progress bars for random bots (0-1), default 1 (the code default is 1 too, twow-core#1156)
 AiPlayerbot.ShowProgressBars = 1
 
 # Set randombots movement speed to walking anywhere
@@ -538,10 +539,10 @@ AiPlayerbot.RandombotsWalkingRPG = 0
 # Set randombots movement speed to walking only inside buildings
 AiPlayerbot.RandombotsWalkingRPG.InDoors = 0
 
-# Bots greet to the players
+# Bots greet to the players (0-1), default 1 (the code default is 1 too, twow-core#1156)
 AiPlayerbot.EnableGreet = 1
 
-# Show helmet and cloak on randombots (reset required)
+# Show helmet and cloak on randombots (reset required), (0-1), default 1 (the code default is 1 too, twow-core#1156)
 AiPlayerbot.RandomBotShowHelmet = 1
 AiPlayerbot.RandomBotShowCloak = 1
 
@@ -639,12 +640,12 @@ AiPlayerbot.RosterGuild.NamesHorde = ""
 # (10-3600, other values are clamped; in memory, no database query; also recounted after each founding).
 AiPlayerbot.RosterGuild.SnapshotSeconds = 60
 
-# Guild note of roster bots (twow-repo#485, owner 04.10.). 0 = off (default): guild notes stay as they
-# are. 1: every persistent roster bot in a guild keeps its public guild note as
+# Guild note of roster bots (twow-repo#485, owner 04.10.). 0 = off (rollback): guild notes stay as they
+# are. 1 = on (default since DS6 bundle B, owner 21.11.2026): every persistent roster bot in a guild keeps its public guild note as
 # "<Class> <Tank|talent tree> iLvl <average item level of the worn items>", e.g. "Priest Holy iLvl 23"
 # or "Warrior Tank iLvl 31" (at most 31 characters, no name). Bots without talents yet show no tree.
 # Independent of BotsPerGuild. Takes precedence over TalentsInPublicNote for roster bots.
-AiPlayerbot.RosterGuild.GuildNote = 0
+AiPlayerbot.RosterGuild.GuildNote = 1
 
 # Seconds between two note checks per bot (60-604800, other values are clamped; default 86400 = once
 # every 24 h, owner 04.10.: the item level is the only part that changes often). The first check runs
@@ -705,15 +706,15 @@ AiPlayerbot.RosterGuild.RareComboSpread = 0
 #   Tanks = 7, Healers = 10, Dps = 28, HealerClassMin = 1, TankClassSpread = 1, RareComboSpread = 1,
 #   PlanFile = "/opt/turtle/etc/roster-guilds.tsv"
 AiPlayerbot.RosterGuild.PlanFile = ""
-# Poaching (twow-repo#485, owner decision 5). 0 = off (default): a bot in a guild answers every guild
-# invitation and charter with "already in a guild", as before. 1: a persistent roster bot in a bot
+# Poaching (twow-repo#485, owner decision 5). 0 = off (rollback): a bot in a guild answers every guild
+# invitation and charter with "already in a guild", as before. 1 = on (default since DS6 bundle B, owner 21.11.2026): a persistent roster bot in a bot
 # guild (its guild master is a roster bot) takes the guild invitation or the charter of a real player
 # of the same faction whose guild is no bot guild, leaves its bot guild and joins (or signs). Never:
 # the guild master of a bot guild, a bot in a player guild (a bot never leaves a player guild on its
 # own), towards another bot or bot guild. PlayerbotSecurity still applies. The switch runs on the
 # world thread (GuildMgr); trace "[RosterGuild] event=poached bot=... from=... to=... via=invite|charter".
 # Independent of BotsPerGuild.
-AiPlayerbot.RosterGuild.AllowPoaching = 0
+AiPlayerbot.RosterGuild.AllowPoaching = 1
 
 # At most one switch per bot within this many seconds (3600-2592000, other values are clamped; in
 # memory, so a server restart clears it).
@@ -738,14 +739,14 @@ AiPlayerbot.RosterGuild.JoinMinLevel = -1
 # Without it a charter is bought only when a random rpg target is a guild master. 0 = off (default).
 AiPlayerbot.RosterGuild.FoundTravel = 0
 # Bandages and potions of roster bots (twow-repo#485, owner decision 9). Applies to persistent
-# roster bots without a real-player master only. UseReal 0 = off (default, legacy: under the item
+# roster bots without a real-player master only. UseReal 0 = off (rollback, legacy: under the item
 # cheat "item" a healing or mana potion, healthstone or bandage is cast without an item, and such
-# items in the bags are sold). 1: bandages, healing items (potions, healthstones) and mana potions
+# items in the bags are sold). 1 = on (default since DS6 bundle B, owner 21.11.2026): bandages, healing items (potions, healthstones) and mana potions
 # are used only from the bags and consumed; without one in the bags the action is not possible and
 # the next alternative runs. Healing/mana potions in combat at the existing triggers (critical
 # health, low mana), bandages at low health without attackers and without a damage-over-time
-# effect (Recently Bandaged respected), i.e. mostly right after a fight. Proposed: 1.
-AiPlayerbot.RosterConsumables.UseReal = 0
+# effect (Recently Bandaged respected), i.e. mostly right after a fight.
+AiPlayerbot.RosterConsumables.UseReal = 1
 # Extra gate on top of the trigger: a healing potion only at or below this health percent, a mana
 # potion only at or below this mana percent. 100 (default) = the trigger alone decides.
 # Proposed: 35 / 25 (owner decision 04.10).
@@ -754,12 +755,12 @@ AiPlayerbot.RosterConsumables.ManaPotionPct = 100
 # Stock under UseReal: a usable potion or bandage (level, First Aid skill, mana user) that no better
 # one of the same kind outclasses is kept, not sold, below KeepStacks stacks (used as at least 2,
 # since buying stops at one stack: no buy/sell loop). From KeepStacks on, or when outclassed, the
-# old rules apply (sold). Buy 1: below one stack it is bought at vendors from the existing
+# old rules apply (sold). Buy 1 = on (default since DS6 bundle B, owner 21.11.2026): below one stack it is bought at vendors from the existing
 # consumables budget (with AuctionHouse.Enabled also bid on) - only vendor goods (items some vendor
-# sells) and never bandages: bandages are only self-made (First Aid). 0 (default) = never bought.
-# Proposed: KeepStacks 2, Buy 1 (owner decision 04.10).
+# sells) and never bandages: bandages are only self-made (First Aid). 0 = off (rollback): never bought.
+# Proposed: KeepStacks 2 (owner decision 04.10).
 AiPlayerbot.RosterConsumables.KeepStacks = 2
-AiPlayerbot.RosterConsumables.Buy = 0
+AiPlayerbot.RosterConsumables.Buy = 1
 # Trace: [Consumable] lines at BASIC level, at most one per bot and kind per TraceCooldownSeconds
 # (uses = items used since the previous line). Never per tick.
 AiPlayerbot.RosterConsumables.Trace = 0
@@ -788,9 +789,19 @@ AiPlayerbot.ActionLog.DamageSampleEvery = 5
 # twow-repo#601 / #614 (L1 observation 19.10.2026, a bug fix): 1 = grey by the mob's level, as the core colours it (mob level <=
 # the grey level of the bot), for the grind skip "not xp and not needed for quest" (GrindTargetValue): the #421 rule for roster
 # bots on their own and the old 50-in-51 skip for all other bots; a mob without kill reward or with a zero XP template stays
-# "no XP". 0 = as before: MaNGOS::XP::Gain, which is 0 for every mob nobody has damaged yet, so almost every untouched
-# non-quest mob was skipped and bots could hardly grind.
-AiPlayerbot.Grind.GreyByLevel = 0
+# "no XP". 0 = off (rollback): as before, MaNGOS::XP::Gain, which is 0 for every mob nobody has damaged yet, so almost every
+# untouched non-quest mob was skipped and bots could hardly grind. 1 = on (default since DS6 bundle B, owner 21.11.2026).
+AiPlayerbot.Grind.GreyByLevel = 1
+
+# OB-10 22.11.2026 (a lever: A/B before any default): the grind travel window of low-level quest-first bots. A persistent
+# roster bot of QuestFirstProgression on its own, level 1-10, takes grind destinations in the GrindMode 1 level window
+# [max(gray + 1, L - 5), L + 1] (creature MaxLevel and area level) instead of the durability window, which is one level wide
+# at L5 and finds no destination at L1-5. The money test (MinLootGold > 0) stays; none of GrindMode 1's other rules (request
+# gate, trip clock, own map, on-site filter) come with it, and a bot GrindMode 1 already covers gets nothing from this key.
+# Above level 10: as before. One [LowLevelWindow] minute line per cohort (fetches / window points / none / trips), omitted when all are 0.
+# A cohort mode: 0 = off (default), 1 = all bots, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid), the
+# same cohorts as QuestBook. Any other value = off (one error line at load).
+AiPlayerbot.Grind.LowLevelWindow = 0
 
 # twow-repo#601 decision order (owner decision 20.10.2026: a quest-first bot always has a quest; L1-c: "attack anything" 5.0
 # ties with "move to rpg target" 5.0 and, with GreyByLevel 1, always wins - turn-ins per bot-h 2.5-3.9 -> 0.6): 1 = a quest-first
@@ -1015,7 +1026,7 @@ AiPlayerbot.RandomBotSayWithoutMaster = 1
 AiPlayerbot.AutoPickReward = yes
 
 # Bots equip upgrades (Bots will equip any item obtained from looting or a quest if they are upgrades)
-# Default: 0 (disabled)
+# Default: 1 (enabled; the code default is 1 too, twow-core#1156)
 AiPlayerbot.AutoEquipUpgradeLoot = 1
 
 # One BASIC [ITEM EQUIP] line per bagged uncommon+ weapon/armor decision (equip
@@ -1279,7 +1290,8 @@ AiPlayerbot.QuestRescue.KeepRequestWhenFull = 0
 # spawns): below L5 a bot goes to its race's start-zone hub (Goldshire, Kharanos, Dolanaar, Razor Hill, Brill, Bloodhoof; high elf
 # up to L9 Brinthilien / Alah'Thalas) instead of no target (R1) or another race's start point; night elves and undead L5-10 go to
 # the next zone on their home continent (Auberdine, The Sepulcher), unless StartZoneMinLevel still gates the level. No row or no
-# spawn left: the legacy targets as before. Logs [RescueHub] and [RescueHubMin].
+# spawn left: the legacy targets as before. Logs [RescueHub] and [RescueHubMin]; a fallback also logs [RescueHubFallback] with its
+# cause (reason=no_spawn: no anchor spawn; reason=near_only: spawns, all within the row's minimum distance).
 # Default 1 since the SZM adoption (10.11.2026, owner decision via OB-00): it is the base the SZM A/B measured on (RESULT SZM main R3,
 # both arms HomeHubs = 1). HomeHubs has no A/B of its own yet; that A/B runs on this base later.
 # Acts only on roster bots without a real player master (as StartZoneMinLevel); the high-elf row only with CustomRaceStartZones = 1
@@ -1307,6 +1319,16 @@ AiPlayerbot.QuestRescue.HomeHubs.L5OwnHub = 0
 # only from L10. Night elves keep Auberdine (9 of 9 rescued at L7-10 levelled on). Acts only where HomeHubs applies.
 # Cohort mode: 0 = off (default, today's table), 1 = all bots, 2 = cohort B (odd guid), 3 = cohort A (even guid); other values act like 0.
 AiPlayerbot.QuestRescue.HomeHubs.LevelFloor = 0
+# twow-repo#575 R2 (BUG FIX, CLI-PATH 22.11.2026; default 0 until its acceptance unit, then the flip pair; finding dauerb-silverpine
+# TRACE-565-2293 4d1371a0): a roster bot up to L10 whose rescue had no HomeHubs target fell through to the legacy start-valley branch,
+# which offers the start points of the OTHER races of its faction with no distance filter and no dedupe (DAUER-B: Human 565 L8 rescued
+# 51 times to Coldridge, the dwarf = gnome start point, standing there already); the goblin Durotar pushes had no distance check either
+# (Goblin 2293: 54 rescues). With the key: only the bot's own race's start point (also after a HomeHubs fallback), deduplicated, beyond
+# the rescue distance, and not the last rescue target while the bot has made no progress since (level, XP, gathering skill, quest log).
+# Goblin pushes: the same distance filter. An empty list is a no_target ([QuestRescue] state=start_valley kept= near= duplicate= last=,
+# state=goblin_push kept= near=). Roster bots only; others keep the legacy targets.
+# Cohort mode: 0 = off (default, legacy), 1 = all bots, 2 = cohort B (odd guid), 3 = cohort A (even guid); other values act like 0.
+AiPlayerbot.QuestRescue.StartValleyFix = 0
 # A creature entry that killed the bot GrindAvoid.MaxDeaths times within
 # WindowSeconds is skipped as a grind target for AvoidSeconds. 0 = off.
 AiPlayerbot.GrindAvoid.MaxDeaths = 0
@@ -1640,6 +1662,13 @@ AiPlayerbot.Supervisor.Arbiter = 2
 # nothing and only counts probe_shadow (the paired control). 0 = off (default), 1 = probe. Any other value acts like 0
 # (one error line at load).
 AiPlayerbot.Supervisor.ArbiterProbe = 0
+# twow-repo#726 (bug fix, default 0 until acceptance + OB-10): the late arm. With AiPlayerbot.Supervisor.Arbiter = 2 the arming
+# edge checks each bot once; a bot that is parked, in a battleground or out of the quest book scope in that one tick stays
+# PASSIVE (never plans) for as long as enforcement stays on. 1 = while enforcing, a still PASSIVE bot is checked again at most
+# every 5 s and leaves PASSIVE for QUEST once eligible (one [Supervisor] ev=mode line with cause=arbiter_arm_late,
+# arm_late in [ArbiterMin]); a still ineligible bot writes nothing. 0 = off (default, the edge only, as before). Any other value
+# acts like 0 (one error line at load).
+AiPlayerbot.Supervisor.ArmLate = 0
 # A3 step 3 planner P-1 (A3-S3-PLANER-ENTWURF.md §6): path of the planner's band table, a TSV file. Line 1 "# version=2", line 2
 # "# source=...", line 3 the header with the columns (by name, extra columns ignored) key, min_level, max_level, zone_id,
 # rank, hub_map, hub_x, hub_y, hub_z, mob_level, z2_sec, r1_min_level. key "1".."10" = race (levels 1-12), "A0" "A1" "H0" "H1"
@@ -1669,6 +1698,8 @@ AiPlayerbot.Planner = 0
 # RepeatableRetakeSec / RepeatableMaxPerHour: a repeatable quest is taken again only this long after its turn-in and at most
 # this often per bot hour. RelocMinYards / RelocSlack: a position jump is a relocation above max(yards, run speed x seconds x
 # slack).
+# twow-repo#726: the seconds keys are clamped to the nearest bound with one error line: MinBindSec 1..3600, MaxIdleSec,
+# MinDwellSec and DeadWaitMaxSec 0..3600, MaxHoldSec and RepeatableRetakeSec 0..86400.
 AiPlayerbot.Planner.Margin = 15
 AiPlayerbot.Planner.MinBindSec = 120
 AiPlayerbot.Planner.MinDwellSec = 120
@@ -1699,7 +1730,7 @@ AiPlayerbot.Planner.RelocSlack = 1.5
 # (one SetBestTarget call on the pick's entries; not chosen: the full list as before), (c) switches QUEST <-> GRIND on a pick
 # change (QUEST -> GRIND after MinDwellSec) and (d) makes back_to_band act. Bots that do not write behave as at Planner = 1 and
 # count fb_cohort / fb_arbiter. [PlanMin] gets the P-3a fields (expired, expire_denied*, applied_*, fallback_*, fb_*, mem_evict,
-# mode_*) and [ArbiterMin] plan= at Planner = 2 only. Kits set it explicitly together with Planner.MaxIdleSec = 100.
+# mode_*; twow-repo#726: fallback_reject_empty, zone_empty_held, feed_us, feed_us_max) and [ArbiterMin] plan= at Planner = 2 only. Kits set it explicitly together with Planner.MaxIdleSec = 100.
 AiPlayerbot.Planner.WriteCohort = 0
 # A3 R9 / R2 (twow-repo#575, R9-REPLAN-INTERFACE v5, R9-PREREG C2; pair R9-2): the progress meter. It runs in the planner tick, so
 # both keys need AiPlayerbot.Supervisor to apply to the bot and AiPlayerbot.Planner >= 1; set alone they log nothing. Each tick it
@@ -1853,6 +1884,14 @@ AiPlayerbot.QuestBook.NeedPerObjective.ItemUse = 0
 # Measurement only, no behaviour: one `[QuestNeed]` and one `[QuestItemUse]` line per roster bot on its own and clock hour (and at
 # logout), in both cohorts. 0 = off (default), 1 = on.
 AiPlayerbot.QuestBook.NeedPerObjective.Log = 0
+
+# twow-repo#738 L03 (OB-10 decision 21.11.2026): the quest giver trip check (TravelMgr.cpp, giver relation)
+# reads a quest template MaxLevel of 0 as "no upper limit", as the core's CanTakeQuest and the bot's quest
+# search check do. Off, the old compare refuses the giver of every quest with MaxLevel 0 (about 97 % of
+# quest templates); the refusal is counted as giver_drops=...min_max in [QuestFirstRoute] state=giver_fetch.
+#   0 = off (default until its acceptance unit), 1 = every bot, 2 = only cohort B (odd low guid),
+#   3 = only cohort A (even low guid); other values act like 0.
+AiPlayerbot.QuestGiver.MaxLevelZeroFix = 0
 
 # #627 S7 help groups (owner 18.10./23.10.2026): roster bots holding the same elite
 # quest (Type 1; with SuggestedPlayers = 1 also SuggestedPlayers >= 2; never
@@ -2194,11 +2233,22 @@ AiPlayerbot.QuestFirstProgression.BandQueuedFreeMinutes = 0
 # side is never blocked). The two lists apply to class quests too (explicit ids); SoloSkipGroupQuests spares class
 # quests. Shares by a player, the catch-up, the escort confirm and guild quest orders stay untouched (a player's
 # decision): the cleanup keeps listed quests while the bot is in a group and never drops its guild quest order's quest.
-# [QuestFeasibility] state=skip bot= level= quest= reason=blocklist|blocklist_crsz0|group_solo path=accept|item|giver
+# [QuestFeasibility] state=skip bot= level= quest= reason=blocklist|blocklist_crsz0|group_solo|escort_timed_solo path=accept|item|giver
 # once per bot, quest and path an hour (at most 4 lines per bot a minute), [QuestFeasibility] minute skips= drops=
 # giver_inactive= once a minute; skips= and giver_inactive= count checks (one quest can count several times a minute),
 # not distinct quests. 0 = off (default).
 AiPlayerbot.QuestFeasibility.Enable = 0
+# CraftOnlySkip (twow-repo#750; its own key, does NOT need Enable): a persistent roster bot on its own does not take a quest
+# whose required item has no source but profession recipes (no loot, vendor, quest reward or other create spell; built once
+# at start from the world DB + SkillLineAbility.dbc) and does not travel to its giver while it does not hold that item in
+# the required count. Held quests stay (no abandon); bots do not craft for quests yet (W2), so holding the count is the only
+# way in. The data is built once, at the first start or reload with the key on, and never rebuilt (a later reload logs
+# "init skipped"). [QuestCraftOnly] quest= item= required= per objective (sorted) and init mode= craft_only_items= quests=
+# once per build, [QuestFeasibility] state=skip|held
+# ... reason=craft_only path=accept|giver|held item= held= required= once per bot, quest and path an hour,
+# [QuestCraftOnly] minute skips= giver_inactive= held_craft_only= once a minute.
+# 0 = off (default), 1 = all, 2 = cohort B (odd low guid), 3 = cohort A (even low guid); anything else = off.
+AiPlayerbot.QuestFeasibility.CraftOnlySkip = 0
 # Blocklist (acts only with Enable = 1): a comma list of quest ids (decimal, > 0, at most 512; anything else is
 # ignored). The profile carries the list. Empty = none (default).
 AiPlayerbot.QuestFeasibility.Blocklist =
@@ -2210,6 +2260,21 @@ AiPlayerbot.QuestFeasibility.BlocklistWhileNoCustomStarts =
 # dungeon (81) or raid (62) and quests with SuggestedPlayers >= 2 (class quests excepted), does not travel to their
 # givers, and drops them while open. 0 = off (default).
 AiPlayerbot.QuestFeasibility.SoloSkipGroupQuests = 0
+# SoloSkipEscortTimed 1-3 (acts only with Enable = 1; DEEP7 item 5, OB-10 21.11.2026, a lever: A/B before any default
+# change): a bot that is not in a group does not take a listed escort quest (SoloSkipEscortIds) or a quest with a time limit
+# of 1..SoloSkipTimedMaxSeconds seconds (class quests excepted) and does not travel to their givers - solo bots took
+# them and dropped them again on the escort's failure or the timer. A bot in a group still takes them. The log cleanup
+# does not drop such quests (the failure already does). reason=escort_timed_solo in the skip line. "In a group" counts
+# groups of bots only too (group play of the bots). A cohort mode (OB-10 21.11., in-realm A/B): 0 = off (default), 1 = all
+# bots, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid), the same cohorts as QuestBook. Any other
+# value = off (one error line at load).
+AiPlayerbot.QuestFeasibility.SoloSkipEscortTimed = 0
+# SoloSkipEscortIds (acts only with SoloSkipEscortTimed 1-3): the escort quests of that rule, a comma list of quest ids
+# (decimal, > 0, at most 512). The core has no escort flag. Seed: the DEEP7 loops 155, 898, 938.
+AiPlayerbot.QuestFeasibility.SoloSkipEscortIds = 155,898,938
+# SoloSkipTimedMaxSeconds (acts only with SoloSkipEscortTimed 1-3): a quest with LimitTime 1..this is a short timed quest
+# (the DEEP7 loops: 300 s, 540 s). 0 = no timed skip (the escort list only); at most 86400. Default 900.
+AiPlayerbot.QuestFeasibility.SoloSkipTimedMaxSeconds = 900
 
 # twow-repo#594 / P3 (owner 15.10.2026, direct travel targets). Enable = master switch (0 = off, default); the fresh-bot
 # rules below act only with it. A fresh bot is a quest-first roster bot at or below FreshMaxLevel (live 14.10.: L1-3 bots
@@ -2430,8 +2495,9 @@ AiPlayerbot.Path.TransportWaitTimeoutMin = 15
 # a walking bot boards only within 20 yd of the dock (farther away it walks on); a failed boarding keeps the bot waiting (no
 # teleport onward); the bot gets off only at the arrival dock stored when it boarded (never at the departure side, never to
 # an unusable point); a bot that lost its ride (fell off) within 40 yd of the arrival dock moves on, else it searches one
-# route from where it is (none: the existing rescues); only vessels with a known entry are boarded. 0 = as before (default).
-AiPlayerbot.Path.TransportBoardFix = 0
+# route from where it is (none: the existing rescues); only vessels with a known entry are boarded.
+# 1 = on (default since DS6 bundle B, owner 21.11.2026), 0 = off (rollback): as before.
+AiPlayerbot.Path.TransportBoardFix = 1
 # twow-repo#575 H4 (BUG FIX, crash class; A3-HARM-UPSTREAM, OB-00 09.11.2026): a bot waiting for a ship, zeppelin
 # or lift scans the vessels at the dock only when the dock is on the bot's own map. Before, it first read the transports of
 # the dock's map, even when that map belongs to another update thread, and only then tested the map. A dock on another map
@@ -3897,13 +3963,14 @@ AiPlayerbot.Perf.BindAreaFromHomebind = 0
 # (zone base skill - 5, as intended). Before, a shadowed variable left the requirement at 0, so a bot with fishing skill 1
 # could choose every fishing zone. 0 = as before (default).
 AiPlayerbot.Gather.FishingSkillCheck = 0
-# twow-repo#333 Berufe P1-f (owner 25.10.2026): the quest plants (Serpentbloom, Bloodpetal Sprout, Gloom Weed, Doom Weed,
+# twow-repo#333 Berufe P1-f (owner 25.10.2026; DS6 bundle B, owner 21.11.2026: BEHAVIOUR CHANGE, ON by default, 0 = rollback): the quest plants (Serpentbloom, Bloodpetal Sprout, Gloom Weed, Doom Weed,
 # Incendia Agave, Plant Bundle, Violet Tragan, Hyjalroot ...: lock 259, a herbalism slot next to "open kneeling", the loot
 # is a quest item) are picked only while one of the bot's quests wants them. Before, a herbalist without the quest picked
 # them on the way (passive gathering). The gather travel targets have left them out since #414. Real herbs (Peacebloom,
 # Silverleaf ...) stay as they are. No log line (the check runs on every loot scan).
-# Mode: 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
-AiPlayerbot.Gather.QuestHerbFilter = 0
+# Mode: 1 = on for every bot (default since DS6 bundle B, owner 21.11.2026), 0 = off (rollback): as before,
+# 2 = only cohort B (odd low guid). Any other value acts like 1.
+AiPlayerbot.Gather.QuestHerbFilter = 1
 # twow-repo#541: spread of the AI wait times out of combat by +-N percent (0 = off, max 50), plus a random
 # start offset after login and a spread of the parked bots' 10 s rhythm. Bots that came into phase
 # (login wave, park, shared fight) then no longer run their AI in the same tick. Mean unchanged.
@@ -4326,7 +4393,7 @@ AiPlayerbot.Rotation.ReleaseStaleTarget.StoppedSeconds = 5
 # leaves melee reach or the auto attack stops (not on new attackers or trigger changes). Reactions and the
 # 500 ms facing correction are unchanged. One [CombatIdle] line per minute. 0 = as before (default).
 AiPlayerbot.Perf.CombatIdleYield = 0
-# twow-repo#602 ROT-01 (L1-b finding 19.10.2026, BEHAVIOUR CHANGE, enable only after A/B + owner go): a bot AI holds
+# twow-repo#602 ROT-01 (L1-b finding 19.10.2026; DS6 bundle B, owner 21.11.2026: BEHAVIOUR CHANGE, ON by default, 0 = rollback): a bot AI holds
 # its internal AI pass until the real end of its own cast while that cast is PREPARING (spells with a cast time:
 # Smite, Lesser Heal, Frostbolt, ...). Today the wait ends after the nominal cast time and the combat engine re-runs
 # every ReactDelay until the pushed-back cast lands, getting SPELL_IN_PROGRESS for its own cast each time. The wait
@@ -4335,8 +4402,9 @@ AiPlayerbot.Perf.CombatIdleYield = 0
 # spell is no longer PREPARING (cast, interrupted, cancelled). Reactions are not held, nor bots of a real player
 # (they answer their master at once). Channels and auto-repeat are unchanged. One [CastWait] line per minute;
 # CAST_WAIT lines in the action log of sampled bots.
-# 0 = as before (default), 1 = all bots, 2 = only cohort B (odd guid, for an A/B in one realm).
-AiPlayerbot.CastWait.Preparing = 0
+# 1 = on for all bots (default since DS6 bundle B, owner 21.11.2026), 0 = off (rollback): as before,
+# 2 = only cohort B (odd guid, for an A/B in one realm). Any other value acts like 1.
+AiPlayerbot.CastWait.Preparing = 1
 
 # twow-repo#602 ROT-01 hunter deaths (focus check 25.10.2026, OB-00, BEHAVIOUR CHANGE, enable only after A/B + owner go): hunters
 # die about twice as often as the other classes, mostly alone against one weaker mob. One cause: "switch to melee" called
@@ -4431,14 +4499,15 @@ AiPlayerbot.Rotation.OomBackoff.DelayMs = 1000
 # the floor) per evaluation, stood= per evaluation, episodes= / in_los_after= (back in sight within 5 s) per episode
 # (closed_A stays 0 with mode 2 by construction).
 AiPlayerbot.Rotation.ReachLosClose = 0
-# twow-repo#630 GRP-REACH-01 (BUG FIX, enable after the test-realm repro + owner go): the reach progress check of hotfix 8.2 (no
+# twow-repo#630 GRP-REACH-01 (BUG FIX; DS6 bundle B, owner 21.11.2026: BEHAVIOUR CHANGE, ON by default, 0 = rollback): the reach progress check of hotfix 8.2 (no
 # yard closer for 20 s = unreachable) also for a bot with a real player as master. Before, such a bot returned from the check at
 # once, so "reach melee/spell" on a hostile target it could never get to ran forever (with or without Rotation.ReachLosClose).
 # With the mode on the bot drops only its own current target and ignores it for 30 s instead of 5 min, so it follows a player
 # command on that target again soon; the player's group, master and target stay untouched. "[Unreachable] ... master=player
 # ignore_s=30 cohort=" (one line per bot per 5 min, as before; bots without a player master log master=bot ignore_s=300).
-# 0 = as before (default), 1 = every bot, 2 = only cohort B (odd low guid). Any other value acts like 0.
-AiPlayerbot.Rotation.ReachPlayerMaster = 0
+# 1 = on for every bot (default since DS6 bundle B, owner 21.11.2026), 0 = off (rollback): as before,
+# 2 = only cohort B (odd low guid). Any other value acts like 1.
+AiPlayerbot.Rotation.ReachPlayerMaster = 1
 # twow-repo#630 follow-up (BUG FIX, owner repro 25.10.2026 on C; enable with ReachPlayerMaster after the test-realm repro + owner
 # go): the drop of ReachPlayerMaster cleared only the bot's "current target". A rogue sent with "attack" while stealthed kept the
 # target as its "attack target", which counts as an attacker, so it never left combat (no follow there) and stood stealthed in

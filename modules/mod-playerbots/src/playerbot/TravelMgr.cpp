@@ -9,6 +9,7 @@
 #include <numeric>
 #include "playerbot/QuestAreaLevelPolicy.h"
 #include "playerbot/QuestGrindModePolicy.h"
+#include "playerbot/LowLevelWindowPolicy.h"   // OB-10 22.11.: Grind.LowLevelWindow
 #include "playerbot/QuestSearchPolicy.h"
 #include "playerbot/QuestFeasibilityPolicy.h"
 #include "playerbot/QuestBook.h"         // A3 step 2 K2/K3 (AiPlayerbot.QuestBook): the one level window and the QB5 list
@@ -156,6 +157,14 @@ PlayerTravelInfo::PlayerTravelInfo(Player* player, bool gapGrind)
         gapWindowLow = ai::quest_grind_mode::GapWindowLowLevel(level, MaNGOS::XP::GetGrayLevel(level));
         gapWindowHigh = ai::quest_grind_mode::GapWindowHighLevel(level);
     }
+    // AiPlayerbot.Grind.LowLevelWindow (OB-10 22.11.2026): the same window for an L1-10 quest-first bot, the same snapshots (its
+    // grind fetch, its window choice, its window trip); only the window - IsLowLevelWindow is false for a gap filler, so nothing
+    // above changes. Switch 0 and every other bot: 0 / 0, as before.
+    else if (gapGrind && ai->IsLowLevelWindow())
+    {
+        gapWindowLow = ai::low_level_window::WindowLow(level, MaNGOS::XP::GetGrayLevel(level));
+        gapWindowHigh = ai::low_level_window::WindowHigh(level);
+    }
 
     // twow-repo#601 S5a (BandLadder, S5A-DESIGN.md 5.4): the band giver filter bit, here on the bot thread - only an in-scope bot
     // whose band has a usable ladder row (QuestBandGiverFilter reads the switch first); the giver checks of IsPossible (E) and
@@ -210,6 +219,10 @@ PlayerTravelInfo::PlayerTravelInfo(Player* player, bool gapGrind)
     // twow-repo#333 P1-v (AiPlayerbot.Travel.RpgAreaLevelFromSpawn): the RPG area level bit, here on the bot thread; read by
     // RpgTravelDestination::IsPossible only as a value. Mode 0: false for every bot, as before.
     rpgAreaFromSpawn = ai::cohort::Applies(sPlayerbotAIConfig.travelRpgAreaLevelFromSpawn, player->GetGUIDLow());
+
+    // twow-repo#738 L03 (AiPlayerbot.QuestGiver.MaxLevelZeroFix): the giver MaxLevel 0 bit, here on the bot thread; read by
+    // QuestRelationTravelDestination::IsPossible only as a value. Mode 0: false for every bot, the old compare.
+    giverMaxLevelZeroOpen = ai::cohort::Applies(sPlayerbotAIConfig.questGiverMaxLevelZeroFix, player->GetGUIDLow());
 
     // twow-repo#601 quest acceptance lever (iv) (QuestFirstProgression.GiverFetchAnyQuest, review 28.10.): a roster bot of the quest-first
     // flow without a real player master, in the mode's cohort, as SkipSkillLockedObjectives / ContestedObjectiveWait. Read by the quest
@@ -332,7 +345,11 @@ bool QuestRelationTravelDestination::IsPossible(const PlayerTravelInfo& info) co
         else if (!forceThisQuest && (int32)quest->GetQuestLevel() >= (int32)info.GetLevel() + (int32)5)
             return refuse(ai::quest_search::GiverDropQuestLevel);
 
-        if ((int32)info.GetLevel() < quest->GetMinLevel() || (int32)info.GetLevel() > quest->GetMaxLevel())
+        // twow-repo#738 L03 (AiPlayerbot.QuestGiver.MaxLevelZeroFix, default 0): with the key a MaxLevel of 0 is no upper limit,
+        // as in the core (Player::CanTakeQuest) and in ChooseTravelTargetAction.cpp's search check; 0 keeps the old compare.
+        bool const maxLevelZeroIsOpen = info.UsesGiverMaxLevelZeroOpen();
+        if ((int32)info.GetLevel() < quest->GetMinLevel() ||
+            ((!maxLevelZeroIsOpen || quest->GetMaxLevel()) && (int32)info.GetLevel() > quest->GetMaxLevel()))
             return refuse(ai::quest_search::GiverDropMinMaxLevel);
 
         // twow-repo#601 S5a (BandLadder, giver filter E): an in-scope bot whose band has a usable ladder row skips the giver of a
@@ -402,6 +419,10 @@ bool QuestRelationTravelDestination::IsActive(Player* bot, const PlayerTravelInf
 
         // twow-repo#601 S3a (QuestFeasibility.Enable): no trip to a skipped quest's giver; never the taker (rev. 2).
         if (sPlayerbotAIConfig.questFeasibilityEnable && ai->SkipInfeasibleQuest(GetQuestTemplate(), ai::quest_feasibility::Path::Giver))
+            return false;
+
+        // twow-repo#750 (QuestFeasibility.CraftOnlySkip, its own key): no trip to the giver of a quest it would not take; never the taker.
+        if (ai->SkipCraftOnlyQuest(GetQuestTemplate(), ai::quest_craft_only::Path::Giver))
             return false;
 
         if (!bot->GetMap()->IsContinent())
@@ -1274,6 +1295,9 @@ void TravelTarget::SetTargetUnchecked(TravelDestination* tDestination1, WorldPos
     // never inherits it. The refresh keeps the destination and so the window end (no renewal). CopyTarget sets it again.
     if (tDestination1 != tDestination)
         gapWindowEnd = 0;
+    // Grind.LowLevelWindow: the same for the window flag (CopyTarget sets it again).
+    if (tDestination1 != tDestination)
+        lowLevelWindow = false;
 
     // twow-repo#601 S5a (BandLadder): a band trip another destination replaces (zone escape, death suppression, park, rescue,
     // battleground, world buff, go, a reset) ends here - one skip line (replaced / park), no failure; bandTripEnd goes to 0.
@@ -1427,6 +1451,8 @@ bool TravelTarget::CopyTarget(TravelTarget* const target) {
     // twow-repo#601 S2 / S4 R2: the choice's window end (0 for every target but a GrindMode 1 gap grind trip); setNewTarget
     // sets READY next, which applies it.
     gapWindowEnd = target->gapWindowEnd;
+    // Grind.LowLevelWindow: the choice's window flag (false for every target but a low-level window grind choice).
+    lowLevelWindow = target->lowLevelWindow;
     // twow-repo#601 S5a (BandLadder): the band step's trip end (0 for every other choice; a group copy builds a new target).
     bandTripEnd = target->bandTripEnd;
     // F4: a backoff walk stays a walk (0 for every other choice).
@@ -2712,8 +2738,8 @@ bool TravelTarget::IsDestinationActive()
         return false;
 
     // twow-repo#601 S2 R3 (review C-F2): the R3 window only for a gap grind trip (gapWindowEnd, GrindMode 1 only), never for a
-    // quest trip to grind mobs.
-    return tDestination->IsActive(player, PlayerTravelInfo(player, gapWindowEnd != 0));
+    // quest trip to grind mobs. Grind.LowLevelWindow: a low-level window trip (lowLevelWindow) is judged with its window too.
+    return tDestination->IsActive(player, PlayerTravelInfo(player, gapWindowEnd != 0 || lowLevelWindow));
 }
 
 bool TravelTarget::IsConditionsActive(bool clear)

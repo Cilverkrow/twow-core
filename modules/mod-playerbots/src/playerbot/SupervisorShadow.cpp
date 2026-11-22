@@ -47,6 +47,8 @@ std::atomic<std::uint32_t> g_depthOverflow{0};
 
 // A3 step 3 planner P-3a: [ArbiterMin] plan= while on (AiPlayerbot.Planner = 2; set by the config load, SetArbiterPlanField).
 std::atomic<bool> g_planField{false};
+// twow-repo#726: [ArbiterMin] arm_late= while AiPlayerbot.Supervisor.ArmLate != 0 (set by the config load, SetArbiterArmLateField).
+std::atomic<bool> g_armLateField{false};
 
 // Build rule 1 (OB-00 07.11.): one short file-local mutex around the line budget, the minute sums and every ShadowState.
 std::mutex g_mutex;
@@ -169,10 +171,12 @@ MinuteOut RollLocked(std::uint32_t nowSec)
     // minute when B ticked in it, else in A's.
     g_min[g_active[1] ? 1 : 0].depthOverflow += g_depthOverflow.exchange(0, std::memory_order_relaxed);
     bool const planField = g_planField.load(std::memory_order_relaxed);   // A3 step 3 planner P-3a: plan= at Planner = 2
+    bool const armLateField = g_armLateField.load(std::memory_order_relaxed);   // twow-repo#726: arm_late= at ArmLate != 0
     for (std::size_t i = 0; i < 2; ++i)
     {
         out.active[i] = g_active[i];
         out.sums[i] = g_min[i];
+        out.sums[i].armLateField = armLateField;
         out.sums[i].planField = planField;
         g_min[i] = ArbiterMinute();
         g_active[i] = false;
@@ -515,8 +519,15 @@ void CountEnforce(std::uint32_t guidLow, EnforceCount what)
         case EnforceCount::GateOffWorld: ++m.gateOffWorld; break;
         case EnforceCount::GateOffNone: ++m.gateOffNone; break;
         case EnforceCount::GateOffBot: ++m.gateOffBot; break;
+        case EnforceCount::ArmLate: ++m.armLate; break;
         default: break;   // the [ArbiterGrp] block, handled above
     }
+}
+
+// twow-repo#726: the config load says whether [ArbiterMin] carries arm_late= (AiPlayerbot.Supervisor.ArmLate != 0).
+void SetArbiterArmLateField(bool on)
+{
+    g_armLateField.store(on, std::memory_order_relaxed);
 }
 
 // The shared budget of the shadow's lines (E2 a, 300 per minute). lines / dropped are counted only while a shadow minute runs,

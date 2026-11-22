@@ -15,6 +15,7 @@
 #include "playerbot/ActionLogSamplePolicy.h"
 #include "playerbot/DamageLogPolicy.h"   // twow-repo#653: AiPlayerbot.ActionLog.DamageSampleEvery
 #include "playerbot/QuestFeasibilityPolicy.h"
+#include "playerbot/LowLevelWindowPolicy.h"   // OB-10 22.11.: Grind.LowLevelWindow mode
 #include "playerbot/SpecPathPolicy.h"
 #include "playerbot/EmergencyLadderPolicy.h"
 #include "playerbot/RestGatePolicy.h"
@@ -70,6 +71,7 @@
 #include <sstream>
 #include "PlayerbotLoginMgr.h"
 #include "playerbot/DeferredLog.h"   // s7r: lines of a world-thread manager scope go to the bot
+#include "playerbot/SupervisorShadow.h"   // twow-repo#726: SetArbiterArmLateField
 
 std::vector<std::string> ConfigAccess::GetValues(const std::string& name) const
 {
@@ -220,7 +222,7 @@ bool PlayerbotAIConfig::Initialize()
 
     ConfigAccess* configA = reinterpret_cast<ConfigAccess*>(&config);
 
-    BarGoLink::SetOutputState(config.GetBoolDefault("AiPlayerbot.ShowProgressBars", false));
+    BarGoLink::SetOutputState(config.GetBoolDefault("AiPlayerbot.ShowProgressBars", true));
     globalCoolDown = (uint32) config.GetIntDefault("AiPlayerbot.GlobalCooldown", 500);
     maxWaitForMove = config.GetIntDefault("AiPlayerbot.MaxWaitForMove", 3000);
     expireActionTime = config.GetIntDefault("AiPlayerbot.ExpireActionTime", 5000);
@@ -546,7 +548,7 @@ bool PlayerbotAIConfig::Initialize()
     parkQuiet = config.GetBoolDefault("AiPlayerbot.Park.Quiet", false);
     parkQuietIdleEmoteSeconds = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.Park.QuietIdleEmoteSeconds", 600)));
     parkPersist = config.GetBoolDefault("AiPlayerbot.Park.Persist", false);
-    parkSeats = config.GetBoolDefault("AiPlayerbot.Park.Seats", false);
+    parkSeats = config.GetBoolDefault("AiPlayerbot.Park.Seats", true);
     worldBotsTrace = config.GetBoolDefault("AiPlayerbot.WorldBotsTrace", false);
     activityTrace = config.GetBoolDefault("AiPlayerbot.ActivityTrace", false);   // twow-repo#601 R01 L1
     activityTraceStuckDetail = config.GetBoolDefault("AiPlayerbot.ActivityTrace.StuckDetail", false);   // twow-repo#601 (OB-00 26.10.2026)
@@ -675,9 +677,9 @@ bool PlayerbotAIConfig::Initialize()
     rotationReleaseStaleTargetStillSeconds = config.GetIntDefault("AiPlayerbot.Rotation.ReleaseStaleTarget.StillSeconds", 60);
     rotationReleaseStaleTargetStoppedSeconds = config.GetIntDefault("AiPlayerbot.Rotation.ReleaseStaleTarget.StoppedSeconds", 5);
     perfCombatIdleYield = config.GetBoolDefault("AiPlayerbot.Perf.CombatIdleYield", false);
-    castWaitPreparing = config.GetIntDefault("AiPlayerbot.CastWait.Preparing", 0);
+    castWaitPreparing = config.GetIntDefault("AiPlayerbot.CastWait.Preparing", 1);
     if (castWaitPreparing > 2)
-        castWaitPreparing = 0;   // twow-repo#602: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B)
+        castWaitPreparing = 1;   // twow-repo#602: an unknown mode is the default (0 off = rollback, 1 all, 2 cohort B; DS6 bundle B, owner 21.11.2026)
     rotationHunterMeleeStart = config.GetIntDefault("AiPlayerbot.Rotation.HunterMeleeStart", 0);   // twow-repo#602 hunter deaths
     if (rotationHunterMeleeStart > 2)
         rotationHunterMeleeStart = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
@@ -707,9 +709,9 @@ bool PlayerbotAIConfig::Initialize()
     rotationReachLosClose = config.GetIntDefault("AiPlayerbot.Rotation.ReachLosClose", 0);   // twow-repo#594
     if (rotationReachLosClose > 2)
         rotationReachLosClose = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
-    rotationReachPlayerMaster = config.GetIntDefault("AiPlayerbot.Rotation.ReachPlayerMaster", 0);   // twow-repo#630
+    rotationReachPlayerMaster = config.GetIntDefault("AiPlayerbot.Rotation.ReachPlayerMaster", 1);   // twow-repo#630
     if (rotationReachPlayerMaster > 2)
-        rotationReachPlayerMaster = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
+        rotationReachPlayerMaster = 1;   // an unknown mode is the default (0 off = rollback, 1 all, 2 cohort B; DS6 bundle B, owner 21.11.2026)
     rotationReachDropEngagement = config.GetIntDefault("AiPlayerbot.Rotation.ReachDropEngagement", 0);   // twow-repo#630 follow-up
     if (rotationReachDropEngagement > 2)
         rotationReachDropEngagement = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
@@ -930,6 +932,13 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[RescueHub] config key=HomeHubs.LevelFloor value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", questRescueHomeHubsLevelFloor);
         questRescueHomeHubsLevelFloor = 0;
     }
+    // twow-repo#575 R2 (OB-10 build OK 22.11.2026): the rescue's start-valley branch and goblin pushes for roster bots (RescueValleyPolicy.h).
+    questRescueStartValleyFix = config.GetIntDefault("AiPlayerbot.QuestRescue.StartValleyFix", 0);
+    if (questRescueStartValleyFix > 3)
+    {
+        sLog.outError("[QuestRescue] config key=StartValleyFix value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", questRescueStartValleyFix);
+        questRescueStartValleyFix = 0;
+    }
     grindAvoidMaxDeaths = config.GetIntDefault("AiPlayerbot.GrindAvoid.MaxDeaths", 0);
     grindAvoidWindowSeconds = std::max<uint32>(60, config.GetIntDefault("AiPlayerbot.GrindAvoid.WindowSeconds", 3600));
     grindAvoidSeconds = std::max<uint32>(60, config.GetIntDefault("AiPlayerbot.GrindAvoid.AvoidSeconds", 3600));
@@ -1068,6 +1077,14 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[Supervisor] config key=Supervisor.ArbiterProbe value=%u result=off (0 off, 1 probe)", supervisorArbiterProbe);
         supervisorArbiterProbe = 0;
     }
+    // twow-repo#726: the late arm (Supervisor::ArmLateTick, SupervisorEnforce.cpp); above 1 is off.
+    supervisorArmLate = uint32(config.GetIntDefault("AiPlayerbot.Supervisor.ArmLate", 0));
+    if (supervisorArmLate > 1)
+    {
+        sLog.outError("[Supervisor] config key=Supervisor.ArmLate value=%u result=off (0 off, 1 late arm)", supervisorArmLate);
+        supervisorArmLate = 0;
+    }
+    ai::supervisor::SetArbiterArmLateField(supervisorArmLate != 0);
     // T33-1 silent trap (OB-00 20.11.2026, R3 logging only): the lever is on but can never act (GroupGatherPolicy.h
     // LeverInertReasons). One note line, no clamp, no ERROR prefix (kits read "ERROR:[GroupMgr] config key=" as a clamp line);
     // the arbiter alone can be lifted later by the console: then the soft tag (LeverInertHard false; OB-60 R3 20.11.).
@@ -1091,13 +1108,25 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[Planner] config key=Planner value=%u result=off (0 off, 1 shadow, 2 plan pick acts)", planner);
         planner = 0;
     }
+    // twow-repo#726 F4 (OB-60 review 9f5669b7, OB-10 5a445aa4 + Nachtrag 1): the P-2b seconds keys are read signed and clamped to
+    // the nearest bound with one error line (a negative value no longer wraps at * 1000u, MinBindSec 0 no longer turns the feed
+    // and rule 5 off). 0 stays valid where the conf.dist documents it (MaxIdleSec 0 = never, MaxHoldSec 0 = off). The echo shows
+    // the clamped value.
+    auto const plannerSec = [this](char const* key, int32 def, int32 lo, int32 hi) -> uint32
+    {
+        int32 const raw = config.GetIntDefault(key, def);
+        int32 const v = raw < lo ? lo : (raw > hi ? hi : raw);
+        if (v != raw)
+            sLog.outError("[Planner] config key=%s value=%d result=%d (%d..%d)", key + 12, raw, v, lo, hi);
+        return uint32(v);
+    };
     plannerMargin = config.GetFloatDefault("AiPlayerbot.Planner.Margin", 15.0f);
-    plannerMinBindSec = uint32(config.GetIntDefault("AiPlayerbot.Planner.MinBindSec", 120));
-    plannerMaxIdleSec = uint32(config.GetIntDefault("AiPlayerbot.Planner.MaxIdleSec", 300));
-    plannerMinDwellSec = uint32(config.GetIntDefault("AiPlayerbot.Planner.MinDwellSec", 120));
+    plannerMinBindSec = plannerSec("AiPlayerbot.Planner.MinBindSec", 120, 1, 3600);
+    plannerMaxIdleSec = plannerSec("AiPlayerbot.Planner.MaxIdleSec", 300, 0, 3600);
+    plannerMinDwellSec = plannerSec("AiPlayerbot.Planner.MinDwellSec", 120, 0, 3600);
     plannerMaxCandidates = uint32(config.GetIntDefault("AiPlayerbot.Planner.MaxCandidates", 32));
     plannerBudgetMs = uint32(config.GetIntDefault("AiPlayerbot.Planner.BudgetMs", 2));
-    plannerDeadWaitMaxSec = uint32(config.GetIntDefault("AiPlayerbot.Planner.DeadWaitMaxSec", 600));
+    plannerDeadWaitMaxSec = plannerSec("AiPlayerbot.Planner.DeadWaitMaxSec", 600, 0, 3600);
     plannerDeadProbeYards = config.GetFloatDefault("AiPlayerbot.Planner.DeadProbeYards", 40.0f);
     plannerRouteFactor = config.GetFloatDefault("AiPlayerbot.Planner.RouteFactor", 1.3f);
     plannerDangerCells = uint32(config.GetIntDefault("AiPlayerbot.Planner.DangerCells", 8));
@@ -1107,8 +1136,8 @@ bool PlayerbotAIConfig::Initialize()
     plannerBrainBonusMax = config.GetFloatDefault("AiPlayerbot.Planner.BrainBonusMax", 0.0f);
     plannerTurnInWorkSec = config.GetFloatDefault("AiPlayerbot.Planner.TurnInWorkSec", 0.0f);
     plannerGrindKillsPerMin = config.GetFloatDefault("AiPlayerbot.Planner.GrindKillsPerMin", 2.0f);
-    plannerMaxHoldSec = uint32(config.GetIntDefault("AiPlayerbot.Planner.MaxHoldSec", 1800));
-    plannerRepeatableRetakeSec = uint32(config.GetIntDefault("AiPlayerbot.Planner.RepeatableRetakeSec", 1800));
+    plannerMaxHoldSec = plannerSec("AiPlayerbot.Planner.MaxHoldSec", 1800, 0, 86400);
+    plannerRepeatableRetakeSec = plannerSec("AiPlayerbot.Planner.RepeatableRetakeSec", 1800, 0, 86400);
     plannerRepeatableMaxPerHour = uint32(config.GetIntDefault("AiPlayerbot.Planner.RepeatableMaxPerHour", 1));
     plannerRelocMinYards = config.GetFloatDefault("AiPlayerbot.Planner.RelocMinYards", 60.0f);
     plannerRelocSlack = config.GetFloatDefault("AiPlayerbot.Planner.RelocSlack", 1.5f);
@@ -1264,6 +1293,13 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[QuestFirstRoute] config key=GiverFetchAnyQuest value=%u result=off (0 off, 1 all, 2 cohort B)", questFirstProgressionGiverFetchAnyQuest);
         questFirstProgressionGiverFetchAnyQuest = 0;
     }
+    // twow-repo#738 L03 QuestGiver.MaxLevelZeroFix: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B, 3 cohort A).
+    questGiverMaxLevelZeroFix = config.GetIntDefault("AiPlayerbot.QuestGiver.MaxLevelZeroFix", 0);
+    if (questGiverMaxLevelZeroFix > 3)
+    {
+        sLog.outError("[QuestFirstRoute] config key=QuestGiver.MaxLevelZeroFix value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", questGiverMaxLevelZeroFix);
+        questGiverMaxLevelZeroFix = 0;
+    }
     // twow-repo#601 SkipSkillLockedObjectives: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B).
     questFirstProgressionSkipSkillLockedObjectives = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.SkipSkillLockedObjectives", 0);
     if (questFirstProgressionSkipSkillLockedObjectives > 2)
@@ -1367,9 +1403,26 @@ bool PlayerbotAIConfig::Initialize()
     }
     // twow-repo#601 S3a: feasibility at accept time (QuestFeasibilityPolicy.h), all off by default.
     questFeasibilityEnable = config.GetBoolDefault("AiPlayerbot.QuestFeasibility.Enable", false);
+    // twow-repo#750: craft-only quest items (QuestCraftOnlyPolicy.h), its own key; an unknown mode is off.
+    questFeasibilityCraftOnlySkip = config.GetIntDefault("AiPlayerbot.QuestFeasibility.CraftOnlySkip", 0);
+    if (questFeasibilityCraftOnlySkip > 3)
+    {
+        sLog.outError("[QuestCraftOnly] config key=CraftOnlySkip value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", questFeasibilityCraftOnlySkip);
+        questFeasibilityCraftOnlySkip = 0;
+    }
     questFeasibilityBlocklist = ai::quest_feasibility::ParseQuestIdList(config.GetStringDefault("AiPlayerbot.QuestFeasibility.Blocklist", ""));
     questFeasibilityBlocklistWhileNoCustomStarts = ai::quest_feasibility::ParseQuestIdList(config.GetStringDefault("AiPlayerbot.QuestFeasibility.BlocklistWhileNoCustomStarts", ""));
     questFeasibilitySoloSkipGroupQuests = config.GetBoolDefault("AiPlayerbot.QuestFeasibility.SoloSkipGroupQuests", false);
+    // OB-10 21.11. Q1 (a): a cohort mode for the in-realm A/B (QuestFeasibilityPolicy.h); an unknown mode is off.
+    questFeasibilitySoloSkipEscortTimed = uint32(config.GetIntDefault("AiPlayerbot.QuestFeasibility.SoloSkipEscortTimed", 0));
+    if (!ai::quest_feasibility::ValidEscortTimedMode(questFeasibilitySoloSkipEscortTimed))
+    {
+        sLog.outError("[QuestFeasibility] config key=SoloSkipEscortTimed value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)",
+            questFeasibilitySoloSkipEscortTimed);
+        questFeasibilitySoloSkipEscortTimed = 0;
+    }
+    questFeasibilitySoloSkipEscortIds = ai::quest_feasibility::ParseQuestIdList(config.GetStringDefault("AiPlayerbot.QuestFeasibility.SoloSkipEscortIds", "155,898,938"));
+    questFeasibilitySoloSkipTimedMaxSeconds = std::min<uint32>(86400, uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.QuestFeasibility.SoloSkipTimedMaxSeconds", 900))));
     directTargetsEnabled = config.GetBoolDefault("AiPlayerbot.DirectTargets.Enable", false);
     directTargetsTraceInactive = config.GetBoolDefault("AiPlayerbot.DirectTargets.TraceInactive", false);
     directTargetsFreshMaxLevel = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.DirectTargets.FreshMaxLevel", 5)));
@@ -1442,7 +1495,7 @@ bool PlayerbotAIConfig::Initialize()
     pathTransportEdgeTrace = config.GetBoolDefault("AiPlayerbot.Path.TransportEdgeTrace", false);
     pathTransportDeckProbe = config.GetBoolDefault("AiPlayerbot.Path.TransportDeckProbe", false);
     pathTransportWaitTimeoutMin = ai::transport_board::ClampWaitTimeoutMin(config.GetIntDefault("AiPlayerbot.Path.TransportWaitTimeoutMin", 15));
-    pathTransportBoardFix = config.GetBoolDefault("AiPlayerbot.Path.TransportBoardFix", false);
+    pathTransportBoardFix = config.GetBoolDefault("AiPlayerbot.Path.TransportBoardFix", true);
     pathTransportSameMapGuard = config.GetBoolDefault("AiPlayerbot.Path.TransportSameMapGuard", true);   // twow-repo#575 H4
     if (pathTransportBoardFix && transportTeleportType == 0)   // twow-repo#342 (S3b-1)
         sLog.outError("AiPlayerbot.Path.TransportBoardFix is built for TransportTeleportType 1 / 2; walking onto transports (0) is not supported");
@@ -1708,16 +1761,16 @@ bool PlayerbotAIConfig::Initialize()
     deleteRandomBotArenaTeams = config.GetBoolDefault("AiPlayerbot.DeleteRandomBotArenaTeams", false);
 
     //cosmetics (by lidocain)
-    randomBotShowCloak = config.GetBoolDefault("AiPlayerbot.RandomBotShowCloak", false);
-    randomBotShowHelmet = config.GetBoolDefault("AiPlayerbot.RandomBotShowHelmet", false);
+    randomBotShowCloak = config.GetBoolDefault("AiPlayerbot.RandomBotShowCloak", true);
+    randomBotShowHelmet = config.GetBoolDefault("AiPlayerbot.RandomBotShowHelmet", true);
 
 	//SPP switches
-    enableGreet = config.GetBoolDefault("AiPlayerbot.EnableGreet", false);
+    enableGreet = config.GetBoolDefault("AiPlayerbot.EnableGreet", true);
 	disableRandomLevels = config.GetBoolDefault("AiPlayerbot.DisableRandomLevels", false);
     instantRandomize = config.GetBoolDefault("AiPlayerbot.InstantRandomize", true);
     randomBotRandomPassword = config.GetBoolDefault("AiPlayerbot.RandomBotRandomPassword", true);
     playerbotsXPrate = config.GetFloatDefault("AiPlayerbot.XPRate", 1.0f);
-    disableActivityPriorities = config.GetBoolDefault("AiPlayerbot.DisableActivityPriorities", false);
+    disableActivityPriorities = config.GetBoolDefault("AiPlayerbot.DisableActivityPriorities", true);
     forceActiveWhenNearPlayer = config.GetBoolDefault("AiPlayerbot.ForceActiveWhenNearPlayer", false);
     limitCombatActivity = config.GetBoolDefault("AiPlayerbot.LimitCombatActivity", false);
     guildOrderAlwaysActive = config.GetBoolDefault("AiPlayerbot.GuildOrderAlwaysActive", true);
@@ -1741,7 +1794,15 @@ bool PlayerbotAIConfig::Initialize()
     enableActionLog = config.GetBoolDefault("AiPlayerbot.EnableActionLog", false);
     actionLogGuids = ai::action_log::ParseSample(config.GetStringDefault("AiPlayerbot.ActionLog.Guids", ""));   // twow-repo#601 / #614
     actionLogDamageSampleEvery = ai::damage_log::Every(config.GetIntDefault("AiPlayerbot.ActionLog.DamageSampleEvery", 5));   // twow-repo#653
-    grindGreyByLevel = config.GetBoolDefault("AiPlayerbot.Grind.GreyByLevel", false);   // twow-repo#601 / #614
+    grindGreyByLevel = config.GetBoolDefault("AiPlayerbot.Grind.GreyByLevel", true);   // twow-repo#601 / #614
+    // OB-10 22.11.2026: a cohort mode (LowLevelWindowPolicy.h); an unknown mode is off.
+    grindLowLevelWindow = uint32(config.GetIntDefault("AiPlayerbot.Grind.LowLevelWindow", 0));
+    if (!ai::low_level_window::ValidMode(grindLowLevelWindow))
+    {
+        sLog.outError("[LowLevelWindow] config key=Grind.LowLevelWindow value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)",
+            grindLowLevelWindow);
+        grindLowLevelWindow = 0;
+    }
     grindQuestFirstOrder = config.GetIntDefault("AiPlayerbot.Grind.QuestFirstOrder", 0);   // twow-repo#601 decision order
     if (grindQuestFirstOrder > 2)
         grindQuestFirstOrder = 0;   // an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B)
@@ -1845,7 +1906,7 @@ bool PlayerbotAIConfig::Initialize()
     rosterGuildNamesAlliance = config.GetStringDefault("AiPlayerbot.RosterGuild.NamesAlliance", "");
     rosterGuildNamesHorde = config.GetStringDefault("AiPlayerbot.RosterGuild.NamesHorde", "");
     rosterGuildSnapshotSeconds = config.GetIntDefault("AiPlayerbot.RosterGuild.SnapshotSeconds", 60);
-    rosterGuildNote = config.GetBoolDefault("AiPlayerbot.RosterGuild.GuildNote", false);
+    rosterGuildNote = config.GetBoolDefault("AiPlayerbot.RosterGuild.GuildNote", true);
     rosterGuildNoteRefreshSeconds = config.GetIntDefault("AiPlayerbot.RosterGuild.NoteRefreshSeconds", 86400);
     // twow-repo#485 / #518: role fill of roster guilds. Defaults = owner rules of 04.10. (assignment v3):
     // 7/10/28, a healer of every healer class, tank mix 2-3 warriors + 1 bear/rogue/paladin/shaman, rare
@@ -1888,7 +1949,7 @@ bool PlayerbotAIConfig::Initialize()
         }
     }
     std::atomic_store(&rosterGuildPlanLines, std::shared_ptr<const std::vector<std::string>>(planLines));
-    rosterGuildAllowPoaching = config.GetBoolDefault("AiPlayerbot.RosterGuild.AllowPoaching", false);
+    rosterGuildAllowPoaching = config.GetBoolDefault("AiPlayerbot.RosterGuild.AllowPoaching", true);
     rosterGuildPoachCooldownSeconds = config.GetIntDefault("AiPlayerbot.RosterGuild.PoachCooldownSeconds", 86400);
     rosterGuildMinLevel = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.RosterGuild.MinLevel", 0)));
     // owner 04.11.2026: JoinMinLevel (join, sign, be offered a charter or invited by bot officers); not set (or negative) = MinLevel.
@@ -1898,11 +1959,11 @@ bool PlayerbotAIConfig::Initialize()
     }
     rosterGuildFoundTravel = config.GetBoolDefault("AiPlayerbot.RosterGuild.FoundTravel", false);
     // twow-repo#485: bandages and potions of roster bots from the bags. 0 / 100 / 2 = legacy.
-    rosterConsumablesUseReal = config.GetBoolDefault("AiPlayerbot.RosterConsumables.UseReal", false);
+    rosterConsumablesUseReal = config.GetBoolDefault("AiPlayerbot.RosterConsumables.UseReal", true);
     rosterConsumablesHealingPotionPct = config.GetIntDefault("AiPlayerbot.RosterConsumables.HealingPotionPct", 100);
     rosterConsumablesManaPotionPct = config.GetIntDefault("AiPlayerbot.RosterConsumables.ManaPotionPct", 100);
     rosterConsumablesKeepStacks = config.GetIntDefault("AiPlayerbot.RosterConsumables.KeepStacks", 2);
-    rosterConsumablesBuy = config.GetBoolDefault("AiPlayerbot.RosterConsumables.Buy", false);
+    rosterConsumablesBuy = config.GetBoolDefault("AiPlayerbot.RosterConsumables.Buy", true);
     rosterConsumablesTrace = config.GetBoolDefault("AiPlayerbot.RosterConsumables.Trace", false);
     rosterConsumablesTraceCooldownSeconds = config.GetIntDefault("AiPlayerbot.RosterConsumables.TraceCooldownSeconds", 300);
 
@@ -1926,7 +1987,7 @@ bool PlayerbotAIConfig::Initialize()
 
     //SPP automation
     autoPickReward = config.GetStringDefault("AiPlayerbot.AutoPickReward", "no");
-    autoEquipUpgradeLoot = config.GetBoolDefault("AiPlayerbot.AutoEquipUpgradeLoot", false);
+    autoEquipUpgradeLoot = config.GetBoolDefault("AiPlayerbot.AutoEquipUpgradeLoot", true);
     equipDiagnosticsTrace = config.GetBoolDefault("AiPlayerbot.EquipDiagnostics.Trace", false);
     auctionHouseEnabled = config.GetBoolDefault("AiPlayerbot.AuctionHouse.Enabled", true);
     syncQuestWithPlayer = config.GetBoolDefault("AiPlayerbot.SyncQuestWithPlayer", false);
@@ -2034,9 +2095,9 @@ bool PlayerbotAIConfig::Initialize()
         travelRpgAreaLevelFromSpawn = 0;
     // BOT-12 (twow-repo#677): the elevator branch of getTransports from a per-map spawn list, built once (WorldPosition.cpp).
     travelElevatorScanCache = config.GetBoolDefault("AiPlayerbot.Travel.ElevatorScanCache", false);
-    gatherQuestHerbFilter = config.GetIntDefault("AiPlayerbot.Gather.QuestHerbFilter", 0);
+    gatherQuestHerbFilter = config.GetIntDefault("AiPlayerbot.Gather.QuestHerbFilter", 1);
     if (gatherQuestHerbFilter > 2)
-        gatherQuestHerbFilter = 0;
+        gatherQuestHerbFilter = 1;   // an unknown mode is the default (0 off = rollback, 1 all, 2 cohort B; DS6 bundle B, owner 21.11.2026)
     professionUseGatherDistance = std::max(0.0f, config.GetFloatDefault("AiPlayerbot.ProfessionUse.GatherDistance", 0.0f));
     professionUseCraft = config.GetBoolDefault("AiPlayerbot.ProfessionUse.Craft", false);
     professionUseCraftIntervalSeconds = std::max<uint32>(10, config.GetIntDefault("AiPlayerbot.ProfessionUse.CraftIntervalSeconds", 300));
@@ -2296,6 +2357,10 @@ bool PlayerbotAIConfig::Initialize()
     if (sPlayerbotAIConfig.rosterFarMoveLevelGuard)
         ai::level_guard::BuildGrid();
 
+    // twow-repo#750 (QuestFeasibility.CraftOnlySkip): the craft-only quest items, once, only with the key on - off, no query.
+    if (sPlayerbotAIConfig.questFeasibilityCraftOnlySkip)
+        PlayerbotAI::BuildCraftOnlyQuests();
+
     sLog.outString("Loading named locations...");
     sRandomPlayerbotMgr.LoadNamedLocations();
 
@@ -2383,6 +2448,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Gathering.PaceReachYards", Value(gatheringPaceReachYards)},
             {"Gathering.Trace", Value(gatheringTrace)},
             {"Grind.GreyByLevel", Value(grindGreyByLevel)},
+            {"Grind.LowLevelWindow", Value(grindLowLevelWindow)},
             {"Grind.NeighbourAware", Value(grindNeighbourAware)},
             {"Grind.QuestFirstOrder", Value(grindQuestFirstOrder)},
             {"Grind.SafePull", Value(grindSafePull)},
@@ -2459,8 +2525,12 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestBook.StaleCompleteSeconds", Value(questBookStaleCompleteSeconds)},
             {"QuestFeasibility.Blocklist.count", Value(uint32(questFeasibilityBlocklist.size()))},
             {"QuestFeasibility.BlocklistWhileNoCustomStarts.count", Value(uint32(questFeasibilityBlocklistWhileNoCustomStarts.size()))},
+            {"QuestFeasibility.CraftOnlySkip", Value(questFeasibilityCraftOnlySkip)},
             {"QuestFeasibility.Enable", Value(questFeasibilityEnable)},
+            {"QuestFeasibility.SoloSkipEscortIds.count", Value(uint32(questFeasibilitySoloSkipEscortIds.size()))},
+            {"QuestFeasibility.SoloSkipEscortTimed", Value(questFeasibilitySoloSkipEscortTimed)},
             {"QuestFeasibility.SoloSkipGroupQuests", Value(questFeasibilitySoloSkipGroupQuests)},
+            {"QuestFeasibility.SoloSkipTimedMaxSeconds", Value(questFeasibilitySoloSkipTimedMaxSeconds)},
             {"QuestFirstProgression.AbandonStructuralParked", Value(questFirstProgressionAbandonStructuralParked)},
             {"QuestFirstProgression.BandLadder", Value(questFirstProgressionBandLadder)},
             {"QuestFirstProgression.BandLadderSameZoneNext", Value(questFirstProgressionBandLadderSameZoneNext)},
@@ -2496,6 +2566,7 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestFirstProgression.StartZoneMinLevel.ObjectiveWindow.AboveLevels", Value(questFirstProgressionStartZoneObjectiveWindowAbove)},
             {"QuestFirstProgression.TransientCountsAfter", Value(questFirstProgressionTransientCountsAfter)},
             {"QuestFirstProgression.TurnInParkFailures", Value(questFirstProgressionTurnInParkFailures)},
+            {"QuestGiver.MaxLevelZeroFix", Value(questGiverMaxLevelZeroFix)},
             {"QuestGroups.Enable", Value(questGroupsEnable)},
             {"QuestGroups.OneHeavyStep", Value(questGroupsOneHeavyStep)},
             {"QuestGroups.ScanBudgetUs", Value(questGroupsScanBudgetUs)},
@@ -2515,6 +2586,7 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestRescue.HomeHubs.LevelFloor", Value(questRescueHomeHubsLevelFloor)},
             {"QuestRescue.KeepRequestWhenFull", Value(questRescueKeepRequestWhenFull)},
             {"QuestRescue.NoTargetFreeSlot", Value(questRescueNoTargetFreeSlot)},
+            {"QuestRescue.StartValleyFix", Value(questRescueStartValleyFix)},
             {"QuestTurnIn.RepeatableAutoComplete", Value(questTurnInRepeatableAutoComplete)},
             {"Replan", Value(replan)},
             {"Replan.Shadow", Value(replanShadow)},
@@ -2575,6 +2647,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Supervisor", Value(supervisor)},
             {"Supervisor.Arbiter", Value(supervisorArbiter)},
             {"Supervisor.ArbiterProbe", Value(supervisorArbiterProbe)},
+            {"Supervisor.ArmLate", Value(supervisorArmLate)},
             {"ThreadSafeTeleportAck", Value(threadSafeTeleportAck)},
             {"ThrownUsageFix", Value(thrownUsageFix)},
             {"Travel.ElevatorScanCache", Value(travelElevatorScanCache)},

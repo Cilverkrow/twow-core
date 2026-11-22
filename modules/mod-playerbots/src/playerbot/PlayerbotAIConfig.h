@@ -426,7 +426,8 @@ public:
     bool enableActionLog;
     std::vector<uint32> actionLogGuids;  // twow-repo#601 / #614: AiPlayerbot.ActionLog.Guids, sorted; empty = every bot
     uint32 actionLogDamageSampleEvery = 5;  // twow-repo#653: AiPlayerbot.ActionLog.DamageSampleEvery - DMG lines every Nth damage event, dealt and taken counted separately (DamageLogPolicy.h)
-    bool grindGreyByLevel = false;  // twow-repo#601 / #614: AiPlayerbot.Grind.GreyByLevel - the grind "not xp" skip (#421 roster rule and the old 50-in-51 skip of all bots) by mob level, not XP::Gain
+    bool grindGreyByLevel = true;  // twow-repo#601 / #614: AiPlayerbot.Grind.GreyByLevel - the grind "not xp" skip (#421 roster rule and the old 50-in-51 skip of all bots) by mob level, not XP::Gain
+    uint32 grindLowLevelWindow = 0;  // OB-10 22.11.2026: AiPlayerbot.Grind.LowLevelWindow - L1-10 quest-first bots grind travel in the GrindMode 1 window (LowLevelWindowPolicy.h); 0 off, 1 all, 2 cohort B, 3 cohort A
     uint32 grindQuestFirstOrder = 0;  // twow-repo#601 decision order (owner 20.10.2026): AiPlayerbot.Grind.QuestFirstOrder - "attack anything" of quest-first roster bots only on quest objectives, attackers and mobs in the way; 0 off, 1 all, 2 cohort B (odd low guid)
     uint32 grindNeighbourAware = 0;  // twow-repo#602 #2 (adds analysis 25.10.2026): the stage-2 grind pick prefers a candidate with fewer neighbours that would join the fight (GrindNeighbourPolicy.h); 0 off, 1 all, 2 cohort B (A in shadow), 3 shadow only
     uint32 grindSafePull = 0;  // twow-repo#656 (#653 lever 1, OB-00 31.10.2026): the stage-2 grind pick orders the candidates by the creatures that would join the fight at the target, the fight spot or on the approach (SafePullPolicy.h); 0 off, 1 all, 2 cohort B, 3 cohort A (crossover; the other cohort in shadow), 4 shadow only
@@ -587,7 +588,7 @@ public:
     uint32 buyVendorTemplateItems = 1;
     uint32 travelRpgAreaLevelFromSpawn = 1;  // twow-repo#333 P1-v: RpgTravelDestination::IsPossible reads the area level at the spawn nearest to the bot, not at the map origin (RpgAreaLevelPolicy.h); 0 off (rollback), 1 all (default since the RALS-ABN acceptance unit 20.11.2026), 2 cohort B (odd guid)
     bool travelElevatorScanCache = false;  // BOT-12 (twow-repo#677): WorldPosition::getTransports' elevator branch walks a per-map list of the transport-type gameobject spawns, built once, instead of all gameobject spawn data on every call
-    uint32 gatherQuestHerbFilter = 0;  // twow-repo#333 P1-f: a quest herb (lock 259) is picked only with its quest active (modes 0/1/2)
+    uint32 gatherQuestHerbFilter = 1;  // twow-repo#333 P1-f: a quest herb (lock 259) is picked only with its quest active (modes 0/1/2)
     // #333: roster bots use their professions while levelling.
     float professionUseGatherDistance = 0.0f;     // 0 = GatheringDistance
     bool professionUseCraft = false;
@@ -668,7 +669,7 @@ public:
     bool parkQuiet = false;  // twow-repo#551 (owner 11.10): parked bots drop greet/emote/say/ai chat, answer whispers only
     uint32 parkQuietIdleEmoteSeconds = 600;  // twow-repo#551: one idle emote per this many seconds while quiet (0 = none)
     bool parkPersist = false;  // twow-repo#551 (owner 11.10): park state in the bot event store, restored after a restart
-    bool parkSeats = false;  // twow-repo#551 (owner 11.10): parked bots sit on inn chairs, dismount, keep 3 yd around the innkeeper
+    bool parkSeats = true;  // twow-repo#551 (owner 11.10): parked bots sit on inn chairs, dismount, keep 3 yd around the innkeeper
     bool worldBotsTrace = false;  // twow-repo#541: [WorldBots] per-minute world-thread cost line
     bool activityTrace = false;  // twow-repo#601 R01 L1: AiPlayerbot.ActivityTrace - [BotActivity] per roster bot and hour, [BotActivityMin]
     bool activityTraceStuckDetail = false;  // twow-repo#601: AiPlayerbot.ActivityTrace.StuckDetail - [StuckDetail] per stuck episode
@@ -743,7 +744,7 @@ public:
     uint32 rotationRestoShamanOffdps = 0;  // twow-repo#653 side finding (OB-00 31.10.2026, BEHAVIOUR CHANGE, crossover A/B): a restoration shaman gets the offdps placeholder (it had none - the engine dropped it), so with attackers it may fight back; it lifts only the attack gate of a healer, no heal priority changes; 0 off, 1 all, 2 cohort B, 3 cohort A
     uint32 rotationCastLosGate = 0;  // twow-repo#602 (hunter LoS 25.10.): a LINE_OF_SIGHT verdict of CheckCast makes the cast IMPOSSIBLE, 8.2-unreachable targets are dropped and skipped (CastLosGatePolicy.h); with Rotation.ReachLosClose; 0 off, 1 all, 2 cohort B
     bool perfCombatIdleYield = false;  // twow-repo#541 (audit A17): a combat AI pass without an action while the bot auto-attacks its current target waits 3x ReactDelay (0 = off)
-    uint32 castWaitPreparing = 0;  // twow-repo#602 (L1-b): hold the internal AI until the real end of the bot's own PREPARING cast; 0 off, 1 all, 2 cohort B
+    uint32 castWaitPreparing = 1;  // twow-repo#602 (L1-b): hold the internal AI until the real end of the bot's own PREPARING cast; 0 off, 1 all, 2 cohort B
     uint32 rotationHunterMeleeStart = 0;  // twow-repo#602 (hunter deaths 25.10.): the hunter's switch to melee/ranged really starts/stops the swing (Player::MeleeAttackStart is a stub), close mode attacks in melee (HunterMeleeStartPolicy.h); 0 off, 1 all, 2 cohort B
     uint32 rotationMeleeFleeBreak = 0;  // twow-repo#602 (death analysis 21.10.): "outnumbered" stays quiet for a melee bot while its flee loop holds; 0 off, 1 all, 2 cohort B
     uint32 rotationOomBackoff = 0;  // twow-repo#602 ROT-01 3c-B (priest Farathil loop, 24.10.): an out-of-mana priest/mage/warlock without a wand fights in melee, an idle out-of-mana combat pass waits DelayMs (OomBackoffPolicy.h); 0 off, 1 all, 2 cohort B
@@ -757,7 +758,7 @@ public:
     uint32 rotationDarkRuneGate = 0;  // twow-repo#602 ROT-01 3c (priest Farathil loop, 24.10.): "dark rune" is pushed only while it or "mana potion" is usable, a failed check waits (DarkRuneGatePolicy.h); 0 off, 1 all, 2 cohort B
     uint32 rotationDarkRuneGateRecheckSeconds = 10;  // ... the wait after a failed check
     uint32 rotationReachLosClose = 0;  // twow-repo#594 (Linalella, 23.10.): a hostile reach target out of sight is chased to half the distance until in sight, never inside the floor (ReachLosPolicy.h); 0 off, 1 all, 2 cohort B (odd guid)
-    uint32 rotationReachPlayerMaster = 0;  // twow-repo#630 GRP-REACH-01: the reach progress check (hotfix 8.2) also for a bot with a real player as master, own target only, 30 s ignore; 0 off, 1 all, 2 cohort B (odd guid)
+    uint32 rotationReachPlayerMaster = 1;  // twow-repo#630 GRP-REACH-01: the reach progress check (hotfix 8.2) also for a bot with a real player as master, own target only, 30 s ignore; 0 off, 1 all, 2 cohort B (odd guid)
     uint32 rotationReachDropEngagement = 0;  // twow-repo#630 follow-up (owner repro 25.10.): that drop also clears attack/pull/old target, selection and swing (combat ends, follow resumes; ReachDropPolicy.h); 0 off, 1 all, 2 cohort B
     uint32 rotationFollowUnstealth = 0;  // twow-repo#630 follow-up: a rogue following a real player out of combat, dungeons and BGs drops stealth while the master moves or it catches up, above follow (ReachDropPolicy.h); 0 off, 1 all, 2 cohort B
     uint32 rotationUnreachableGiveUp = 0;  // twow-repo#703 item 4: cohort mode (0 off, 1 all, 2 cohort B, 3 cohort A; other -> 0): a roster bot on its own (no group or not its leader) gives up a target after 3 [Unreachable] on its guid within 30 min - engagement dropped, 1800 s ignore, quest camp marked 1800 s (UnreachableGiveUpPolicy.h)
@@ -901,6 +902,7 @@ public:
     uint32 questRescueNoTargetFreeSlot = 1;  // twow-repo#703 item 1: 1 = the rescue targets before the global limiter, a no_target takes no slot (QuestRescueSlotPolicy.h), 0 = as before
     uint32 questRescueHomeHubsL5OwnHub = 0;  // twow-repo#703 item 2: the L5-10 own-hub rows of the HomeHubs table (cohort modes, 0 = off = today's table)
     uint32 questRescueHomeHubsLevelFloor = 0;  // twow-repo#575 RescueHub LevelFloor: undead L5-9 at the own hub (Brill), the Sepulcher from L10 (cohort modes, 0 = off = today's table)
+    uint32 questRescueStartValleyFix = 0;  // twow-repo#575 R2: a roster rescue up to L10 never takes another race's start valley; own start point, deduplicated, beyond the rescue distance, not the last target without progress; goblin pushes get the distance (cohort modes, 0 = off = legacy)
     uint32 questRescueHomeHubs = 1;  // twow-repo#575 RG-a: the quest rescue's anchor table (own start-zone hub < L5, next zone L5-10; cohort modes); 1 = default (SZM adoption 10.11.2026), 0 = rollback
     uint32 grindAvoidMaxDeaths = 0;       // 0 = off
     uint32 grindAvoidWindowSeconds = 3600;
@@ -986,6 +988,10 @@ public:
     // guid pair; ArbiterLanePolicy.h IsProbeBot). 0 off, 1 probe (at arbiter 2 three refused writes every 10 minutes, at 1 only
     // the paired count); other = 0 + error line.
     uint32 supervisorArbiterProbe = 0;
+    // twow-repo#726 (AiPlayerbot.Supervisor.ArmLate, default 0; bug fix, default 1 after acceptance + OB-10): a bot the arming
+    // edge left Passive (parked, battleground, out of the quest book scope) is armed later, once eligible. 0 off (the edge only,
+    // as before), 1 on (retry at most every 5 s while enforcing; Supervisor::ArmLateTick); other = 0 + error line.
+    uint32 supervisorArmLate = 0;
     // A3 step 3 planner P-1 (AiPlayerbot.Planner.BandTable, default ""): path of the planner's band table (BandTable.cpp). Read
     // once at boot, fail closed; "" = no file I/O, no line, no table (the planner then has no zone term).
     std::string plannerBandTable;
@@ -1075,6 +1081,11 @@ public:
     bool questBookNeedPerObjectiveLog = false;
     // twow-repo#627 S7 help groups (QuestGroupPolicy.h, QuestGroupWorld.cpp); Enable: 0 off, 1 all, 2 cohort B, 3 cohort A.
     uint32 questGroupsEnable = 0;
+    // twow-repo#738 L03 (AiPlayerbot.QuestGiver.MaxLevelZeroFix, OB-10 decision 085028ec; default 0 until its acceptance unit): the
+    // quest giver trip check reads a quest template MaxLevel of 0 as "no upper limit", as the core (Player::CanTakeQuest) and our
+    // quest search check (ChooseTravelTargetAction.cpp) do. 0 = the old unsigned compare, which refuses every MaxLevel 0 quest;
+    // 1 all, 2 cohort B (odd low guid), 3 cohort A (even low guid).
+    uint32 questGiverMaxLevelZeroFix = 0;
     uint32 questGroupsScanSeconds = 60;
     // twow-repo#628: the S7 scan spread over this many updates (0/1 = the whole scan in one update).
     uint32 questGroupsScanSlices = 0;
@@ -1210,9 +1221,16 @@ public:
     // twow-repo#601 S3a (feasibility at accept time, OB-10 / OB-00 18.10.2026; QuestFeasibilityPolicy.h), all off = today's
     // behaviour, restart-only: master switch, the two quest id lists (parsed, max 512 ids each) and the solo group rule.
     bool questFeasibilityEnable = false;
+    // twow-repo#750 (QuestCraftOnlyPolicy.h; OB-10 840bcbdf / be58c794): its own key, outside Enable / S3Cohort. 0 off, 1 all,
+    // 2 cohort B, 3 cohort A; > 3 = 0 with an error line. Restart-only (the craft-only data is built at start only with it on).
+    uint32 questFeasibilityCraftOnlySkip = 0;
     std::set<uint32> questFeasibilityBlocklist;
     std::set<uint32> questFeasibilityBlocklistWhileNoCustomStarts;  // only while customRaceStartZones = false
     bool questFeasibilitySoloSkipGroupQuests = false;  // Type 1 / 81 / 62 or SuggestedPlayers >= 2, bot not in a group
+    uint32 questFeasibilitySoloSkipEscortTimed = 0;  // DEEP7 item 5: listed escort / short timed quests, bot not in a group;
+                                                     // cohort mode 0 off, 1 all, 2 cohort B, 3 cohort A
+    std::set<uint32> questFeasibilitySoloSkipEscortIds;     // the escort ids of SoloSkipEscortTimed
+    uint32 questFeasibilitySoloSkipTimedMaxSeconds = 900;  // LimitTime 1..this = a short timed quest; 0 = no timed skip
     // twow-repo#594 / P3 (owner 15.10., direct travel targets): master switch, P3-0 trace, fresh bots (level <= FreshMaxLevel)
     bool directTargetsEnabled = false;
     bool directTargetsTraceInactive = false;
@@ -1266,7 +1284,7 @@ public:
     bool pathTransportEdgeTrace = false;  // twow-repo#342 (S1): [TransportWait] state= lines per transport edge episode (attempt / board / arrive / fail) + summary, 0 = off
     bool pathTransportDeckProbe = false;  // twow-repo#342 (S3b-0): once per dock wait 8 fixed vessel deck probes, one [TransportDeck] line (30/min) + [TransportBoard] summary, 0 = off
     uint32 pathTransportWaitTimeoutMin = 15;  // twow-repo#342 (S3b-0): minutes at a dock / aboard before the S1 wait_timeout / overrun, 1-240 (<= 0 -> 15)
-    bool pathTransportBoardFix = false;  // twow-repo#342 (S3b-1): bots board ships / zeppelins (deck hit, stop gate, dock-hop entry, ride record, exit at the arrival dock, lost-ride recovery), 0 = off
+    bool pathTransportBoardFix = true;  // twow-repo#342 (S3b-1): bots board ships / zeppelins (deck hit, stop gate, dock-hop entry, ride record, exit at the arrival dock, lost-ride recovery), 0 = off
     bool pathTransportSameMapGuard = true;  // twow-repo#575 H4 (bug fix; default 1 since its acceptance unit passed, 10.11.2026; 0 = rollback): UseTransport scans a dock's vessels only on the bot's map (no read of another map's transports from this thread), 0 = as before
     bool pathTaxiCancelForm = false;  // twow-repo#575 (PATH-01 b): cancel a disallowed mount form (travel form, Ghost Wolf) before a flight, 0 = off
     bool pathRescueSkipCustomStarts = false;  // twow-repo#575 (PATH-01 E6): the quest rescue sends only goblins / high elves to their start zones, 0 = off

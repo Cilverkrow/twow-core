@@ -202,6 +202,27 @@ bool BandHeldByGroup(PlayerbotAI* ai)
     return true;
 }
 
+// twow-repo#726 (AiPlayerbot.Supervisor.ArmLate, default 0): the late arm. The arming edge checks a bot once; one that is
+// parked, in a battleground or out of the quest book scope in that tick would stay Passive while enforcement stays on. Key 1:
+// while enforcing and Passive, the same arm rule (SupervisorPolicy.h ArmEligible) again at most every kArmLateRetryMs; still
+// ineligible = no line, no count. An arm writes the mode line with cause arbiter_arm_late and counts arm_late. Off: the
+// poll is the one config read and drops the deadline.
+void Supervisor::ArmLateTick(std::uint32_t nowMs)
+{
+    if (!ArmLatePoll(sPlayerbotAIConfig.supervisorArmLate, enforce_, mode_, nowMs, armLateNextMs_))
+        return;
+    Player* const bot = ai_ ? ai_->GetBot() : nullptr;
+    if (!bot || !ArmEligible(ai_->InQuestBookScope(), bot->InBattleGround(), ai_->IsParked()))
+        return;
+    TransitionResult const result = Decide(Mode::Passive, Mode::Quest, Requester::External, phase_, 0, Cadence{});
+    if (result.allowed)
+    {
+        mode_ = result.to;
+        CountEnforce(bot->GetGUIDLow(), EnforceCount::ArmLate);
+    }
+    WriteModeLine(Mode::Passive, Mode::Quest, result, "arbiter_arm_late", 2);
+}
+
 // The probe (AiPlayerbot.Supervisor.ArbiterProbe = 1, default 0; design 10.1): on probe bots only (ArbiterLanePolicy.h
 // IsProbeBot), at most every 10 minutes, the first run spread by guid, and only on an open live target. Arbiter 2: the group lane
 // owns the target for this one pass, then a Select write, a Select copy and a questbook LaneFree must all be refused, with the

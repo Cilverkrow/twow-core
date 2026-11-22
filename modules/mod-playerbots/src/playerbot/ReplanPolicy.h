@@ -310,11 +310,12 @@ struct Outcome
 // decision whose decision right before, at the same key, in the same episode and without progress in between, was a rate_limited
 // Keep. The last three are the caller's (R9-2, OB-10 R-3 / R-5 / R-6; the meter never counts them): hops = jumps that were a
 // movement hop (no relocation), grindNoKill = ticks with a grind target the meter was not fed (no kill counter yet), offMap =
-// decisions while the target was on another map (tagged offmap=1, kept out of C1/C2).
+// decisions while the target was on another map (tagged offmap=1, kept out of C1/C2). forcedDropped is the caller's too (R9-a):
+// forced lines above the global forced-line ceiling (ReplanWirePolicy.h kForcedLinesPerMinute); forced counts them all the same.
 struct Counters
 {
     std::uint32_t stalls = 0, relocates = 0, keep = 0, replan = 0, close = 0, forced = 0, rateLimited = 0, forcedAfterRateLimited = 0,
-                  gaps = 0, plannedCredit = 0, hops = 0, grindNoKill = 0, offMap = 0;
+                  gaps = 0, plannedCredit = 0, hops = 0, grindNoKill = 0, offMap = 0, forcedDropped = 0;
 };
 
 inline void Add(Counters& a, Counters const& b)
@@ -331,6 +332,7 @@ inline void Add(Counters& a, Counters const& b)
     a.plannedCredit += b.plannedCredit;
     a.hops += b.hops;
     a.grindNoKill += b.grindNoKill;
+    a.forcedDropped += b.forcedDropped;
     a.offMap += b.offMap;
 }
 
@@ -919,9 +921,9 @@ inline std::size_t FormatReplanMinLine(char* buf, std::size_t n, char cohort, bo
         return 0;
     int const w = std::snprintf(buf, n,
         "[ReplanMin] cohort=%c shadow=%u stalls=%u relocates=%u keep=%u replan=%u close=%u forced=%u rate_limited=%u "
-        "forced_after_rate_limited=%u gaps=%u planned_credit=%u hops=%u grind_nokill=%u offmap=%u dropped=%u",
+        "forced_after_rate_limited=%u gaps=%u planned_credit=%u hops=%u grind_nokill=%u offmap=%u dropped=%u forced_dropped=%u",
         cohort, shadow ? 1u : 0u, k.stalls, k.relocates, k.keep, k.replan, k.close, k.forced, k.rateLimited,
-        k.forcedAfterRateLimited, k.gaps, k.plannedCredit, k.hops, k.grindNoKill, k.offMap, dropped);
+        k.forcedAfterRateLimited, k.gaps, k.plannedCredit, k.hops, k.grindNoKill, k.offMap, dropped, k.forcedDropped);
     return SanitizeLine(buf, w, n);
 }
 }   // namespace ai::replan
