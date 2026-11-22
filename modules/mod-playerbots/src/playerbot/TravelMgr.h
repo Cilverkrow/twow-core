@@ -741,6 +741,11 @@ namespace ai
 		uint32 ret = 0;
 	};
 	extern thread_local DestFetchStats* tDestFetchStats;
+	// A3 step 3 planner S5 F1 (twow-repo#726, F1-ENTWURF-v0.2; AiPlayerbot.Planner.GiverPrefilter, default 0): non-null = the giver
+	// prefilter is on for the GetDestinations calls of this thread with onlyPossible false and maxDistance > 0, and counts into it
+	// (GiverPrefilterPolicy.h Counts). Null (the default) changes nothing; only the planner's giver fetch sets it, by a scope that
+	// always clears it. The prefilter skips only destinations the range check drops too: the list and its order stay the same.
+	extern thread_local giver_prefilter::Counts* tDestRangePrefilter;
 
 	//General container for all travel destinations.
 	class TravelMgr

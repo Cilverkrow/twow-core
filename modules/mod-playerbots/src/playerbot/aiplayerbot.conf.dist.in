@@ -1737,6 +1737,16 @@ AiPlayerbot.Planner.WriteCohort = 0
 # (fetch/sort/loop microseconds and walk/ret destination counts of each fetch stage, - when it did not run) and rest. No line
 # budget, no cohort; it changes no plan. 0 = off (default); any other value is 0 with one error line at load.
 AiPlayerbot.Planner.TimeTrace = 0
+# A3 step 3 planner S5 F1 (twow-repo#726, F1-ENTWURF-v0.2): the planner's giver fetch (every giver within 1500 yd) skips a giver
+# whose distance bound (box distance on the bot's map, portal plus box distance on another map) is already out of range, before
+# the distance is computed. The list and its order stay the same, so no plan changes; only the fetch gets cheaper. Cohort rule:
+# 0 = off (default), 1 = all bots, 2 = cohort B (odd guid), 3 = cohort A; above 3 is 0 with one error line at load. With
+# Planner.TimeTrace = 1 the [PlanTime] line of a prefiltered plan ends with prefilter=1 give_pre= give_xmap= give_inbox= verify=.
+AiPlayerbot.Planner.GiverPrefilter = 0
+# The check of Planner.GiverPrefilter: N = every N-th prefiltered giver fetch of a map thread also runs the original list and writes
+# one "[PlanPrefilter] verify" line (n_orig, n_pre, mismatch, first_idx, pre, xmap, inbox). It costs a second fetch, so a measured
+# run keeps it 0. 0 = off (default).
+AiPlayerbot.Planner.GiverPrefilterVerify = 0
 # A3 R9 / R2 (twow-repo#575, R9-REPLAN-INTERFACE v5, R9-PREREG C2; pair R9-2): the progress meter. It runs in the planner tick, so
 # both keys need AiPlayerbot.Supervisor to apply to the bot and AiPlayerbot.Planner >= 1; set alone they log nothing. Each tick it
 # measures the progress toward the bot's live travel target (distance, quest credit, skill for professions) and,
