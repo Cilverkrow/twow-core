@@ -16,8 +16,10 @@
 #include "playerbot/RotCastPolicy.h"
 #include "playerbot/ZoneKeepPolicy.h"
 #include "Formulas.h"
+#include "playerbot/PlannerTimePolicy.h"   // S5 (twow-repo#726): the [PlanTime] line (AiPlayerbot.Planner.TimeTrace)
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -26,6 +28,9 @@
 #include <memory>
 #include <mutex>
 #include <vector>
+#if defined(__linux__)
+#include <time.h>   // S5: clock_gettime(CLOCK_THREAD_CPUTIME_ID)
+#endif
 
 // A3 step 3 planner P-2b (A3-S3-PLANER-ENTWURF.md v0.3, frozen d6e51878, Nachtrag 1; AiPlayerbot.Planner, default 0): the planner
 // in the shadow. Supervisor::PlanTick is the last statement of Supervisor::Tick (the bot's map thread): it compares a small
@@ -60,6 +65,36 @@ constexpr float kArriveYards = 30.0f;                 // W8: the bot is at its p
 constexpr float kCandidateRadius = 10000.0f;          // the destination search radius (as the travel choice)
 constexpr float kPickupRadius = 1500.0f;              // givers: the fetch walks every giver of every map, so range first
 constexpr std::size_t kMsSamples = 512;               // per cohort and minute, for ms_p50
+
+// S5 (twow-repo#726, AiPlayerbot.Planner.TimeTrace): the clocks of the [PlanTime] line. Steady clock in nanoseconds; the thread
+// CPU time in nanoseconds where the platform has it (Linux), else -1 (cpu_us=na).
+std::int64_t TraceNowNs()
+{
+    return std::int64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count());
+}
+
+std::int64_t ThreadCpuNs()
+{
+#if defined(__linux__)
+    timespec ts;
+    if (clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ts) == 0)
+        return std::int64_t(ts.tv_sec) * 1000000000 + std::int64_t(ts.tv_nsec);
+#endif
+    return -1;
+}
+
+// Points TravelMgr's fetch counts at stats for one fetch on this thread and always clears them again (End or the scope end), so
+// no later fetch of the thread writes into a dead stack object.
+class FetchStatsScope
+{
+public:
+    explicit FetchStatsScope(ai::DestFetchStats* stats) { ai::tDestFetchStats = stats; }
+    ~FetchStatsScope() { ai::tDestFetchStats = nullptr; }
+    void End() const { ai::tDestFetchStats = nullptr; }
+    FetchStatsScope(FetchStatsScope const&) = delete;
+    FetchStatsScope& operator=(FetchStatsScope const&) = delete;
+};
 
 // ---- the minute line and the line budget (one short file-local mutex, the pattern of SupervisorShadow.cpp) -----------------
 std::mutex g_mutex;
@@ -1159,6 +1194,34 @@ void PlanTickImpl(ai::supervisor::Supervisor& sup, PlayerbotAI* ai_, PlanState& 
 
     // ---- the plan ----
     std::uint32_t const startMs = WorldTimer::getMSTime();
+    // S5 (twow-repo#726, AiPlayerbot.Planner.TimeTrace = 1): the [PlanTime] marks of this plan; off = no clock read, no count.
+    bool const timeTrace = sPlayerbotAIConfig.plannerTimeTrace == 1;
+    std::int64_t const traceStartNs = timeTrace ? TraceNowNs() : 0;
+    std::int64_t const traceStartCpuNs = timeTrace ? ThreadCpuNs() : -1;
+    PlanTime planTime;
+    ai::DestFetchStats fetchStats;
+    bool traceHeadDone = false;
+    auto const traceNow = [&]() -> std::int64_t { return timeTrace ? TraceNowNs() : 0; };
+    auto const traceHead = [&](std::int64_t at)
+    {
+        if (timeTrace && !traceHeadDone)
+        {
+            planTime.headUs = UsBetween(traceStartNs, at);
+            traceHeadDone = true;
+        }
+    };
+    auto const traceStage = [&](StageTime& stage, std::int64_t fetchAt, std::int64_t sortAt, std::int64_t loopAt)
+    {
+        if (!timeTrace)
+            return;
+        std::int64_t const endAt = TraceNowNs();
+        stage.ran = true;
+        stage.fetchUs = UsBetween(fetchAt, sortAt);
+        stage.sortUs = UsBetween(sortAt, loopAt);
+        stage.loopUs = UsBetween(loopAt, endAt);
+        stage.walk = fetchStats.walk;
+        stage.ret = fetchStats.ret;
+    };
     std::uint32_t const budgetMs = sPlayerbotAIConfig.plannerBudgetMs;
     bool overBudget = false;
     Weights w;
@@ -1248,9 +1311,16 @@ void PlanTickImpl(ai::supervisor::Supervisor& sup, PlayerbotAI* ai_, PlanState& 
 
     if (!completeIds.empty())
     {
+        std::int64_t const takeFetchAt = traceNow();
+        traceHead(takeFetchAt);
+        fetchStats = ai::DestFetchStats();
+        FetchStatsScope const takeScope(timeTrace ? &fetchStats : nullptr);
         std::vector<ai::TravelDestination*> takers = sTravelMgr.GetDestinations(info,
             std::uint32_t(ai::TravelDestinationPurpose::QuestTaker), completeIds, false, kCandidateRadius);
+        takeScope.End();
+        std::int64_t const takeSortAt = traceNow();
         byDistance(takers);
+        std::int64_t const takeLoopAt = traceNow();
         for (ai::TravelDestination* dest : takers)
         {
             std::uint32_t const questId = QuestOf(dest);
@@ -1276,14 +1346,22 @@ void PlanTickImpl(ai::supervisor::Supervisor& sup, PlayerbotAI* ai_, PlanState& 
             if (!addSlot(std::move(s)))
                 break;
         }
+        traceStage(planTime.take, takeFetchAt, takeSortAt, takeLoopAt);
     }
     if (budgetMs && WorldTimer::getMSTimeDiffToNow(startMs) > budgetMs)
         overBudget = true;   // the budget is checked between the fetches too, not only per candidate
     if (!openIds.empty() && !overBudget && slots.size() < cap)
     {
+        std::int64_t const objFetchAt = traceNow();
+        traceHead(objFetchAt);
+        fetchStats = ai::DestFetchStats();
+        FetchStatsScope const objScope(timeTrace ? &fetchStats : nullptr);
         std::vector<ai::TravelDestination*> objectives = sTravelMgr.GetDestinations(info,
             std::uint32_t(ai::TravelDestinationPurpose::QuestAllObjective), openIds, false, kCandidateRadius);
+        objScope.End();
+        std::int64_t const objSortAt = traceNow();
         byDistance(objectives);
+        std::int64_t const objLoopAt = traceNow();
         for (ai::TravelDestination* dest : objectives)
         {
             std::uint32_t const questId = QuestOf(dest);
@@ -1314,6 +1392,7 @@ void PlanTickImpl(ai::supervisor::Supervisor& sup, PlayerbotAI* ai_, PlanState& 
             if (!addSlot(std::move(s)))
                 break;
         }
+        traceStage(planTime.obj, objFetchAt, objSortAt, objLoopAt);
     }
     if (budgetMs && WorldTimer::getMSTimeDiffToNow(startMs) > budgetMs)
         overBudget = true;
@@ -1321,9 +1400,16 @@ void PlanTickImpl(ai::supervisor::Supervisor& sup, PlayerbotAI* ai_, PlanState& 
     // (TravelMgr.cpp); the planner gates by itself (CanTakeQuest without a message, CanAccept, CanTarget) and writes no counter.
     if (!overBudget && slots.size() < cap)
     {
+        std::int64_t const giveFetchAt = traceNow();
+        traceHead(giveFetchAt);
+        fetchStats = ai::DestFetchStats();
+        FetchStatsScope const giveScope(timeTrace ? &fetchStats : nullptr);
         std::vector<ai::TravelDestination*> givers = sTravelMgr.GetDestinations(info,
             std::uint32_t(ai::TravelDestinationPurpose::QuestGiver), {}, false, kPickupRadius);
+        giveScope.End();
+        std::int64_t const giveSortAt = traceNow();
         byDistance(givers);
+        std::int64_t const giveLoopAt = traceNow();
         for (ai::TravelDestination* dest : givers)
         {
             std::uint32_t const questId = QuestOf(dest);
@@ -1361,7 +1447,10 @@ void PlanTickImpl(ai::supervisor::Supervisor& sup, PlayerbotAI* ai_, PlanState& 
             if (!addSlot(std::move(s)))
                 break;
         }
+        traceStage(planTime.give, giveFetchAt, giveSortAt, giveLoopAt);
     }
+    std::int64_t const traceFetchEndNs = traceNow();   // S5: head (when no stage ran) and rest start here
+    traceHead(traceFetchEndNs);
 
     // Grind at the hub of the plan zone (tier B) and of the next zone (tier C); no table: no hub (fb=band_table_off).
     auto grindSlot = [&](ai::band_table::Row const* row) -> Slot
@@ -1625,6 +1714,22 @@ void PlanTickImpl(ai::supervisor::Supervisor& sup, PlayerbotAI* ai_, PlanState& 
     if (overBudget)
         ++c.overBudget;
     std::uint32_t const ms = WorldTimer::getMSTimeDiffToNow(startMs);
+    if (timeTrace)
+    {
+        std::int64_t const traceEndNs = TraceNowNs();
+        std::int64_t const traceEndCpuNs = ThreadCpuNs();
+        planTime.totalUs = UsBetween(traceStartNs, traceEndNs);
+        planTime.restUs = UsBetween(traceFetchEndNs, traceEndNs);
+        planTime.cpuUs = traceStartCpuNs >= 0 && traceEndCpuNs >= traceStartCpuNs ? (traceEndCpuNs - traceStartCpuNs) / 1000 : -1;
+        planTime.ms = ms;
+        planTime.cands = std::uint32_t(slots.size());
+        planTime.cut = cut;
+        planTime.done = std::uint32_t(completeIds.size());
+        planTime.open = std::uint32_t(openIds.size());
+        planTime.overBudget = overBudget;
+        planTime.guid = guid;
+        planTime.cohort = ai::cohort::Letter(guid);
+    }
     c.msMax = ms;
 
     // ---- the [Plan] line (own budget) ----
@@ -1731,6 +1836,14 @@ void PlanTickImpl(ai::supervisor::Supervisor& sup, PlayerbotAI* ai_, PlanState& 
         }
         else
             ++c.planDropped;
+    }
+
+    // S5 (twow-repo#726): one [PlanTime] line per plan, outside the [Plan] budget and after the timed span.
+    if (timeTrace)
+    {
+        char tbuf[kPlanTimeBuf];
+        FormatPlanTimeLine(tbuf, sizeof(tbuf), planTime);
+        sLog.outBasic("%s", tbuf);
     }
 
     Flush(guid, c, int(ms));
