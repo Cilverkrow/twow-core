@@ -344,7 +344,7 @@ AiPlayerbot.RandomBotAccountCount = 500
 # With this enabled, if you get lags - then you need to reduce amount of online bots, rather than relying on optimizations
 # This will ingore the AiPlayerbot.botActiveAlone setting, all bots will be active regardless
 # Works best together with AiPlayerbot.DisableBotOptimizations = 1
-# (0-1), default 0
+# (0-1), default 1 (the code default is 1 too, twow-core#1156)
 AiPlayerbot.DisableActivityPriorities = 1
 
 # Force bots to become active when a player is nearby
@@ -530,7 +530,7 @@ AiPlayerbot.TurnInRpg = 0
 # Bots will make sounds when repairing, selling items ect.
 AiPlayerbot.GlobalSoundEffects = 0
 
-# Show progress bars for random bots (disabled by default)
+# Show progress bars for random bots (0-1), default 1 (the code default is 1 too, twow-core#1156)
 AiPlayerbot.ShowProgressBars = 1
 
 # Set randombots movement speed to walking anywhere
@@ -539,10 +539,10 @@ AiPlayerbot.RandombotsWalkingRPG = 0
 # Set randombots movement speed to walking only inside buildings
 AiPlayerbot.RandombotsWalkingRPG.InDoors = 0
 
-# Bots greet to the players
+# Bots greet to the players (0-1), default 1 (the code default is 1 too, twow-core#1156)
 AiPlayerbot.EnableGreet = 1
 
-# Show helmet and cloak on randombots (reset required)
+# Show helmet and cloak on randombots (reset required), (0-1), default 1 (the code default is 1 too, twow-core#1156)
 AiPlayerbot.RandomBotShowHelmet = 1
 AiPlayerbot.RandomBotShowCloak = 1
 
@@ -793,6 +793,16 @@ AiPlayerbot.ActionLog.DamageSampleEvery = 5
 # untouched non-quest mob was skipped and bots could hardly grind. 1 = on (default since DS6 bundle B, owner 21.11.2026).
 AiPlayerbot.Grind.GreyByLevel = 1
 
+# OB-10 22.11.2026 (a lever: A/B before any default): the grind travel window of low-level quest-first bots. A persistent
+# roster bot of QuestFirstProgression on its own, level 1-10, takes grind destinations in the GrindMode 1 level window
+# [max(gray + 1, L - 5), L + 1] (creature MaxLevel and area level) instead of the durability window, which is one level wide
+# at L5 and finds no destination at L1-5. The money test (MinLootGold > 0) stays; none of GrindMode 1's other rules (request
+# gate, trip clock, own map, on-site filter) come with it, and a bot GrindMode 1 already covers gets nothing from this key.
+# Above level 10: as before. One [LowLevelWindow] minute line per cohort (fetches / window points / none / trips), omitted when all are 0.
+# A cohort mode: 0 = off (default), 1 = all bots, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid), the
+# same cohorts as QuestBook. Any other value = off (one error line at load).
+AiPlayerbot.Grind.LowLevelWindow = 0
+
 # twow-repo#601 decision order (owner decision 20.10.2026: a quest-first bot always has a quest; L1-c: "attack anything" 5.0
 # ties with "move to rpg target" 5.0 and, with GreyByLevel 1, always wins - turn-ins per bot-h 2.5-3.9 -> 0.6): 1 = a quest-first
 # roster bot on its own below the max level takes as its grind ("attack anything") target only a creature that attacks it or
@@ -1016,7 +1026,7 @@ AiPlayerbot.RandomBotSayWithoutMaster = 1
 AiPlayerbot.AutoPickReward = yes
 
 # Bots equip upgrades (Bots will equip any item obtained from looting or a quest if they are upgrades)
-# Default: 0 (disabled)
+# Default: 1 (enabled; the code default is 1 too, twow-core#1156)
 AiPlayerbot.AutoEquipUpgradeLoot = 1
 
 # One BASIC [ITEM EQUIP] line per bagged uncommon+ weapon/armor decision (equip

@@ -341,7 +341,7 @@ class PlayerbotPlayerScript : public PlayerScript
         // twow-repo#485 (owner decision 5, poaching): a real player invites a roster bot of a bot
         // guild (guildId: his guild) or offers it his charter (guildId 0). True lets the invitation
         // reach the bot instead of "already in a guild"; the bot decides again in GuildAcceptAction
-        // / PetitionSignAction, and GuildMgr switches on the world thread. AllowPoaching = 0 (default)
+        // / PetitionSignAction, and GuildMgr switches on the world thread. AllowPoaching = 0 (the rollback)
         // keeps the core's answer. The charter offer runs on the inviter's map thread: the rule reads
         // the invitee only by guid, through copies.
         bool CanSwitchGuild(Player* inviter, ObjectGuid const& invitee, uint32 guildId) override

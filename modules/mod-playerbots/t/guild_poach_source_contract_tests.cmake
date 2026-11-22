@@ -6,7 +6,7 @@ endif()
 # invitation or charter and switches. One rule (GuildPoachPolicy.h) for the core hook and both bot
 # actions; it reads copies only, because the core asks on the inviter's map thread. The bots never
 # leave or join themselves: GuildMgr::RequestGuildSwitch does it on the world thread (core contract
-# guild_switch_contract). AllowPoaching = 0 (default) keeps "already in a guild".
+# guild_switch_contract). AllowPoaching = 0 (the rollback) keeps "already in a guild".
 
 function(require_text text needle description)
   string(FIND "${text}" "${needle}" offset)
