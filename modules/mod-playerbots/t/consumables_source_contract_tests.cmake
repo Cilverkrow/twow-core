@@ -81,7 +81,7 @@ reject_text("${use_h}" "#include \"playerbot/ConsumablesPolicy.h\"" "policy incl
 require_text("${use_cpp}" "#include \"playerbot/ConsumablesPolicy.h\"" "policy include in UseItemAction.cpp")
 require_text("${usage}" "#include \"playerbot/ConsumablesPolicy.h\"" "policy include in ItemUsageValue.cpp")
 
-# 2. Switch: roster bot on its own only, config check first (the default costs nothing).
+# 2. Switch: roster bot on its own only, config check first (the switch off costs nothing).
 require_text("${use_cpp}" "return sPlayerbotAIConfig.rosterConsumablesUseReal && IsRosterBotOnItsOwn(ai);" "UsesRealConsumables gate")
 require_text("${use_cpp}" "return proto && sPlayerbotAIConfig.rosterConsumablesUseReal &&" "UsesRealConsumable config check first")
 
