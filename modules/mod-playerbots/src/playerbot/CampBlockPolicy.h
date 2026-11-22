@@ -1,8 +1,11 @@
 #pragma once
 
 #include <array>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
+
+#include "CohortPolicy.h"
 
 namespace ai::camp_block
 {
@@ -81,4 +84,42 @@ inline Verdict Judge(bool blocked, bool questDestination)
         return Verdict::Free;
     return questDestination ? Verdict::Fallback : Verdict::Skip;
 }
+
+// Lever 2 shadow (CLI-ROT 22.11.2026, OB-00 (a), OB-10 spec OK d947fa34): the mode of AiPlayerbot.DestinationDeaths.CampBlock.
+// 0 off (default), 1 all bots, 2 cohort B only, 3 cohort A only (crossover), 4 shadow (every bot computes - records its ring and
+// judges its choices - nobody skips or demotes). In modes 2 and 3 the other cohort computes in shadow. Any other value acts like 0.
+constexpr std::uint32_t ModeShadow = 4;
+
+inline bool Applies(std::uint32_t mode, std::uint32_t guidLow)
+{
+    return mode != ModeShadow && ai::cohort::Applies(mode, guidLow);   // 1 all, 2 B, 3 A (CohortPolicy.h)
+}
+
+inline bool Computes(std::uint32_t mode)
+{
+    return mode >= ai::cohort::ModeAll && mode <= ModeShadow;
+}
+
+// The verdict a bot acts on: a shadow bot judges like an applied one (counted) but always goes on as if free.
+inline Verdict Acted(Verdict judged, bool applies)
+{
+    return applies ? judged : Verdict::Free;
+}
+
+// [CampBlock] counters per cohort (0 = A, 1 = B), increments, taken once per minute by the world thread.
+struct Counters
+{
+    std::atomic<std::uint64_t> choices{ 0 };           // finished destination choices of computing roster bots
+    std::atomic<std::uint64_t> blockedSeen{ 0 };       // candidates near an active ring death (judged Skip or Fallback)
+    std::atomic<std::uint64_t> skipped{ 0 };           // candidates skipped (applied)
+    std::atomic<std::uint64_t> wouldSkip{ 0 };         // the same in shadow
+    std::atomic<std::uint64_t> fallback{ 0 };          // quest destinations held back as fallback (applied)
+    std::atomic<std::uint64_t> wouldFallback{ 0 };     // the same in shadow
+    std::atomic<std::uint64_t> changed{ 0 };           // choices with at least one candidate skipped or held back (applied)
+    std::atomic<std::uint64_t> wouldChange{ 0 };       // shadow choices whose selected destination was judged Skip
+    std::atomic<std::uint64_t> wouldChangeQuest{ 0 };  // shadow choices whose selected destination was judged Fallback
+    std::atomic<std::uint64_t> records{ 0 };           // deaths recorded into a ring
+};
+
+inline Counters counters[2];
 }

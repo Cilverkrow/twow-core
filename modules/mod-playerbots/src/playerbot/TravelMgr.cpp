@@ -2544,7 +2544,8 @@ bool TravelTarget::IsDestinationDeathSuppressed(TravelDestination const* destina
 // destination - half of the re-deaths had another travel entry than the death before, 43 % none (corpse run, on the way).
 void TravelTarget::OnCampDeath(uint32 attackers)
 {
-    if (!bot || !ai::cohort::Applies(sPlayerbotAIConfig.destinationDeathsCampBlock, bot->GetGUIDLow()))
+    // Lever 2 shadow (CLI-ROT 22.11.2026): every bot the switch computes for records (modes 2 / 3: the other cohort in shadow, 4: all).
+    if (!bot || !camp_block::Computes(sPlayerbotAIConfig.destinationDeathsCampBlock))
         return;
 
     // Roster bots on their own in the open world only; a real master decides for his bot.
@@ -2557,16 +2558,19 @@ void TravelTarget::OnCampDeath(uint32 attackers)
 
     camp_block::Record(campDeaths, bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), WorldTimer::getMSTime(),
         sPlayerbotAIConfig.destinationDeathsCampBlockSeconds);
+    camp_block::counters[ai::cohort::InB(bot->GetGUIDLow()) ? 1 : 0].records.fetch_add(1, std::memory_order_relaxed);
 
-    // Always visible (BASIC): one line per recorded death, the acceptance signal of the switch.
-    sLog.outBasic("[CampBlock] state=record bot=%u level=%u map=%u zone=%u x=%.0f y=%.0f attackers=%u radius=%.0f seconds=%u",
+    // Always visible (BASIC): one line per recorded death, the acceptance signal of the switch (applied=0: a shadow bot's record).
+    sLog.outBasic("[CampBlock] state=record bot=%u level=%u map=%u zone=%u x=%.0f y=%.0f attackers=%u radius=%.0f seconds=%u applied=%u",
         bot->GetGUIDLow(), bot->GetLevel(), bot->GetMapId(), bot->GetZoneId(), bot->GetPositionX(), bot->GetPositionY(), attackers,
-        sPlayerbotAIConfig.destinationDeathsCampBlockRadius, sPlayerbotAIConfig.destinationDeathsCampBlockSeconds);
+        sPlayerbotAIConfig.destinationDeathsCampBlockRadius, sPlayerbotAIConfig.destinationDeathsCampBlockSeconds,
+        camp_block::Applies(sPlayerbotAIConfig.destinationDeathsCampBlock, bot->GetGUIDLow()) ? 1u : 0u);
 }
 
 bool TravelTarget::IsCampBlocked(WorldPosition const* position) const
 {
-    // Off (or another cohort): the ring stays empty, so nothing is blocked; no position = no rule (fail closed).
+    // Off (or a bot the mode does not compute for): the ring stays empty, so nothing is blocked; no position = no rule (fail closed).
+    // A shadow bot's ring fills and blocks here; the choice only counts it (camp_block::Acted).
     if (!position || !sPlayerbotAIConfig.destinationDeathsCampBlock)
         return false;
     return camp_block::Blocked(campDeaths, position->getMapId(), position->getX(), position->getY(), WorldTimer::getMSTime(),

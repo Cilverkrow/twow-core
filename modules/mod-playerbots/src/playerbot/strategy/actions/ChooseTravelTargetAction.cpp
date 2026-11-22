@@ -1966,6 +1966,11 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
     uint32 campSkipped = 0, campRankedLower = 0;
     TravelDestination* campFallbackDestination = nullptr;
     WorldPosition* campFallbackPosition = nullptr;
+    // Lever 2 shadow (CLI-ROT 22.11.2026, CampBlockPolicy.h modes 3 / 4): who acts on the verdict, and the shadow counts of this choice.
+    bool const campComputes = camp_block::Computes(sPlayerbotAIConfig.destinationDeathsCampBlock);
+    bool const campApplies = camp_block::Applies(sPlayerbotAIConfig.destinationDeathsCampBlock, bot->GetGUIDLow());
+    uint32 campBlockedSeen = 0, campWouldSkip = 0, campWouldFallback = 0;
+    camp_block::Verdict campSelected = camp_block::Verdict::Free;
     bool const preferLocalQuest = UsesQuestFirstProgression(bot) && !ai->HasRealPlayerMaster() &&
         AI_VALUE2(std::string, "manual string", "future travel purpose") == "quest";
     bool hasActiveLocalQuestHub = false;
@@ -2092,8 +2097,15 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
             // a quest destination there only ranks lower (fallback below). A forced target (guild order) is never judged; with the
             // switch off or another cohort the bot's ring is empty and nothing is blocked.
             bool const campBlocked = !target->IsForced() && persistentTarget && persistentTarget->IsCampBlocked(position);
-            camp_block::Verdict const campVerdict = campBlocked ?
+            camp_block::Verdict const campJudged = campBlocked ?
                 camp_block::Judge(true, dynamic_cast<QuestTravelDestination const*>(destination) != nullptr) : camp_block::Verdict::Free;
+            // Lever 2 shadow (CLI-ROT 22.11.2026): a bot the switch only computes for (modes 2 / 3 other cohort, mode 4) judges the same
+            // way but goes on as if free; its would-skips are counted here, its would-fallbacks below, its selection after the loop.
+            camp_block::Verdict const campVerdict = camp_block::Acted(campJudged, campApplies);
+            if (campJudged != camp_block::Verdict::Free)
+                ++campBlockedSeen;
+            if (!campApplies && campJudged == camp_block::Verdict::Skip)
+                ++campWouldSkip;
             if (campVerdict == camp_block::Verdict::Skip)
             {
                 ai->TellDebug(requester, "Skipping destination near a recent camp death.", "debug travel");
@@ -2267,10 +2279,14 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
                     }
                     continue;
                 }
+                // Lever 2 shadow: a quest destination an applied bot would have held back here.
+                if (!campApplies && campJudged == camp_block::Verdict::Fallback)
+                    ++campWouldFallback;
 
                 // local target, not live: no gate (A3 step 3 T02-a)
                 target->SetTarget(destination, position);
                 hasTarget = true;
+                campSelected = campJudged;
                 // A3 step 2 QB-S (AiPlayerbot.QuestBook.SourceChoice, default 0): one line per objective pick of a bot the switch
                 // applies to, with the load-time facts of the source. Every other bot: no line.
                 ai::questsource::NotePick(bot, ai, destination, position);
@@ -2314,6 +2330,40 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
         sLog.outBasic("[QuestFirstRoute] state=deferred bot=%u level=%u reason=camp_block skipped=%u ranked_lower=%u fallback_taken=%u selected_other=%u",
             bot->GetGUIDLow(), bot->GetLevel(), campSkipped, campRankedLower, campFallbackTaken ? 1u : 0u,
             hasTarget && !campFallbackTaken ? 1u : 0u);
+
+    // Lever 2 shadow (CLI-ROT 22.11.2026): the [CampBlock] minute counters of a finished choice (not a budget-aborted slice) of a roster bot
+    // on its own, and its last-choice mark for the [Lever2] death line. would_change(_quest) = a shadow choice that selected a
+    // destination an applied bot would have skipped (held back).
+    if (campComputes && !(chooseBudgetExceeded && !hasTarget) && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) &&
+        !ai->HasRealPlayerMaster())
+    {
+        camp_block::Counters& cc = camp_block::counters[ai::cohort::InB(bot->GetGUIDLow()) ? 1 : 0];
+        cc.choices.fetch_add(1, std::memory_order_relaxed);
+        if (campBlockedSeen)
+            cc.blockedSeen.fetch_add(campBlockedSeen, std::memory_order_relaxed);
+        if (campSkipped)
+            cc.skipped.fetch_add(campSkipped, std::memory_order_relaxed);
+        if (campRankedLower)
+            cc.fallback.fetch_add(campRankedLower, std::memory_order_relaxed);
+        if (campWouldSkip)
+            cc.wouldSkip.fetch_add(campWouldSkip, std::memory_order_relaxed);
+        if (campWouldFallback)
+            cc.wouldFallback.fetch_add(campWouldFallback, std::memory_order_relaxed);
+        if (campSkipped || campRankedLower)
+            cc.changed.fetch_add(1, std::memory_order_relaxed);
+        bool const wouldChange = !campApplies && hasTarget && campSelected == camp_block::Verdict::Skip;
+        bool const wouldChangeQuest = !campApplies && hasTarget && campSelected == camp_block::Verdict::Fallback;
+        if (wouldChange)
+            cc.wouldChange.fetch_add(1, std::memory_order_relaxed);
+        if (wouldChangeQuest)
+            cc.wouldChangeQuest.fetch_add(1, std::memory_order_relaxed);
+        if (hasTarget)
+        {
+            // Kind of the last choice: shadow = what the selected destination was judged; applied = a veto skip, else a quest hold-back.
+            ai->lever2CampAt = uint32(time(nullptr));
+            ai->lever2CampKind = (wouldChange || campSkipped) ? 1 : (wouldChangeQuest || campRankedLower) ? 2 : 0;
+        }
+    }
 
     if(hasTarget)
         ai->TellDebug(requester, "Point at " + std::to_string(uint32(target->Distance(bot))) + "y selected.", "debug travel");

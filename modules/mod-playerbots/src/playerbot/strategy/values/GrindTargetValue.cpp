@@ -221,6 +221,13 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
     bool const safeScored = ai::safe_pull::Computes(safeMode) && !assistCount && !group && !bot->InBattleGround() &&
         !ai->HasRealPlayerMaster() && sRandomPlayerbotMgr.IsFreeBot(bot);
     std::vector<NeighbourCandidate> safeCandidates;
+    // Lever 2 (AiPlayerbot.GrindAvoid.Lever, CLI-ROT 22.11.2026, default 0): the second GrindAvoid threshold (GrindCapPolicy.h) for roster
+    // bots on their own, round 0. Applied: a lever-avoided candidate is skipped; shadow: counted and kept. Off: nothing is judged.
+    uint32 const leverMode = sPlayerbotAIConfig.grindAvoidLever;
+    bool const leverScored = rosterOnItsOwn && !assistCount && !group &&
+        grind_cap::LeverComputes(leverMode, sPlayerbotAIConfig.grindAvoidLeverMaxDeaths);
+    bool const leverApplies = leverScored && grind_cap::LeverApplies(leverMode, bot->GetGUIDLow());
+    uint32 leverSkipped = 0, leverWould = 0, leverReached = 0, leverWouldReached = 0;
 
     for (std::list<ObjectGuid>::iterator tIter = targets.begin(); tIter != targets.end(); tIter++)
     {
@@ -334,6 +341,26 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
             skip(ai::grind_idle::Skip::Avoided);
             logGrind(unit, "ignored (killed this bot repeatedly).");
             continue;
+        }
+
+        // Lever 2: the second threshold, only for a candidate the base rule above kept.
+        bool leverWouldThis = false;
+        if (leverScored && !unit->GetObjectGuid().IsPlayer())
+        {
+            grind_cap::LeverVerdict const lever = grind_cap::JudgeLever(false,
+                grind_cap::LeverAvoids().IsAvoided(bot->GetGUIDLow(), unit->GetEntry(), uint32(now)), leverApplies);
+            if (lever == grind_cap::LeverVerdict::Skip)
+            {
+                ++leverSkipped;
+                skip(ai::grind_idle::Skip::Avoided);
+                logGrind(unit, "ignored (killed this bot, lever).");
+                continue;
+            }
+            if (lever == grind_cap::LeverVerdict::WouldSkip)
+            {
+                ++leverWould;
+                leverWouldThis = true;
+            }
         }
 
         Creature* creature = dynamic_cast<Creature*>(unit);
@@ -495,6 +522,13 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
         }
         else
         {
+            // Lever 2: candidates that reach the solo replace decision, and those among them the lever would skip (would_empty).
+            if (leverScored)
+            {
+                ++leverReached;
+                if (leverWouldThis)
+                    ++leverWouldReached;
+            }
             // twow-repo#656: the same record for the risk-ordered pick (Grind.SafePull).
             if (safeScored)
                 safeCandidates.push_back({ unit, newdistance, sServerFacade.GetDistance2d(bot, unit) });
@@ -518,6 +552,36 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
     // score (applied: replaced; shadow: only counted). Demote only - a pass with a pick keeps a pick.
     if (neighbourScored)
         result = NeighbourPick(result, neighbourCandidates, targets, ai::grind_neighbour::Applies(neighbourMode, bot->GetGUIDLow()));
+
+    // Lever 2: the pass's counters and the last-pick mark for the [Lever2] death line. would_change = a shadow pick the lever avoids
+    // (the base rule already removed its own); would_empty = every candidate at the decision was lever-avoided (shadow) or the lever
+    // emptied the pass (applied).
+    if (leverScored)
+    {
+        bool const pickWould = !leverApplies && result && !result->GetObjectGuid().IsPlayer() &&
+            grind_cap::LeverAvoids().IsAvoided(bot->GetGUIDLow(), result->GetEntry(), uint32(now));
+        bool const empty = leverApplies ? (leverSkipped && !leverReached) : (leverReached && leverWouldReached == leverReached);
+        grind_cap::LeverCounters& lc = grind_cap::leverCounters[ai::cohort::InB(bot->GetGUIDLow()) ? 1 : 0];
+        lc.passes.fetch_add(1, std::memory_order_relaxed);
+        if (result)
+            lc.picks.fetch_add(1, std::memory_order_relaxed);
+        if (leverSkipped)
+        {
+            lc.filtered.fetch_add(leverSkipped, std::memory_order_relaxed);
+            lc.changed.fetch_add(1, std::memory_order_relaxed);
+        }
+        if (leverWould)
+            lc.wouldFilter.fetch_add(leverWould, std::memory_order_relaxed);
+        if (pickWould)
+            lc.wouldChange.fetch_add(1, std::memory_order_relaxed);
+        if (empty)
+            lc.wouldEmpty.fetch_add(1, std::memory_order_relaxed);
+        if (result)
+        {
+            ai->lever2GrindAt = uint32(now);
+            ai->lever2GrindWould = pickWould || (leverApplies && leverSkipped);
+        }
+    }
 
     if (result)
     {

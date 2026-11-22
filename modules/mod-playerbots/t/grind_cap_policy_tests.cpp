@@ -96,5 +96,39 @@ int main()
     Record off;
     for (int i = 0; i < 10; ++i)
         Require(!RecordDeath(off, 1000 + i, 0, 3600, 3600), "0 disables avoidance");
+
+    // Lever 2 (CLI-ROT 22.11.2026): modes 0 off, 1 all, 2 B (odd), 3 A (even), 4 shadow; out of range and threshold 0 = off.
+    for (std::uint32_t mode = 0; mode < 8; ++mode)
+        for (std::uint32_t guid : { 10u, 11u })
+        {
+            bool const inB = (guid & 1u) != 0;
+            bool const wantApplies = mode == 1 || (mode == 2 && inB) || (mode == 3 && !inB);
+            Require(LeverApplies(mode, guid) == wantApplies, "lever applies: 1 all, 2 B, 3 A, never 0 / 4 / out of range");
+            Require(LeverComputes(mode, 1) == (mode >= 1 && mode <= 4), "lever computes in modes 1-4 only");
+            Require(!LeverComputes(mode, 0), "lever threshold 0 = off");
+            if (LeverApplies(mode, guid))
+                Require(LeverComputes(mode, 1), "an applied bot always computes");
+        }
+    Require(JudgeLever(false, true, true) == LeverVerdict::Skip, "applied: lever-avoided candidate skipped");
+    Require(JudgeLever(false, true, false) == LeverVerdict::WouldSkip, "shadow: lever-avoided candidate only counted");
+    Require(JudgeLever(true, true, true) == LeverVerdict::Keep, "a base-avoided candidate is the base rule's, not the lever's");
+    Require(JudgeLever(false, false, true) == LeverVerdict::Keep, "a candidate the lever does not avoid is kept");
+
+    // Threshold 1 in the lever store vs 3 in the base store: one death avoids for the lever only, the base store is untouched.
+    AvoidStore base, lever;
+    Record r1, r2;
+    Require(lever.RecordDeath(5, 77, 1000, 1, 3600, 3600, r1), "lever threshold 1: the first death starts the avoid period");
+    Require(lever.IsAvoided(5, 77, 1001), "lever avoids after one death");
+    Require(!base.RecordDeath(5, 77, 1000, 3, 3600, 3600, r2), "base threshold 3: one death does not avoid");
+    Require(!base.IsAvoided(5, 77, 1001), "base store independent of the lever store");
+    Require(!lever.IsAvoided(5, 77, 1000 + 3601), "lever avoid ends after AvoidSeconds");
+    Require(&LeverAvoids() != &Avoids(), "lever store is its own store");
+
+    // Counters only increment until taken.
+    LeverCounters& c = leverCounters[1];
+    c.wouldEmpty.fetch_add(2);
+    c.wouldEmpty.fetch_add(1);
+    Require(c.wouldEmpty.exchange(0) == 3, "counters are increments, taken once");
+    Require(c.wouldEmpty.load() == 0, "taken counters restart at 0");
     return 0;
 }
