@@ -4942,6 +4942,21 @@ add_test(NAME rescue_hub_policy
   COMMAND rescue_hub_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#575 R2 (AiPlayerbot.QuestRescue.StartValleyFix, OB-10 22.11.2026): the rescue start-valley candidates (RescueValleyPolicy.h:
+# own race only, dedupe, last target without progress, rescue distance; human / dwarf / gnome / goblin); source contract in t/contracts.d.
+add_executable(rescue_valley_policy_tests
+  "${PB_MODULE_DIR}/t/rescue_valley_policy_tests.cpp")
+
+target_include_directories(rescue_valley_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(rescue_valley_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME rescue_valley_policy
+  COMMAND rescue_valley_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # twow-repo#703 item 1 (AiPlayerbot.QuestRescue.NoTargetFreeSlot, default 1 since 703G 18.11.2026): the rescue targets before the global limiter, no
 # slot for a no_target (QuestRescueSlotPolicy.h); source contract in t/contracts.d.
 add_executable(quest_rescue_slot_policy_tests

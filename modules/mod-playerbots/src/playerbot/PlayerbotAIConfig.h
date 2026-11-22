@@ -901,6 +901,7 @@ public:
     uint32 questRescueNoTargetFreeSlot = 1;  // twow-repo#703 item 1: 1 = the rescue targets before the global limiter, a no_target takes no slot (QuestRescueSlotPolicy.h), 0 = as before
     uint32 questRescueHomeHubsL5OwnHub = 0;  // twow-repo#703 item 2: the L5-10 own-hub rows of the HomeHubs table (cohort modes, 0 = off = today's table)
     uint32 questRescueHomeHubsLevelFloor = 0;  // twow-repo#575 RescueHub LevelFloor: undead L5-9 at the own hub (Brill), the Sepulcher from L10 (cohort modes, 0 = off = today's table)
+    uint32 questRescueStartValleyFix = 0;  // twow-repo#575 R2: a roster rescue up to L10 never takes another race's start valley; own start point, deduplicated, beyond the rescue distance, not the last target without progress; goblin pushes get the distance (cohort modes, 0 = off = legacy)
     uint32 questRescueHomeHubs = 1;  // twow-repo#575 RG-a: the quest rescue's anchor table (own start-zone hub < L5, next zone L5-10; cohort modes); 1 = default (SZM adoption 10.11.2026), 0 = rollback
     uint32 grindAvoidMaxDeaths = 0;       // 0 = off
     uint32 grindAvoidWindowSeconds = 3600;

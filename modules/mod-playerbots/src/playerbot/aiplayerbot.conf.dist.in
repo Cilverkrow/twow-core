@@ -1308,6 +1308,16 @@ AiPlayerbot.QuestRescue.HomeHubs.L5OwnHub = 0
 # only from L10. Night elves keep Auberdine (9 of 9 rescued at L7-10 levelled on). Acts only where HomeHubs applies.
 # Cohort mode: 0 = off (default, today's table), 1 = all bots, 2 = cohort B (odd guid), 3 = cohort A (even guid); other values act like 0.
 AiPlayerbot.QuestRescue.HomeHubs.LevelFloor = 0
+# twow-repo#575 R2 (BUG FIX, CLI-PATH 22.11.2026; default 0 until its acceptance unit, then the flip pair; finding dauerb-silverpine
+# TRACE-565-2293 4d1371a0): a roster bot up to L10 whose rescue had no HomeHubs target fell through to the legacy start-valley branch,
+# which offers the start points of the OTHER races of its faction with no distance filter and no dedupe (DAUER-B: Human 565 L8 rescued
+# 51 times to Coldridge, the dwarf = gnome start point, standing there already); the goblin Durotar pushes had no distance check either
+# (Goblin 2293: 54 rescues). With the key: only the bot's own race's start point (also after a HomeHubs fallback), deduplicated, beyond
+# the rescue distance, and not the last rescue target while the bot has made no progress since (level, XP, gathering skill, quest log).
+# Goblin pushes: the same distance filter. An empty list is a no_target ([QuestRescue] state=start_valley kept= near= duplicate= last=,
+# state=goblin_push kept= near=). Roster bots only; others keep the legacy targets.
+# Cohort mode: 0 = off (default, legacy), 1 = all bots, 2 = cohort B (odd guid), 3 = cohort A (even guid); other values act like 0.
+AiPlayerbot.QuestRescue.StartValleyFix = 0
 # A creature entry that killed the bot GrindAvoid.MaxDeaths times within
 # WindowSeconds is skipped as a grind target for AvoidSeconds. 0 = off.
 AiPlayerbot.GrindAvoid.MaxDeaths = 0
