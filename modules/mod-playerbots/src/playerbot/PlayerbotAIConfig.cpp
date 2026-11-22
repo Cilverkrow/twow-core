@@ -70,6 +70,7 @@
 #include <sstream>
 #include "PlayerbotLoginMgr.h"
 #include "playerbot/DeferredLog.h"   // s7r: lines of a world-thread manager scope go to the bot
+#include "playerbot/SupervisorShadow.h"   // twow-repo#726: SetArbiterArmLateField
 
 std::vector<std::string> ConfigAccess::GetValues(const std::string& name) const
 {
@@ -1068,6 +1069,14 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[Supervisor] config key=Supervisor.ArbiterProbe value=%u result=off (0 off, 1 probe)", supervisorArbiterProbe);
         supervisorArbiterProbe = 0;
     }
+    // twow-repo#726: the late arm (Supervisor::ArmLateTick, SupervisorEnforce.cpp); above 1 is off.
+    supervisorArmLate = uint32(config.GetIntDefault("AiPlayerbot.Supervisor.ArmLate", 0));
+    if (supervisorArmLate > 1)
+    {
+        sLog.outError("[Supervisor] config key=Supervisor.ArmLate value=%u result=off (0 off, 1 late arm)", supervisorArmLate);
+        supervisorArmLate = 0;
+    }
+    ai::supervisor::SetArbiterArmLateField(supervisorArmLate != 0);
     // T33-1 silent trap (OB-00 20.11.2026, R3 logging only): the lever is on but can never act (GroupGatherPolicy.h
     // LeverInertReasons). One note line, no clamp, no ERROR prefix (kits read "ERROR:[GroupMgr] config key=" as a clamp line);
     // the arbiter alone can be lifted later by the console: then the soft tag (LeverInertHard false; OB-60 R3 20.11.).
@@ -1091,13 +1100,25 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[Planner] config key=Planner value=%u result=off (0 off, 1 shadow, 2 plan pick acts)", planner);
         planner = 0;
     }
+    // twow-repo#726 F4 (OB-60 review 9f5669b7, OB-10 5a445aa4 + Nachtrag 1): the P-2b seconds keys are read signed and clamped to
+    // the nearest bound with one error line (a negative value no longer wraps at * 1000u, MinBindSec 0 no longer turns the feed
+    // and rule 5 off). 0 stays valid where the conf.dist documents it (MaxIdleSec 0 = never, MaxHoldSec 0 = off). The echo shows
+    // the clamped value.
+    auto const plannerSec = [this](char const* key, int32 def, int32 lo, int32 hi) -> uint32
+    {
+        int32 const raw = config.GetIntDefault(key, def);
+        int32 const v = raw < lo ? lo : (raw > hi ? hi : raw);
+        if (v != raw)
+            sLog.outError("[Planner] config key=%s value=%d result=%d (%d..%d)", key + 12, raw, v, lo, hi);
+        return uint32(v);
+    };
     plannerMargin = config.GetFloatDefault("AiPlayerbot.Planner.Margin", 15.0f);
-    plannerMinBindSec = uint32(config.GetIntDefault("AiPlayerbot.Planner.MinBindSec", 120));
-    plannerMaxIdleSec = uint32(config.GetIntDefault("AiPlayerbot.Planner.MaxIdleSec", 300));
-    plannerMinDwellSec = uint32(config.GetIntDefault("AiPlayerbot.Planner.MinDwellSec", 120));
+    plannerMinBindSec = plannerSec("AiPlayerbot.Planner.MinBindSec", 120, 1, 3600);
+    plannerMaxIdleSec = plannerSec("AiPlayerbot.Planner.MaxIdleSec", 300, 0, 3600);
+    plannerMinDwellSec = plannerSec("AiPlayerbot.Planner.MinDwellSec", 120, 0, 3600);
     plannerMaxCandidates = uint32(config.GetIntDefault("AiPlayerbot.Planner.MaxCandidates", 32));
     plannerBudgetMs = uint32(config.GetIntDefault("AiPlayerbot.Planner.BudgetMs", 2));
-    plannerDeadWaitMaxSec = uint32(config.GetIntDefault("AiPlayerbot.Planner.DeadWaitMaxSec", 600));
+    plannerDeadWaitMaxSec = plannerSec("AiPlayerbot.Planner.DeadWaitMaxSec", 600, 0, 3600);
     plannerDeadProbeYards = config.GetFloatDefault("AiPlayerbot.Planner.DeadProbeYards", 40.0f);
     plannerRouteFactor = config.GetFloatDefault("AiPlayerbot.Planner.RouteFactor", 1.3f);
     plannerDangerCells = uint32(config.GetIntDefault("AiPlayerbot.Planner.DangerCells", 8));
@@ -1107,8 +1128,8 @@ bool PlayerbotAIConfig::Initialize()
     plannerBrainBonusMax = config.GetFloatDefault("AiPlayerbot.Planner.BrainBonusMax", 0.0f);
     plannerTurnInWorkSec = config.GetFloatDefault("AiPlayerbot.Planner.TurnInWorkSec", 0.0f);
     plannerGrindKillsPerMin = config.GetFloatDefault("AiPlayerbot.Planner.GrindKillsPerMin", 2.0f);
-    plannerMaxHoldSec = uint32(config.GetIntDefault("AiPlayerbot.Planner.MaxHoldSec", 1800));
-    plannerRepeatableRetakeSec = uint32(config.GetIntDefault("AiPlayerbot.Planner.RepeatableRetakeSec", 1800));
+    plannerMaxHoldSec = plannerSec("AiPlayerbot.Planner.MaxHoldSec", 1800, 0, 86400);
+    plannerRepeatableRetakeSec = plannerSec("AiPlayerbot.Planner.RepeatableRetakeSec", 1800, 0, 86400);
     plannerRepeatableMaxPerHour = uint32(config.GetIntDefault("AiPlayerbot.Planner.RepeatableMaxPerHour", 1));
     plannerRelocMinYards = config.GetFloatDefault("AiPlayerbot.Planner.RelocMinYards", 60.0f);
     plannerRelocSlack = config.GetFloatDefault("AiPlayerbot.Planner.RelocSlack", 1.5f);
@@ -1263,6 +1284,13 @@ bool PlayerbotAIConfig::Initialize()
     {
         sLog.outError("[QuestFirstRoute] config key=GiverFetchAnyQuest value=%u result=off (0 off, 1 all, 2 cohort B)", questFirstProgressionGiverFetchAnyQuest);
         questFirstProgressionGiverFetchAnyQuest = 0;
+    }
+    // twow-repo#738 L03 QuestGiver.MaxLevelZeroFix: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B, 3 cohort A).
+    questGiverMaxLevelZeroFix = config.GetIntDefault("AiPlayerbot.QuestGiver.MaxLevelZeroFix", 0);
+    if (questGiverMaxLevelZeroFix > 3)
+    {
+        sLog.outError("[QuestFirstRoute] config key=QuestGiver.MaxLevelZeroFix value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", questGiverMaxLevelZeroFix);
+        questGiverMaxLevelZeroFix = 0;
     }
     // twow-repo#601 SkipSkillLockedObjectives: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B).
     questFirstProgressionSkipSkillLockedObjectives = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.SkipSkillLockedObjectives", 0);
@@ -2514,6 +2542,7 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestFirstProgression.StartZoneMinLevel.ObjectiveWindow.AboveLevels", Value(questFirstProgressionStartZoneObjectiveWindowAbove)},
             {"QuestFirstProgression.TransientCountsAfter", Value(questFirstProgressionTransientCountsAfter)},
             {"QuestFirstProgression.TurnInParkFailures", Value(questFirstProgressionTurnInParkFailures)},
+            {"QuestGiver.MaxLevelZeroFix", Value(questGiverMaxLevelZeroFix)},
             {"QuestGroups.Enable", Value(questGroupsEnable)},
             {"QuestGroups.OneHeavyStep", Value(questGroupsOneHeavyStep)},
             {"QuestGroups.ScanBudgetUs", Value(questGroupsScanBudgetUs)},
@@ -2593,6 +2622,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Supervisor", Value(supervisor)},
             {"Supervisor.Arbiter", Value(supervisorArbiter)},
             {"Supervisor.ArbiterProbe", Value(supervisorArbiterProbe)},
+            {"Supervisor.ArmLate", Value(supervisorArmLate)},
             {"ThreadSafeTeleportAck", Value(threadSafeTeleportAck)},
             {"ThrownUsageFix", Value(thrownUsageFix)},
             {"Travel.ElevatorScanCache", Value(travelElevatorScanCache)},

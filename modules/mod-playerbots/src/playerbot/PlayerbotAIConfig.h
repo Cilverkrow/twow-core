@@ -986,6 +986,10 @@ public:
     // guid pair; ArbiterLanePolicy.h IsProbeBot). 0 off, 1 probe (at arbiter 2 three refused writes every 10 minutes, at 1 only
     // the paired count); other = 0 + error line.
     uint32 supervisorArbiterProbe = 0;
+    // twow-repo#726 (AiPlayerbot.Supervisor.ArmLate, default 0; bug fix, default 1 after acceptance + OB-10): a bot the arming
+    // edge left Passive (parked, battleground, out of the quest book scope) is armed later, once eligible. 0 off (the edge only,
+    // as before), 1 on (retry at most every 5 s while enforcing; Supervisor::ArmLateTick); other = 0 + error line.
+    uint32 supervisorArmLate = 0;
     // A3 step 3 planner P-1 (AiPlayerbot.Planner.BandTable, default ""): path of the planner's band table (BandTable.cpp). Read
     // once at boot, fail closed; "" = no file I/O, no line, no table (the planner then has no zone term).
     std::string plannerBandTable;
@@ -1075,6 +1079,11 @@ public:
     bool questBookNeedPerObjectiveLog = false;
     // twow-repo#627 S7 help groups (QuestGroupPolicy.h, QuestGroupWorld.cpp); Enable: 0 off, 1 all, 2 cohort B, 3 cohort A.
     uint32 questGroupsEnable = 0;
+    // twow-repo#738 L03 (AiPlayerbot.QuestGiver.MaxLevelZeroFix, OB-10 decision 085028ec; default 0 until its acceptance unit): the
+    // quest giver trip check reads a quest template MaxLevel of 0 as "no upper limit", as the core (Player::CanTakeQuest) and our
+    // quest search check (ChooseTravelTargetAction.cpp) do. 0 = the old unsigned compare, which refuses every MaxLevel 0 quest;
+    // 1 all, 2 cohort B (odd low guid), 3 cohort A (even low guid).
+    uint32 questGiverMaxLevelZeroFix = 0;
     uint32 questGroupsScanSeconds = 60;
     // twow-repo#628: the S7 scan spread over this many updates (0/1 = the whole scan in one update).
     uint32 questGroupsScanSlices = 0;

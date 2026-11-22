@@ -211,6 +211,10 @@ PlayerTravelInfo::PlayerTravelInfo(Player* player, bool gapGrind)
     // RpgTravelDestination::IsPossible only as a value. Mode 0: false for every bot, as before.
     rpgAreaFromSpawn = ai::cohort::Applies(sPlayerbotAIConfig.travelRpgAreaLevelFromSpawn, player->GetGUIDLow());
 
+    // twow-repo#738 L03 (AiPlayerbot.QuestGiver.MaxLevelZeroFix): the giver MaxLevel 0 bit, here on the bot thread; read by
+    // QuestRelationTravelDestination::IsPossible only as a value. Mode 0: false for every bot, the old compare.
+    giverMaxLevelZeroOpen = ai::cohort::Applies(sPlayerbotAIConfig.questGiverMaxLevelZeroFix, player->GetGUIDLow());
+
     // twow-repo#601 quest acceptance lever (iv) (QuestFirstProgression.GiverFetchAnyQuest, review 28.10.): a roster bot of the quest-first
     // flow without a real player master, in the mode's cohort, as SkipSkillLockedObjectives / ContestedObjectiveWait. Read by the quest
     // fetch job (every giver in range) and QuestRelationTravelDestination::IsActive (the destination's own quest) only as a value.
@@ -332,7 +336,11 @@ bool QuestRelationTravelDestination::IsPossible(const PlayerTravelInfo& info) co
         else if (!forceThisQuest && (int32)quest->GetQuestLevel() >= (int32)info.GetLevel() + (int32)5)
             return refuse(ai::quest_search::GiverDropQuestLevel);
 
-        if ((int32)info.GetLevel() < quest->GetMinLevel() || (int32)info.GetLevel() > quest->GetMaxLevel())
+        // twow-repo#738 L03 (AiPlayerbot.QuestGiver.MaxLevelZeroFix, default 0): with the key a MaxLevel of 0 is no upper limit,
+        // as in the core (Player::CanTakeQuest) and in ChooseTravelTargetAction.cpp's search check; 0 keeps the old compare.
+        bool const maxLevelZeroIsOpen = info.UsesGiverMaxLevelZeroOpen();
+        if ((int32)info.GetLevel() < quest->GetMinLevel() ||
+            ((!maxLevelZeroIsOpen || quest->GetMaxLevel()) && (int32)info.GetLevel() > quest->GetMaxLevel()))
             return refuse(ai::quest_search::GiverDropMinMaxLevel);
 
         // twow-repo#601 S5a (BandLadder, giver filter E): an in-scope bot whose band has a usable ladder row skips the giver of a
