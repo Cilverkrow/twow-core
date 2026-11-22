@@ -2225,6 +2225,16 @@ void PlayerbotAI::BuildCraftOnlyQuests()
             quests[questId].push_back(need);
         }
 
+    // OB-10 Q1(b): the built set by id, sorted, once per build - the acceptance checks every census quest by id.
+    std::vector<uint32> questIds;
+    questIds.reserve(quests.size());
+    for (auto const& entry : quests)
+        questIds.push_back(entry.first);
+    std::sort(questIds.begin(), questIds.end());
+    for (uint32 const questId : questIds)
+        for (ai::quest_craft_only::Need const& need : quests[questId])
+            sLog.outBasic("%s", ai::quest_craft_only::FormatQuestLine(questId, need.itemId, need.required).c_str());
+
     uint32 const questCount = uint32(quests.size());
     craftOnlyQuests.store(built.release(), std::memory_order_release);
     sLog.outBasic("%s", ai::quest_craft_only::FormatInitLine(items, questCount, sPlayerbotAIConfig.questFeasibilityCraftOnlySkip).c_str());

@@ -77,6 +77,7 @@ int main()
     std::string const held1 = FormatSkipLine(1, 2, 3, Path::Held, missing[1]);
     Require(Has(held1, "state=held") && !Has(held1, "state=skip") && Has(held1, "path=held"), "a held quest is not a skip");
     Require(FormatInitLine(253, 21, 1) == "[QuestCraftOnly] init mode=1 craft_only_items=253 quests=21", "init line");
+    Require(FormatQuestLine(41305, 41340, 1) == "[QuestCraftOnly] quest=41305 item=41340 required=1", "quest list line");
     Require(FormatMinuteLine(4, 2, 1) == "[QuestCraftOnly] minute skips=4 giver_inactive=2 held_craft_only=1", "minute line");
     Require(ModeMax == 3, "modes 0-3");
 
