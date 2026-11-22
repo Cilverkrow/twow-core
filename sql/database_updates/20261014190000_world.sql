@@ -52,6 +52,15 @@ SELECT s.`guid`, s.`id`, 0, 0, 0, s.`map`, s.`x`, s.`y`, s.`z`, s.`o`, 300, 300,
    AND NOT EXISTS (SELECT 1 FROM `creature` c WHERE c.`id` = s.`id`)
    AND NOT EXISTS (SELECT 1 FROM `creature` c WHERE c.`guid` = s.`guid`);
 
+-- Test databases that ran the first version of this file (before GM check 2) still carry the old Okul and Farwind
+-- rows, because the INSERT above skips NPCs that already have a spawn. Move exactly those rows (old position only).
+UPDATE `creature` SET `position_x` = -955.30, `position_y` = -3524.35, `position_z` = 56.88
+ WHERE `guid` = 2990013 AND `id` = 62638 AND ABS(`position_x` + 954.0) < 0.01 AND ABS(`position_y` + 3526.0) < 0.01
+   AND ABS(`position_z` - 71.02) < 0.01;
+UPDATE `creature` SET `position_x` = -3853.34, `position_y` = -4433.48, `position_z` = 10.41
+ WHERE `guid` = 2990015 AND `id` = 62719 AND ABS(`position_x` + 3857.0) < 0.01 AND ABS(`position_y` + 4439.0) < 0.01
+   AND ABS(`position_z` - 17.33) < 0.01;
+
 -- End state. The updater ignores statement results, so a failed or skipped step must fail
 -- here: the CHECK turns a wrong end state into an error (temporary table, no cleanup needed).
 CREATE TEMPORARY TABLE IF NOT EXISTS `tmp_check_579b` (`ok` TINYINT(1) NOT NULL CHECK (`ok` = 1));
