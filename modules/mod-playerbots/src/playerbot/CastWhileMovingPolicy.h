@@ -14,7 +14,7 @@ namespace ai::cast_moving
 // one bot). A loot cast - OPEN_LOCK (mining, herbs, chests, quest objects) or SKINNING with its loot target found and no item
 // target (Pick Lock on a lockbox is not one) - now casts after the stop, always. Every other cast: Rotation.CastStopFirst
 // below. A started loot cast also holds the AI for its cast time (OpenLootAction): the engine replaced the cast wait with
-// the action's react delay, and the next movement action interrupted the cast (CastWait.Preparing is 0 by default).
+// the action's react delay, and the next movement action interrupted the cast (CastWait.Preparing was 0 by default until 21.11.2026).
 // Pure rules, no game types.
 
 // SpellEffects of SpellDefines.h.

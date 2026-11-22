@@ -7,6 +7,7 @@
 #include "playerbot/StartZonePolicy.h"
 #include "playerbot/QuestFailureClassPolicy.h"
 #include "playerbot/QuestGrindModePolicy.h"
+#include "playerbot/LowLevelWindowPolicy.h"   // OB-10 22.11.: Grind.LowLevelWindow
 #include "playerbot/QuestFirstOrderPolicy.h"   // twow-repo#601 decision order (Grind.QuestFirstOrder)
 #include "playerbot/ResurrectDelayPolicy.h"   // twow-repo#575 H3 (Revive.DelayResurrectRequest mode)
 #include "playerbot/AiJitterPolicy.h"
@@ -1842,6 +1843,18 @@ bool PlayerbotAI::IsQuestGapGrind()
         HasRealPlayerMaster(), bot->GetLevel(), sWorld.getConfig(CONFIG_UINT32_MAX_PLAYER_LEVEL));
 }
 
+// AiPlayerbot.Grind.LowLevelWindow (OB-10 22.11.2026, LowLevelWindowPolicy.h): the GrindMode 1 window for L1-10 quest-first bots.
+// The config is read first, so with 0 nothing else is tested; a bot GrindMode 1 already covers (IsQuestGapGrind) is no change.
+bool PlayerbotAI::IsLowLevelWindow()
+{
+    if (!sPlayerbotAIConfig.grindLowLevelWindow || !bot)
+        return false;
+
+    return ai::low_level_window::Applies(sPlayerbotAIConfig.grindLowLevelWindow, bot->GetGUIDLow(),
+        sPlayerbotAIConfig.questFirstProgressionEnabled && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) &&
+            !HasRealPlayerMaster(), bot->GetLevel(), IsQuestGapGrind());
+}
+
 // twow-repo#601 decision order (AiPlayerbot.Grind.QuestFirstOrder, owner 20.10.2026 via OB-00): the same population as
 // QuestFirstProgression (Enabled + persistent roster member), on its own, below the max player level. The config is read
 // first, so with 0 nothing else is tested. Mode 2 (OB-00 20.10.: in-realm A/B): only cohort B (odd low guid, CohortPolicy.h).
@@ -1934,6 +1947,29 @@ std::string PlayerbotAI::TakeGrindWindowMinuteLine()
     for (std::size_t event = 0; event < ai::quest_grind_mode::WindowEventCount; ++event)
         counts[event] = grindWindowCounts[event].exchange(0, std::memory_order_relaxed);
     return ai::quest_grind_mode::FormatWindowMinuteLine(counts);
+}
+
+// Grind.LowLevelWindow [LowLevelWindow] (OB-10 22.11.2026): window grind fetches, their destination points, the choices without
+// a target and the window grind trips, per cohort, since the last minute line; counted on the map threads, taken by the world
+// thread (relaxed atomics, no lock).
+namespace
+{
+std::atomic<uint32> lowLevelWindowCounts[ai::low_level_window::SlotCount] = {};
+}
+
+void PlayerbotAI::NoteLowLevelWindow(uint8 event, uint32 guidLow, uint32 n)
+{
+    if (event < ai::low_level_window::EventCount && n)
+        lowLevelWindowCounts[ai::low_level_window::Slot(ai::low_level_window::Event(event), guidLow)].fetch_add(n,
+            std::memory_order_relaxed);
+}
+
+std::string PlayerbotAI::TakeLowLevelWindowMinuteLine()
+{
+    std::array<std::uint32_t, ai::low_level_window::SlotCount> counts = {};
+    for (std::size_t slot = 0; slot < ai::low_level_window::SlotCount; ++slot)
+        counts[slot] = lowLevelWindowCounts[slot].exchange(0, std::memory_order_relaxed);
+    return ai::low_level_window::FormatMinuteLine(counts);
 }
 
 // GrindMode 2, the bot's own thread: one count per blocked grind decision, one [QuestIdle] line per reason and idle
@@ -3277,7 +3313,7 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
                 return;
             }
         }
-        // twow-repo#602 (AiPlayerbot.CastWait.Preparing, default 0): a spell with a cast time is PREPARING until it is
+        // twow-repo#602 (AiPlayerbot.CastWait.Preparing, default 1, 0 = rollback): a spell with a cast time is PREPARING until it is
         // cast, so the branch above never held the AI for it and the engine re-ran every ReactDelay against its own
         // cast (SPELL_IN_PROGRESS). Hold it until the real end (m_timer, pushback included), capped per spell. Bots of a
         // real player keep answering their master's commands at once (as with AiPlayerbot.Perf.CombatIdleYield).

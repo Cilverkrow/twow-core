@@ -265,7 +265,7 @@ inline bool RestoreRetries(char const* reason, std::uint32_t attempts)
     return attempts < RestoreAttempts && reason && (std::string_view(reason) == "busy" || std::string_view(reason) == "no_ai");
 }
 
-// twow-repo#551 (owner 11.10.2026, AiPlayerbot.Park.Seats, default 0): parked bots sit on real chairs of the inn, not
+// twow-repo#551 (owner 11.10.2026, AiPlayerbot.Park.Seats, default 1, 0 = rollback): parked bots sit on real chairs of the inn, not
 // in a ring on the floor or the street. A seat is one slot of a CHAIR gameobject (benches have several, on a line at
 // right angles to the object, size apart - as GameObject::GetClosestChairSlotPosition), within SeatRadiusYards of the
 // spot (the innkeeper) and SeatMaxHeightDiff in height (the upper floor counts). Bots without a free seat stand on the

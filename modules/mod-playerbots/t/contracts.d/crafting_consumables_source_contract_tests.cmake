@@ -85,7 +85,7 @@ require_text("${config_cpp}" "            {\"Crafting.Consumables\", Value(craft
 require_order("${config_cpp}" "            {\"CheatItem.Trace\", Value(cheatItemTrace)},\n" "            {\"Crafting.Consumables\", Value(craftingConsumables)},\n" "[ConfigEcho]: CheatItem.Trace before Crafting.Consumables")
 require_order("${config_cpp}" "{\"Crafting.Consumables\", Value(craftingConsumables)}," "{\"CustomRaceStartZones\"" "parsed mode in [ConfigEcho], sorted before CustomRaceStartZones")
 
-# 1. One helper: config first (the default costs nothing), roster bot on its own, cohort.
+# 1. One helper: config first (the switch off costs nothing), roster bot on its own, cohort.
 require_text("${pu_h}" "bool CraftingConsumablesFor(PlayerbotAI* ai);" "(1) helper declared")
 between("${pu_cpp}" "bool ai::CraftingConsumablesFor(PlayerbotAI* ai)" "\n}\n" helper)
 require_text("${helper}" "    if (!sPlayerbotAIConfig.craftingConsumables)\n        return false;" "(1) config check first")

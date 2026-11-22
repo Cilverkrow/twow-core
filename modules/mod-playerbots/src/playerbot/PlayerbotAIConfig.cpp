@@ -15,6 +15,7 @@
 #include "playerbot/ActionLogSamplePolicy.h"
 #include "playerbot/DamageLogPolicy.h"   // twow-repo#653: AiPlayerbot.ActionLog.DamageSampleEvery
 #include "playerbot/QuestFeasibilityPolicy.h"
+#include "playerbot/LowLevelWindowPolicy.h"   // OB-10 22.11.: Grind.LowLevelWindow mode
 #include "playerbot/SpecPathPolicy.h"
 #include "playerbot/EmergencyLadderPolicy.h"
 #include "playerbot/RestGatePolicy.h"
@@ -221,7 +222,7 @@ bool PlayerbotAIConfig::Initialize()
 
     ConfigAccess* configA = reinterpret_cast<ConfigAccess*>(&config);
 
-    BarGoLink::SetOutputState(config.GetBoolDefault("AiPlayerbot.ShowProgressBars", false));
+    BarGoLink::SetOutputState(config.GetBoolDefault("AiPlayerbot.ShowProgressBars", true));
     globalCoolDown = (uint32) config.GetIntDefault("AiPlayerbot.GlobalCooldown", 500);
     maxWaitForMove = config.GetIntDefault("AiPlayerbot.MaxWaitForMove", 3000);
     expireActionTime = config.GetIntDefault("AiPlayerbot.ExpireActionTime", 5000);
@@ -1760,16 +1761,16 @@ bool PlayerbotAIConfig::Initialize()
     deleteRandomBotArenaTeams = config.GetBoolDefault("AiPlayerbot.DeleteRandomBotArenaTeams", false);
 
     //cosmetics (by lidocain)
-    randomBotShowCloak = config.GetBoolDefault("AiPlayerbot.RandomBotShowCloak", false);
-    randomBotShowHelmet = config.GetBoolDefault("AiPlayerbot.RandomBotShowHelmet", false);
+    randomBotShowCloak = config.GetBoolDefault("AiPlayerbot.RandomBotShowCloak", true);
+    randomBotShowHelmet = config.GetBoolDefault("AiPlayerbot.RandomBotShowHelmet", true);
 
 	//SPP switches
-    enableGreet = config.GetBoolDefault("AiPlayerbot.EnableGreet", false);
+    enableGreet = config.GetBoolDefault("AiPlayerbot.EnableGreet", true);
 	disableRandomLevels = config.GetBoolDefault("AiPlayerbot.DisableRandomLevels", false);
     instantRandomize = config.GetBoolDefault("AiPlayerbot.InstantRandomize", true);
     randomBotRandomPassword = config.GetBoolDefault("AiPlayerbot.RandomBotRandomPassword", true);
     playerbotsXPrate = config.GetFloatDefault("AiPlayerbot.XPRate", 1.0f);
-    disableActivityPriorities = config.GetBoolDefault("AiPlayerbot.DisableActivityPriorities", false);
+    disableActivityPriorities = config.GetBoolDefault("AiPlayerbot.DisableActivityPriorities", true);
     forceActiveWhenNearPlayer = config.GetBoolDefault("AiPlayerbot.ForceActiveWhenNearPlayer", false);
     limitCombatActivity = config.GetBoolDefault("AiPlayerbot.LimitCombatActivity", false);
     guildOrderAlwaysActive = config.GetBoolDefault("AiPlayerbot.GuildOrderAlwaysActive", true);
@@ -1794,6 +1795,14 @@ bool PlayerbotAIConfig::Initialize()
     actionLogGuids = ai::action_log::ParseSample(config.GetStringDefault("AiPlayerbot.ActionLog.Guids", ""));   // twow-repo#601 / #614
     actionLogDamageSampleEvery = ai::damage_log::Every(config.GetIntDefault("AiPlayerbot.ActionLog.DamageSampleEvery", 5));   // twow-repo#653
     grindGreyByLevel = config.GetBoolDefault("AiPlayerbot.Grind.GreyByLevel", true);   // twow-repo#601 / #614
+    // OB-10 22.11.2026: a cohort mode (LowLevelWindowPolicy.h); an unknown mode is off.
+    grindLowLevelWindow = uint32(config.GetIntDefault("AiPlayerbot.Grind.LowLevelWindow", 0));
+    if (!ai::low_level_window::ValidMode(grindLowLevelWindow))
+    {
+        sLog.outError("[LowLevelWindow] config key=Grind.LowLevelWindow value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)",
+            grindLowLevelWindow);
+        grindLowLevelWindow = 0;
+    }
     grindQuestFirstOrder = config.GetIntDefault("AiPlayerbot.Grind.QuestFirstOrder", 0);   // twow-repo#601 decision order
     if (grindQuestFirstOrder > 2)
         grindQuestFirstOrder = 0;   // an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B)
@@ -1978,7 +1987,7 @@ bool PlayerbotAIConfig::Initialize()
 
     //SPP automation
     autoPickReward = config.GetStringDefault("AiPlayerbot.AutoPickReward", "no");
-    autoEquipUpgradeLoot = config.GetBoolDefault("AiPlayerbot.AutoEquipUpgradeLoot", false);
+    autoEquipUpgradeLoot = config.GetBoolDefault("AiPlayerbot.AutoEquipUpgradeLoot", true);
     equipDiagnosticsTrace = config.GetBoolDefault("AiPlayerbot.EquipDiagnostics.Trace", false);
     auctionHouseEnabled = config.GetBoolDefault("AiPlayerbot.AuctionHouse.Enabled", true);
     syncQuestWithPlayer = config.GetBoolDefault("AiPlayerbot.SyncQuestWithPlayer", false);
@@ -2439,6 +2448,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Gathering.PaceReachYards", Value(gatheringPaceReachYards)},
             {"Gathering.Trace", Value(gatheringTrace)},
             {"Grind.GreyByLevel", Value(grindGreyByLevel)},
+            {"Grind.LowLevelWindow", Value(grindLowLevelWindow)},
             {"Grind.NeighbourAware", Value(grindNeighbourAware)},
             {"Grind.QuestFirstOrder", Value(grindQuestFirstOrder)},
             {"Grind.SafePull", Value(grindSafePull)},

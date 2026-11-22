@@ -25,7 +25,7 @@ void GuildStrategy::InitNonCombatTriggers(std::list<TriggerNode*> &triggers)
         "leave large guild",
         NextAction::array(0, new NextAction("guild leave", 4.0f), NULL)));
 
-    // twow-repo#485: guild note of roster bots (AiPlayerbot.RosterGuild.GuildNote, default off).
+    // twow-repo#485: guild note of roster bots (AiPlayerbot.RosterGuild.GuildNote, default 1, 0 = rollback).
     triggers.push_back(new TriggerNode(
         "roster guild note",
         NextAction::array(0, new NextAction("roster guild note", 4.0f), NULL)));

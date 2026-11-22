@@ -28,6 +28,7 @@
 #include "playerbot/QuestTurnInParkPolicy.h"
 #include "playerbot/QuestFailureClassPolicy.h"
 #include "playerbot/QuestGrindModePolicy.h"
+#include "playerbot/LowLevelWindowPolicy.h"   // OB-10 22.11.: Grind.LowLevelWindow
 #include "playerbot/QuestFirstOrderPolicy.h"   // twow-repo#601 decision order (Grind.QuestFirstOrder)
 #include "playerbot/QuestBandPolicy.h"         // twow-repo#601 S5a F1: the band empty streak value
 #include "playerbot/QuestGroupWorld.h"         // twow-repo#627 S7 hook: the queue age for FailureClasses.GroupNeeded
@@ -1060,6 +1061,34 @@ bool ChooseTravelTargetAction::Execute(Event& event)
         newTarget.SetRelevance(targetRelevance);
     }
 
+    // AiPlayerbot.Grind.LowLevelWindow (OB-10 22.11.2026): an L1-10 quest-first bot's grind choice - it and its trip ask IsActive
+    // with the window snapshot (no own-map skip, no other GrindMode 1 rule); a gap filler is never one (IsLowLevelWindow).
+    // Switch 0 and every other bot or purpose: false, as before. Counted here (fetches= / points= / added=, per cohort): the fetch,
+    // the window destination points it returned and those of them the old durability window refuses - each destination asked once
+    // with the plain snapshot (PlayerTravelInfo without a window: the same tests but the old level window), whatever the choice
+    // then does.
+    if (futureTravelPurpose == std::to_string(uint32(TravelDestinationPurpose::Grind)) && ai->IsLowLevelWindow())
+    {
+        newTarget.SetLowLevelWindow(true);
+        PlayerTravelInfo const plainInfo(bot, false);
+        std::unordered_map<TravelDestination const*, bool> oldWindowTakes;
+        uint32 windowPoints = 0, addedPoints = 0;
+        for (auto const& [partition, travelPoints] : destinationList)
+            for (auto const& travelPoint : travelPoints)
+            {
+                ++windowPoints;
+                TravelDestination const* const destination = std::get<0>(travelPoint);
+                auto taken = oldWindowTakes.find(destination);
+                if (taken == oldWindowTakes.end())
+                    taken = oldWindowTakes.emplace(destination, destination && destination->IsPossible(plainInfo)).first;
+                if (!taken->second)
+                    ++addedPoints;
+            }
+        PlayerbotAI::NoteLowLevelWindow(uint8(ai::low_level_window::Event::Fetches), bot->GetGUIDLow());
+        PlayerbotAI::NoteLowLevelWindow(uint8(ai::low_level_window::Event::Points), bot->GetGUIDLow(), windowPoints);
+        PlayerbotAI::NoteLowLevelWindow(uint8(ai::low_level_window::Event::Added), bot->GetGUIDLow(), addedPoints);
+    }
+
     // twow-repo#601 S2 R3 (GrindMode 1, review C-F2): the gap grind choice - only this one gets the R3 window snapshot and the
     // own-map skip in SetBestTarget; a quest choice of grind mobs keeps the old tests. GrindMode 0 / 2: false, as before.
     if (ai->IsQuestGapGrind() && futureTravelPurpose == std::to_string(uint32(TravelDestinationPurpose::Grind)))
@@ -1151,6 +1180,10 @@ bool ChooseTravelTargetAction::Execute(Event& event)
         // #416: out of time, not out of targets - the next list goes on.
         if (chooseBudgetExceeded)
             return false;
+
+        // Grind.LowLevelWindow: a finished window grind choice without a target (none=, per cohort).
+        if (newTarget.IsLowLevelWindow())
+            PlayerbotAI::NoteLowLevelWindow(uint8(ai::low_level_window::Event::None), bot->GetGUIDLow());
 
         // twow-repo#601 (QuestLoop.InactiveReselect): the search right after an emptied camp found no quest target - the bot goes
         // back to that camp in COOLDOWN for the time left, as without the switch (no widening, no empty-search count: the old
@@ -1581,6 +1614,10 @@ bool ChooseTravelTargetAction::Execute(Event& event)
     if (!setNewTarget(requester, &newTarget, travelTarget))
         return false;
     
+    // Grind.LowLevelWindow: a finished window grind choice that became the travel target (trips=, per cohort).
+    if (newTarget.IsLowLevelWindow())
+        PlayerbotAI::NoteLowLevelWindow(uint8(ai::low_level_window::Event::Trips), bot->GetGUIDLow());
+
     return true;
 }
 
@@ -1900,7 +1937,8 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
     };
     // twow-repo#601 S2 R3 (GrindMode 1, review C-F2): the gap grind choice asks IsActive with the R3 window snapshot - one per
     // choice, the reuse path below; every other choice as before (the flag is set only behind IsQuestGapGrind).
-    bool const gapGrindChoice = target->IsGapGrindChoice();
+    // Grind.LowLevelWindow: a low-level window grind choice takes the same window snapshot (the own-map skip stays mode 1 only).
+    bool const gapGrindChoice = target->IsGapGrindChoice() || target->IsLowLevelWindow();
     if (gapGrindChoice)
         choiceTravelInfo.emplace(bot, true);
 
@@ -2484,8 +2522,9 @@ bool ChooseGroupTravelTargetAction::Execute(Event& event)
         if (groupTarget->GetDestination()->IsBandHub())
             continue;
 
-        // twow-repo#601 S2 R3 (review C-F2): a member's gap grind trip (gapWindowEnd, GrindMode 1 only) is judged with its window.
-        if (!groupTarget->GetDestination()->IsActive(player, PlayerTravelInfo(player, groupTarget->GetGapWindowEnd() != 0)) || !groupTarget->IsConditionsActive())
+        // twow-repo#601 S2 R3 (review C-F2): a member's gap grind trip (gapWindowEnd, GrindMode 1 only) is judged with its window;
+        // Grind.LowLevelWindow: a member's low-level window trip too.
+        if (!groupTarget->GetDestination()->IsActive(player, PlayerTravelInfo(player, groupTarget->GetGapWindowEnd() != 0 || groupTarget->IsLowLevelWindow())) || !groupTarget->IsConditionsActive())
         {
             GetBotAI(player)->TellDebug(requester,"Target is cooling down because a group member found it to be inactive.", "debug travel");
             groupTarget->SetStatus(TravelStatus::TRAVEL_STATUS_COOLDOWN);
