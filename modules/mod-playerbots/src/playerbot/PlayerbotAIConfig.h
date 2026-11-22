@@ -907,6 +907,8 @@ public:
     uint32 grindAvoidMaxDeaths = 0;       // 0 = off
     uint32 grindAvoidWindowSeconds = 3600;
     uint32 grindAvoidSeconds = 3600;
+    uint32 grindAvoidLever = 0;           // lever 2: 0 off (default), 1 all, 2 cohort B, 3 cohort A, 4 shadow (GrindCapPolicy.h)
+    uint32 grindAvoidLeverMaxDeaths = 1;  // lever 2 threshold (deaths to one entry within WindowSeconds); 0 = lever off
     // Radius around the bot within which an active quest destination is a
     // local hub candidate. It is spatial, not a hard-coded zone allowlist.
     float questFirstProgressionLocalHubRadius = 1200.0f;

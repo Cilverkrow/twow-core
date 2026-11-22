@@ -77,7 +77,7 @@ function(check policy grind_cpp grind_h config_h config_cpp dist mgr_cpp ai_cpp 
   need("${config_cpp}" "grindSafePull = config.GetIntDefault(\"AiPlayerbot.Grind.SafePull\", 0);   // twow-repo#656\n    if (grindSafePull > 4)\n        grindSafePull = 0;" "config read, > 4 = off")
   need("${config_cpp}" "grindSafePullReadyHp = std::min<uint32>(100, uint32(std::max<int32>(0, config.GetIntDefault(\"AiPlayerbot.Grind.SafePull.ReadyHp\", 80))));" "ready HP read, 0-100")
   need("${config_cpp}" "grindSafePullReadyMana = std::min<uint32>(100, uint32(std::max<int32>(0, config.GetIntDefault(\"AiPlayerbot.Grind.SafePull.ReadyMana\", 50))));" "ready mana read, 0-100")
-  need("${config_cpp}" "            {\"Grind.QuestFirstOrder\", Value(grindQuestFirstOrder)},\n            {\"Grind.SafePull\", Value(grindSafePull)},\n            {\"Grind.SafePull.ReadyHp\", Value(grindSafePullReadyHp)},\n            {\"Grind.SafePull.ReadyMana\", Value(grindSafePullReadyMana)},\n            {\"LogInGroupOnly\"" "parsed values in [ConfigEcho], sorted (owner rule #615, #710)")
+  need("${config_cpp}" "            {\"Grind.QuestFirstOrder\", Value(grindQuestFirstOrder)},\n            {\"Grind.SafePull\", Value(grindSafePull)},\n            {\"Grind.SafePull.ReadyHp\", Value(grindSafePullReadyHp)},\n            {\"Grind.SafePull.ReadyMana\", Value(grindSafePullReadyMana)},\n            {\"GrindAvoid.Lever\"" "parsed values in [ConfigEcho], sorted (owner rule #615, #710)")
 
   # 2. Pure policy (std + the cohort and neighbour rules only) and its rules.
   string(REGEX MATCHALL "#include [<\"][^>\"]+[>\"]" incs "${policy}")

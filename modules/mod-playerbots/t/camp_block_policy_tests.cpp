@@ -96,6 +96,25 @@ int main()
     std::vector<dm::Death> crowd{ zeroLevel, deaths[1], deaths[2] };
     Require(dm::DangerousKillerLevel(crowd, 200, 11, on) >= 1, "a counted cell never reports 0");
 
+    // Lever 2 shadow (CLI-ROT 22.11.2026): modes 0 off, 1 all, 2 B (odd), 3 A (even), 4 shadow; out of range = off.
+    for (std::uint32_t mode = 0; mode < 8; ++mode)
+        for (std::uint32_t guid : { 10u, 11u })
+        {
+            bool const inB = (guid & 1u) != 0;
+            bool const wantApplies = mode == 1 || (mode == 2 && inB) || (mode == 3 && !inB);
+            Require(Applies(mode, guid) == wantApplies, "CampBlock applies: 1 all, 2 B, 3 A, never 0 / 4 / out of range");
+            Require(Computes(mode) == (mode >= 1 && mode <= 4), "CampBlock computes in modes 1-4 only");
+        }
+    for (Verdict v : { Verdict::Free, Verdict::Skip, Verdict::Fallback })
+    {
+        Require(Acted(v, true) == v, "an applied bot acts on its verdict");
+        Require(Acted(v, false) == Verdict::Free, "a shadow bot never skips or demotes");
+    }
+    Counters& c = counters[0];
+    c.wouldSkip.fetch_add(2);
+    c.wouldSkip.fetch_add(1);
+    Require(c.wouldSkip.exchange(0) == 3 && c.wouldSkip.load() == 0, "counters are increments, taken once");
+
     std::cout << "camp_block_policy_tests passed\n";
     return 0;
 }

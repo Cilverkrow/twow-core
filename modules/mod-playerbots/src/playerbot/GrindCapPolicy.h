@@ -6,6 +6,8 @@
 #include <mutex>
 #include <unordered_map>
 
+#include "CohortPolicy.h"
+
 namespace ai::grind_cap
 {
 // #307 (D3 root cause, group C): the grind target choice accepts mobs up to four
@@ -138,4 +140,54 @@ inline AvoidStore& Avoids()
     static AvoidStore store;
     return store;
 }
+
+// Lever 2 (CLI-ROT 22.11.2026, OB-00 (a), OB-10 spec OK d947fa34; AiPlayerbot.GrindAvoid.Lever, default 0): a second threshold
+// (GrindAvoid.Lever.MaxDeaths, default 1) for the bots the lever reaches, in its own store, so the base rule (GrindAvoid.MaxDeaths,
+// REF 3) stays for every bot - the control cohort of an A/B keeps it. Same window and avoid seconds as the base rule.
+// Mode: 0 off (default), 1 all bots, 2 cohort B only, 3 cohort A only (crossover), 4 shadow (every roster bot records and judges,
+// nobody skips). In modes 2 and 3 the other cohort computes in shadow. Any other value acts like 0.
+constexpr std::uint32_t LeverModeShadow = 4;
+
+inline bool LeverApplies(std::uint32_t mode, std::uint32_t guidLow)
+{
+    return mode != LeverModeShadow && ai::cohort::Applies(mode, guidLow);   // 1 all, 2 B, 3 A (CohortPolicy.h)
+}
+
+inline bool LeverComputes(std::uint32_t mode, std::uint32_t maxDeaths)
+{
+    return maxDeaths > 0 && mode >= ai::cohort::ModeAll && mode <= LeverModeShadow;
+}
+
+// What the lever does with one grind candidate: nothing (not lever-avoided, or already avoided by the base rule), skip it (applied)
+// or count it as a would-skip and keep it (shadow).
+enum class LeverVerdict { Keep, Skip, WouldSkip };
+
+inline LeverVerdict JudgeLever(bool baseAvoided, bool leverAvoided, bool applies)
+{
+    if (baseAvoided || !leverAvoided)
+        return LeverVerdict::Keep;
+    return applies ? LeverVerdict::Skip : LeverVerdict::WouldSkip;
+}
+
+inline AvoidStore& LeverAvoids()
+{
+    static AvoidStore store;
+    return store;
+}
+
+// [GrindAvoid] counters per cohort (0 = A, 1 = B), increments, taken once per minute by the world thread.
+struct LeverCounters
+{
+    std::atomic<std::uint64_t> passes{ 0 };        // grind passes of computing roster bots
+    std::atomic<std::uint64_t> picks{ 0 };         // passes with a pick
+    std::atomic<std::uint64_t> filtered{ 0 };      // candidates skipped by the lever (applied)
+    std::atomic<std::uint64_t> wouldFilter{ 0 };   // the same in shadow
+    std::atomic<std::uint64_t> changed{ 0 };       // passes with at least one candidate skipped (applied)
+    std::atomic<std::uint64_t> wouldChange{ 0 };   // shadow passes whose pick is lever-avoided (and not base-avoided)
+    std::atomic<std::uint64_t> wouldEmpty{ 0 };    // passes where the lever would skip every candidate (OB-10 d947fa34)
+    std::atomic<std::uint64_t> records{ 0 };       // deaths recorded into the lever store
+    std::atomic<std::uint64_t> avoidStarts{ 0 };   // lever avoid periods started
+};
+
+inline LeverCounters leverCounters[2];
 }
