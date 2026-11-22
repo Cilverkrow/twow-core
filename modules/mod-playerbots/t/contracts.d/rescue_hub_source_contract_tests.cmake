@@ -116,6 +116,11 @@ require_text("${block}" "if (row && !rh::Usable(row, startZoneGated))" "R1 holds
 require_text("${block}" "if (botPos.distance(WorldPosition(spawn)) > row->minDistance)" "per-row distance")
 require_text("${block}" "\"[RescueHub] bot=%u race=%u level=%u map=%u zone=%u step=%s anchors=%s targets=%u result=%s\"" "race + anchor line")
 require_text("${block}" "\"[RescueHubMin] own_hub=%u next_zone=%u fallback=%u gated=%u at_hub=%u\"" "minute line (at_hub appended at the end)")
+# twow-repo#575 R3 (logging only): a fallback gets its own line with the cause (no anchor spawn / all spawns within the minimum distance),
+# after the [RescueHub] line; the [RescueHub] line itself is unchanged (parsers key on it).
+require_order("${block}" "uint32(targets.size()), rh::OutcomeName(outcome));"
+  "if (outcome == rh::Outcome::Fallback)\n                sLog.outBasic(\"[RescueHubFallback] bot=%u race=%u level=%u map=%u zone=%u step=%s anchors=%s spawns=%u min_dist=%.0f reason=%s\"," "fallback cause line after the RescueHub line")
+require_text("${block}" "anchors.c_str(), uint32(anchorSpawns), row->minDistance, anchorSpawns ? \"near_only\" : \"no_spawn\");" "near_only = spawns but none far; no_spawn = none")
 require_text("${block}" "        if (!targets.empty() || atHub)\n            return targets;\n    }" "found or at_hub = return, else legacy")
 forbid_text("${block}" "return {};" "the block never ends the rescue without the legacy path")
 
