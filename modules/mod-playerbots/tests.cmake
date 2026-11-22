@@ -3100,6 +3100,20 @@ add_test(NAME quest_craft_only_policy
   COMMAND quest_craft_only_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#742 (AUDIT-L03-6): AllowableClass is a class mask; -1 / all-class masks are not class items, 0 is nobody.
+add_executable(class_mask_policy_tests
+  "${PB_MODULE_DIR}/t/class_mask_policy_tests.cpp")
+
+target_include_directories(class_mask_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(class_mask_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME class_mask_policy
+  COMMAND class_mask_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 add_test(NAME give_item_group_scan_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
@@ -4201,6 +4215,20 @@ add_test(NAME cast_los_gate_policy
   COMMAND cast_los_gate_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#741 (AUDIT-L03-5): the custom cast targets the bot only for item-target spells and caster-source-only spells.
+add_executable(custom_cast_target_policy_tests
+  "${PB_MODULE_DIR}/t/custom_cast_target_policy_tests.cpp")
+
+target_include_directories(custom_cast_target_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(custom_cast_target_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME custom_cast_target_policy
+  COMMAND custom_cast_target_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # twow-repo#602 (AiPlayerbot.Rotation.InvalidTargetQuiet): "invalid target" stays quiet for an empty target while nothing attacks the bot.
 add_executable(invalid_target_policy_tests
   "${PB_MODULE_DIR}/t/invalid_target_policy_tests.cpp")
@@ -4954,6 +4982,21 @@ set_target_properties(rescue_hub_policy_tests PROPERTIES
 
 add_test(NAME rescue_hub_policy
   COMMAND rescue_hub_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#575 R2 (AiPlayerbot.QuestRescue.StartValleyFix, OB-10 22.11.2026): the rescue start-valley candidates (RescueValleyPolicy.h:
+# own race only, dedupe, last target without progress, rescue distance; human / dwarf / gnome / goblin); source contract in t/contracts.d.
+add_executable(rescue_valley_policy_tests
+  "${PB_MODULE_DIR}/t/rescue_valley_policy_tests.cpp")
+
+target_include_directories(rescue_valley_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(rescue_valley_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME rescue_valley_policy
+  COMMAND rescue_valley_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
 # twow-repo#703 item 1 (AiPlayerbot.QuestRescue.NoTargetFreeSlot, default 1 since 703G 18.11.2026): the rescue targets before the global limiter, no

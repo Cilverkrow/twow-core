@@ -50,6 +50,7 @@
 #include "playerbot/TankPathDiagPolicy.h"
 #include "playerbot/UnreachablePolicy.h"
 #include "playerbot/UnreachableGiveUpPolicy.h"   // twow-repo#703 item 4 (Rotation.UnreachableGiveUp)
+#include "playerbot/RescueValleyPolicy.h"   // twow-repo#575 R2 (QuestRescue.StartValleyFix): the last rescue target
 #include "playerbot/GroupAiRefresh.h"   // twow-repo#627 S7 StagedOps: RequestQuestForce
 #include "playerbot/GroupBuffPolicy.h"
 class Player;
@@ -1148,6 +1149,14 @@ protected:
     uint32 machineWalkFallbackLog = 0;
     // twow-repo#575 (PATH-01 F2): set by an island hub rescue, cleared by the bot's next progress.
     std::atomic<bool> islandHubRescuePending{ false };
+    // twow-repo#575 R2 (b) (QuestRescue.StartValleyFix): the last rescue target (written and read on the world thread only) and two
+    // flags: valleyBaselineDue (set by a started rescue teleport, taken by the bot thread) and valleyRescuePending (the exclusion,
+    // set by the teleport, cleared by the bot thread on progress since the rescue: level, XP, gathering skill or the quest log).
+    // The progress baseline and its comparison (valleyMemory) live on the bot thread only.
+    ai::rescue_valley::Point lastValleyRescue{ 0, 0.0f, 0.0f };
+    std::atomic<bool> valleyRescuePending{ false };
+    std::atomic<bool> valleyBaselineDue{ false };
+    ai::rescue_valley::Memory valleyMemory;   // bot thread only
     // Hotfix 8.12: combat without progress (bot 27 Nilenata).
     ai::stuck_combat::State stuckCombat;
     ai::gather_purpose::State gatherPurpose;
@@ -1282,6 +1291,15 @@ public:
     // a second hub rescue while it is still pending finds the island empty for this bot (world thread, StartZonePolicy.h).
     bool IslandHubRescueWithoutProgress() const { return islandHubRescuePending.load(); }
     void MarkIslandHubRescue() { islandHubRescuePending = true; }
+    // twow-repo#575 R2 (b) (StartValleyFix): world thread. The last rescue target while the bot has made no progress since it.
+    bool ValleyRescueWithoutProgress() const { return valleyRescuePending.load(); }
+    ai::rescue_valley::Point LastValleyRescue() const { return lastValleyRescue; }
+    void MarkValleyRescue(ai::rescue_valley::Point const& target)
+    {
+        lastValleyRescue = target;
+        valleyBaselineDue = true;
+        valleyRescuePending = true;
+    }
     // twow-repo#601 S1 (ResetOnProgressEvents): any thread asks the bot's own update to reset the grind-fallback
     // counter, the quest route backoff and the quest search stage (ai::quest_failure_class::Reset* bits).
     void RequestQuestRouteReset(uint32 events) { questRouteResetEvents.fetch_or(events); }

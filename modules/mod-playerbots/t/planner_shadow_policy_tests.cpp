@@ -734,7 +734,7 @@ void TestPlanMinP3()
         "expire_blocked_fb=0 expire_pending=0 expire_after_work=0 fed=0 applied_quest=0 applied_grind=0 applied_live_quest=0 "
         "applied_live_grind=0 fallback_reject=0 fallback_stale=0 fallback_none=0 fallback_purpose=0 fallback_budget=0 "
         "fallback_denied=0 fallback_parked=0 fallback_zone_empty=0 fb_arbiter=0 fb_cohort=0 turnin_unreached=0 mem_evict=0 "
-        "mode_quest_grind=0 mode_grind_quest=0 mode_denied=0";
+        "mode_quest_grind=0 mode_grind_quest=0 mode_denied=0 fallback_reject_empty=0 zone_empty_held=0 feed_us=0 feed_us_max=0";
     PlanMinCounts z;
     char buf[kPlanMinBuf];
     std::size_t n = FormatPlanMin(buf, sizeof(buf), 'A', 7, z);
@@ -751,11 +751,16 @@ void TestPlanMinP3()
     a.fallbackZoneEmpty = 4;
     a.memEvict = 5;
     a.modeDenied = 6;
-    PlanMinCounts const b = a;
+    a.fallbackRejectEmpty = 7;
+    a.zoneEmptyHeld = 8;
+    a.feedUs = 9;
+    a.feedUsMax = 10;
+    PlanMinCounts b = a;
+    b.feedUsMax = 3;   // feed_us_max is a maximum, not a sum
     Add(a, b);
     FormatPlanMin(buf, sizeof(buf), 'B', 8, a, true);
     std::string const line(buf);
-    std::string const last = " mode_denied=12";
+    std::string const last = " mode_denied=12 fallback_reject_empty=14 zone_empty_held=16 feed_us=18 feed_us_max=10";
     Require(line.find(" expired=2 expire_denied=4 ") != std::string::npos && line.find(" fed=6 ") != std::string::npos &&
         line.find(" fallback_zone_empty=8 ") != std::string::npos && line.find(" mem_evict=10 ") != std::string::npos &&
         line.size() > last.size() && line.compare(line.size() - last.size(), last.size(), last) == 0,
@@ -769,10 +774,95 @@ void TestPlanMinP3()
     std::memcpy(&full, fields, sizeof(full));
     char big[kPlanMinBuf];
     n = FormatPlanMin(big, sizeof(big), 'B', 4294967295u, full, true);
-    std::string const maxTail = " mode_denied=4294967295";
+    std::string const maxTail = " feed_us=4294967295 feed_us_max=4294967295";
     Require(n == std::strlen(big) && n + 1 < sizeof(big) && n > maxTail.size() &&
         std::string(big).compare(n - maxTail.size(), maxTail.size(), maxTail) == 0,
         "the longest [PlanMin] line fits kPlanMinBuf, not cut");
+}
+
+// twow-repo#726 (OB-60 review 9f5669b7, OB-10 5a445aa4 + Nachtrag 1 1e3b50d1): F2 the #416 hold ends with a pick change or MinBind
+// after the abort, and no skip renews rule 5; F3 an empty quest list never locks; Q2 (c) a grind pick's empty zone locks once per
+// pick.
+void TestFeedFixes726()
+{
+    std::uint32_t const minBind = 120000;
+    // F2: the hold - same pick (key and sinceMs) only, MinBind after the abort only, wrap-safe.
+    Require(BudgetHolds(7, 100, 1000, 7, 100, 1000 + minBind - 1, minBind), "F2: the same pick inside MinBind is held");
+    Require(!BudgetHolds(7, 100, 1000, 7, 100, 1000 + minBind, minBind), "F2: MinBind after the abort the hold ends");
+    Require(!BudgetHolds(7, 100, 1000, 8, 100, 2000, minBind), "F2: another pick key is not held");
+    Require(!BudgetHolds(7, 100, 1000, 7, 200, 2000, minBind), "F2: the same key with a new sinceMs (A -> B -> A) is not held");
+    Require(!BudgetHolds(0, 0, 0, 0, 0, 2000, minBind), "F2: nothing held");
+    Require(BudgetHolds(7, 100, 4294967000u, 7, 100, 500, minBind), "F2: the hold survives the 32-bit wrap");
+    Require(SkipFallback(FeedSkip::Budget) == FeedFallback::BudgetHeld && !FallbackLocks(FeedFallback::BudgetHeld),
+        "F2: a held budget or a pending resume skip never locks");
+    Require(SkipFallback(FeedSkip::Purpose) == FeedFallback::Purpose && SkipFallback(FeedSkip::Stale) == FeedFallback::Stale &&
+        SkipFallback(FeedSkip::None) == FeedFallback::None, "the other skips keep their reasons");
+    Require(FallbackLocks(FeedFallback::Budget) && FallbackLocks(FeedFallback::ZoneEmpty), "V-3: the abort and the first empty zone lock");
+
+    // F2 sequence (OB-60 proposal): the abort locks once at t0; the same pick N times inside MinBind is fallback_budget without a
+    // renewal; at t0 + MinBind the hold ends and the pick feeds again; a pick change feeds at once.
+    std::uint32_t const t0 = 50000;
+    std::uint32_t lockAt = 0;
+    NoteFallback(lockAt, FeedFallback::Budget, t0);
+    std::uint32_t heldKey = 7, heldSince = 100, heldAt = t0;
+    std::uint32_t const pickKey = 7, pickSince = 100;
+    for (std::uint32_t t = t0 + 2000; t < t0 + minBind; t += 2000)
+    {
+        bool const held = BudgetHolds(heldKey, heldSince, heldAt, pickKey, pickSince, t, minBind);
+        FeedSkip const skip = FeedCheck(true, false, false, true, false, t - 1000, t, minBind, false, held);
+        Require(held && skip == FeedSkip::Budget, "F2: the same pick inside MinBind is skipped (fallback_budget)");
+        NoteFallback(lockAt, SkipFallback(skip), t);
+    }
+    Require(lockAt == t0, "F2: abort, then the same pick N times: the rule 5 time is not renewed");
+    Require(!FallbackBlocks(lockAt, t0 + minBind, minBind), "F2: the lock ends one MinBind after the abort");
+    std::uint32_t const late = t0 + minBind;
+    if (!BudgetHolds(heldKey, heldSince, heldAt, pickKey, pickSince, late, minBind))
+        heldKey = 0;
+    Require(heldKey == 0 && FeedCheck(true, false, false, true, false, late - 1000, late, minBind, false, heldKey != 0) ==
+        FeedSkip::Feed, "F2: after MinBind the key is cleared and the pick is fed again");
+    Require(!BudgetHolds(7, 100, t0, 9, 300, t0 + 1000, minBind) &&
+        FeedCheck(true, false, false, true, false, t0, t0 + 1000, minBind, false, false) == FeedSkip::Feed,
+        "F2: a pick change is fed at once");
+    std::uint32_t resumeLock = 0;
+    for (std::uint32_t i = 0; i < 20; ++i)
+        NoteFallback(resumeLock, SkipFallback(FeedCheck(true, false, false, true, false, 1000, 2000 + i, minBind, true, false)),
+            2000 + i);
+    Require(resumeLock == 0, "F2: a pending resume only counts, it never locks");
+
+    // F3: an empty quest list N times in a row: fallback_reject_empty, no renewal (and no lock at all).
+    Require(!FallbackLocks(FeedFallback::RejectEmpty), "F3: an empty quest list never locks");
+    std::uint32_t emptyLock = 0;
+    for (std::uint32_t t = 1000; t < 1000 + 50 * 3000; t += 3000)
+        NoteFallback(emptyLock, FeedFallback::RejectEmpty, t);
+    Require(emptyLock == 0, "F3: empty list N times -> no rule 5 time");
+    std::uint32_t rejLock = 0;
+    NoteFallback(rejLock, FeedFallback::Reject, 7000);
+    for (std::uint32_t t = 10000; t < 100000; t += 3000)
+        NoteFallback(rejLock, FeedFallback::RejectEmpty, t);
+    Require(rejLock == 7000, "F3: empty lists after a real reject do not renew its lock");
+
+    // Q2 (c): a grind pick's empty zone locks once per pick; again for the same pick zone_empty_held (no lock); a new pick once more.
+    Require(!FallbackLocks(FeedFallback::ZoneEmptyHeld), "Q2 (c): zone_empty_held never locks");
+    std::uint32_t seenKey = 0, seenSince = 0, zoneLock = 0;
+    std::uint32_t first = 0, held = 0;
+    for (std::uint32_t t = 20000; t < 20000 + 30 * 3000; t += 3000)
+    {
+        if (ZoneEmptySeen(seenKey, seenSince, 11, 500))
+        {
+            ++held;
+            NoteFallback(zoneLock, FeedFallback::ZoneEmptyHeld, t);
+        }
+        else
+        {
+            ++first;
+            NoteFallback(zoneLock, FeedFallback::ZoneEmpty, t);
+            seenKey = 11;
+            seenSince = 500;
+        }
+    }
+    Require(first == 1 && held == 29 && zoneLock == 20000, "Q2 (c): one lock per pick, the repeats only count");
+    Require(!ZoneEmptySeen(seenKey, seenSince, 11, 900) && !ZoneEmptySeen(seenKey, seenSince, 12, 500) &&
+        !ZoneEmptySeen(0, 0, 0, 0), "Q2 (c): a new pick (key or sinceMs) locks once again");
 }
 }
 
@@ -799,6 +889,7 @@ int main()
     TestPlanMinP3();
     TestBackToBandV1V2();
     TestRule5V3();
+    TestFeedFixes726();
     std::cout << "planner_shadow_policy_tests: OK\n";
     return 0;
 }

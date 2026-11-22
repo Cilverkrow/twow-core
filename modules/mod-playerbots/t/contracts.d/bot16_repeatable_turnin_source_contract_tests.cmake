@@ -69,10 +69,11 @@ endfunction()
 
 # ---- the switch ----------------------------------------------------------------------------------------------------------
 set(ECHO "            {\"QuestRescue.NoTargetFreeSlot\", Value(questRescueNoTargetFreeSlot)},
+            {\"QuestRescue.StartValleyFix\", Value(questRescueStartValleyFix)},
             {\"QuestTurnIn.RepeatableAutoComplete\", Value(questTurnInRepeatableAutoComplete)},
             {\"Replan\", Value(replan)},
             {\"Replan.Shadow\", Value(replanShadow)},
-            {\"Rescue.RepopDeadOnly\", Value(rescueRepopDeadOnly)},")   # R9-2 (twow-repo#575) added Replan / Replan.Shadow
+            {\"Rescue.RepopDeadOnly\", Value(rescueRepopDeadOnly)},")   # R9-2 (twow-repo#575) added Replan / Replan.Shadow; R2 (twow-repo#575, 22.11.2026) StartValleyFix
 set(S_MEMBER "    uint32 questTurnInRepeatableAutoComplete = 0;\n")
 set(S_INCLUDE "#include \"playerbot/RepeatableTurnInPolicy.h\"")
 set(S_LOAD "    questTurnInRepeatableAutoComplete = uint32(config.GetIntDefault(\"AiPlayerbot.QuestTurnIn.RepeatableAutoComplete\", 0));
