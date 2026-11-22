@@ -189,6 +189,27 @@ int main()
         Require(SkipReason(facts) == Reason::Blocklist, "a listed timed quest: reason=blocklist");
     }
 
+    // 4b) SoloSkipEscortTimed is a cohort mode (OB-10 21.11. Q1 (a)): 0 off, 1 all, 2 cohort B (odd low guid), 3 cohort A
+    //     (even low guid), any other value off - the same cohorts as QuestBook (one shared rule).
+    {
+        Require(ValidEscortTimedMode(0) && ValidEscortTimedMode(1) && ValidEscortTimedMode(2) && ValidEscortTimedMode(3),
+            "modes 0..3 valid");
+        Require(!ValidEscortTimedMode(4) && !ValidEscortTimedMode(255) && !ValidEscortTimedMode(0xFFFFFFFFu), "4+ invalid");
+        std::uint32_t const odd = 1001;
+        std::uint32_t const even = 1002;
+        Require(!EscortTimedApplies(0, odd) && !EscortTimedApplies(0, even), "mode 0: no bot");
+        Require(EscortTimedApplies(1, odd) && EscortTimedApplies(1, even), "mode 1: every bot");
+        Require(EscortTimedApplies(2, odd) && !EscortTimedApplies(2, even), "mode 2: cohort B (odd) only");
+        Require(!EscortTimedApplies(3, odd) && EscortTimedApplies(3, even), "mode 3: cohort A (even) only");
+        Require(!EscortTimedApplies(4, odd) && !EscortTimedApplies(4, even) && !EscortTimedApplies(255, odd),
+            "an unknown mode acts like 0");
+        Require(!EscortTimedApplies(2, 0) && EscortTimedApplies(3, 0), "low guid 0 is even (cohort A)");
+        for (std::uint32_t mode = 0; mode <= 5; ++mode)
+            for (std::uint32_t guid = 1; guid <= 8; ++guid)
+                Require(EscortTimedApplies(mode, guid) == ai::cohort::Applies(mode <= 3 ? mode : 0, guid),
+                    "the same cohort as the shared rule (QuestBook) for every mode / guid");
+    }
+
     // 5) Giver relation: every skip reason (review S3a F3: a solo bot does not walk to a group quest's giver to decline);
     //    drop: open quests only, both list reasons map to infeasible_blocklist, paths E / F are not undone (review S3a F2).
     {

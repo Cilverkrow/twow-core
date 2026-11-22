@@ -1223,7 +1223,8 @@ public:
     std::set<uint32> questFeasibilityBlocklist;
     std::set<uint32> questFeasibilityBlocklistWhileNoCustomStarts;  // only while customRaceStartZones = false
     bool questFeasibilitySoloSkipGroupQuests = false;  // Type 1 / 81 / 62 or SuggestedPlayers >= 2, bot not in a group
-    bool questFeasibilitySoloSkipEscortTimed = false;  // DEEP7 item 5: listed escort / short timed quests, bot not in a group
+    uint32 questFeasibilitySoloSkipEscortTimed = 0;  // DEEP7 item 5: listed escort / short timed quests, bot not in a group;
+                                                     // cohort mode 0 off, 1 all, 2 cohort B, 3 cohort A
     std::set<uint32> questFeasibilitySoloSkipEscortIds;     // the escort ids of SoloSkipEscortTimed
     uint32 questFeasibilitySoloSkipTimedMaxSeconds = 900;  // LimitTime 1..this = a short timed quest; 0 = no timed skip
     // twow-repo#594 / P3 (owner 15.10., direct travel targets): master switch, P3-0 trace, fresh bots (level <= FreshMaxLevel)
