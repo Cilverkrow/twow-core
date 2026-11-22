@@ -17,7 +17,7 @@ namespace ai::transport_board
 // ray, map dynamic ray, model in the map tree) and one [TransportDeck] line is written (own budget) plus a
 // [TransportBoard] summary. The probe answers nothing the boarding uses. Pure: the only include is S1's pure header; the
 // game side (MovementActions.cpp, WorldPosition.cpp) fills DeckProbe and logs what the formats return.
-// twow-repo#342 (S3b-1, AiPlayerbot.Path.TransportBoardFix, default 0): the predicates of the boarding fix below (board gate,
+// twow-repo#342 (S3b-1, AiPlayerbot.Path.TransportBoardFix, default 1, 0 = rollback): the predicates of the boarding fix below (board gate,
 // ride record, exit at the stored arrival dock, the lost-ride recovery of OB-10 #1). With the switch off none is called.
 
 // ---- D3: the wait timeout key; S1's fixed constant stays the definition of the default ----

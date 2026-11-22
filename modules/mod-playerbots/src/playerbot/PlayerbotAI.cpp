@@ -3238,7 +3238,7 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
                 return;
             }
         }
-        // twow-repo#602 (AiPlayerbot.CastWait.Preparing, default 0): a spell with a cast time is PREPARING until it is
+        // twow-repo#602 (AiPlayerbot.CastWait.Preparing, default 1, 0 = rollback): a spell with a cast time is PREPARING until it is
         // cast, so the branch above never held the AI for it and the engine re-ran every ReactDelay against its own
         // cast (SPELL_IN_PROGRESS). Hold it until the real end (m_timer, pushback included), capped per spell. Bots of a
         // real player keep answering their master's commands at once (as with AiPlayerbot.Perf.CombatIdleYield).
