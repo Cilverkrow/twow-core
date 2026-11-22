@@ -121,6 +121,11 @@ require_order("${build_fn}" "if (craftOnlyQuests.load(std::memory_order_acquire)
 require_order("${build_fn}" "if (!loot || !vendors)" "init failed: %s query returned no rows" "a failed query is reported")
 require_order("${build_fn}" "init failed: %s query returned no rows" "craftOnlyQuests.store(built.release(), std::memory_order_release);" "nothing is published after a failed query")
 count_text("${ai_cpp}" "craftOnlyQuests.store(" 1 "one publish site")
+# OB-10 Q1(b): the built set by id, sorted, inside the build after the query check and before the publish
+count_text("${ai_cpp}" "FormatQuestLine(" 1 "one quest list site")
+require_order("${build_fn}" "init failed: %s query returned no rows" "std::sort(questIds.begin(), questIds.end());" "no list after a failed query")
+require_order("${build_fn}" "std::sort(questIds.begin(), questIds.end());" "FormatQuestLine(questId, need.itemId, need.required)" "list sorted by quest")
+require_order("${build_fn}" "FormatQuestLine(questId, need.itemId, need.required)" "craftOnlyQuests.store(built.release(), std::memory_order_release);" "list before the publish")
 region("${ai_cpp}" "void PlayerbotAI::NoteCraftOnlyHeld(uint32 questId)" "\n}\n" held_fn)
 require_order("${held_fn}" "if (!CraftOnlyObjectives(questId))" "IsPersistentRosterMember(bot->GetGUIDLow())" "held: map lookup before the roster scope")
 
