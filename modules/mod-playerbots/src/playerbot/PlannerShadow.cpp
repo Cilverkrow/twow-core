@@ -96,6 +96,25 @@ public:
     FetchStatsScope& operator=(FetchStatsScope const&) = delete;
 };
 
+// S5 F1 (twow-repo#726, AiPlayerbot.Planner.GiverPrefilter): turns TravelMgr's giver prefilter on for the one giver fetch of the
+// plan on this thread and always clears it again (End or the scope end); no other fetch of the thread runs with it.
+class PrefilterScope
+{
+public:
+    explicit PrefilterScope(ai::giver_prefilter::Counts* counts) { ai::tDestRangePrefilter = counts; }
+    ~PrefilterScope() { ai::tDestRangePrefilter = nullptr; }
+    void End() const { ai::tDestRangePrefilter = nullptr; }
+    PrefilterScope(PrefilterScope const&) = delete;
+    PrefilterScope& operator=(PrefilterScope const&) = delete;
+};
+
+// S5 F1 verify (AiPlayerbot.Planner.GiverPrefilterVerify = N): every N-th prefiltered giver fetch of this thread; 0 = never.
+bool PrefilterVerifyDue(std::uint32_t every)
+{
+    static thread_local std::uint32_t seq = 0;
+    return every && ++seq % every == 0;
+}
+
 // ---- the minute line and the line budget (one short file-local mutex, the pattern of SupervisorShadow.cpp) -----------------
 std::mutex g_mutex;
 std::uint32_t g_window = 0, g_used = 0;   // the [Plan] budget window
@@ -1396,6 +1415,11 @@ void PlanTickImpl(ai::supervisor::Supervisor& sup, PlayerbotAI* ai_, PlanState& 
     }
     if (budgetMs && WorldTimer::getMSTimeDiffToNow(startMs) > budgetMs)
         overBudget = true;
+    // S5 F1 (twow-repo#726, F1-ENTWURF-v0.2; AiPlayerbot.Planner.GiverPrefilter, cohort rule): the giver prefilter for the giver
+    // fetch only - the same list in the same order, fewer distance computations; GiverPrefilterVerify N checks that every N-th time.
+    bool prefilterOn = false, prefilterVerify = false;
+    ai::giver_prefilter::Counts prefilterCounts;
+    std::vector<ai::TravelDestination*> giversPrefiltered;
     // onlyPossible = false: QuestRelationTravelDestination::IsPossible counts [QuestBookMin] target_no_* for a bot with a book
     // (TravelMgr.cpp); the planner gates by itself (CanTakeQuest without a message, CanAccept, CanTarget) and writes no counter.
     if (!overBudget && slots.size() < cap)
@@ -1404,9 +1428,15 @@ void PlanTickImpl(ai::supervisor::Supervisor& sup, PlayerbotAI* ai_, PlanState& 
         traceHead(giveFetchAt);
         fetchStats = ai::DestFetchStats();
         FetchStatsScope const giveScope(timeTrace ? &fetchStats : nullptr);
+        prefilterOn = ai::cohort::Applies(sPlayerbotAIConfig.plannerGiverPrefilter, guid);
+        PrefilterScope const prefilterScope(prefilterOn ? &prefilterCounts : nullptr);
         std::vector<ai::TravelDestination*> givers = sTravelMgr.GetDestinations(info,
             std::uint32_t(ai::TravelDestinationPurpose::QuestGiver), {}, false, kPickupRadius);
         giveScope.End();
+        prefilterScope.End();
+        prefilterVerify = prefilterOn && PrefilterVerifyDue(sPlayerbotAIConfig.plannerGiverPrefilterVerify);
+        if (prefilterVerify)
+            giversPrefiltered = givers;   // before the sort: the verify compares the fetch lists
         std::int64_t const giveSortAt = traceNow();
         byDistance(givers);
         std::int64_t const giveLoopAt = traceNow();
@@ -1448,6 +1478,14 @@ void PlanTickImpl(ai::supervisor::Supervisor& sup, PlayerbotAI* ai_, PlanState& 
                 break;
         }
         traceStage(planTime.give, giveFetchAt, giveSortAt, giveLoopAt);
+    }
+    if (prefilterOn)
+    {
+        planTime.givePrefilter = true;
+        planTime.givePre = prefilterCounts.pre;
+        planTime.giveXmap = prefilterCounts.xmap;
+        planTime.giveInbox = prefilterCounts.inbox;
+        planTime.giveVerify = prefilterVerify;
     }
     std::int64_t const traceFetchEndNs = traceNow();   // S5: head (when no stage ran) and rest start here
     traceHead(traceFetchEndNs);
@@ -1729,6 +1767,18 @@ void PlanTickImpl(ai::supervisor::Supervisor& sup, PlayerbotAI* ai_, PlanState& 
         planTime.overBudget = overBudget;
         planTime.guid = guid;
         planTime.cohort = ai::cohort::Letter(guid);
+    }
+    // S5 F1 verify: the original list (both thread pointers are null here: no prefilter, no walk/ret count) against the prefiltered
+    // one, element by element; one [PlanPrefilter] line per verified fetch. It runs after the plan's ms and the [PlanTime] clocks
+    // are read and after every slot is set, so it changes no slot, no budget cut and no measured time of the plan.
+    if (prefilterVerify)
+    {
+        std::vector<ai::TravelDestination*> const original = sTravelMgr.GetDestinations(info,
+            std::uint32_t(ai::TravelDestinationPurpose::QuestGiver), {}, false, kPickupRadius);
+        char vbuf[ai::giver_prefilter::kVerifyBuf];
+        ai::giver_prefilter::FormatVerifyLine(vbuf, sizeof(vbuf), guid, std::uint32_t(original.size()),
+            std::uint32_t(giversPrefiltered.size()), ai::giver_prefilter::FirstDiff(original, giversPrefiltered), prefilterCounts);
+        sLog.outBasic("%s", vbuf);
     }
     c.msMax = ms;
 

@@ -48,6 +48,14 @@ struct PlanTime
     std::uint32_t done = 0;   // complete quests asked of the turn-in fetch (1 = one key lookup, 2+ = the key walk)
     std::uint32_t open = 0;   // open quests asked of the objective fetch (same)
     bool overBudget = false;
+    // S5 F1 (twow-repo#726, AiPlayerbot.Planner.GiverPrefilter): set when the giver fetch of this plan ran with the prefilter; the
+    // line then ends with prefilter=1 give_pre= give_xmap= give_inbox= verify= (GiverPrefilterPolicy.h Counts; verify = this plan
+    // also ran the original list for the [PlanPrefilter] check, after its clocks were read). Off: the line is as before.
+    bool givePrefilter = false;
+    std::uint32_t givePre = 0;
+    std::uint32_t giveXmap = 0;
+    std::uint32_t giveInbox = 0;
+    bool giveVerify = false;
 };
 
 // A microsecond difference of two steady clock readings in nanoseconds, clamped to 0..UINT32_MAX microseconds.
@@ -60,7 +68,7 @@ inline std::uint32_t UsBetween(std::int64_t fromNs, std::int64_t toNs)
 }
 
 // The [PlanTime] buffer: every field at its maximum fits (the unit test checks it).
-constexpr std::size_t kPlanTimeBuf = 512;
+constexpr std::size_t kPlanTimeBuf = 640;
 
 // [PlanTime] bot= cohort= us= cpu_us= ms= over_budget= cands= cut= done= open= head= take= obj= give= rest=; a stage is
 // fetch/sort/loop/walk/ret in microseconds and counts, or "-" when it did not run.
@@ -89,6 +97,14 @@ inline std::size_t FormatPlanTimeLine(char* buf, std::size_t n, PlanTime const& 
         stage[2], t.restUs);
     if (w < 0)
         return 0;
-    return std::size_t(w) < n ? std::size_t(w) : n - 1;
+    std::size_t len = std::size_t(w) < n ? std::size_t(w) : n - 1;
+    if (t.givePrefilter && len + 1 < n)
+    {
+        int const x = std::snprintf(buf + len, n - len, " prefilter=1 give_pre=%u give_xmap=%u give_inbox=%u verify=%u", t.givePre,
+            t.giveXmap, t.giveInbox, t.giveVerify ? 1u : 0u);
+        if (x > 0)
+            len = len + std::size_t(x) < n ? len + std::size_t(x) : n - 1;
+    }
+    return len;
 }
 }
