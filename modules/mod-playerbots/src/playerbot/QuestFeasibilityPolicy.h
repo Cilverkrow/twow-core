@@ -1,5 +1,7 @@
 #pragma once
 
+#include "CohortPolicy.h"
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -18,7 +20,8 @@ namespace ai::quest_feasibility
 //   AiPlayerbot.QuestFeasibility.SoloSkipGroupQuests           a bot not in a group skips Type 1 / 81 / 62 and
 //                                                              SuggestedPlayers >= 2 quests (OB-20, OB-00 Q-O1)
 //   AiPlayerbot.QuestFeasibility.SoloSkipEscortTimed           a bot not in a group skips listed escort quests and
-//                                                              quests with a time limit <= SoloSkipTimedMaxSeconds
+//                                                              quests with a time limit <= SoloSkipTimedMaxSeconds; a
+//                                                              cohort mode: 0 off, 1 all, 2 cohort B, 3 cohort A
 //   AiPlayerbot.QuestFeasibility.SoloSkipEscortIds             the escort id list of that rule
 //   AiPlayerbot.QuestFeasibility.SoloSkipTimedMaxSeconds       its time limit bound (default 900)
 //
@@ -103,6 +106,20 @@ constexpr std::uint32_t DefaultTimedMaxSeconds = 900;
 inline bool IsEscortOrShortTimed(bool escortListed, std::uint32_t limitTime, std::uint32_t timedMaxSeconds)
 {
     return escortListed || (limitTime > 0 && limitTime <= timedMaxSeconds);
+}
+
+// SoloSkipEscortTimed is a cohort mode (OB-10 21.11. Q1 (a), for the in-realm AB/BA crossover): 0 off (default), 1 all bots,
+// 2 cohort B (odd low guid), 3 cohort A (even low guid). Any other value is 0 (the loader writes one error line). The
+// cohort is the shared rule of CohortPolicy.h, the same one QuestBook uses (questbook::Applies), so a bot is in the same
+// cohort for both switches.
+inline bool ValidEscortTimedMode(std::uint32_t mode)
+{
+    return mode <= cohort::ModeOnlyA;
+}
+
+inline bool EscortTimedApplies(std::uint32_t mode, std::uint32_t guidLow)
+{
+    return cohort::Applies(ValidEscortTimedMode(mode) ? mode : cohort::ModeOff, guidLow);
 }
 
 inline char const* ReasonName(Reason reason)

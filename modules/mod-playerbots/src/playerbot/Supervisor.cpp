@@ -33,7 +33,9 @@ Supervisor::~Supervisor()
 // (AiPlayerbot.Supervisor.Arbiter = 2, default 0): below 2 and without an edge the rest is one compare and, at 1, the probe's
 // early returns (no write, no line). A3 step 3 T02-GROUP (BotGroups.Manager.Types > 0, default 0): GroupTick runs after the
 // shadow hand-over (its writes fall into this pass's bundle) and before the enforcement edges (a switch away from 2 leaves a
-// held group before the disarming edge); without a group it is the registration once, then a few compares.
+// held group before the disarming edge); without a group it is the registration once, then a few compares. twow-repo#726
+// (AiPlayerbot.Supervisor.ArmLate, default 0): the late arm runs after the edges (SupervisorEnforce.cpp); off it is one config
+// read, on it retries the arm rule of a still Passive bot while enforcing, at most every 5 s.
 void Supervisor::Tick(std::uint32_t nowMs, std::uint32_t arbiter)
 {
     ++ticks_;
@@ -49,6 +51,7 @@ void Supervisor::Tick(std::uint32_t nowMs, std::uint32_t arbiter)
         else
             DisarmEnforce(arbiter);
     }
+    ArmLateTick(nowMs);
     if (arbiter >= 1)
         ProbeTick(nowMs, arbiter);
     PlanTick(nowMs, arbiter);

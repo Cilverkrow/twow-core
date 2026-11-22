@@ -41,6 +41,7 @@
 #include "playerbot/ZoneKeepPolicy.h"   // twow-repo#601 owner rule R1 (StartZoneMinLevel rescue gate)
 #include "playerbot/LevelGuardPolicy.h" // twow-repo#575 LevelGuard.SkipHarmless: RefreshActiveEvents
 #include "playerbot/RescueHubPolicy.h"   // twow-repo#575 RG-a (QuestRescue.HomeHubs): the anchor table
+#include "playerbot/RescueValleyPolicy.h"   // twow-repo#575 R2 (QuestRescue.StartValleyFix): the start-valley candidates
 #include "playerbot/QuestRescueSlotPolicy.h"   // twow-repo#703 item 1 (QuestRescue.NoTargetFreeSlot): targets before the limiter
 #include "playerbot/CohortPolicy.h"     // twow-repo#601 owner rule R1 (StartZoneMinLevel.Cohort)
 #include "PlayerbotCommandServer.h"
@@ -7692,6 +7693,9 @@ std::vector<WorldLocation> RandomPlayerbotMgr::QuestRescueTargets(Player* bot)
     // keep the legacy targets.
     PlayerbotAI* const rescueAi = GetBotAI(bot);
     bool const startZoneRules = IsPersistentRosterMember(bot->GetGUIDLow()) && !(rescueAi && rescueAi->HasRealPlayerMaster());
+    // twow-repo#575 R2 (AiPlayerbot.QuestRescue.StartValleyFix, default 0, RescueValleyPolicy.h): for roster bots only; 0 = the legacy
+    // start-valley branch and goblin pushes below, unchanged.
+    bool const valleyFix = startZoneRules && ai::cohort::Applies(sPlayerbotAIConfig.questRescueStartValleyFix, bot->GetGUIDLow());
 
     // twow-repo#575 RG-a (AiPlayerbot.QuestRescue.HomeHubs, OB-00 08.11.2026): the anchor table first (RescueHubPolicy.h). own_hub = the
     // race's start-zone hub below L5 (also for R1-gated bots inside their start zone, which got no target), next_zone = night elf /
@@ -7808,8 +7812,25 @@ std::vector<WorldLocation> RandomPlayerbotMgr::QuestRescueTargets(Player* bot)
             targets.push_back(WorldLocation(1, sz::IslandMachineX, sz::IslandMachineY, sz::IslandMachineZ, 0.0f));
             return targets;
         }
-        targets.push_back(WorldLocation(1, gi::PortMachineX, gi::PortMachineY, gi::PortMachineZ, 0.0f));
-        targets.push_back(WorldLocation(1, gi::RazorHillX, gi::RazorHillY, gi::RazorHillZ, 0.0f));
+        if (!valleyFix)
+        {
+            targets.push_back(WorldLocation(1, gi::PortMachineX, gi::PortMachineY, gi::PortMachineZ, 0.0f));
+            targets.push_back(WorldLocation(1, gi::RazorHillX, gi::RazorHillY, gi::RazorHillZ, 0.0f));
+            return targets;
+        }
+        // twow-repo#575 R2 (c) (StartValleyFix): the Durotar pushes only beyond RescueMinDistance, as the anchor and inn branches (Goblin
+        // 2293, DAUER-B: 54 rescues, none further than the last). Distance only - the route rule is unchanged (OB-10 22.11.).
+        uint32 nearCount = 0;
+        for (WorldLocation const& durotar : { WorldLocation(1, gi::PortMachineX, gi::PortMachineY, gi::PortMachineZ, 0.0f),
+                 WorldLocation(1, gi::RazorHillX, gi::RazorHillY, gi::RazorHillZ, 0.0f) })
+        {
+            if (bot->GetMapId() == durotar.mapid && botPos.distance(WorldPosition(durotar)) <= ai::quest_search::RescueMinDistance)
+                ++nearCount;
+            else
+                targets.push_back(durotar);
+        }
+        sLog.outBasic("[QuestRescue] state=goblin_push bot=%u level=%u map=%u zone=%u kept=%u near=%u", bot->GetGUIDLow(), level,
+            bot->GetMapId(), bot->GetZoneId(), uint32(targets.size()), nearCount);
         return targets;
     }
 
@@ -7819,6 +7840,39 @@ std::vector<WorldLocation> RandomPlayerbotMgr::QuestRescueTargets(Player* bot)
     bool const homeContinent = sPlayerbotAIConfig.zoneExitRescueHomeContinent && own && bot->FindMap() && bot->FindMap()->IsContinent();
     uint32 const rescueMap = homeContinent ? ai::zone_exit::RescueContinent(bot->GetMapId(), own->mapId) : bot->GetMapId();
     bool const offHome = homeContinent && rescueMap != bot->GetMapId();
+
+    // twow-repo#575 R2 (a)-(c) (StartValleyFix, RescueValleyPolicy.h): up to StartAreaMaxLevel this loop only adds start valleys.
+    // With the key a roster bot gets only its own race's start point (also after a HomeHubs fallback, NE / undead targets=0), deduplicated,
+    // beyond RescueMinDistance, and not the last rescue target while it has made no progress since. Empty: no_target with the reason
+    // counts in the line below. The own start point lies on the home continent, so Z1a keeps it.
+    if (valleyFix && level <= ai::quest_search::StartAreaMaxLevel)
+    {
+        namespace rv = ai::rescue_valley;
+        rv::Tally tally;
+        std::vector<rv::Point> kept;
+        bool const hasLast = rescueAi && rescueAi->ValleyRescueWithoutProgress();
+        rv::Point const last = hasLast ? rescueAi->LastValleyRescue() : rv::Point{ 0, 0.0f, 0.0f };
+        for (uint32 race = 1; race < MAX_RACES; ++race)
+        {
+            PlayerInfo const* info = firstInfo(race);
+            if (!info || Player::TeamForRace(race) != bot->GetTeam() || !rv::TakesValleyOf(true, race, bot->getRace()))
+                continue;
+            WorldLocation const start(info->mapId, info->positionX, info->positionY, info->positionZ, info->orientation);
+            float const botDistance = bot->GetMapId() == info->mapId ? botPos.distance(WorldPosition(start)) :
+                ai::quest_search::RescueMinDistance + 1.0f;   // another map is never near
+            rv::Point const point{ info->mapId, info->positionX, info->positionY };
+            rv::Drop const drop = rv::Check(point, botDistance, ai::quest_search::RescueMinDistance, kept, hasLast, last);
+            tally.Add(drop);
+            if (drop != rv::Drop::Kept)
+                continue;
+            kept.push_back(point);
+            targets.push_back(start);
+        }
+        sLog.outBasic("[QuestRescue] state=start_valley bot=%u level=%u race=%u map=%u zone=%u kept=%u near=%u duplicate=%u last=%u",
+            bot->GetGUIDLow(), level, uint32(bot->getRace()), bot->GetMapId(), bot->GetZoneId(), tally.kept, tally.nearby, tally.duplicate,
+            tally.last);
+        return targets;
+    }
 
     for (uint32 race = 1; race < MAX_RACES; ++race)
     {
@@ -7965,6 +8019,11 @@ void RandomPlayerbotMgr::ProcessQuestRescues()
         // idle; the atomic latch). Rescue relocations are not loop-counted.
         if (rescued)
             ai->SetLastRelocSource(ai::replan::RelocSource::Rescue);
+        // twow-repo#575 R2 (b) (StartValleyFix): the last rescue target, recorded only for a teleport that started (QuestRescueTargets
+        // also runs before the limiter and on a rung mismatch without any teleport); the bot's own update clears it on progress.
+        if (rescued && IsPersistentRosterMember(bot->GetGUIDLow()) && !ai->HasRealPlayerMaster() &&
+                ai::cohort::Applies(sPlayerbotAIConfig.questRescueStartValleyFix, bot->GetGUIDLow()))
+            ai->MarkValleyRescue(ai::rescue_valley::Point{ target.mapid, target.coord_x, target.coord_y });
 
         // Hotfix 8.26 (v33, Rollotheo 4140): the hearthstone stayed bound to the start area, so the
         // next "long stuck" hearthstone (or the 8.14 home step) took the bot straight back to where
