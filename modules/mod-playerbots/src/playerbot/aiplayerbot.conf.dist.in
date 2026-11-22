@@ -1912,9 +1912,10 @@ AiPlayerbot.QuestBook.NeedPerObjective.Log = 0
 # reads a quest template MaxLevel of 0 as "no upper limit", as the core's CanTakeQuest and the bot's quest
 # search check do. Off, the old compare refuses the giver of every quest with MaxLevel 0 (about 97 % of
 # quest templates); the refusal is counted as giver_drops=...min_max in [QuestFirstRoute] state=giver_fetch.
-#   0 = off (default until its acceptance unit), 1 = every bot, 2 = only cohort B (odd low guid),
-#   3 = only cohort A (even low guid); other values act like 0.
-AiPlayerbot.QuestGiver.MaxLevelZeroFix = 0
+# BEHAVIOUR CHANGE, ON by default since the K-2 ADOPT (owner 22.11.2026), 0 = rollback.
+#   0 = off (the old compare), 1 = every bot (default), 2 = only cohort B (odd low guid),
+#   3 = only cohort A (even low guid). Any other value acts like 1.
+AiPlayerbot.QuestGiver.MaxLevelZeroFix = 1
 
 # #627 S7 help groups (owner 18.10./23.10.2026): roster bots holding the same elite
 # quest (Type 1; with SuggestedPlayers = 1 also SuggestedPlayers >= 2; never

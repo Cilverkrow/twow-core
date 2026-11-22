@@ -1310,12 +1310,13 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[QuestFirstRoute] config key=GiverFetchAnyQuest value=%u result=off (0 off, 1 all, 2 cohort B)", questFirstProgressionGiverFetchAnyQuest);
         questFirstProgressionGiverFetchAnyQuest = 0;
     }
-    // twow-repo#738 L03 QuestGiver.MaxLevelZeroFix: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B, 3 cohort A).
-    questGiverMaxLevelZeroFix = config.GetIntDefault("AiPlayerbot.QuestGiver.MaxLevelZeroFix", 0);
+    // twow-repo#738 L03 QuestGiver.MaxLevelZeroFix (default 1 after K-2 ADOPT, owner 22.11.2026): an unknown mode is the default
+    // (CohortPolicy.h: 0 off = rollback, 1 all, 2 cohort B, 3 cohort A).
+    questGiverMaxLevelZeroFix = config.GetIntDefault("AiPlayerbot.QuestGiver.MaxLevelZeroFix", 1);
     if (questGiverMaxLevelZeroFix > 3)
     {
-        sLog.outError("[QuestFirstRoute] config key=QuestGiver.MaxLevelZeroFix value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", questGiverMaxLevelZeroFix);
-        questGiverMaxLevelZeroFix = 0;
+        sLog.outError("[QuestFirstRoute] config key=QuestGiver.MaxLevelZeroFix value=%u result=default 1 (0 off = rollback, 1 all, 2 cohort B, 3 cohort A)", questGiverMaxLevelZeroFix);
+        questGiverMaxLevelZeroFix = 1;
     }
     // twow-repo#601 SkipSkillLockedObjectives: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B).
     questFirstProgressionSkipSkillLockedObjectives = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.SkipSkillLockedObjectives", 0);

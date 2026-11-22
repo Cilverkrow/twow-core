@@ -1086,11 +1086,11 @@ public:
     bool questBookNeedPerObjectiveLog = false;
     // twow-repo#627 S7 help groups (QuestGroupPolicy.h, QuestGroupWorld.cpp); Enable: 0 off, 1 all, 2 cohort B, 3 cohort A.
     uint32 questGroupsEnable = 0;
-    // twow-repo#738 L03 (AiPlayerbot.QuestGiver.MaxLevelZeroFix, OB-10 decision 085028ec; default 0 until its acceptance unit): the
-    // quest giver trip check reads a quest template MaxLevel of 0 as "no upper limit", as the core (Player::CanTakeQuest) and our
-    // quest search check (ChooseTravelTargetAction.cpp) do. 0 = the old unsigned compare, which refuses every MaxLevel 0 quest;
-    // 1 all, 2 cohort B (odd low guid), 3 cohort A (even low guid).
-    uint32 questGiverMaxLevelZeroFix = 0;
+    // twow-repo#738 L03 (AiPlayerbot.QuestGiver.MaxLevelZeroFix, OB-10 decision 085028ec; default 1 after the K-2 ADOPT, owner
+    // 22.11.2026): the quest giver trip check reads a quest template MaxLevel of 0 as "no upper limit", as the core
+    // (Player::CanTakeQuest) and our quest search check (ChooseTravelTargetAction.cpp) do. 0 = the old unsigned compare, which
+    // refuses every MaxLevel 0 quest (rollback); 1 all (default), 2 cohort B (odd low guid), 3 cohort A (even low guid).
+    uint32 questGiverMaxLevelZeroFix = 1;
     uint32 questGroupsScanSeconds = 60;
     // twow-repo#628: the S7 scan spread over this many updates (0/1 = the whole scan in one update).
     uint32 questGroupsScanSlices = 0;
