@@ -1945,17 +1945,18 @@ std::string PlayerbotAI::TakeGrindWindowMinuteLine()
     return ai::quest_grind_mode::FormatWindowMinuteLine(counts);
 }
 
-// Grind.LowLevelWindow [LowLevelWindow] (OB-10 22.11.2026): window grind fetches, those without a target, window grind trips,
-// per cohort, since the last minute line; counted on the map threads, taken by the world thread (relaxed atomics, no lock).
+// Grind.LowLevelWindow [LowLevelWindow] (OB-10 22.11.2026): window grind fetches, their destination points, the choices without
+// a target and the window grind trips, per cohort, since the last minute line; counted on the map threads, taken by the world
+// thread (relaxed atomics, no lock).
 namespace
 {
 std::atomic<uint32> lowLevelWindowCounts[ai::low_level_window::SlotCount] = {};
 }
 
-void PlayerbotAI::NoteLowLevelWindow(uint8 event, uint32 guidLow)
+void PlayerbotAI::NoteLowLevelWindow(uint8 event, uint32 guidLow, uint32 n)
 {
-    if (event < ai::low_level_window::EventCount)
-        lowLevelWindowCounts[ai::low_level_window::Slot(ai::low_level_window::Event(event), guidLow)].fetch_add(1,
+    if (event < ai::low_level_window::EventCount && n)
+        lowLevelWindowCounts[ai::low_level_window::Slot(ai::low_level_window::Event(event), guidLow)].fetch_add(n,
             std::memory_order_relaxed);
 }
 

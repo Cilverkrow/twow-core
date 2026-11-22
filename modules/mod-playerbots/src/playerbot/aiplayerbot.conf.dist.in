@@ -798,7 +798,7 @@ AiPlayerbot.Grind.GreyByLevel = 1
 # [max(gray + 1, L - 5), L + 1] (creature MaxLevel and area level) instead of the durability window, which is one level wide
 # at L5 and finds no destination at L1-5. The money test (MinLootGold > 0) stays; none of GrindMode 1's other rules (request
 # gate, trip clock, own map, on-site filter) come with it, and a bot GrindMode 1 already covers gets nothing from this key.
-# Above level 10: as before. One [LowLevelWindow] minute line per cohort (fetches / none / trips), omitted when all are 0.
+# Above level 10: as before. One [LowLevelWindow] minute line per cohort (fetches / window points / none / trips), omitted when all are 0.
 # A cohort mode: 0 = off (default), 1 = all bots, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid), the
 # same cohorts as QuestBook. Any other value = off (one error line at load).
 AiPlayerbot.Grind.LowLevelWindow = 0
