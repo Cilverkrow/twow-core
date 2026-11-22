@@ -95,6 +95,13 @@ inline std::string FormatInitLine(std::uint32_t items, std::uint32_t quests, std
         std::to_string(quests);
 }
 
+// The built set by id (OB-10 Q1(b), acceptance WIRING): one line per craft-only objective, sorted by quest, once per build.
+inline std::string FormatQuestLine(std::uint32_t quest, std::uint32_t item, std::uint32_t required)
+{
+    return "[QuestCraftOnly] quest=" + std::to_string(quest) + " item=" + std::to_string(item) + " required=" +
+        std::to_string(required);
+}
+
 // Once a minute (world thread, only with the key on): accept skips and giver relations found inactive count checks; held counts
 // (bot, quest) pairs whose line was due (at most one per bot, quest and hour).
 inline std::string FormatMinuteLine(std::uint32_t skips, std::uint32_t giverInactive, std::uint32_t held)
