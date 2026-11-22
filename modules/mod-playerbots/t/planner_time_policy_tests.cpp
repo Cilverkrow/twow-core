@@ -108,10 +108,54 @@ void TestBufferBound()
     Require(len + 1 < sizeof(buf), "every field at its maximum fits kPlanTimeBuf");
     Require(std::strstr(buf, " rest=4294967295") != nullptr, "the last field is not cut");
 
+    // S5 F1: the prefilter suffix at its maximum fits too
+    t.givePrefilter = true;
+    t.givePre = t.giveXmap = t.giveInbox = 0xFFFFFFFFu;
+    t.giveVerify = true;
+    char pbuf[kPlanTimeBuf];
+    std::size_t const plen = FormatPlanTimeLine(pbuf, sizeof(pbuf), t);
+    Require(plen + 1 < sizeof(pbuf), "every field and the prefilter suffix at their maximum fit kPlanTimeBuf");
+    Require(std::strstr(pbuf, " give_inbox=4294967295 verify=1") != nullptr, "the prefilter suffix is not cut");
+
     char small[16];
     std::size_t const cut = FormatPlanTimeLine(small, sizeof(small), t);
     Require(cut == sizeof(small) - 1 && std::strlen(small) == cut, "a short buffer cuts and terminates");
     Require(FormatPlanTimeLine(nullptr, 8, t) == 0 && FormatPlanTimeLine(small, 0, t) == 0, "no buffer = 0");
+}
+}
+
+namespace
+{
+// S5 F1 (twow-repo#726, F1-ENTWURF-v0.2): with the giver prefilter the line ends with its counts; without it the line is as before.
+void TestPrefilterSuffix()
+{
+    PlanTime t;
+    t.guid = 7;
+    t.give.ran = true;
+    t.give.fetchUs = 410;
+    t.give.walk = 6118;
+    t.give.ret = 164;
+    t.givePrefilter = true;
+    t.givePre = 5800;
+    t.giveXmap = 3100;
+    t.giveInbox = 2;
+    char buf[kPlanTimeBuf];
+    std::size_t const len = FormatPlanTimeLine(buf, sizeof(buf), t);
+    std::string const line(buf);
+    Require(len == line.size(), "prefilter: returned length = string length");
+    Require(line == "[PlanTime] bot=7 cohort=A us=0 cpu_us=na ms=0 over_budget=0 cands=0 cut=0 done=0 open=0 head=0 "
+        "take=- obj=- give=410/0/0/6118/164 rest=0 prefilter=1 give_pre=5800 give_xmap=3100 give_inbox=2 verify=0", "prefilter suffix");
+    t.giveVerify = true;
+    FormatPlanTimeLine(buf, sizeof(buf), t);
+    Require(std::string(buf).size() > 9 && std::string(buf).substr(std::string(buf).size() - 9) == " verify=1", "verify=1 last");
+    t.givePrefilter = false;
+    FormatPlanTimeLine(buf, sizeof(buf), t);
+    Require(std::strstr(buf, "prefilter=") == nullptr && std::string(buf).substr(std::string(buf).size() - 7) == " rest=0",
+        "prefilter off: the line ends at rest= as before");
+    char small[40];
+    t.givePrefilter = true;
+    std::size_t const cut = FormatPlanTimeLine(small, sizeof(small), t);
+    Require(cut == sizeof(small) - 1 && std::strlen(small) == cut, "prefilter: a short buffer cuts and terminates");
 }
 }
 
@@ -121,6 +165,7 @@ int main()
     TestUsBetween();
     TestLineShape();
     TestBufferBound();
+    TestPrefilterSuffix();
     std::cout << "planner_time_policy_tests: OK\n";
     return 0;
 }

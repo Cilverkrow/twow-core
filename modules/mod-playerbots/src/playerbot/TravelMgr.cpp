@@ -5159,6 +5159,8 @@ WorldPosition* TravelMgr::GetFishSpot(WorldPosition start, bool onlyNearestGrid)
 
 // A3 step 3 planner S5 (twow-repo#726): null = GetDestinations counts nothing (TravelMgr.h DestFetchStats).
 thread_local ai::DestFetchStats* ai::tDestFetchStats = nullptr;
+// A3 step 3 planner S5 F1 (twow-repo#726): null = no giver prefilter (TravelMgr.h tDestRangePrefilter).
+thread_local ai::giver_prefilter::Counts* ai::tDestRangePrefilter = nullptr;
 
 DestinationList TravelMgr::GetDestinations(const PlayerTravelInfo& info, uint32 purposeFlag, const std::vector<int32>& entries, bool onlyPossible, float maxDistance) const
 {
@@ -5191,6 +5193,33 @@ DestinationList TravelMgr::GetDestinations(const PlayerTravelInfo& info, uint32 
         return false;
     };
     DestFetchStats* const fetchStats = tDestFetchStats;   // S5 (twow-repo#726): null = no counts
+    // S5 F1 (twow-repo#726, AiPlayerbot.Planner.GiverPrefilter): skip a destination whose lower bound is out of range before the
+    // checks below; it is one the range check drops too, so the list and its order stay the same. Only without onlyPossible
+    // (IsPossible counts [QuestBookMin] before the range check) and with a radius. The portal lists of sqMapTransDistances are
+    // fetched once per map of this call (call-local; the reference is used up before the next lookup).
+    giver_prefilter::Counts* const prefilter = (tDestRangePrefilter && !onlyPossible && maxDistance > 0) ? tDestRangePrefilter : nullptr;
+    std::vector<std::pair<uint32, std::vector<std::pair<WorldPosition, float>>>> portalCache;
+    auto const portalsOf = [&](uint32 mapId) -> std::vector<std::pair<WorldPosition, float>> const&
+    {
+        for (auto const& [cachedMap, portals] : portalCache)
+            if (cachedMap == mapId)
+                return portals;
+        portalCache.emplace_back(mapId, sqMapTransDistances(center, mapId));
+        return portalCache.back().second;
+    };
+    auto const prefiltered = [&](TravelDestination* dest)
+    {
+        if (!prefilter)
+            return false;
+        bool xmap = false, inbox = false;
+        float const lowerBound = dest->SqDistanceLowerBound(center, portalsOf, xmap, inbox);
+        prefilter->xmap += xmap ? 1 : 0;
+        prefilter->inbox += inbox ? 1 : 0;
+        if (!giver_prefilter::Excludes(lowerBound, maxDistance))
+            return false;
+        ++prefilter->pre;
+        return true;
+    };
     auto const appendDestinations = [&](DestinationList const& dests)
     {
         if (fetchStats)
@@ -5199,6 +5228,9 @@ DestinationList TravelMgr::GetDestinations(const PlayerTravelInfo& info, uint32 
         {
             // twow-repo#575 (PATH-01 E5): a start-zone destination only for its own faction (tagged at boot when on).
             if (!ai::start_zone::DestinationAllows(ai::start_zone::StartTeam(dest->GetStartZoneTeam()), info.GetTeam() == ALLIANCE))
+                continue;
+
+            if (prefiltered(dest))
                 continue;
 
             if (outOfTracedRange(dest))
@@ -5252,6 +5284,9 @@ DestinationList TravelMgr::GetDestinations(const PlayerTravelInfo& info, uint32 
             for (auto& dest : dests)
             {
                 if (!ai::start_zone::DestinationAllows(ai::start_zone::StartTeam(dest->GetStartZoneTeam()), info.GetTeam() == ALLIANCE))
+                    continue;
+
+                if (prefiltered(dest))
                     continue;
 
                 if (outOfTracedRange(dest))

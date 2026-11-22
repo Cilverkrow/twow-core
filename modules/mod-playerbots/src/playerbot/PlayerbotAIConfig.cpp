@@ -1160,6 +1160,16 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[Planner] config key=Planner.TimeTrace value=%u result=0 (0 off, 1 on)", plannerTimeTrace);
         plannerTimeTrace = 0;
     }
+    // A3 step 3 planner S5 F1 (twow-repo#726, F1-ENTWURF-v0.2): the giver prefilter (cohort rule 0-3; above 3 is 0, fail closed) and
+    // its verify (every N-th prefiltered giver fetch also runs the original list; 0 = never).
+    plannerGiverPrefilter = uint32(config.GetIntDefault("AiPlayerbot.Planner.GiverPrefilter", 0));
+    if (plannerGiverPrefilter > 3)
+    {
+        sLog.outError("[Planner] config key=Planner.GiverPrefilter value=%u result=0 (0 off, 1 all, 2 cohort B, 3 cohort A)",
+            plannerGiverPrefilter);
+        plannerGiverPrefilter = 0;
+    }
+    plannerGiverPrefilterVerify = uint32(config.GetIntDefault("AiPlayerbot.Planner.GiverPrefilterVerify", 0));
     // A3 step 3 planner P-3a (P3-ENTWURF-v0.2 section 8, OB-00 F2 (a)): the write cohort of Planner = 2; above 3 is 0 (fail closed,
     // never "all"). [ArbiterMin] gets plan= only at Planner = 2.
     plannerWriteCohort = uint32(config.GetIntDefault("AiPlayerbot.Planner.WriteCohort", 0));
@@ -2503,6 +2513,8 @@ bool PlayerbotAIConfig::Initialize()
             {"Planner.DangerTopN", Value(plannerDangerTopN)},
             {"Planner.DeadProbeYards", Value(plannerDeadProbeYards)},
             {"Planner.DeadWaitMaxSec", Value(plannerDeadWaitMaxSec)},
+            {"Planner.GiverPrefilter", Value(plannerGiverPrefilter)},
+            {"Planner.GiverPrefilterVerify", Value(plannerGiverPrefilterVerify)},
             {"Planner.GrindKillsPerMin", Value(plannerGrindKillsPerMin)},
             {"Planner.Margin", Value(plannerMargin)},
             {"Planner.MaxCandidates", Value(plannerMaxCandidates)},
