@@ -234,7 +234,13 @@ inline void HoldWhileDead(ai::replan::Sample& s, ai::replan::Sample& held, bool 
 // Before P-3 no verdict acts (D1), so the key stays after a forced Close and a later stall of the same episode is forced again
 // (second_stall). The bound per bot: at most one stall decision per N, plus one reloc_loop record per loop-counted relocation of
 // the episode from the third on (the loop count resets only with progress or a new episode), so a forced line needs a teleport.
-// The C2 (a) base (the first forced record per bot, key and episode) is then always in the log.
+// The C2 (a) base (the first forced record per bot, key and episode) is then always in the log, unless forced_dropped > 0 in that
+// minute (R9-a ceiling below): such a minute makes C2 (a) nd for that cohort and minute in every RESULT.
+// R9-a (OB-10 review core#1100 36d45289): forced lines have their own global safety ceiling, kForcedLinesPerMinute for all bots
+// together. A forced line above it is not written and counts as forced_dropped= of its cohort in [ReplanMin]; forced= still counts
+// every forced decision (the meter's counter, not the line), so the C2 base metric stays complete.
+constexpr std::uint32_t kForcedLinesPerMinute = 600;
+
 inline bool OutsideLineBudget(ai::replan::Record const& r)
 {
     return r.forced;

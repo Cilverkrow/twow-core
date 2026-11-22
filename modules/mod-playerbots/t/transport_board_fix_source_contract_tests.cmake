@@ -1,5 +1,5 @@
 cmake_policy(VERSION 3.16)
-# twow-repo#342 (S3b-1, BEHAVIOUR CHANGE behind AiPlayerbot.Path.TransportBoardFix, default 0; CLI-PATH design rev 2.1 split,
+# twow-repo#342 (S3b-1, BEHAVIOUR CHANGE behind AiPlayerbot.Path.TransportBoardFix, default 1 since DS6 bundle B 21.11.2026, 0 = rollback; CLI-PATH design rev 2.1 split,
 # OB-10 decisions 18.10.2026): bots board ships and zeppelins. With the switch on: a boarding point counts on the vessel's
 # own deck model; the vessel at its stop within 20 yd of the dock opens boarding (paced stop test, one try per 5 s per ride);
 # a dock hop with object 0 takes the adjacent ride's entry inside the route (D2, no DB delta); a failed boarding answers
@@ -565,14 +565,15 @@ function(check_stop_pace move out_var)
   endif()
 endfunction()
 
-# 0. Key: off in code, parsed once right after the S3b-0 keys, documented 0 after them; the D6 text correction.
-require_text("${config_h}" "    bool pathTransportBoardFix = false;  // twow-repo#342 (S3b-1)" "TransportBoardFix default off")
-require_text("${config_cpp}" "    pathTransportWaitTimeoutMin = ai::transport_board::ClampWaitTimeoutMin(config.GetIntDefault(\"AiPlayerbot.Path.TransportWaitTimeoutMin\", 15));\n    pathTransportBoardFix = config.GetBoolDefault(\"AiPlayerbot.Path.TransportBoardFix\", false);\n" "key parsed right after the S3b-0 keys")
+# 0. Key: on in code (DS6 bundle B, owner 21.11.2026; 0 = rollback), parsed once right after the S3b-0 keys, documented 1 after
+# them; the D6 text correction.
+require_text("${config_h}" "    bool pathTransportBoardFix = true;  // twow-repo#342 (S3b-1)" "TransportBoardFix default on")
+require_text("${config_cpp}" "    pathTransportWaitTimeoutMin = ai::transport_board::ClampWaitTimeoutMin(config.GetIntDefault(\"AiPlayerbot.Path.TransportWaitTimeoutMin\", 15));\n    pathTransportBoardFix = config.GetBoolDefault(\"AiPlayerbot.Path.TransportBoardFix\", true);\n" "key parsed right after the S3b-0 keys")
 count_text("${config_cpp}" "\"AiPlayerbot.Path.TransportBoardFix\"" 1 "fix key parsed once")
 require_text("${config_cpp}" "    if (pathTransportBoardFix && transportTeleportType == 0)   // twow-repo#342 (S3b-1)\n        sLog.outError(" "walk mode is reported, not changed")
 require_order("${config_cpp}" "transportTeleportType = config.GetIntDefault(\"AiPlayerbot.TransportTeleportType\", 2);" "if (pathTransportBoardFix && transportTeleportType == 0)" "teleport type read before the check")
 require_text("${conf_dist}" "\nAiPlayerbot.Path.TransportWaitTimeoutMin = 15\n# twow-repo#342 (S3b-1, BEHAVIOUR CHANGE" "fix documented after the S3b-0 keys")
-require_text("${conf_dist}" "\nAiPlayerbot.Path.TransportBoardFix = 0\n" "fix documented off")
+require_text("${conf_dist}" "\nAiPlayerbot.Path.TransportBoardFix = 1\n" "fix documented on")
 count_text("${conf_dist}" "AiPlayerbot.Path.TransportBoardFix = " 1 "one fix key")
 forbid_text("${conf_dist}" "2 = teleport from dock to dock bypassing transport." "the old D6 conf text (type 2 teleports onto the transport and rides it)")
 require_text("${conf_dist}" "2 = the same as 1: teleport onto the transport at the dock and ride it" "the D6 conf text")

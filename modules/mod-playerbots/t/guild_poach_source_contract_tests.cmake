@@ -6,7 +6,7 @@ endif()
 # invitation or charter and switches. One rule (GuildPoachPolicy.h) for the core hook and both bot
 # actions; it reads copies only, because the core asks on the inviter's map thread. The bots never
 # leave or join themselves: GuildMgr::RequestGuildSwitch does it on the world thread (core contract
-# guild_switch_contract). AllowPoaching = 0 (default) keeps "already in a guild".
+# guild_switch_contract). AllowPoaching = 0 (the rollback) keeps "already in a guild".
 
 function(require_text text needle description)
   string(FIND "${text}" "${needle}" offset)
@@ -230,16 +230,17 @@ file(READ "${PB_SOURCE_DIR}/strategy/actions/GuildCreateActions.cpp" create_acti
 text_between("${create_actions}" "bool BuyPetitionAction::canBuyPetition(Player* bot, char const*& reason)" "\n}" can_buy)
 require_text("${can_buy}" "if (RosterGuildPoach::KeptCharter(bot->GetObjectGuid(), ObjectGuid()))" "poached bot buys no charter within the cooldown")
 
-# 7. Config: neutral defaults, read into members without in-class defaults, documented.
+# 7. Config: defaults (AllowPoaching 1 since DS6 bundle B, owner 21.11.2026; 0 = rollback), read into members without
+# in-class defaults, documented.
 foreach(pair
-    "\"AiPlayerbot.RosterGuild.AllowPoaching\", false)"
+    "\"AiPlayerbot.RosterGuild.AllowPoaching\", true)"
     "\"AiPlayerbot.RosterGuild.PoachCooldownSeconds\", 86400)")
   require_text("${config_source}" "${pair}" "poaching config default")
 endforeach()
 foreach(member "bool rosterGuildAllowPoaching;" "uint32 rosterGuildPoachCooldownSeconds;")
   require_text("${config_header}" "${member}" "poaching member")
 endforeach()
-foreach(line "AiPlayerbot.RosterGuild.AllowPoaching = 0" "AiPlayerbot.RosterGuild.PoachCooldownSeconds = 86400" "(3600-2592000, other values are clamped")
+foreach(line "AiPlayerbot.RosterGuild.AllowPoaching = 1" "AiPlayerbot.RosterGuild.PoachCooldownSeconds = 86400" "(3600-2592000, other values are clamped")
   require_text("${config_template}" "${line}" "documented poaching default")
 endforeach()
 

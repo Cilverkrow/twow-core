@@ -1,5 +1,5 @@
 # twow-repo#333 Berufe P1-f (owner 25.10.2026 via OB-00): AiPlayerbot.Gather.QuestHerbFilter, modes 0 / 1 / 2 (in-realm A/B),
-# default 0, ConfigEcho. A quest herb (lock 259: herbalism next to "open kneeling") is picked only while one of the bot's quests
+# default 1 since DS6 bundle B (owner 21.11.2026; 0 = rollback), ConfigEcho. A quest herb (lock 259: herbalism next to "open kneeling") is picked only while one of the bot's quests
 # wants it; the gather travel targets leave it out since #414 (IsGatherNode), unchanged.
 
 # cmake 3.x script mode (Debian trixie builder / CI): policies as in the host cmake 4.x.
@@ -40,13 +40,14 @@ read_source("aiplayerbot.conf.dist.in" conf_dist)
 read_source("LootObjectStack.cpp" loot_cpp)
 read_source("TravelMgr.cpp" travel_mgr)
 
-# Switch: a mode, default 0, unknown -> 0, documented, echoed.
-require_text("${config_h}" "uint32 gatherQuestHerbFilter = 0;" "default off, a mode")
-require_text("${config_cpp}" "gatherQuestHerbFilter = config.GetIntDefault(\"AiPlayerbot.Gather.QuestHerbFilter\", 0);" "config read")
-require_text("${config_cpp}" "if (gatherQuestHerbFilter > 2)\n        gatherQuestHerbFilter = 0;" "unknown mode is off")
+# Switch: a mode, default 1 (DS6 bundle B, owner 21.11.2026), unknown -> 1 (#740/#742 template), documented, echoed.
+require_text("${config_h}" "uint32 gatherQuestHerbFilter = 1;" "default on, a mode")
+require_text("${config_cpp}" "gatherQuestHerbFilter = config.GetIntDefault(\"AiPlayerbot.Gather.QuestHerbFilter\", 1);" "config read")
+require_text("${config_cpp}" "if (gatherQuestHerbFilter > 2)\n        gatherQuestHerbFilter = 1;" "unknown mode is the default 1")
 require_text("${config_cpp}" "{\"Gather.QuestHerbFilter\", Value(gatherQuestHerbFilter)}," "ConfigEcho entry")
-require_text("${conf_dist}" "\nAiPlayerbot.Gather.QuestHerbFilter = 0\n" "documented, 0 by default")
-forbid_text("${conf_dist}" "\nAiPlayerbot.Gather.QuestHerbFilter = 1" "default 1 in the dist")
+require_text("${conf_dist}" "\nAiPlayerbot.Gather.QuestHerbFilter = 1\n" "documented, 1 by default")
+require_text("${conf_dist}" "Any other value acts like 1.\nAiPlayerbot.Gather.QuestHerbFilter = 1\n" "dist: unknown mode = 1")
+forbid_text("${conf_dist}" "\nAiPlayerbot.Gather.QuestHerbFilter = 0" "default 0 in the dist")
 forbid_text("${conf_dist}" "\nAiPlayerbot.Gather.QuestHerbFilter = 2" "default 2 in the dist")
 
 # Pure rule: the "open kneeling" slot marks a quest herb, not the raw lock skill 0 (Peacebloom / Silverleaf have it too).

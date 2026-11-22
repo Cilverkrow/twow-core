@@ -7,6 +7,7 @@
 #include "playerbot/StartZonePolicy.h"
 #include "playerbot/QuestFailureClassPolicy.h"
 #include "playerbot/QuestGrindModePolicy.h"
+#include "playerbot/LowLevelWindowPolicy.h"   // OB-10 22.11.: Grind.LowLevelWindow
 #include "playerbot/QuestFirstOrderPolicy.h"   // twow-repo#601 decision order (Grind.QuestFirstOrder)
 #include "playerbot/ResurrectDelayPolicy.h"   // twow-repo#575 H3 (Revive.DelayResurrectRequest mode)
 #include "playerbot/AiJitterPolicy.h"
@@ -41,7 +42,11 @@
 #include <cstddef>
 #include <cstdint>
 #include <iomanip>
+#include <memory>
+#include <mutex>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 
 #include "playerbot/AiFactory.h"
 
@@ -1838,6 +1843,18 @@ bool PlayerbotAI::IsQuestGapGrind()
         HasRealPlayerMaster(), bot->GetLevel(), sWorld.getConfig(CONFIG_UINT32_MAX_PLAYER_LEVEL));
 }
 
+// AiPlayerbot.Grind.LowLevelWindow (OB-10 22.11.2026, LowLevelWindowPolicy.h): the GrindMode 1 window for L1-10 quest-first bots.
+// The config is read first, so with 0 nothing else is tested; a bot GrindMode 1 already covers (IsQuestGapGrind) is no change.
+bool PlayerbotAI::IsLowLevelWindow()
+{
+    if (!sPlayerbotAIConfig.grindLowLevelWindow || !bot)
+        return false;
+
+    return ai::low_level_window::Applies(sPlayerbotAIConfig.grindLowLevelWindow, bot->GetGUIDLow(),
+        sPlayerbotAIConfig.questFirstProgressionEnabled && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) &&
+            !HasRealPlayerMaster(), bot->GetLevel(), IsQuestGapGrind());
+}
+
 // twow-repo#601 decision order (AiPlayerbot.Grind.QuestFirstOrder, owner 20.10.2026 via OB-00): the same population as
 // QuestFirstProgression (Enabled + persistent roster member), on its own, below the max player level. The config is read
 // first, so with 0 nothing else is tested. Mode 2 (OB-00 20.10.: in-realm A/B): only cohort B (odd low guid, CohortPolicy.h).
@@ -1932,6 +1949,29 @@ std::string PlayerbotAI::TakeGrindWindowMinuteLine()
     return ai::quest_grind_mode::FormatWindowMinuteLine(counts);
 }
 
+// Grind.LowLevelWindow [LowLevelWindow] (OB-10 22.11.2026): window grind fetches, their destination points, the choices without
+// a target and the window grind trips, per cohort, since the last minute line; counted on the map threads, taken by the world
+// thread (relaxed atomics, no lock).
+namespace
+{
+std::atomic<uint32> lowLevelWindowCounts[ai::low_level_window::SlotCount] = {};
+}
+
+void PlayerbotAI::NoteLowLevelWindow(uint8 event, uint32 guidLow, uint32 n)
+{
+    if (event < ai::low_level_window::EventCount && n)
+        lowLevelWindowCounts[ai::low_level_window::Slot(ai::low_level_window::Event(event), guidLow)].fetch_add(n,
+            std::memory_order_relaxed);
+}
+
+std::string PlayerbotAI::TakeLowLevelWindowMinuteLine()
+{
+    std::array<std::uint32_t, ai::low_level_window::SlotCount> counts = {};
+    for (std::size_t slot = 0; slot < ai::low_level_window::SlotCount; ++slot)
+        counts[slot] = lowLevelWindowCounts[slot].exchange(0, std::memory_order_relaxed);
+    return ai::low_level_window::FormatMinuteLine(counts);
+}
+
 // GrindMode 2, the bot's own thread: one count per blocked grind decision, one [QuestIdle] line per reason and idle
 // episode (at most 4 per episode however the reasons alternate).
 void PlayerbotAI::NoteQuestIdle(uint8 reason, std::string const& target)
@@ -2005,6 +2045,13 @@ ai::quest_feasibility::Reason PlayerbotAI::QuestFeasibilityReason(Quest const* q
     facts.soloSkipGroupQuests = sPlayerbotAIConfig.questFeasibilitySoloSkipGroupQuests;
     facts.type = quest->GetType();
     facts.suggestedPlayers = quest->GetSuggestedPlayers();
+    // DEEP7 item 5 (OB-10 21.11. criterion (A), a lever): listed escort quests and short timed quests, a bot not in a group
+    // OB-10 21.11. Q1 (a): a cohort mode, the shared cohort rule (CohortPolicy.h)
+    facts.soloSkipEscortTimed = ai::quest_feasibility::EscortTimedApplies(sPlayerbotAIConfig.questFeasibilitySoloSkipEscortTimed,
+        bot->GetGUIDLow());
+    facts.escortListed = sPlayerbotAIConfig.questFeasibilitySoloSkipEscortIds.count(questId) != 0;
+    facts.limitTime = quest->GetLimitTime();
+    facts.timedMaxSeconds = sPlayerbotAIConfig.questFeasibilitySoloSkipTimedMaxSeconds;
     return ai::quest_feasibility::SkipReason(facts);
 }
 
@@ -2041,6 +2088,208 @@ std::string PlayerbotAI::TakeQuestFeasibilityMinuteLine()
     return ai::quest_feasibility::FormatMinuteLine(questFeasibilitySkips.exchange(0, std::memory_order_relaxed),
         questFeasibilityDrops.exchange(0, std::memory_order_relaxed),
         questFeasibilityGiverInactive.exchange(0, std::memory_order_relaxed));
+}
+
+// twow-repo#750 (AiPlayerbot.QuestFeasibility.CraftOnlySkip, QuestCraftOnlyPolicy.h; OB-10 840bcbdf / be58c794): the craft-only
+// quest items. OB-60 pre-review F1: built into a local map and published once (release store); readers on the map threads only
+// load the pointer (acquire) and never see a map being built. A later Initialize (.playerbot reload / console reload) does not
+// rebuild - the published map stays as it is (one allocation, process lifetime). The counters are taken by the world thread
+// once a minute (atomics, no lock).
+namespace
+{
+typedef std::unordered_map<uint32, std::vector<ai::quest_craft_only::Need>> CraftOnlyQuestMap;
+std::atomic<CraftOnlyQuestMap const*> craftOnlyQuests{nullptr};
+std::mutex craftOnlyBuildLock;
+std::atomic<uint32> craftOnlySkips{0};
+std::atomic<uint32> craftOnlyGiverInactive{0};
+std::atomic<uint32> craftOnlyHeld{0};
+
+// The quest's craft-only objectives, nullptr = not built or the quest has none (cheap: one pointer load and one find).
+std::vector<ai::quest_craft_only::Need> const* CraftOnlyObjectives(uint32 questId)
+{
+    CraftOnlyQuestMap const* const quests = craftOnlyQuests.load(std::memory_order_acquire);
+    if (!quests)
+        return nullptr;
+    auto const it = quests->find(questId);
+    return it == quests->end() ? nullptr : &it->second;
+}
+
+// The quest's craft-only objectives with what this bot holds; false = the quest has none. Bags only, as
+// Player::CanCompleteQuest counts them (OB-60 F4: the bank does not complete a quest).
+bool CraftOnlyNeeds(Player* bot, uint32 questId, std::vector<ai::quest_craft_only::Need>& needs)
+{
+    std::vector<ai::quest_craft_only::Need> const* const objectives = CraftOnlyObjectives(questId);
+    if (!objectives)
+        return false;
+    needs = *objectives;
+    for (ai::quest_craft_only::Need& need : needs)
+        need.held = bot->GetItemCount(need.itemId);
+    return true;
+}
+}
+
+void PlayerbotAI::BuildCraftOnlyQuests()
+{
+    std::lock_guard<std::mutex> const guard(craftOnlyBuildLock);
+    if (craftOnlyQuests.load(std::memory_order_acquire))
+    {
+        sLog.outBasic("[QuestCraftOnly] init skipped: already built (no rebuild on reload)");
+        return;
+    }
+    std::unordered_map<uint32, ai::quest_craft_only::Sources> sources;
+
+    // Profession recipes: the spells on a profession / secondary skill line (SkillLineAbility.dbc).
+    std::unordered_set<uint32> professionSpells;
+    for (uint32 j = 0; j < sSkillLineAbilityStore.GetNumRows(); ++j)
+    {
+        SkillLineAbilityEntry const* ability = sSkillLineAbilityStore.LookupEntry(j);
+        if (!ability)
+            continue;
+        SkillLineEntry const* line = sSkillLineStore.LookupEntry(ability->skillId);
+        if (line && ai::quest_craft_only::IsProfessionCategory(line->categoryId))
+            professionSpells.insert(ability->spellId);
+    }
+
+    // Every create-item spell: a profession recipe or another source (quest / event spells, item use).
+    for (uint32 spellId = 1; spellId < sSpellTemplate.GetMaxEntry(); ++spellId)
+    {
+        SpellEntry const* spell = sSpellTemplate.LookupEntry<SpellEntry>(spellId);
+        if (!spell)
+            continue;
+        bool const profession = professionSpells.count(spellId) != 0;
+        for (uint32 i = 0; i < MAX_EFFECT_INDEX; ++i)
+            if (spell->Effect[i] == SPELL_EFFECT_CREATE_ITEM && spell->EffectItemType[i])
+                (profession ? sources[spell->EffectItemType[i]].professionRecipe : sources[spell->EffectItemType[i]].otherSpell) = true;
+    }
+
+    // Loot of any kind and vendors; a reference row's id counts as a source too (errs towards "has another source").
+    std::unique_ptr<QueryResult> loot(WorldDatabase.Query("SELECT item FROM creature_loot_template UNION SELECT item FROM gameobject_loot_template "
+            "UNION SELECT item FROM item_loot_template UNION SELECT item FROM reference_loot_template "
+            "UNION SELECT item FROM pickpocketing_loot_template UNION SELECT item FROM fishing_loot_template "
+            "UNION SELECT item FROM skinning_loot_template UNION SELECT item FROM disenchant_loot_template "
+            "UNION SELECT item FROM mail_loot_template"));
+    std::unique_ptr<QueryResult> vendors(WorldDatabase.Query("SELECT item FROM npc_vendor UNION SELECT item FROM npc_vendor_template"));
+    // OB-60 F2: no loot or vendor rows would make nearly every recipe item craft-only - nothing is published, the gate stays inert.
+    if (!loot || !vendors)
+    {
+        sLog.outError("[QuestCraftOnly] init failed: %s query returned no rows - nothing built, the gate stays inert",
+            !loot ? "loot" : "vendor");
+        return;
+    }
+    do
+    {
+        auto const it = sources.find(loot->Fetch()[0].GetUInt32());
+        if (it != sources.end())
+            it->second.loot = true;
+    } while (loot->NextRow());
+    do
+    {
+        auto const it = sources.find(vendors->Fetch()[0].GetUInt32());
+        if (it != sources.end())
+            it->second.vendor = true;
+    } while (vendors->NextRow());
+
+    // Quest rewards, choice rewards and source items.
+    for (auto const& [questId, quest] : sObjectMgr.GetQuestTemplates())
+    {
+        auto const mark = [&sources](uint32 itemId)
+        {
+            auto const it = itemId ? sources.find(itemId) : sources.end();
+            if (it != sources.end())
+                it->second.questGiven = true;
+        };
+        for (uint32 i = 0; i < QUEST_REWARDS_COUNT; ++i)
+            mark(quest->RewItemId[i]);
+        for (uint32 i = 0; i < QUEST_REWARD_CHOICES_COUNT; ++i)
+            mark(quest->RewChoiceItemId[i]);
+        mark(quest->GetSrcItemId());
+    }
+
+    // The quests that ask for a craft-only item.
+    uint32 items = 0;
+    for (auto const& [itemId, source] : sources)
+        if (ai::quest_craft_only::CraftOnly(source))
+            ++items;
+    std::unique_ptr<CraftOnlyQuestMap> built(new CraftOnlyQuestMap());
+    CraftOnlyQuestMap& quests = *built;
+    for (auto const& [questId, quest] : sObjectMgr.GetQuestTemplates())
+        for (uint32 i = 0; i < QUEST_ITEM_OBJECTIVES_COUNT; ++i)
+        {
+            uint32 const itemId = quest->ReqItemId[i];
+            auto const it = itemId ? sources.find(itemId) : sources.end();
+            if (it == sources.end() || !ai::quest_craft_only::CraftOnly(it->second))
+                continue;
+            ai::quest_craft_only::Need need;
+            need.itemId = itemId;
+            need.required = std::max<uint32>(1, quest->ReqItemCount[i]);
+            quests[questId].push_back(need);
+        }
+
+    // OB-10 Q1(b): the built set by id, sorted, once per build - the acceptance checks every census quest by id.
+    std::vector<uint32> questIds;
+    questIds.reserve(quests.size());
+    for (auto const& entry : quests)
+        questIds.push_back(entry.first);
+    std::sort(questIds.begin(), questIds.end());
+    for (uint32 const questId : questIds)
+        for (ai::quest_craft_only::Need const& need : quests[questId])
+            sLog.outBasic("%s", ai::quest_craft_only::FormatQuestLine(questId, need.itemId, need.required).c_str());
+
+    uint32 const questCount = uint32(quests.size());
+    craftOnlyQuests.store(built.release(), std::memory_order_release);
+    sLog.outBasic("%s", ai::quest_craft_only::FormatInitLine(items, questCount, sPlayerbotAIConfig.questFeasibilityCraftOnlySkip).c_str());
+}
+
+bool PlayerbotAI::SkipCraftOnlyQuest(Quest const* quest, ai::quest_craft_only::Path path)
+{
+    // twow-repo#750: key first - off or another cohort, nothing else is read.
+    if (!bot || !quest || !ai::cohort::Applies(sPlayerbotAIConfig.questFeasibilityCraftOnlySkip, bot->GetGUIDLow()))
+        return false;
+    if (!sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) || HasRealPlayerMaster())
+        return false;
+
+    std::vector<ai::quest_craft_only::Need> needs;
+    if (!CraftOnlyNeeds(bot, quest->GetQuestId(), needs))
+        return false;
+    int const unmet = ai::quest_craft_only::FirstUnmet(needs.data(), needs.size());
+    if (unmet < 0)
+        return false;
+
+    (path == ai::quest_craft_only::Path::Giver ? craftOnlyGiverInactive : craftOnlySkips).fetch_add(1, std::memory_order_relaxed);
+    ai::quest_feasibility::Path const ring = path == ai::quest_craft_only::Path::Giver ? ai::quest_feasibility::Path::Giver :
+        ai::quest_feasibility::Path::Accept;
+    if (ai::quest_feasibility::LogDue(craftOnlyLog, quest->GetQuestId(), ring, uint32(time(nullptr))))
+        sLog.outBasic("%s", ai::quest_craft_only::FormatSkipLine(bot->GetGUIDLow(), bot->GetLevel(), quest->GetQuestId(), path,
+            needs[std::size_t(unmet)]).c_str());
+    return true;
+}
+
+void PlayerbotAI::NoteCraftOnlyHeld(uint32 questId)
+{
+    // twow-repo#750 F2 (a): diagnosis only - the held quest and its other objectives stay as they are.
+    if (!bot || !ai::cohort::Applies(sPlayerbotAIConfig.questFeasibilityCraftOnlySkip, bot->GetGUIDLow()))
+        return;
+    // OB-60 F3: per travel candidate - the cheap map lookup first, the roster scope only for the few craft-only quests.
+    if (!CraftOnlyObjectives(questId))
+        return;
+    if (!sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) || HasRealPlayerMaster())
+        return;
+
+    std::vector<ai::quest_craft_only::Need> needs;
+    if (!CraftOnlyNeeds(bot, questId, needs))
+        return;
+    int const unmet = ai::quest_craft_only::FirstUnmet(needs.data(), needs.size());
+    if (unmet < 0 || !ai::quest_feasibility::LogDue(craftOnlyLog, questId, ai::quest_feasibility::Path::Item, uint32(time(nullptr))))
+        return;
+    craftOnlyHeld.fetch_add(1, std::memory_order_relaxed);
+    sLog.outBasic("%s", ai::quest_craft_only::FormatSkipLine(bot->GetGUIDLow(), bot->GetLevel(), questId,
+        ai::quest_craft_only::Path::Held, needs[std::size_t(unmet)]).c_str());
+}
+
+std::string PlayerbotAI::TakeCraftOnlyMinuteLine()
+{
+    return ai::quest_craft_only::FormatMinuteLine(craftOnlySkips.exchange(0, std::memory_order_relaxed),
+        craftOnlyGiverInactive.exchange(0, std::memory_order_relaxed), craftOnlyHeld.exchange(0, std::memory_order_relaxed));
 }
 
 // twow-repo#517 stage a: called by RandomPlayerbotMgr (world thread, the bot's map idle) once a fill bot is out of its
@@ -2209,6 +2458,7 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
             }
 
             uint64 snapshot = (uint64(bot->GetLevel()) << 40) ^ uint64(bot->GetUInt32Value(PLAYER_XP));
+            uint64 const snapshotLevelXp = snapshot;   // twow-repo#575 R2 (b): level + XP part, the gathering term is the rest
             // Hotfix 8.5 (owner decision, replaces 8.2): profession skill-ups are progress
             // only under a declared purpose ([Purpose]); without one the rescue may act.
             if (gatherPurpose.Active())
@@ -2476,6 +2726,30 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
             // as before. With ResetOnProgressEvents only a level-up still resets the quest search stage - XP alone does not.
             if (questProgress.snapshot != snapshot)
                 islandHubRescuePending = false;   // twow-repo#575 (PATH-01 F2): progress after an island hub rescue
+            // twow-repo#575 R2 (b) (QuestRescue.StartValleyFix): progress since a rescue lifts its last-target exclusion - level, XP,
+            // gathering skill (the snapshot's parts) or the quest log state, each against the baseline the bot thread takes on its first
+            // check after the rescue (RescueValleyPolicy.h Memory, bot thread only). Only while a rescue is recorded (key 0: never set).
+            if (valleyRescuePending.load())
+            {
+                ai::rescue_valley::Progress valleyNow;
+                valleyNow.level = uint32(snapshotLevelXp >> 40);
+                valleyNow.xp = uint32(snapshotLevelXp & 0xFFFFFFFFFFULL);
+                valleyNow.gather = snapshot - snapshotLevelXp;
+                valleyNow.questState = ai::quest_failure_class::QuestStateSeed;
+                for (uint16 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+                    if (uint32 const questId = bot->GetQuestSlotQuestId(slot))
+                        valleyNow.questState = ai::quest_failure_class::MixQuestState(valleyNow.questState, questId,
+                            bot->GetQuestStatus(questId) == QUEST_STATUS_COMPLETE);
+                if (valleyBaselineDue.exchange(false))
+                    valleyMemory.Restart();
+                ai::rescue_valley::Moved const moved = valleyMemory.Observe(valleyNow);
+                if (moved != ai::rescue_valley::Moved::None)
+                {
+                    valleyRescuePending = false;
+                    sLog.outBasic("[QuestRescue] state=valley_last_cleared bot=%u level=%u moved=%s", bot->GetGUIDLow(),
+                        valleyNow.level, ai::rescue_valley::MovedName(moved));
+                }
+            }
             if (questProgress.Update(snapshot, now))
             {
                 if (ai::quest_failure_class::ProgressResetsStage(sPlayerbotAIConfig.questFirstProgressionResetOnProgressEvents &&
@@ -3039,7 +3313,7 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
                 return;
             }
         }
-        // twow-repo#602 (AiPlayerbot.CastWait.Preparing, default 0): a spell with a cast time is PREPARING until it is
+        // twow-repo#602 (AiPlayerbot.CastWait.Preparing, default 1, 0 = rollback): a spell with a cast time is PREPARING until it is
         // cast, so the branch above never held the AI for it and the engine re-ran every ReactDelay against its own
         // cast (SPELL_IN_PROGRESS). Hold it until the real end (m_timer, pushback included), capped per spell. Bots of a
         // real player keep answering their master's commands at once (as with AiPlayerbot.Perf.CombatIdleYield).

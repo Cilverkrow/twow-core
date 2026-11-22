@@ -36,6 +36,7 @@
 #include <memory>
 #include "playerbot/QuestSearchPolicy.h"
 #include "playerbot/QuestFeasibilityPolicy.h"
+#include "playerbot/QuestCraftOnlyPolicy.h"   // twow-repo#750 QuestFeasibility.CraftOnlySkip (Path, plain rules)
 #include "playerbot/BotActivityPolicy.h"
 #include "playerbot/GrindIdlePolicy.h"   // twow-repo#601 (ActivityTrace.GrindIdleDetail): the grind pass tally (plain data)
 #include "playerbot/StuckReasonPolicy.h"   // A3-HARM-UPSTREAM T40 follow-up: the [StuckReason] records (plain data)
@@ -49,6 +50,7 @@
 #include "playerbot/TankPathDiagPolicy.h"
 #include "playerbot/UnreachablePolicy.h"
 #include "playerbot/UnreachableGiveUpPolicy.h"   // twow-repo#703 item 4 (Rotation.UnreachableGiveUp)
+#include "playerbot/RescueValleyPolicy.h"   // twow-repo#575 R2 (QuestRescue.StartValleyFix): the last rescue target
 #include "playerbot/GroupAiRefresh.h"   // twow-repo#627 S7 StagedOps: RequestQuestForce
 #include "playerbot/GroupBuffPolicy.h"
 class Player;
@@ -1147,6 +1149,14 @@ protected:
     uint32 machineWalkFallbackLog = 0;
     // twow-repo#575 (PATH-01 F2): set by an island hub rescue, cleared by the bot's next progress.
     std::atomic<bool> islandHubRescuePending{ false };
+    // twow-repo#575 R2 (b) (QuestRescue.StartValleyFix): the last rescue target (written and read on the world thread only) and two
+    // flags: valleyBaselineDue (set by a started rescue teleport, taken by the bot thread) and valleyRescuePending (the exclusion,
+    // set by the teleport, cleared by the bot thread on progress since the rescue: level, XP, gathering skill or the quest log).
+    // The progress baseline and its comparison (valleyMemory) live on the bot thread only.
+    ai::rescue_valley::Point lastValleyRescue{ 0, 0.0f, 0.0f };
+    std::atomic<bool> valleyRescuePending{ false };
+    std::atomic<bool> valleyBaselineDue{ false };
+    ai::rescue_valley::Memory valleyMemory;   // bot thread only
     // Hotfix 8.12: combat without progress (bot 27 Nilenata).
     ai::stuck_combat::State stuckCombat;
     ai::gather_purpose::State gatherPurpose;
@@ -1281,6 +1291,15 @@ public:
     // a second hub rescue while it is still pending finds the island empty for this bot (world thread, StartZonePolicy.h).
     bool IslandHubRescueWithoutProgress() const { return islandHubRescuePending.load(); }
     void MarkIslandHubRescue() { islandHubRescuePending = true; }
+    // twow-repo#575 R2 (b) (StartValleyFix): world thread. The last rescue target while the bot has made no progress since it.
+    bool ValleyRescueWithoutProgress() const { return valleyRescuePending.load(); }
+    ai::rescue_valley::Point LastValleyRescue() const { return lastValleyRescue; }
+    void MarkValleyRescue(ai::rescue_valley::Point const& target)
+    {
+        lastValleyRescue = target;
+        valleyBaselineDue = true;
+        valleyRescuePending = true;
+    }
     // twow-repo#601 S1 (ResetOnProgressEvents): any thread asks the bot's own update to reset the grind-fallback
     // counter, the quest route backoff and the quest search stage (ai::quest_failure_class::Reset* bits).
     void RequestQuestRouteReset(uint32 events) { questRouteResetEvents.fetch_or(events); }
@@ -1366,6 +1385,14 @@ public:
     // GrindMode 1, world thread: "[GrindWindow] minute ..." with the counts since the last call (counters reset); empty when
     // every count is 0 (no line).
     static std::string TakeGrindWindowMinuteLine();
+    // AiPlayerbot.Grind.LowLevelWindow (OB-10 22.11.2026, LowLevelWindowPolicy.h): a quest-first roster bot on its own, level
+    // 1..10, in the mode's cohort, whose grind travel uses the GrindMode 1 window - false for a bot IsQuestGapGrind already covers.
+    // Always false with the switch 0 (the config is read first).
+    bool IsLowLevelWindow();
+    // Grind.LowLevelWindow: adds n to one minute counter of the bot's cohort (ai::low_level_window::Event as uint8; any thread,
+    // relaxed); world thread: "[LowLevelWindow] minute ..." with the counts since the last call (reset), empty when all are 0.
+    static void NoteLowLevelWindow(uint8 event, uint32 guidLow, uint32 n = 1);
+    static std::string TakeLowLevelWindowMinuteLine();
     // twow-repo#601 S5a (AiPlayerbot.QuestFirstProgression.BandLadder, QuestBand.cpp): the band step. Every member reads the switch
     // first or touches only state the band path writes; nothing with BandLadder 0.
     // The band episode of this bot (bot thread only): the last two zones it left by a band step and the band it left them in,
@@ -1470,6 +1497,17 @@ public:
     static void NoteQuestFeasibilityDrop();
     // S3a, world thread: "[QuestFeasibility] minute ..." with the counts since the last call (counters reset).
     static std::string TakeQuestFeasibilityMinuteLine();
+    // twow-repo#750 (AiPlayerbot.QuestFeasibility.CraftOnlySkip, QuestCraftOnlyPolicy.h; its own key, outside Enable / S3):
+    // world thread at start, only with the key on: quest id -> its craft-only required items (read-only afterwards).
+    static void BuildCraftOnlyQuests();
+    // Bot's own thread: a roster bot on its own in the key's cohort skips the quest (accept) / its giver (giver) while it does
+    // not hold a craft-only required item in the required count. Counts it, rate-limited [QuestFeasibility] skip line. True = skip.
+    bool SkipCraftOnlyQuest(Quest const* quest, ai::quest_craft_only::Path path);
+    // Bot's own thread: a held quest's objective was a trip candidate - count it once per bot, quest and hour when a craft-only
+    // item is unmet (held_craft_only=, diagnosis only: nothing is skipped or dropped).
+    void NoteCraftOnlyHeld(uint32 questId);
+    // World thread: "[QuestCraftOnly] minute ..." with the counts since the last call (counters reset).
+    static std::string TakeCraftOnlyMinuteLine();
 
 protected:
     // twow-repo#601 GrindMode: the reasons this bot already logged in its idle episode (bit mask of
@@ -1481,6 +1519,8 @@ protected:
     BandEpisode bandEpisode;     // twow-repo#601 S5a: the band episode (bot's own thread only)
     // twow-repo#601 S3a: the bot's recent [QuestFeasibility] skip lines (16 quests, bot's own thread only).
     ai::quest_feasibility::SkipLog questFeasibilityLog;
+    // twow-repo#750: the bot's recent craft-only skip / held lines (same ring type, bot's own thread only).
+    ai::quest_feasibility::SkipLog craftOnlyLog;
     std::deque<ai::death_loop::Death> recentDeaths;
     ai::corpse_first::Ring corpseFirstDeaths;   // S4-1: own deaths (Revive.CorpseRunFirst bots only)
     uint32 corpseFirstLoggedDeathAt = 0;          // S4-1: ghost time of the death whose decision was logged last
