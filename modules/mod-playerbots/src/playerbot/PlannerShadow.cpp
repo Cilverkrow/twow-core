@@ -154,6 +154,7 @@ bool TakePlanLine()
 // ---- R9-2 (twow-repo#575, D11): [Replan] has its own budget and [ReplanMin] its own minute, under the same short mutex ----------
 constexpr std::uint32_t kReplanLinesPerMinute = 300;
 std::uint32_t g_rWindow = 0, g_rUsed = 0;   // the [Replan] budget window
+std::uint32_t g_fWindow = 0, g_fUsed = 0;   // R9-a: the forced-line ceiling window (all bots, ReplanWirePolicy.h)
 std::uint32_t g_rMinute = 0;
 ai::replan::Counters g_rMin[2];             // [0] cohort A, [1] cohort B
 std::uint32_t g_rDropped[2] = {0, 0};       // [Replan] lines the budget refused (dropped=)
@@ -223,6 +224,13 @@ bool TakeReplanLine()
 {
     std::lock_guard<std::mutex> lock(g_mutex);
     return ai::rot_cast::BudgetTake(g_rWindow, g_rUsed, std::uint32_t(time(nullptr)), kReplanLinesPerMinute);
+}
+
+// R9-a: one forced [Replan] line under the global safety ceiling (not the 300 / min budget, D11).
+bool TakeForcedLine()
+{
+    std::lock_guard<std::mutex> lock(g_mutex);
+    return ai::rot_cast::BudgetTake(g_fWindow, g_fUsed, std::uint32_t(time(nullptr)), ai::replan_wire::kForcedLinesPerMinute);
 }
 
 // ---- small reads ------------------------------------------------------------------------------------------------------------
@@ -636,17 +644,26 @@ std::uint32_t ProfessionSkillSum(Player* bot)
 bool AnyCount(ai::replan::Counters const& k)
 {
     return k.stalls || k.relocates || k.keep || k.replan || k.close || k.forced || k.rateLimited || k.forcedAfterRateLimited ||
-           k.gaps || k.plannedCredit || k.hops || k.grindNoKill || k.offMap;
+           k.gaps || k.plannedCredit || k.hops || k.grindNoKill || k.offMap || k.forcedDropped;
 }
 
 // One [Replan] line per decision (v5 6.5, 7.4). D11: a forced record is never dropped (ReplanWirePolicy.h OutsideLineBudget);
-// every other line takes the [Replan] budget, and a refused one counts as dropped= of its cohort.
-void EmitReplan(ai::replan::LineCtx const& ctx, ai::replan::Outcome const& o, std::uint32_t& dropped)
+// every other line takes the [Replan] budget, and a refused one counts as dropped= of its cohort. R9-a: a forced line takes the
+// global forced-line ceiling instead, and a refused one counts as forced_dropped= (the decision is in forced= all the same).
+void EmitReplan(ai::replan::LineCtx const& ctx, ai::replan::Outcome const& o, std::uint32_t& dropped, std::uint32_t& forcedDropped)
 {
     if (!o.decided)
         return;
     ai::replan::Record const& r = o.rec;
-    if (!ai::replan_wire::OutsideLineBudget(r) && !TakeReplanLine())
+    if (ai::replan_wire::OutsideLineBudget(r))
+    {
+        if (!TakeForcedLine())
+        {
+            ++forcedDropped;
+            return;
+        }
+    }
+    else if (!TakeReplanLine())
     {
         ++dropped;
         return;
@@ -742,6 +759,7 @@ void ReplanTick(PlayerbotAI* ai_, Player* bot, PlanState& st, Snapshot const& cu
     ctx.level = cur.level;
     ctx.offmap = ai::replan_wire::OffMap(s.targetKey, s.remaining);   // OB-10 R-6: tagged, out of C1/C2
     std::uint32_t dropped = 0;
+    std::uint32_t forcedDropped = 0;   // R9-a: forced lines above the ceiling (flushed with the decided line)
     std::uint32_t decided = 0;
 
     // Relocation first (v5 7.1): it re-bases the best distance without credit, so Feed never credits the jump itself. D5: the death
@@ -769,13 +787,14 @@ void ReplanTick(PlayerbotAI* ai_, Player* bot, PlanState& st, Snapshot const& cu
         // OB-10 nit 1: a relocate-triggered Replan or Close (reloc_loop included) is not a give-up (ReplanPolicy.h, OnRelocate).
         ai::replan::Outcome const relocated = rs.meter.OnRelocate(e, *sink);
         decided += relocated.decided ? 1u : 0u;
-        EmitReplan(ctx, relocated, dropped);
+        EmitReplan(ctx, relocated, dropped, forcedDropped);
     }
     ai::replan::Outcome const fed = rs.meter.Feed(s, *sink);
     decided += fed.decided ? 1u : 0u;
-    EmitReplan(ctx, fed, dropped);
+    EmitReplan(ctx, fed, dropped, forcedDropped);
 
     ai::replan::Counters k = rs.meter.TakeCounters();
+    k.forcedDropped += forcedDropped;
     if (cur.alive && taken.hop && (ev & (EvRelocate | EvMap)))
         ++k.hops;   // OB-10 R-3: a jump that was a movement hop
     if (grindNoKill && !s.targetKey)

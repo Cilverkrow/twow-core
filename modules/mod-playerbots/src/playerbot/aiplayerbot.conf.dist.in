@@ -1641,6 +1641,13 @@ AiPlayerbot.Supervisor.Arbiter = 2
 # nothing and only counts probe_shadow (the paired control). 0 = off (default), 1 = probe. Any other value acts like 0
 # (one error line at load).
 AiPlayerbot.Supervisor.ArbiterProbe = 0
+# twow-repo#726 (bug fix, default 0 until acceptance + OB-10): the late arm. With AiPlayerbot.Supervisor.Arbiter = 2 the arming
+# edge checks each bot once; a bot that is parked, in a battleground or out of the quest book scope in that one tick stays
+# PASSIVE (never plans) for as long as enforcement stays on. 1 = while enforcing, a still PASSIVE bot is checked again at most
+# every 5 s and leaves PASSIVE for QUEST once eligible (one [Supervisor] ev=mode line with cause=arbiter_arm_late,
+# arm_late in [ArbiterMin]); a still ineligible bot writes nothing. 0 = off (default, the edge only, as before). Any other value
+# acts like 0 (one error line at load).
+AiPlayerbot.Supervisor.ArmLate = 0
 # A3 step 3 planner P-1 (A3-S3-PLANER-ENTWURF.md §6): path of the planner's band table, a TSV file. Line 1 "# version=2", line 2
 # "# source=...", line 3 the header with the columns (by name, extra columns ignored) key, min_level, max_level, zone_id,
 # rank, hub_map, hub_x, hub_y, hub_z, mob_level, z2_sec, r1_min_level. key "1".."10" = race (levels 1-12), "A0" "A1" "H0" "H1"
@@ -1670,6 +1677,8 @@ AiPlayerbot.Planner = 0
 # RepeatableRetakeSec / RepeatableMaxPerHour: a repeatable quest is taken again only this long after its turn-in and at most
 # this often per bot hour. RelocMinYards / RelocSlack: a position jump is a relocation above max(yards, run speed x seconds x
 # slack).
+# twow-repo#726: the seconds keys are clamped to the nearest bound with one error line: MinBindSec 1..3600, MaxIdleSec,
+# MinDwellSec and DeadWaitMaxSec 0..3600, MaxHoldSec and RepeatableRetakeSec 0..86400.
 AiPlayerbot.Planner.Margin = 15
 AiPlayerbot.Planner.MinBindSec = 120
 AiPlayerbot.Planner.MinDwellSec = 120
@@ -1700,7 +1709,7 @@ AiPlayerbot.Planner.RelocSlack = 1.5
 # (one SetBestTarget call on the pick's entries; not chosen: the full list as before), (c) switches QUEST <-> GRIND on a pick
 # change (QUEST -> GRIND after MinDwellSec) and (d) makes back_to_band act. Bots that do not write behave as at Planner = 1 and
 # count fb_cohort / fb_arbiter. [PlanMin] gets the P-3a fields (expired, expire_denied*, applied_*, fallback_*, fb_*, mem_evict,
-# mode_*) and [ArbiterMin] plan= at Planner = 2 only. Kits set it explicitly together with Planner.MaxIdleSec = 100.
+# mode_*; twow-repo#726: fallback_reject_empty, zone_empty_held, feed_us, feed_us_max) and [ArbiterMin] plan= at Planner = 2 only. Kits set it explicitly together with Planner.MaxIdleSec = 100.
 AiPlayerbot.Planner.WriteCohort = 0
 # A3 R9 / R2 (twow-repo#575, R9-REPLAN-INTERFACE v5, R9-PREREG C2; pair R9-2): the progress meter. It runs in the planner tick, so
 # both keys need AiPlayerbot.Supervisor to apply to the bot and AiPlayerbot.Planner >= 1; set alone they log nothing. Each tick it
@@ -1854,6 +1863,14 @@ AiPlayerbot.QuestBook.NeedPerObjective.ItemUse = 0
 # Measurement only, no behaviour: one `[QuestNeed]` and one `[QuestItemUse]` line per roster bot on its own and clock hour (and at
 # logout), in both cohorts. 0 = off (default), 1 = on.
 AiPlayerbot.QuestBook.NeedPerObjective.Log = 0
+
+# twow-repo#738 L03 (OB-10 decision 21.11.2026): the quest giver trip check (TravelMgr.cpp, giver relation)
+# reads a quest template MaxLevel of 0 as "no upper limit", as the core's CanTakeQuest and the bot's quest
+# search check do. Off, the old compare refuses the giver of every quest with MaxLevel 0 (about 97 % of
+# quest templates); the refusal is counted as giver_drops=...min_max in [QuestFirstRoute] state=giver_fetch.
+#   0 = off (default until its acceptance unit), 1 = every bot, 2 = only cohort B (odd low guid),
+#   3 = only cohort A (even low guid); other values act like 0.
+AiPlayerbot.QuestGiver.MaxLevelZeroFix = 0
 
 # #627 S7 help groups (owner 18.10./23.10.2026): roster bots holding the same elite
 # quest (Type 1; with SuggestedPlayers = 1 also SuggestedPlayers >= 2; never

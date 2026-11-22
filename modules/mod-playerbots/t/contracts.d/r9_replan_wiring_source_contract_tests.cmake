@@ -9,7 +9,9 @@ cmake_policy(VERSION 3.16)
 #       executor), the [Plan] line names the source by ai::replan::SourceName;
 #   (c) lines and counters only (D1): no planner memory write, no event bit, no verdict application in ReplanTick;
 #   (d) the [Replan] budget: its own 300 per minute (D11), every forced record outside it (ReplanWirePolicy.h OutsideLineBudget),
-#       the minute counters held per bot and flushed under the lock once per minute or with a decided or refused line;
+#       the minute counters held per bot and flushed under the lock once per minute or with a decided or refused line; R9-a (OB-10
+#       review core#1100): forced lines under their own global ceiling (ReplanWirePolicy.h kForcedLinesPerMinute = 600), a refused
+#       one counted as forced_dropped= of its cohort;
 #   (e) the sink: Supervisor is the IReplanSink, its OnStall / OnRelocate bodies live in PlannerShadow.cpp (not Supervisor.cpp);
 #   (f) the latch: the placeholder enum of P-2b is gone, PlayerbotAI holds one atomic number, every writer returns at once while
 #       both keys are 0, the ack is noted on both paths of HandleTeleportAck, the unreachable count only while wired;
@@ -199,7 +201,9 @@ function(check_tick shadow_cpp out)
     "l.relocSrc = (ev & EvRelocate) ? ai::replan::SourceName(relocSrc) : \"-\";"
     "constexpr std::uint32_t kReplanLinesPerMinute = 300;"
     "    return ai::rot_cast::BudgetTake(g_rWindow, g_rUsed, std::uint32_t(time(nullptr)), kReplanLinesPerMinute);"
-    "    if (!ai::replan_wire::OutsideLineBudget(r) && !TakeReplanLine())"
+    "    if (ai::replan_wire::OutsideLineBudget(r))\n    {\n        if (!TakeForcedLine())\n        {\n            ++forcedDropped;\n            return;\n        }\n    }\n    else if (!TakeReplanLine())\n    {\n        ++dropped;\n        return;\n    }\n"
+    "    return ai::rot_cast::BudgetTake(g_fWindow, g_fUsed, std::uint32_t(time(nullptr)), ai::replan_wire::kForcedLinesPerMinute);"
+    "    ai::replan::Counters k = rs.meter.TakeCounters();\n    k.forcedDropped += forcedDropped;\n"
     "ev |= EvClosed;"
     "    bool const grindNoKill = s.targetKey && ai::replan_wire::GrindNoKill(s.kind);\n    if (grindNoKill)\n        s.targetKey = 0;\n"
     "    ai::replan_wire::HoldWhileDead(s, rs.held, cur.alive);\n"
@@ -404,6 +408,12 @@ function(check_wire wire tests out)
     set(${out} "${r}" PARENT_SCOPE)
     return()
   endif()
+  # R9-a: the global forced-line ceiling (unit suite: ForcedLineCeiling)
+  need_once("ReplanWirePolicy.h" "${wire}" r "constexpr std::uint32_t kForcedLinesPerMinute = 600;")
+  if(r)
+    set(${out} "${r}" PARENT_SCOPE)
+    return()
+  endif()
   need_once("tests.cmake" "${tests}" r "add_test(NAME replan_wire_policy\n  COMMAND replan_wire_policy_tests")
   if(r)
     set(${out} "${r}" PARENT_SCOPE)
@@ -485,9 +495,18 @@ expect_caught("the [Replan] budget changed" "${r}")
 string(REPLACE "TakeReplanLine()" "TakePlanLine()" m "${shadow_cpp}")
 check_tick("${m}" r)
 expect_caught("[Replan] on the [Plan] budget" "${r}")
-string(REPLACE "!ai::replan_wire::OutsideLineBudget(r) && " "" m "${shadow_cpp}")
+string(REPLACE "    if (ai::replan_wire::OutsideLineBudget(r))\n    {\n        if (!TakeForcedLine())\n        {\n            ++forcedDropped;\n            return;\n        }\n    }\n    else if (!TakeReplanLine())" "    if (!ai::replan_wire::OutsideLineBudget(r) && !TakeReplanLine())" m "${shadow_cpp}")
 check_tick("${m}" r)
-expect_caught("a forced record on the [Replan] budget (D11)" "${r}")
+expect_caught("forced lines without a ceiling (R9-a)" "${r}")
+string(REPLACE "        if (!TakeForcedLine())" "        if (!TakeReplanLine())" m "${shadow_cpp}")
+check_tick("${m}" r)
+expect_caught("a forced line on the [Replan] budget (R9-a)" "${r}")
+string(REPLACE "ai::replan_wire::kForcedLinesPerMinute);" "kReplanLinesPerMinute);" m "${shadow_cpp}")
+check_tick("${m}" r)
+expect_caught("the forced ceiling at the [Replan] budget (R9-a)" "${r}")
+string(REPLACE "    k.forcedDropped += forcedDropped;\n" "" m "${shadow_cpp}")
+check_tick("${m}" r)
+expect_caught("forced_dropped not counted (R9-a)" "${r}")
 string(REPLACE "FlushReplan(guid, rs.pending, rs.pendingDropped, ctx.shadow);" "FlushReplan(guid, k, dropped, ctx.shadow);" m "${shadow_cpp}")
 check_tick("${m}" r)
 expect_caught("the cohort lock taken every tick" "${r}")
@@ -541,6 +560,9 @@ expect_caught("a game include in the pure rules" "${r}")
 string(REPLACE "    return r.forced;\n}" "    return r.forced && r.episode == 0;\n}" m "${wire}")
 check_wire("${m}" "${tests}" r)
 expect_caught("only some forced records outside the budget (D11)" "${r}")
+string(REPLACE "kForcedLinesPerMinute = 600;" "kForcedLinesPerMinute = 6000;" m "${wire}")
+check_wire("${m}" "${tests}" r)
+expect_caught("the forced-line ceiling changed (R9-a)" "${r}")
 string(REPLACE "add_test(NAME replan_wire_policy\n" "add_test(NAME replan_wire_policy_off\n" m "${tests}")
 check_wire("${wire}" "${m}" r)
 expect_caught("suite not registered" "${r}")
