@@ -1079,6 +1079,14 @@ public:
     // twow-repo#656 (AiPlayerbot.Grind.SafePull): the last stage-2 pick of the risk rule (applied or shadow), written by the grind
     // value and read at the death for the [SafePull] death line. This bot's own AI tick only.
     ai::safe_pull::LastPick safePullLast;
+    // Lever 2 shadow (CLI-ROT 22.11.2026, OB-10 d947fa34 note 3): the last destination choice judged by CampBlock and the last grind
+    // pick judged by the GrindAvoid lever (seconds, 0 = none; camp kind 0 free, 1 skip = a veto destination, 2 quest = a quest
+    // destination only held back; grind would = the pick was lever-avoided), written by the choice / grind value and read at the
+    // death for the [Lever2] death line. This bot's own AI tick only.
+    uint32 lever2CampAt = 0;
+    uint8 lever2CampKind = 0;
+    uint32 lever2GrindAt = 0;
+    bool lever2GrindWould = false;
 
 protected:
 	Player* bot;

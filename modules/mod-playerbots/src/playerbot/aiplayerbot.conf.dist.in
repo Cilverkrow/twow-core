@@ -1078,7 +1078,14 @@ AiPlayerbot.DestinationDeaths.CooldownSeconds = 3600
 # 4 open-world deaths with at least MinAttackers living attackers (adds + the target) and skips every travel destination within
 # Radius yards of one for Seconds. Quest destinations (objective, taker, giver) are never vetoed: a blocked one is taken only when
 # the same choice selects nothing else. [CampBlock] state=record per recorded death; the choice line reports camp_block skips.
-#   CampBlock: 0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid); other values act like 0.
+#   CampBlock: 0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid),
+#   4 = shadow (every roster bot records and judges, nobody skips or demotes); other values act like 0. In modes 2 and 3 the other
+#   cohort computes in shadow. Lever 2 (CLI-ROT 22.11.2026): with 1-4 one line per minute and cohort
+#   "[CampBlock] mode= cohort= choices= blocked_seen= skipped= would_skip= fallback= would_fallback= changed= would_change=
+#   would_change_quest= records=" (increments), the record line ends in applied=0|1, and each roster bot death on its own writes
+#   "[Lever2] death bot= cohort= level= attackers= camp_in_ring= camp_applied= camp_last= killer_entry= killer_lever_avoided=
+#   killer_base_avoided= lever_applied= grind_last=" (the last judged choice / pick within 1800 s: camp_last skip = a veto destination,
+#   quest = a quest destination only held back, 0 = free; grind_last 1 = lever-avoided, 0 = free; none = no judged selection).
 #   Seconds 60..7200 (default 1800), Radius 10..300 (default 60), MinAttackers 1..16 (default 2).
 AiPlayerbot.DestinationDeaths.CampBlock = 0
 AiPlayerbot.DestinationDeaths.CampBlock.Seconds = 1800
@@ -1268,7 +1275,8 @@ AiPlayerbot.DangerMap.CountEnvironmentDeaths = 0
 # counts for the querying bot whatever the killer's level (MinDeaths different bots and the exclusion of the bot's own cell and
 # its neighbours stay; a bot revived next to the camp is CampBlock's case). Every death records its attacker count; the switch
 # only changes how a bot reads the shared map.
-#   CountAddDeaths: 0 = off (default), 1 = every bot, 2 = only cohort B (odd low guid); other values act like 0.
+#   CountAddDeaths: 0 = off (default), 1 = every bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid);
+#   other values act like 0.
 #   AddDeathMinAttackers 2..16 (default 3: >= 2 is 99 % of all add deaths, >= 3 is 63 %).
 AiPlayerbot.DangerMap.CountAddDeaths = 0
 AiPlayerbot.DangerMap.AddDeathMinAttackers = 3
@@ -1334,6 +1342,16 @@ AiPlayerbot.QuestRescue.StartValleyFix = 0
 AiPlayerbot.GrindAvoid.MaxDeaths = 0
 AiPlayerbot.GrindAvoid.WindowSeconds = 3600
 AiPlayerbot.GrindAvoid.AvoidSeconds = 3600
+# Lever 2 (CLI-ROT 22.11.2026): a second threshold for the roster bots the lever reaches, in its own store; the rule above stays for
+# every bot. Lever.MaxDeaths deaths to one entry within WindowSeconds skip that entry for AvoidSeconds (0 = lever off).
+#   Lever: 0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid), 4 = shadow
+#   (every roster bot records and judges, nobody skips); other values act like 0. In modes 2 and 3 the other cohort computes in shadow.
+#   Lines: "[GrindAvoid] mode= max_deaths= cohort= passes= picks= filtered= would_filter= changed= would_change= would_empty= records=
+#   avoid_starts=" once per minute and cohort (increments) and "[GrindCap] state=lever_avoid bot= level= entry= killer_level=
+#   avoid_seconds= applied=" per lever avoid start.
+#   Lever.MaxDeaths 0..10 (default 1).
+AiPlayerbot.GrindAvoid.Lever = 0
+AiPlayerbot.GrindAvoid.Lever.MaxDeaths = 1
 # Active quest objectives and givers in this radius form the current local hub.
 # This is deliberately a distance, not a list of zones or starting areas.
 AiPlayerbot.QuestFirstProgression.LocalHubRadius = 1200
