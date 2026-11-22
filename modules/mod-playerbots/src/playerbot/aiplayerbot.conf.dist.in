@@ -344,7 +344,7 @@ AiPlayerbot.RandomBotAccountCount = 500
 # With this enabled, if you get lags - then you need to reduce amount of online bots, rather than relying on optimizations
 # This will ingore the AiPlayerbot.botActiveAlone setting, all bots will be active regardless
 # Works best together with AiPlayerbot.DisableBotOptimizations = 1
-# (0-1), default 0
+# (0-1), default 1 (the code default is 1 too, twow-core#1156)
 AiPlayerbot.DisableActivityPriorities = 1
 
 # Force bots to become active when a player is nearby
@@ -530,7 +530,7 @@ AiPlayerbot.TurnInRpg = 0
 # Bots will make sounds when repairing, selling items ect.
 AiPlayerbot.GlobalSoundEffects = 0
 
-# Show progress bars for random bots (disabled by default)
+# Show progress bars for random bots (0-1), default 1 (the code default is 1 too, twow-core#1156)
 AiPlayerbot.ShowProgressBars = 1
 
 # Set randombots movement speed to walking anywhere
@@ -539,10 +539,10 @@ AiPlayerbot.RandombotsWalkingRPG = 0
 # Set randombots movement speed to walking only inside buildings
 AiPlayerbot.RandombotsWalkingRPG.InDoors = 0
 
-# Bots greet to the players
+# Bots greet to the players (0-1), default 1 (the code default is 1 too, twow-core#1156)
 AiPlayerbot.EnableGreet = 1
 
-# Show helmet and cloak on randombots (reset required)
+# Show helmet and cloak on randombots (reset required), (0-1), default 1 (the code default is 1 too, twow-core#1156)
 AiPlayerbot.RandomBotShowHelmet = 1
 AiPlayerbot.RandomBotShowCloak = 1
 
@@ -1026,7 +1026,7 @@ AiPlayerbot.RandomBotSayWithoutMaster = 1
 AiPlayerbot.AutoPickReward = yes
 
 # Bots equip upgrades (Bots will equip any item obtained from looting or a quest if they are upgrades)
-# Default: 0 (disabled)
+# Default: 1 (enabled; the code default is 1 too, twow-core#1156)
 AiPlayerbot.AutoEquipUpgradeLoot = 1
 
 # One BASIC [ITEM EQUIP] line per bagged uncommon+ weapon/armor decision (equip
