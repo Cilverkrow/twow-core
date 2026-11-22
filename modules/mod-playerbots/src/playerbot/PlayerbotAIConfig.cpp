@@ -11,6 +11,7 @@
 #include "playerbot/RoutePrecheckPolicy.h"
 #include "playerbot/AreaTeamPolicy.h"
 #include "playerbot/BgFillPolicy.h"
+#include "playerbot/PlannerTimePolicy.h"   // A3 step 3 planner S5 (twow-repo#726): Planner.TimeTrace loader check
 #include "playerbot/ShortcutPolicy.h"
 #include "playerbot/ActionLogSamplePolicy.h"
 #include "playerbot/DamageLogPolicy.h"   // twow-repo#653: AiPlayerbot.ActionLog.DamageSampleEvery
@@ -1143,6 +1144,13 @@ bool PlayerbotAIConfig::Initialize()
     plannerRelocSlack = config.GetFloatDefault("AiPlayerbot.Planner.RelocSlack", 1.5f);
     if (plannerMaxCandidates > 64)
         plannerMaxCandidates = 64;   // the candidate array of the tick (PlannerShadow.cpp kMaxCandidates)
+    // A3 step 3 planner S5 (twow-repo#726): the [PlanTime] line per plan; any value but 0 / 1 is off (fail closed).
+    plannerTimeTrace = uint32(config.GetIntDefault("AiPlayerbot.Planner.TimeTrace", 0));
+    if (!ai::planner::ValidTimeTrace(plannerTimeTrace))
+    {
+        sLog.outError("[Planner] config key=Planner.TimeTrace value=%u result=0 (0 off, 1 on)", plannerTimeTrace);
+        plannerTimeTrace = 0;
+    }
     // A3 step 3 planner P-3a (P3-ENTWURF-v0.2 section 8, OB-00 F2 (a)): the write cohort of Planner = 2; above 3 is 0 (fail closed,
     // never "all"). [ArbiterMin] gets plan= only at Planner = 2.
     plannerWriteCohort = uint32(config.GetIntDefault("AiPlayerbot.Planner.WriteCohort", 0));
@@ -2497,6 +2505,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Planner.RepeatableRetakeSec", Value(plannerRepeatableRetakeSec)},
             {"Planner.RouteFactor", Value(plannerRouteFactor)},
             {"Planner.SwitchCost", Value(plannerSwitchCost)},
+            {"Planner.TimeTrace", Value(plannerTimeTrace)},
             {"Planner.TurnInWorkSec", Value(plannerTurnInWorkSec)},
             {"Planner.WriteCohort", Value(plannerWriteCohort)},
             {"PotionFind.BySpell", Value(potionFindBySpell)},
