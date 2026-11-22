@@ -1402,6 +1402,13 @@ bool PlayerbotAIConfig::Initialize()
     }
     // twow-repo#601 S3a: feasibility at accept time (QuestFeasibilityPolicy.h), all off by default.
     questFeasibilityEnable = config.GetBoolDefault("AiPlayerbot.QuestFeasibility.Enable", false);
+    // twow-repo#750: craft-only quest items (QuestCraftOnlyPolicy.h), its own key; an unknown mode is off.
+    questFeasibilityCraftOnlySkip = config.GetIntDefault("AiPlayerbot.QuestFeasibility.CraftOnlySkip", 0);
+    if (questFeasibilityCraftOnlySkip > 3)
+    {
+        sLog.outError("[QuestCraftOnly] config key=CraftOnlySkip value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", questFeasibilityCraftOnlySkip);
+        questFeasibilityCraftOnlySkip = 0;
+    }
     questFeasibilityBlocklist = ai::quest_feasibility::ParseQuestIdList(config.GetStringDefault("AiPlayerbot.QuestFeasibility.Blocklist", ""));
     questFeasibilityBlocklistWhileNoCustomStarts = ai::quest_feasibility::ParseQuestIdList(config.GetStringDefault("AiPlayerbot.QuestFeasibility.BlocklistWhileNoCustomStarts", ""));
     questFeasibilitySoloSkipGroupQuests = config.GetBoolDefault("AiPlayerbot.QuestFeasibility.SoloSkipGroupQuests", false);
@@ -2341,6 +2348,10 @@ bool PlayerbotAIConfig::Initialize()
     if (sPlayerbotAIConfig.rosterFarMoveLevelGuard)
         ai::level_guard::BuildGrid();
 
+    // twow-repo#750 (QuestFeasibility.CraftOnlySkip): the craft-only quest items, once, only with the key on - off, no query.
+    if (sPlayerbotAIConfig.questFeasibilityCraftOnlySkip)
+        PlayerbotAI::BuildCraftOnlyQuests();
+
     sLog.outString("Loading named locations...");
     sRandomPlayerbotMgr.LoadNamedLocations();
 
@@ -2504,6 +2515,7 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestBook.StaleCompleteSeconds", Value(questBookStaleCompleteSeconds)},
             {"QuestFeasibility.Blocklist.count", Value(uint32(questFeasibilityBlocklist.size()))},
             {"QuestFeasibility.BlocklistWhileNoCustomStarts.count", Value(uint32(questFeasibilityBlocklistWhileNoCustomStarts.size()))},
+            {"QuestFeasibility.CraftOnlySkip", Value(questFeasibilityCraftOnlySkip)},
             {"QuestFeasibility.Enable", Value(questFeasibilityEnable)},
             {"QuestFeasibility.SoloSkipEscortIds.count", Value(uint32(questFeasibilitySoloSkipEscortIds.size()))},
             {"QuestFeasibility.SoloSkipEscortTimed", Value(questFeasibilitySoloSkipEscortTimed)},

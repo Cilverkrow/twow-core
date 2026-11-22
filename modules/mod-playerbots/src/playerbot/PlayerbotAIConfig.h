@@ -1220,6 +1220,9 @@ public:
     // twow-repo#601 S3a (feasibility at accept time, OB-10 / OB-00 18.10.2026; QuestFeasibilityPolicy.h), all off = today's
     // behaviour, restart-only: master switch, the two quest id lists (parsed, max 512 ids each) and the solo group rule.
     bool questFeasibilityEnable = false;
+    // twow-repo#750 (QuestCraftOnlyPolicy.h; OB-10 840bcbdf / be58c794): its own key, outside Enable / S3Cohort. 0 off, 1 all,
+    // 2 cohort B, 3 cohort A; > 3 = 0 with an error line. Restart-only (the craft-only data is built at start only with it on).
+    uint32 questFeasibilityCraftOnlySkip = 0;
     std::set<uint32> questFeasibilityBlocklist;
     std::set<uint32> questFeasibilityBlocklistWhileNoCustomStarts;  // only while customRaceStartZones = false
     bool questFeasibilitySoloSkipGroupQuests = false;  // Type 1 / 81 / 62 or SuggestedPlayers >= 2, bot not in a group
