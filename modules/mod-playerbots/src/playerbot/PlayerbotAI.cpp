@@ -138,6 +138,27 @@ void RecordGrindDeath(PlayerbotAI* ai, Player* bot, Unit* killer)
     if (!killer || killer->GetTypeId() != TYPEID_UNIT)
         return;
 
+    // Lever 2 (AiPlayerbot.GrindAvoid.Lever, CLI-ROT 22.11.2026): the second threshold in its own store, for every bot the lever
+    // computes for (applied or shadow); the base store below is only touched with the base rule on, as before.
+    if (grind_cap::LeverComputes(sPlayerbotAIConfig.grindAvoidLever, sPlayerbotAIConfig.grindAvoidLeverMaxDeaths))
+    {
+        grind_cap::Record leverRecord;
+        grind_cap::LeverCounters& lc = grind_cap::leverCounters[ai::cohort::InB(bot->GetGUIDLow()) ? 1 : 0];
+        lc.records.fetch_add(1, std::memory_order_relaxed);
+        if (grind_cap::LeverAvoids().RecordDeath(bot->GetGUIDLow(), killer->GetEntry(), uint32(time(nullptr)),
+                sPlayerbotAIConfig.grindAvoidLeverMaxDeaths, sPlayerbotAIConfig.grindAvoidWindowSeconds,
+                sPlayerbotAIConfig.grindAvoidSeconds, leverRecord))
+        {
+            lc.avoidStarts.fetch_add(1, std::memory_order_relaxed);
+            sLog.outBasic("[GrindCap] state=lever_avoid bot=%u level=%u entry=%u killer_level=%u avoid_seconds=%u applied=%u",
+                bot->GetGUIDLow(), bot->GetLevel(), killer->GetEntry(), killer->GetLevel(), sPlayerbotAIConfig.grindAvoidSeconds,
+                grind_cap::LeverApplies(sPlayerbotAIConfig.grindAvoidLever, bot->GetGUIDLow()) ? 1u : 0u);
+        }
+    }
+
+    if (!sPlayerbotAIConfig.grindAvoidMaxDeaths)
+        return;
+
     // Bounded shared store, not per-bot AI context values (train 6 tick regression).
     grind_cap::Record record;
     if (!grind_cap::Avoids().RecordDeath(bot->GetGUIDLow(), killer->GetEntry(), uint32(time(nullptr)),
@@ -3958,10 +3979,14 @@ void PlayerbotAI::OnDeath()
             // Re-deaths at camps (CLI-ROT adds analysis 25.10.2026; DestinationDeaths.CampBlock, DangerMap.CountAddDeaths): the living
             // attackers at the death = the living adds of the fight snapshot (as in deaths.csv) + the target if it lives. Read only when
             // one of the two switches is on; one "all targets" read per death.
-            // twow-repo#679 (switch audit #10c): CampBlock keeps the count per bot, so only a bot it applies to reads it (mode 2 = cohort B).
+            // twow-repo#679 (switch audit #10c): CampBlock keeps the count per bot, so only a bot it computes for reads it (lever 2 shadow,
+            // CLI-ROT 22.11.2026: in modes 2 / 3 the other cohort records in shadow, mode 4 every bot; 0 = nobody, as before).
             // DangerMap.CountAddDeaths pools the deaths of ALL bots into the shared map that the cohort B bots read, so every bot still counts.
+            // The GrindAvoid lever reads it for the [Lever2] death line.
+            bool const lever2Camp = ai::camp_block::Computes(sPlayerbotAIConfig.destinationDeathsCampBlock);
+            bool const lever2Grind = grind_cap::LeverComputes(sPlayerbotAIConfig.grindAvoidLever, sPlayerbotAIConfig.grindAvoidLeverMaxDeaths);
             uint32 deathAttackers = 0;
-            if (ai::cohort::Applies(sPlayerbotAIConfig.destinationDeathsCampBlock, bot->GetGUIDLow()) || sPlayerbotAIConfig.dangerMapCountAddDeaths)
+            if (lever2Camp || lever2Grind || sPlayerbotAIConfig.dangerMapCountAddDeaths)
             {
                 Unit* const deathTarget = AI_VALUE(Unit*, "current target");
                 std::list<ObjectGuid> const deathTargets = AI_VALUE_LAZY(std::list<ObjectGuid>, "all targets");
@@ -3975,6 +4000,39 @@ void PlayerbotAI::OnDeath()
                         ++deathAttackers;
                 if (deathTarget && deathTarget->IsAlive())
                     ++deathAttackers;
+            }
+
+            // Lever 2 shadow (CLI-ROT 22.11.2026, OB-10 d947fa34): one [Lever2] death line per death of a roster bot on its own in the
+            // open world while CampBlock or the GrindAvoid lever computes - whether the death position lay in the bot's active camp ring
+            // and whether the killer entry was lever-avoided, both BEFORE this death is recorded below, and whether the bot's last judged
+            // choice / pick was blocked (last=none: no judged selection in the last 1800 s). Log only.
+            if ((lever2Camp || lever2Grind) && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !HasRealPlayerMaster() &&
+                !bot->GetMap()->IsDungeon() && !bot->InBattleGround())
+            {
+                uint32 const lever2Now = uint32(time(nullptr));
+                Unit* const lever2Killer = AI_VALUE(Unit*, "current target");
+                uint32 const killerEntry = lever2Killer && lever2Killer->GetTypeId() == TYPEID_UNIT ? lever2Killer->GetEntry() : 0;
+                bool campInRing = false;
+                if (lever2Camp)
+                    if (TravelTarget* const campTarget = AI_VALUE(TravelTarget*, "travel target"))
+                    {
+                        WorldPosition const here(bot);
+                        campInRing = campTarget->IsCampBlocked(&here);
+                    }
+                bool const killerLever = lever2Grind && killerEntry && grind_cap::LeverAvoids().IsAvoided(bot->GetGUIDLow(), killerEntry, lever2Now);
+                bool const killerBase = sPlayerbotAIConfig.grindAvoidMaxDeaths && killerEntry &&
+                    grind_cap::Avoids().IsAvoided(bot->GetGUIDLow(), killerEntry, lever2Now);
+                bool const campRecent = lever2CampAt && lever2Now - lever2CampAt <= 1800;
+                char const* const campLast = !lever2Camp || !campRecent ? "none" :
+                    lever2CampKind == 1 ? "skip" : lever2CampKind == 2 ? "quest" : "0";
+                auto const last = [lever2Now](uint32 at, bool would) { return !at || lever2Now - at > 1800 ? "none" : would ? "1" : "0"; };
+                sLog.outBasic("[Lever2] death bot=%u cohort=%c level=%u attackers=%u camp_in_ring=%u camp_applied=%u camp_last=%s "
+                    "killer_entry=%u killer_lever_avoided=%u killer_base_avoided=%u lever_applied=%u grind_last=%s",
+                    bot->GetGUIDLow(), ai::cohort::Letter(bot->GetGUIDLow()), bot->GetLevel(), deathAttackers, campInRing ? 1u : 0u,
+                    ai::camp_block::Applies(sPlayerbotAIConfig.destinationDeathsCampBlock, bot->GetGUIDLow()) ? 1u : 0u,
+                    campLast, killerEntry, killerLever ? 1u : 0u, killerBase ? 1u : 0u,
+                    grind_cap::LeverApplies(sPlayerbotAIConfig.grindAvoidLever, bot->GetGUIDLow()) && lever2Grind ? 1u : 0u,
+                    lever2Grind ? last(lever2GrindAt, lever2GrindWould) : "none");
             }
 
             // twow-repo#656 (AiPlayerbot.Grind.SafePull): a death with 2+ living attackers (the target + the adds, as above) within
@@ -4017,7 +4075,7 @@ void PlayerbotAI::OnDeath()
             if (sPlayerbotAIConfig.dangerMapEnabled && !IsRealPlayer() && !bot->GetMap()->IsDungeon())
                 RecordDangerMapDeath(bot, AI_VALUE(Unit*, "current target"), deathAttackers);
 
-            if (sPlayerbotAIConfig.grindAvoidMaxDeaths && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()))
+            if ((sPlayerbotAIConfig.grindAvoidMaxDeaths || lever2Grind) && sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()))
                 RecordGrindDeath(this, bot, AI_VALUE(Unit*, "current target"));
 
             // G4: a death loop at one spot (graveyard among mobs above the

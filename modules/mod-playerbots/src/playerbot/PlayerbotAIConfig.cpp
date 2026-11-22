@@ -770,11 +770,11 @@ bool PlayerbotAIConfig::Initialize()
     questFirstProgressionQuestAreaLevelMargin = config.GetIntDefault("AiPlayerbot.QuestFirstProgression.QuestAreaLevelMargin", 5);
     destinationDeathsMax = config.GetIntDefault("AiPlayerbot.DestinationDeaths.Max", 2);
     destinationDeathsCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.DestinationDeaths.CooldownSeconds", 3600));
-    // Re-deaths at camps (CampBlock): an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B).
+    // Re-deaths at camps (CampBlock): an unknown mode is off (CampBlockPolicy.h: 0 off, 1 all, 2 cohort B, 3 cohort A, 4 shadow).
     destinationDeathsCampBlock = config.GetIntDefault("AiPlayerbot.DestinationDeaths.CampBlock", 0);
-    if (destinationDeathsCampBlock > 2)
+    if (destinationDeathsCampBlock > 4)
     {
-        sLog.outError("[CampBlock] config key=CampBlock value=%u result=off (0 off, 1 all, 2 cohort B)", destinationDeathsCampBlock);
+        sLog.outError("[CampBlock] config key=CampBlock value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A, 4 shadow)", destinationDeathsCampBlock);
         destinationDeathsCampBlock = 0;
     }
     destinationDeathsCampBlockSeconds = std::min<uint32>(7200, std::max<uint32>(60, config.GetIntDefault("AiPlayerbot.DestinationDeaths.CampBlock.Seconds", 1800)));
@@ -899,11 +899,11 @@ bool PlayerbotAIConfig::Initialize()
     dangerMapLevelMargin = config.GetIntDefault("AiPlayerbot.DangerMap.LevelMargin", 3);
     dangerMapLineSamples = std::min<uint32>(100, config.GetIntDefault("AiPlayerbot.DangerMap.LineSamples", 20));
     dangerMapCountEnvironmentDeaths = config.GetBoolDefault("AiPlayerbot.DangerMap.CountEnvironmentDeaths", false);
-    // Re-deaths at camps (CountAddDeaths): an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B).
+    // Re-deaths at camps (CountAddDeaths): an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B, 3 cohort A).
     dangerMapCountAddDeaths = config.GetIntDefault("AiPlayerbot.DangerMap.CountAddDeaths", 0);
-    if (dangerMapCountAddDeaths > 2)
+    if (dangerMapCountAddDeaths > 3)
     {
-        sLog.outError("[DangerMap] config key=CountAddDeaths value=%u result=off (0 off, 1 all, 2 cohort B)", dangerMapCountAddDeaths);
+        sLog.outError("[DangerMap] config key=CountAddDeaths value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", dangerMapCountAddDeaths);
         dangerMapCountAddDeaths = 0;
     }
     dangerMapAddDeathMinAttackers = std::min<uint32>(16, std::max<uint32>(2, config.GetIntDefault("AiPlayerbot.DangerMap.AddDeathMinAttackers", 3)));
@@ -943,6 +943,15 @@ bool PlayerbotAIConfig::Initialize()
     grindAvoidMaxDeaths = config.GetIntDefault("AiPlayerbot.GrindAvoid.MaxDeaths", 0);
     grindAvoidWindowSeconds = std::max<uint32>(60, config.GetIntDefault("AiPlayerbot.GrindAvoid.WindowSeconds", 3600));
     grindAvoidSeconds = std::max<uint32>(60, config.GetIntDefault("AiPlayerbot.GrindAvoid.AvoidSeconds", 3600));
+    // Lever 2 (CLI-ROT 22.11.2026): a second GrindAvoid threshold for the bots the lever reaches; the base rule above is unchanged.
+    // Mode as CampBlock (GrindCapPolicy.h: 0 off, 1 all, 2 cohort B, 3 cohort A, 4 shadow); an unknown mode is off.
+    grindAvoidLever = config.GetIntDefault("AiPlayerbot.GrindAvoid.Lever", 0);
+    if (grindAvoidLever > 4)
+    {
+        sLog.outError("[GrindAvoid] config key=Lever value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A, 4 shadow)", grindAvoidLever);
+        grindAvoidLever = 0;
+    }
+    grindAvoidLeverMaxDeaths = std::min<uint32>(10, uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.GrindAvoid.Lever.MaxDeaths", 1))));
     questFirstProgressionLocalHubRadius = config.GetFloatDefault("AiPlayerbot.QuestFirstProgression.LocalHubRadius", 1200.0f);
     questFirstProgressionTraceTravelDecisions = config.GetBoolDefault("AiPlayerbot.QuestFirstProgression.TraceTravelDecisions", false);
     followDiagnostics = config.GetBoolDefault("AiPlayerbot.FollowDiagnostics", false);
@@ -2462,6 +2471,8 @@ bool PlayerbotAIConfig::Initialize()
             {"Grind.SafePull", Value(grindSafePull)},
             {"Grind.SafePull.ReadyHp", Value(grindSafePullReadyHp)},
             {"Grind.SafePull.ReadyMana", Value(grindSafePullReadyMana)},
+            {"GrindAvoid.Lever", Value(grindAvoidLever)},
+            {"GrindAvoid.Lever.MaxDeaths", Value(grindAvoidLeverMaxDeaths)},
             {"LogInGroupOnly", Value(logInGroupOnly)},
             {"Loot.HoldTravelWhileLootable", Value(lootHoldTravelWhileLootable)},
             {"Loot.HoldTravelWhileLootable.MaxSeconds", Value(lootHoldTravelWhileLootableMaxSeconds)},

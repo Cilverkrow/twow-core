@@ -73,6 +73,8 @@
 #include "playerbot/CastWaitPolicy.h"
 #include "playerbot/GrindNeighbourPolicy.h"   // twow-repo#602 #2 (Grind.NeighbourAware): [GrindNeighbour] minute line
 #include "playerbot/SafePullPolicy.h"   // twow-repo#656 (Grind.SafePull): [SafePull] minute line
+#include "playerbot/CampBlockPolicy.h"  // lever 2 shadow (DestinationDeaths.CampBlock): [CampBlock] minute line
+#include "playerbot/GrindCapPolicy.h"   // lever 2 (GrindAvoid.Lever): [GrindAvoid] minute line
 #include "playerbot/KnownSpellNodesPolicy.h"   // twow-repo#602 (Rotation.KnownSpellNodes): [KnownSpellNodes] minute line
 #include "playerbot/CombatRule.h"   // A3 step 5: [CombatRule] minute lines
 #include "playerbot/HunterMeleeStartPolicy.h"   // twow-repo#602 (Rotation.HunterMeleeStart): [HunterMelee] minute line
@@ -1553,6 +1555,66 @@ void ReportSafePull()
     }
 }
 
+// Lever 2 shadow (CLI-ROT 22.11.2026, AiPlayerbot.DestinationDeaths.CampBlock): one [CampBlock] line per minute and cohort with choices
+// or records - the counters of CampBlockPolicy.h as increments. Nothing is written when off or for a cohort without both.
+void ReportCampBlock()
+{
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (!ai::camp_block::Computes(sPlayerbotAIConfig.destinationDeathsCampBlock) || now < lastReport + 60)
+        return;
+    lastReport = now;
+    auto take = [](std::atomic<std::uint64_t>& counter) { return (unsigned long long)counter.exchange(0, std::memory_order_relaxed); };
+    for (uint32 cohort = 0; cohort < 2; ++cohort)
+    {
+        ai::camp_block::Counters& c = ai::camp_block::counters[cohort];
+        unsigned long long const choices = take(c.choices);
+        unsigned long long const records = take(c.records);
+        if (!choices && !records)
+        {
+            for (std::atomic<std::uint64_t>* counter : { &c.blockedSeen, &c.skipped, &c.wouldSkip, &c.fallback, &c.wouldFallback,
+                    &c.changed, &c.wouldChange, &c.wouldChangeQuest })
+                counter->store(0, std::memory_order_relaxed);
+            continue;
+        }
+        sLog.outBasic("[CampBlock] mode=%u cohort=%c choices=%llu blocked_seen=%llu skipped=%llu would_skip=%llu fallback=%llu "
+            "would_fallback=%llu changed=%llu would_change=%llu would_change_quest=%llu records=%llu",
+            sPlayerbotAIConfig.destinationDeathsCampBlock, cohort ? 'B' : 'A', choices, take(c.blockedSeen), take(c.skipped),
+            take(c.wouldSkip), take(c.fallback), take(c.wouldFallback), take(c.changed), take(c.wouldChange), take(c.wouldChangeQuest),
+            records);
+    }
+}
+
+// Lever 2 (CLI-ROT 22.11.2026, AiPlayerbot.GrindAvoid.Lever): one [GrindAvoid] line per minute and cohort with grind passes or records -
+// the lever counters of GrindCapPolicy.h as increments. Nothing is written when off or for a cohort without both.
+void ReportGrindAvoidLever()
+{
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (!ai::grind_cap::LeverComputes(sPlayerbotAIConfig.grindAvoidLever, sPlayerbotAIConfig.grindAvoidLeverMaxDeaths) ||
+        now < lastReport + 60)
+        return;
+    lastReport = now;
+    auto take = [](std::atomic<std::uint64_t>& counter) { return (unsigned long long)counter.exchange(0, std::memory_order_relaxed); };
+    for (uint32 cohort = 0; cohort < 2; ++cohort)
+    {
+        ai::grind_cap::LeverCounters& c = ai::grind_cap::leverCounters[cohort];
+        unsigned long long const passes = take(c.passes);
+        unsigned long long const records = take(c.records);
+        if (!passes && !records)
+        {
+            for (std::atomic<std::uint64_t>* counter : { &c.picks, &c.filtered, &c.wouldFilter, &c.changed, &c.wouldChange,
+                    &c.wouldEmpty, &c.avoidStarts })
+                counter->store(0, std::memory_order_relaxed);
+            continue;
+        }
+        sLog.outBasic("[GrindAvoid] mode=%u max_deaths=%u cohort=%c passes=%llu picks=%llu filtered=%llu would_filter=%llu changed=%llu "
+            "would_change=%llu would_empty=%llu records=%llu avoid_starts=%llu",
+            sPlayerbotAIConfig.grindAvoidLever, sPlayerbotAIConfig.grindAvoidLeverMaxDeaths, cohort ? 'B' : 'A', passes, take(c.picks),
+            take(c.filtered), take(c.wouldFilter), take(c.changed), take(c.wouldChange), take(c.wouldEmpty), records, take(c.avoidStarts));
+    }
+}
+
 // twow-repo#594 (AiPlayerbot.Rotation.ReachLosClose, CLI-ROT review): one [ReachLos] minute line - hostile reach targets out of
 // sight chased closer per cohort (evaluations), floored (walk-in) / stood (already inside the floor), episodes and those back in
 // sight within 5 s (per episode). Nothing with 0.
@@ -2221,6 +2283,8 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     ReportNeverPossible();  // twow-repo#602: [NeverPossible] once per minute (AiPlayerbot.Rotation.NeverPossibleSkip)
     ReportGrindNeighbour();   // twow-repo#602 #2: [GrindNeighbour] once per minute (AiPlayerbot.Grind.NeighbourAware)
     ReportSafePull();   // twow-repo#656: [SafePull] once per minute (AiPlayerbot.Grind.SafePull)
+    ReportCampBlock();  // lever 2 shadow: [CampBlock] once per minute per cohort (AiPlayerbot.DestinationDeaths.CampBlock)
+    ReportGrindAvoidLever();  // lever 2: [GrindAvoid] once per minute per cohort (AiPlayerbot.GrindAvoid.Lever)
     ReportKnownSpellNodes();   // twow-repo#602: [KnownSpellNodes] once per minute (AiPlayerbot.Rotation.KnownSpellNodes)
     ai::combat_rule::ReportCombatRule();   // A3 step 5: [CombatRule] once per minute and part (AiPlayerbot.CombatRule.*)
     ReportOomBackoff();   // twow-repo#602 ROT-01 3c-B: [OomBackoff] once per minute (AiPlayerbot.Rotation.OomBackoff)
