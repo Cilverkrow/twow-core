@@ -50,7 +50,7 @@ struct PlanTime
     bool overBudget = false;
     // S5 F1 (twow-repo#726, AiPlayerbot.Planner.GiverPrefilter): set when the giver fetch of this plan ran with the prefilter; the
     // line then ends with prefilter=1 give_pre= give_xmap= give_inbox= verify= (GiverPrefilterPolicy.h Counts; verify = this plan
-    // also ran the original list for the [PlanPrefilter] check, so its us holds a second fetch). Off: the line is as before.
+    // also ran the original list for the [PlanPrefilter] check, after its clocks were read). Off: the line is as before.
     bool givePrefilter = false;
     std::uint32_t givePre = 0;
     std::uint32_t giveXmap = 0;

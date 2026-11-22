@@ -12,7 +12,6 @@
 #include "playerbot/AreaTeamPolicy.h"
 #include "playerbot/BgFillPolicy.h"
 #include "playerbot/PlannerTimePolicy.h"   // A3 step 3 planner S5 (twow-repo#726): Planner.TimeTrace loader check
-#include "playerbot/GiverPrefilterPolicy.h"   // A3 step 3 planner S5 F1 (twow-repo#726): Planner.GiverPrefilter loader check
 #include "playerbot/ShortcutPolicy.h"
 #include "playerbot/ActionLogSamplePolicy.h"
 #include "playerbot/DamageLogPolicy.h"   // twow-repo#653: AiPlayerbot.ActionLog.DamageSampleEvery
@@ -1155,7 +1154,7 @@ bool PlayerbotAIConfig::Initialize()
     // A3 step 3 planner S5 F1 (twow-repo#726, F1-ENTWURF-v0.2): the giver prefilter (cohort rule 0-3; above 3 is 0, fail closed) and
     // its verify (every N-th prefiltered giver fetch also runs the original list; 0 = never).
     plannerGiverPrefilter = uint32(config.GetIntDefault("AiPlayerbot.Planner.GiverPrefilter", 0));
-    if (!ai::giver_prefilter::ValidMode(plannerGiverPrefilter))
+    if (plannerGiverPrefilter > 3)
     {
         sLog.outError("[Planner] config key=Planner.GiverPrefilter value=%u result=0 (0 off, 1 all, 2 cohort B, 3 cohort A)",
             plannerGiverPrefilter);

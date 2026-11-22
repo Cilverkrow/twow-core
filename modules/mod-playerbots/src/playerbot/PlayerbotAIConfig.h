@@ -1024,9 +1024,10 @@ public:
     // plan (microseconds per stage, thread CPU time; PlannerTimePolicy.h); any other value is 0 with one error line. Reads only.
     uint32 plannerTimeTrace = 0;
     // A3 step 3 planner S5 F1 (twow-repo#726, F1-ENTWURF-v0.2; AiPlayerbot.Planner.GiverPrefilter, default 0): the planner's giver
-    // fetch skips givers whose distance bound is out of range before computing it - the same list in the same order (cohort rule:
-    // 0 off, 1 all, 2 cohort B, 3 cohort A; above 3 is 0 with an error line). GiverPrefilterVerify N (default 0): every N-th
-    // prefiltered giver fetch also runs the original list and writes one [PlanPrefilter] verify line (never in a measured run).
+    // fetch skips givers whose distance bound is out of range before computing it - the same fetch list in the same order; with
+    // BudgetMs > 0 plans can differ (a cheaper fetch is cut less often). Cohort rule: 0 off, 1 all, 2 cohort B, 3 cohort A; above 3
+    // is 0 with an error line. GiverPrefilterVerify N (default 0): every N-th prefiltered giver fetch also runs the original list
+    // after the plan's time is read and writes one [PlanPrefilter] verify line (a second fetch: never in a measured run).
     uint32 plannerGiverPrefilter = 0;
     uint32 plannerGiverPrefilterVerify = 0;
     // A3 step 3 planner P-3a (P3-ENTWURF-v0.2 section 8, OB-00 F2 (a); AiPlayerbot.Planner.WriteCohort, default 0): which bots
