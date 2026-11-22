@@ -2214,6 +2214,7 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
             }
 
             uint64 snapshot = (uint64(bot->GetLevel()) << 40) ^ uint64(bot->GetUInt32Value(PLAYER_XP));
+            uint64 const snapshotLevelXp = snapshot;   // twow-repo#575 R2 (b): level + XP part, the gathering term is the rest
             // Hotfix 8.5 (owner decision, replaces 8.2): profession skill-ups are progress
             // only under a declared purpose ([Purpose]); without one the rescue may act.
             if (gatherPurpose.Active())
@@ -2481,6 +2482,30 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
             // as before. With ResetOnProgressEvents only a level-up still resets the quest search stage - XP alone does not.
             if (questProgress.snapshot != snapshot)
                 islandHubRescuePending = false;   // twow-repo#575 (PATH-01 F2): progress after an island hub rescue
+            // twow-repo#575 R2 (b) (QuestRescue.StartValleyFix): progress since a rescue lifts its last-target exclusion - level, XP,
+            // gathering skill (the snapshot's parts) or the quest log state, each against the baseline the bot thread takes on its first
+            // check after the rescue (RescueValleyPolicy.h Memory, bot thread only). Only while a rescue is recorded (key 0: never set).
+            if (valleyRescuePending.load())
+            {
+                ai::rescue_valley::Progress valleyNow;
+                valleyNow.level = uint32(snapshotLevelXp >> 40);
+                valleyNow.xp = uint32(snapshotLevelXp & 0xFFFFFFFFFFULL);
+                valleyNow.gather = snapshot - snapshotLevelXp;
+                valleyNow.questState = ai::quest_failure_class::QuestStateSeed;
+                for (uint16 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+                    if (uint32 const questId = bot->GetQuestSlotQuestId(slot))
+                        valleyNow.questState = ai::quest_failure_class::MixQuestState(valleyNow.questState, questId,
+                            bot->GetQuestStatus(questId) == QUEST_STATUS_COMPLETE);
+                if (valleyBaselineDue.exchange(false))
+                    valleyMemory.Restart();
+                ai::rescue_valley::Moved const moved = valleyMemory.Observe(valleyNow);
+                if (moved != ai::rescue_valley::Moved::None)
+                {
+                    valleyRescuePending = false;
+                    sLog.outBasic("[QuestRescue] state=valley_last_cleared bot=%u level=%u moved=%s", bot->GetGUIDLow(),
+                        valleyNow.level, ai::rescue_valley::MovedName(moved));
+                }
+            }
             if (questProgress.Update(snapshot, now))
             {
                 if (ai::quest_failure_class::ProgressResetsStage(sPlayerbotAIConfig.questFirstProgressionResetOnProgressEvents &&

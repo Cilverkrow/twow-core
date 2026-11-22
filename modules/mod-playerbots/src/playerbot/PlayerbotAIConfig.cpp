@@ -931,6 +931,13 @@ bool PlayerbotAIConfig::Initialize()
         sLog.outError("[RescueHub] config key=HomeHubs.LevelFloor value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", questRescueHomeHubsLevelFloor);
         questRescueHomeHubsLevelFloor = 0;
     }
+    // twow-repo#575 R2 (OB-10 build OK 22.11.2026): the rescue's start-valley branch and goblin pushes for roster bots (RescueValleyPolicy.h).
+    questRescueStartValleyFix = config.GetIntDefault("AiPlayerbot.QuestRescue.StartValleyFix", 0);
+    if (questRescueStartValleyFix > 3)
+    {
+        sLog.outError("[QuestRescue] config key=StartValleyFix value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", questRescueStartValleyFix);
+        questRescueStartValleyFix = 0;
+    }
     grindAvoidMaxDeaths = config.GetIntDefault("AiPlayerbot.GrindAvoid.MaxDeaths", 0);
     grindAvoidWindowSeconds = std::max<uint32>(60, config.GetIntDefault("AiPlayerbot.GrindAvoid.WindowSeconds", 3600));
     grindAvoidSeconds = std::max<uint32>(60, config.GetIntDefault("AiPlayerbot.GrindAvoid.AvoidSeconds", 3600));
@@ -2550,6 +2557,7 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestRescue.HomeHubs.LevelFloor", Value(questRescueHomeHubsLevelFloor)},
             {"QuestRescue.KeepRequestWhenFull", Value(questRescueKeepRequestWhenFull)},
             {"QuestRescue.NoTargetFreeSlot", Value(questRescueNoTargetFreeSlot)},
+            {"QuestRescue.StartValleyFix", Value(questRescueStartValleyFix)},
             {"QuestTurnIn.RepeatableAutoComplete", Value(questTurnInRepeatableAutoComplete)},
             {"Replan", Value(replan)},
             {"Replan.Shadow", Value(replanShadow)},
