@@ -553,36 +553,6 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
     if (neighbourScored)
         result = NeighbourPick(result, neighbourCandidates, targets, ai::grind_neighbour::Applies(neighbourMode, bot->GetGUIDLow()));
 
-    // Lever 2: the pass's counters and the last-pick mark for the [Lever2] death line. would_change = a shadow pick the lever avoids
-    // (the base rule already removed its own); would_empty = every candidate at the decision was lever-avoided (shadow) or the lever
-    // emptied the pass (applied).
-    if (leverScored)
-    {
-        bool const pickWould = !leverApplies && result && !result->GetObjectGuid().IsPlayer() &&
-            grind_cap::LeverAvoids().IsAvoided(bot->GetGUIDLow(), result->GetEntry(), uint32(now));
-        bool const empty = leverApplies ? (leverSkipped && !leverReached) : (leverReached && leverWouldReached == leverReached);
-        grind_cap::LeverCounters& lc = grind_cap::leverCounters[ai::cohort::InB(bot->GetGUIDLow()) ? 1 : 0];
-        lc.passes.fetch_add(1, std::memory_order_relaxed);
-        if (result)
-            lc.picks.fetch_add(1, std::memory_order_relaxed);
-        if (leverSkipped)
-        {
-            lc.filtered.fetch_add(leverSkipped, std::memory_order_relaxed);
-            lc.changed.fetch_add(1, std::memory_order_relaxed);
-        }
-        if (leverWould)
-            lc.wouldFilter.fetch_add(leverWould, std::memory_order_relaxed);
-        if (pickWould)
-            lc.wouldChange.fetch_add(1, std::memory_order_relaxed);
-        if (empty)
-            lc.wouldEmpty.fetch_add(1, std::memory_order_relaxed);
-        if (result)
-        {
-            ai->lever2GrindAt = uint32(now);
-            ai->lever2GrindWould = pickWould || (leverApplies && leverSkipped);
-        }
-    }
-
     if (result)
     {
         logGrind(result, "selected.");
@@ -624,6 +594,36 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
         // The per-bot episode line (OB-00 20.10.): no quest work at all, once per episode.
         if (empty == ai::quest_first_order::Event::NoQuest)
             ai->NoteQuestOrderEpisode(uint8(empty));
+    }
+
+    // Lever 2: the pass's counters and the last-pick mark for the [Lever2] death line, on the final pick (after the safe-pull and
+    // neighbour rules). would_change = a shadow pick the lever avoids (the base rule already removed its own); would_empty = every
+    // candidate at the decision was lever-avoided (shadow) or the lever emptied the pass (applied).
+    if (leverScored)
+    {
+        bool const pickWould = !leverApplies && result && !result->GetObjectGuid().IsPlayer() &&
+            grind_cap::LeverAvoids().IsAvoided(bot->GetGUIDLow(), result->GetEntry(), uint32(now));
+        bool const empty = leverApplies ? (leverSkipped && !leverReached) : (leverReached && leverWouldReached == leverReached);
+        grind_cap::LeverCounters& lc = grind_cap::leverCounters[ai::cohort::InB(bot->GetGUIDLow()) ? 1 : 0];
+        lc.passes.fetch_add(1, std::memory_order_relaxed);
+        if (result)
+            lc.picks.fetch_add(1, std::memory_order_relaxed);
+        if (leverSkipped)
+        {
+            lc.filtered.fetch_add(leverSkipped, std::memory_order_relaxed);
+            lc.changed.fetch_add(1, std::memory_order_relaxed);
+        }
+        if (leverWould)
+            lc.wouldFilter.fetch_add(leverWould, std::memory_order_relaxed);
+        if (pickWould)
+            lc.wouldChange.fetch_add(1, std::memory_order_relaxed);
+        if (empty)
+            lc.wouldEmpty.fetch_add(1, std::memory_order_relaxed);
+        if (result)
+        {
+            ai->lever2GrindAt = uint32(now);
+            ai->lever2GrindWould = pickWould || (leverApplies && leverSkipped);
+        }
     }
 
     // twow-repo#601 S2 R4: round 0's skips go to the caller, which counts r4_skips= / r4_empty= once per value pass after its
