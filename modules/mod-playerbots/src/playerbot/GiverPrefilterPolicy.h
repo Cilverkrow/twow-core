@@ -16,12 +16,8 @@
 // t/giver_prefilter_policy_tests.cpp compiles it standalone.
 namespace ai::giver_prefilter
 {
-// The key follows the shared cohort parity rule (CohortPolicy.h): 0 off (default), 1 all, 2 cohort B (odd guid), 3 cohort A.
-// Any other value is 0 with one error line at load.
-inline bool ValidMode(std::uint32_t value)
-{
-    return value <= 3;
-}
+// The key follows the shared cohort parity rule (CohortPolicy.h): 0 off (default), 1 all, 2 cohort B (odd guid), 3 cohort A;
+// the loader clamps any other value to 0 with one error line (PlayerbotAIConfig.cpp, the cohort_mode_a contract).
 
 // The lower bound of one destination: the minimum over its terms (map squares; FLT_MAX = none, as the original).
 inline void TakeMin(float& acc, float term)

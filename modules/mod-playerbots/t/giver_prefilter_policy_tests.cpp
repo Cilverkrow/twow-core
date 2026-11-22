@@ -1,5 +1,5 @@
 // A3 step 3 planner S5 F1 (twow-repo#726, F1-ENTWURF-v0.2; AiPlayerbot.Planner.GiverPrefilter, default 0): GiverPrefilterPolicy.h -
-// the key check, the minimum and the portal term (the same float operations as the original), the exclusion test at the radius edge
+// the minimum and the portal term (the same float operations as the original), the exclusion test at the radius edge
 // (a skipped giver is one the original range check drops too), and the verify line. The header names no game type, so this suite
 // compiles it standalone; the list equality on real destinations is the verify mode's job (GiverPrefilterVerify, non-measured run).
 
@@ -33,12 +33,6 @@ bool OriginalDrops(float sq, float maxDistance)
 {
     float const distance = float(::sqrt(double(sq)));
     return (maxDistance > 0 && distance > maxDistance) || distance == FLT_MAX;
-}
-
-void TestValidMode()
-{
-    Require(ValidMode(0) && ValidMode(1) && ValidMode(2) && ValidMode(3), "modes 0-3 are valid (cohort rule)");
-    Require(!ValidMode(4) && !ValidMode(0xFFFFFFFFu), "above 3 is not valid (loader sets 0)");
 }
 
 void TestTakeMin()
@@ -144,7 +138,6 @@ void TestVerifyLine()
 
 int main()
 {
-    TestValidMode();
     TestTakeMin();
     TestPortalTermMonotone();
     TestExcludesEdge();

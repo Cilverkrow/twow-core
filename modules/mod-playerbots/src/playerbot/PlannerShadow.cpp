@@ -1487,18 +1487,6 @@ void PlanTickImpl(ai::supervisor::Supervisor& sup, PlayerbotAI* ai_, PlanState& 
         planTime.giveInbox = prefilterCounts.inbox;
         planTime.giveVerify = prefilterVerify;
     }
-    // S5 F1 verify: the original list (both thread pointers are null here: no prefilter, no walk/ret count) against the prefiltered
-    // one, element by element; one [PlanPrefilter] line per verified fetch. Its time lands in rest (the line says verify=1); a
-    // measured run sets GiverPrefilterVerify 0.
-    if (prefilterVerify)
-    {
-        std::vector<ai::TravelDestination*> const original = sTravelMgr.GetDestinations(info,
-            std::uint32_t(ai::TravelDestinationPurpose::QuestGiver), {}, false, kPickupRadius);
-        char vbuf[ai::giver_prefilter::kVerifyBuf];
-        ai::giver_prefilter::FormatVerifyLine(vbuf, sizeof(vbuf), guid, std::uint32_t(original.size()),
-            std::uint32_t(giversPrefiltered.size()), ai::giver_prefilter::FirstDiff(original, giversPrefiltered), prefilterCounts);
-        sLog.outBasic("%s", vbuf);
-    }
     std::int64_t const traceFetchEndNs = traceNow();   // S5: head (when no stage ran) and rest start here
     traceHead(traceFetchEndNs);
 
@@ -1779,6 +1767,18 @@ void PlanTickImpl(ai::supervisor::Supervisor& sup, PlayerbotAI* ai_, PlanState& 
         planTime.overBudget = overBudget;
         planTime.guid = guid;
         planTime.cohort = ai::cohort::Letter(guid);
+    }
+    // S5 F1 verify: the original list (both thread pointers are null here: no prefilter, no walk/ret count) against the prefiltered
+    // one, element by element; one [PlanPrefilter] line per verified fetch. It runs after the plan's ms and the [PlanTime] clocks
+    // are read and after every slot is set, so it changes no slot, no budget cut and no measured time of the plan.
+    if (prefilterVerify)
+    {
+        std::vector<ai::TravelDestination*> const original = sTravelMgr.GetDestinations(info,
+            std::uint32_t(ai::TravelDestinationPurpose::QuestGiver), {}, false, kPickupRadius);
+        char vbuf[ai::giver_prefilter::kVerifyBuf];
+        ai::giver_prefilter::FormatVerifyLine(vbuf, sizeof(vbuf), guid, std::uint32_t(original.size()),
+            std::uint32_t(giversPrefiltered.size()), ai::giver_prefilter::FirstDiff(original, giversPrefiltered), prefilterCounts);
+        sLog.outBasic("%s", vbuf);
     }
     c.msMax = ms;
 
