@@ -1,5 +1,6 @@
 #pragma once
 #include "WorldPosition.h"
+#include "GiverPrefilterPolicy.h"   // twow-repo#726 F1: WorldWpSquare::SqDistanceLowerBound (min / add only)
 
 //This is a location container for quicker lookup of a collection of related points.
 //Locations are added and sorted into map, grid, cell containers and the bounding box of each container are calculated.
@@ -399,6 +400,9 @@ namespace ai
         bool HasSubSquare(uint32 id) const { return subSquares.find(id) != subSquares.end(); }
         std::vector<uint32> GetSubSquareIds() const { std::vector<uint32> ids; for (auto& [id, sq] : subSquares) ids.push_back(id); return ids; }
         const T& GetSubSquare(uint32 id) const { return subSquares.at(id); }
+        // twow-repo#726 F1: visit every sub-square without building an id list (WorldWpSquare::SqDistanceLowerBound).
+        template <class F>
+        void ForEachSubSquare(F&& f) const { for (auto& [id, sq] : subSquares) f(sq); }
     private:
         std::unordered_map<uint32, T> subSquares;
     };
@@ -446,6 +450,8 @@ namespace ai
             WorldPointSquareContainer::AddPoint(point);
             mapId = point->getMapId();
         }
+        // twow-repo#726 F1: the map of this square (WorldWpSquare::SqDistanceLowerBound).
+        uint32 GetMapId() const { return mapId; }
     private:
         static uint32 GetGridId(const WorldPosition& point)
         {
@@ -464,6 +470,44 @@ namespace ai
     public:
         virtual void AddPoint(WorldPosition* point) override {
             WorldPointSquareContainer::AddPoint(point);
+        }
+
+        // A3 step 3 planner S5 F1 (twow-repo#726, F1-ENTWURF-v0.2; AiPlayerbot.Planner.GiverPrefilter): a lower bound of
+        // sqDistance(point), from the original functions only. sqDistance is the minimum over the map squares of
+        // MapWpSquare::sqDistance (IsIn here is always true). Per map square:
+        //   same map: IsIn(point) ? 0 (the original descends to a point distance >= 0) : sqOutDistance(point) (the original value);
+        //   other map: the original is min over sqMapTransDistances(point, map) of distance + sqDistance(portal); here the same
+        //     portals (portalsOf caches them per fetch) with the square's own bound to the portal point (IsIn ? 0 : sqOutDistance),
+        //     which is <= sqDistance(portal); an empty portal list stays FLT_MAX, as the original.
+        // The minimum and the addition are GiverPrefilterPolicy.h (no formula of its own). xmap / inbox: a square on another map /
+        // a square on the point's map that holds the point.
+        template <class PortalsOf>
+        float SqDistanceLowerBound(const WorldPosition& point, PortalsOf&& portalsOf, bool& xmap, bool& inbox) const
+        {
+            float lb = FLT_MAX;
+            ForEachSubSquare([&](const MapWpSquare& sq)
+            {
+                float term = FLT_MAX;
+                if (sq.GetMapId() == point.getMapId())
+                {
+                    if (sq.IsIn(point))
+                    {
+                        inbox = true;
+                        term = 0.0f;
+                    }
+                    else
+                        term = sq.sqOutDistance(point);
+                }
+                else
+                {
+                    xmap = true;
+                    for (auto const& [portal, distance] : portalsOf(sq.GetMapId()))
+                        ai::giver_prefilter::TakeMin(term,
+                            ai::giver_prefilter::PortalTerm(distance, sq.IsIn(portal) ? 0.0f : sq.sqOutDistance(portal)));
+                }
+                ai::giver_prefilter::TakeMin(lb, term);
+            });
+            return lb;
         }
     protected:
         virtual bool IsIn(const WorldPosition& point) const override { return true; }

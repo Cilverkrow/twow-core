@@ -2065,6 +2065,21 @@ add_test(NAME planner_time_policy
   COMMAND planner_time_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# A3 step 3 planner S5 F1 (twow-repo#726, F1-ENTWURF-v0.2; AiPlayerbot.Planner.GiverPrefilter, default 0): the giver prefilter's
+# minimum, portal term, radius edge and verify line (GiverPrefilterPolicy.h); source contract in t/contracts.d.
+add_executable(giver_prefilter_policy_tests
+  "${PB_MODULE_DIR}/t/giver_prefilter_policy_tests.cpp")
+
+target_include_directories(giver_prefilter_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(giver_prefilter_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME giver_prefilter_policy
+  COMMAND giver_prefilter_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # A3 R9 / R2 producer, pair R9-1 (R9-REPLAN-INTERFACE v5): the pure progress meter (ReplanPolicy.h); the planner tick calls it
 # since R9-2.
 add_executable(replan_policy_tests
