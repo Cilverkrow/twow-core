@@ -2051,6 +2051,20 @@ add_test(NAME planner_shadow_policy
   COMMAND planner_shadow_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# A3 step 3 planner S5 (twow-repo#726; AiPlayerbot.Planner.TimeTrace, default 0): the [PlanTime] line (PlannerTimePolicy.h).
+add_executable(planner_time_policy_tests
+  "${PB_MODULE_DIR}/t/planner_time_policy_tests.cpp")
+
+target_include_directories(planner_time_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(planner_time_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME planner_time_policy
+  COMMAND planner_time_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # A3 R9 / R2 producer, pair R9-1 (R9-REPLAN-INTERFACE v5): the pure progress meter (ReplanPolicy.h); the planner tick calls it
 # since R9-2.
 add_executable(replan_policy_tests
