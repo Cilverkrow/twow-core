@@ -7729,6 +7729,13 @@ std::vector<WorldLocation> RandomPlayerbotMgr::QuestRescueTargets(Player* bot)
             sLog.outBasic("[RescueHub] bot=%u race=%u level=%u map=%u zone=%u step=%s anchors=%s targets=%u result=%s", bot->GetGUIDLow(),
                 uint32(bot->getRace()), level, bot->GetMapId(), bot->GetZoneId(), rh::StepName(row->step), anchors.c_str(),
                 uint32(targets.size()), rh::OutcomeName(outcome));
+            // twow-repo#575 R3 (logging only, no key): a fallback has no far spawn by definition (targets=0). Its own line tells the two
+            // causes apart: no anchor spawn at all (no_spawn) or spawns, all within the row's minimum distance (near_only: the bot
+            // already stands at a hub that is not an L5 own-hub row and still gets the legacy targets, RescueHubPolicy.h Decide).
+            if (outcome == rh::Outcome::Fallback)
+                sLog.outBasic("[RescueHubFallback] bot=%u race=%u level=%u map=%u zone=%u step=%s anchors=%s spawns=%u min_dist=%.0f reason=%s",
+                    bot->GetGUIDLow(), uint32(bot->getRace()), level, bot->GetMapId(), bot->GetZoneId(), rh::StepName(row->step),
+                    anchors.c_str(), uint32(anchorSpawns), row->minDistance, anchorSpawns ? "near_only" : "no_spawn");
         }
         uint64 const nowSeconds = uint64(time(nullptr));
         if (counters.LogDue(nowSeconds))

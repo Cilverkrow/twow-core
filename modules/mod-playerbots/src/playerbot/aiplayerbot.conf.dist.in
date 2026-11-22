@@ -1280,7 +1280,8 @@ AiPlayerbot.QuestRescue.KeepRequestWhenFull = 0
 # spawns): below L5 a bot goes to its race's start-zone hub (Goldshire, Kharanos, Dolanaar, Razor Hill, Brill, Bloodhoof; high elf
 # up to L9 Brinthilien / Alah'Thalas) instead of no target (R1) or another race's start point; night elves and undead L5-10 go to
 # the next zone on their home continent (Auberdine, The Sepulcher), unless StartZoneMinLevel still gates the level. No row or no
-# spawn left: the legacy targets as before. Logs [RescueHub] and [RescueHubMin].
+# spawn left: the legacy targets as before. Logs [RescueHub] and [RescueHubMin]; a fallback also logs [RescueHubFallback] with its
+# cause (reason=no_spawn: no anchor spawn; reason=near_only: spawns, all within the row's minimum distance).
 # Default 1 since the SZM adoption (10.11.2026, owner decision via OB-00): it is the base the SZM A/B measured on (RESULT SZM main R3,
 # both arms HomeHubs = 1). HomeHubs has no A/B of its own yet; that A/B runs on this base later.
 # Acts only on roster bots without a real player master (as StartZoneMinLevel); the high-elf row only with CustomRaceStartZones = 1
