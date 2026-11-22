@@ -1731,6 +1731,11 @@ AiPlayerbot.Planner.RelocSlack = 1.5
 # count fb_cohort / fb_arbiter. [PlanMin] gets the P-3a fields (expired, expire_denied*, applied_*, fallback_*, fb_*, mem_evict,
 # mode_*; twow-repo#726: fallback_reject_empty, zone_empty_held, feed_us, feed_us_max) and [ArbiterMin] plan= at Planner = 2 only. Kits set it explicitly together with Planner.MaxIdleSec = 100.
 AiPlayerbot.Planner.WriteCohort = 0
+# A3 step 3 planner S5 (twow-repo#726, S5-FIX-ENTWURF-v0.1): 1 = every plan of every bot writes one [PlanTime] line: us (the plan
+# in microseconds, the same span as the [Plan] ms), cpu_us (thread CPU time, na where not available), head, take / obj / give
+# (fetch/sort/loop microseconds and walk/ret destination counts of each fetch stage, - when it did not run) and rest. No line
+# budget, no cohort; it changes no plan. 0 = off (default); any other value is 0 with one error line at load.
+AiPlayerbot.Planner.TimeTrace = 0
 # A3 R9 / R2 (twow-repo#575, R9-REPLAN-INTERFACE v5, R9-PREREG C2; pair R9-2): the progress meter. It runs in the planner tick, so
 # both keys need AiPlayerbot.Supervisor to apply to the bot and AiPlayerbot.Planner >= 1; set alone they log nothing. Each tick it
 # measures the progress toward the bot's live travel target (distance, quest credit, skill for professions) and,

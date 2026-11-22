@@ -5153,6 +5153,9 @@ WorldPosition* TravelMgr::GetFishSpot(WorldPosition start, bool onlyNearestGrid)
     return fishMap.GetNextPoint(start, chances);
 }
 
+// A3 step 3 planner S5 (twow-repo#726): null = GetDestinations counts nothing (TravelMgr.h DestFetchStats).
+thread_local ai::DestFetchStats* ai::tDestFetchStats = nullptr;
+
 DestinationList TravelMgr::GetDestinations(const PlayerTravelInfo& info, uint32 purposeFlag, const std::vector<int32>& entries, bool onlyPossible, float maxDistance) const
 {
     WorldPosition center = info.GetPosition();
@@ -5183,8 +5186,11 @@ DestinationList TravelMgr::GetDestinations(const PlayerTravelInfo& info, uint32 
         }
         return false;
     };
+    DestFetchStats* const fetchStats = tDestFetchStats;   // S5 (twow-repo#726): null = no counts
     auto const appendDestinations = [&](DestinationList const& dests)
     {
+        if (fetchStats)
+            fetchStats->walk += uint32(dests.size());
         for (TravelDestination* dest : dests)
         {
             // twow-repo#575 (PATH-01 E5): a start-zone destination only for its own faction (tagged at boot when on).
@@ -5237,6 +5243,8 @@ DestinationList TravelMgr::GetDestinations(const PlayerTravelInfo& info, uint32 
             if (entries.size() && std::find(entries.begin(), entries.end(), destEntry) == entries.end())
                 continue;
 
+            if (fetchStats)
+                fetchStats->walk += uint32(dests.size());
             for (auto& dest : dests)
             {
                 if (!ai::start_zone::DestinationAllows(ai::start_zone::StartTeam(dest->GetStartZoneTeam()), info.GetTeam() == ALLIANCE))
@@ -5259,6 +5267,8 @@ DestinationList TravelMgr::GetDestinations(const PlayerTravelInfo& info, uint32 
         }
     }
 
+    if (fetchStats)
+        fetchStats->ret += uint32(retDests.size());
     return retDests;
 }
 

@@ -732,6 +732,16 @@ namespace ai
         bool ObservePosStuck();
 	};
 
+	// A3 step 3 planner S5 (twow-repo#726, AiPlayerbot.Planner.TimeTrace, default 0): the counts of one GetDestinations call -
+	// walk = destinations looked at (after the purpose and entry match), ret = destinations returned. Null (the default) counts
+	// nothing; the planner's time trace points it at its own counts around one fetch on its own thread. Counting changes no list.
+	struct DestFetchStats
+	{
+		uint32 walk = 0;
+		uint32 ret = 0;
+	};
+	extern thread_local DestFetchStats* tDestFetchStats;
+
 	//General container for all travel destinations.
 	class TravelMgr
 	{

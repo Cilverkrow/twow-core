@@ -1020,6 +1020,9 @@ public:
     uint32 plannerRepeatableMaxPerHour = 1;
     float plannerRelocMinYards = 60.0f;
     float plannerRelocSlack = 1.5f;
+    // A3 step 3 planner S5 (twow-repo#726, S5-FIX-ENTWURF-v0.1; AiPlayerbot.Planner.TimeTrace, default 0): 1 = one [PlanTime] line per
+    // plan (microseconds per stage, thread CPU time; PlannerTimePolicy.h); any other value is 0 with one error line. Reads only.
+    uint32 plannerTimeTrace = 0;
     // A3 step 3 planner P-3a (P3-ENTWURF-v0.2 section 8, OB-00 F2 (a); AiPlayerbot.Planner.WriteCohort, default 0): which bots
     // write at Planner = 2 (the shared cohort parity rule: 0 none, 1 all, 2 cohort B, 3 cohort A; above 3 is 0 with an error
     // line). Planner = 2 alone writes nothing; a bot that does not write behaves as at Planner = 1.
