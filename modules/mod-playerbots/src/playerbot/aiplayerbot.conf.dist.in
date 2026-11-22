@@ -2238,16 +2238,19 @@ AiPlayerbot.QuestFeasibility.BlocklistWhileNoCustomStarts =
 # dungeon (81) or raid (62) and quests with SuggestedPlayers >= 2 (class quests excepted), does not travel to their
 # givers, and drops them while open. 0 = off (default).
 AiPlayerbot.QuestFeasibility.SoloSkipGroupQuests = 0
-# SoloSkipEscortTimed = 1 (acts only with Enable = 1; DEEP7 item 5, OB-10 21.11.2026, a lever: A/B before any default
+# SoloSkipEscortTimed 1-3 (acts only with Enable = 1; DEEP7 item 5, OB-10 21.11.2026, a lever: A/B before any default
 # change): a bot that is not in a group does not take a listed escort quest (SoloSkipEscortIds) or a quest with a time limit
 # of 1..SoloSkipTimedMaxSeconds seconds (class quests excepted) and does not travel to their givers - solo bots took
 # them and dropped them again on the escort's failure or the timer. A bot in a group still takes them. The log cleanup
-# does not drop such quests (the failure already does). reason=escort_timed_solo in the skip line. 0 = off (default).
+# does not drop such quests (the failure already does). reason=escort_timed_solo in the skip line. "In a group" counts
+# groups of bots only too (group play of the bots). A cohort mode (OB-10 21.11., in-realm A/B): 0 = off (default), 1 = all
+# bots, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid), the same cohorts as QuestBook. Any other
+# value = off (one error line at load).
 AiPlayerbot.QuestFeasibility.SoloSkipEscortTimed = 0
-# SoloSkipEscortIds (acts only with SoloSkipEscortTimed = 1): the escort quests of that rule, a comma list of quest ids
+# SoloSkipEscortIds (acts only with SoloSkipEscortTimed 1-3): the escort quests of that rule, a comma list of quest ids
 # (decimal, > 0, at most 512). The core has no escort flag. Seed: the DEEP7 loops 155, 898, 938.
 AiPlayerbot.QuestFeasibility.SoloSkipEscortIds = 155,898,938
-# SoloSkipTimedMaxSeconds (acts only with SoloSkipEscortTimed = 1): a quest with LimitTime 1..this is a short timed quest
+# SoloSkipTimedMaxSeconds (acts only with SoloSkipEscortTimed 1-3): a quest with LimitTime 1..this is a short timed quest
 # (the DEEP7 loops: 300 s, 540 s). 0 = no timed skip (the escort list only); at most 86400. Default 900.
 AiPlayerbot.QuestFeasibility.SoloSkipTimedMaxSeconds = 900
 
