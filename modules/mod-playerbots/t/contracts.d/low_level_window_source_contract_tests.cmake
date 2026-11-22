@@ -107,16 +107,20 @@ set(n_llw "IsLowLevelWindow()")
 count_text("${choose}" n_llw 5 "window flag reads in the choose action")
 
 # 6) The minute line: fetches / points at the flag, none / trips at the outcome, per cohort; once a minute only with the switch.
-require_text("${choose}" "        newTarget.SetLowLevelWindow(true);\n        uint32 windowPoints = 0;\n        for (auto const& [partition, travelPoints] : destinationList)\n            windowPoints += uint32(travelPoints.size());\n        PlayerbotAI::NoteLowLevelWindow(uint8(ai::low_level_window::Event::Fetches), bot->GetGUIDLow());\n        PlayerbotAI::NoteLowLevelWindow(uint8(ai::low_level_window::Event::Points), bot->GetGUIDLow(), windowPoints);" "fetches and window points counted at the flag")
+require_text("${choose}" "        newTarget.SetLowLevelWindow(true);\n        PlayerTravelInfo const plainInfo(bot, false);" "added= judged with the plain snapshot (the old durability window)")
+require_text("${choose}" "                    taken = oldWindowTakes.emplace(destination, destination && destination->IsPossible(plainInfo)).first;\n                if (!taken->second)\n                    ++addedPoints;" "added = window points the old window refuses, one IsPossible per destination")
+require_text("${choose}" "        PlayerbotAI::NoteLowLevelWindow(uint8(ai::low_level_window::Event::Fetches), bot->GetGUIDLow());\n        PlayerbotAI::NoteLowLevelWindow(uint8(ai::low_level_window::Event::Points), bot->GetGUIDLow(), windowPoints);\n        PlayerbotAI::NoteLowLevelWindow(uint8(ai::low_level_window::Event::Added), bot->GetGUIDLow(), addedPoints);\n    }" "fetches, points and added counted at the flag")
+set(n_plain "PlayerTravelInfo const plainInfo(bot, false);")
+count_text("${choose}" n_plain 1 "one plain snapshot, only in the lever block")
 require_text("${choose}" "            PlayerbotAI::NoteLowLevelWindow(uint8(ai::low_level_window::Event::None), bot->GetGUIDLow());" "none counted")
 set(n_note "PlayerbotAI::NoteLowLevelWindow(")
-count_text("${choose}" n_note 4 "four count sites")
+count_text("${choose}" n_note 5 "five count sites")
 require_text("${choose}" "        PlayerbotAI::NoteLowLevelWindow(uint8(ai::low_level_window::Event::Trips), bot->GetGUIDLow());" "trips counted")
 require_order("${choose}" "    if (!setNewTarget(requester, &newTarget, travelTarget))\n        return false;" "        PlayerbotAI::NoteLowLevelWindow(uint8(ai::low_level_window::Event::Trips), bot->GetGUIDLow());" "trips only after the commit")
 require_text("${rpm}" "void ReportLowLevelWindow()\n{\n    if (!sPlayerbotAIConfig.grindLowLevelWindow)\n        return;" "minute line gated by the switch")
 require_text("${rpm}" "    std::string const line = PlayerbotAI::TakeLowLevelWindowMinuteLine();\n    if (!line.empty())" "no empty line")
 require_text("${rpm}" "    ReportGrindWindow();  // twow-repo#601 S2 / S4: [GrindWindow] minute once per minute, not when empty (GrindMode = 1)\n    ReportLowLevelWindow();" "reported from the world tick")
-require_text("${policy}" "return \"[LowLevelWindow] minute\" + pair(Event::Fetches, \"fetches\") + pair(Event::Points, \"points\") + pair(Event::None, \"none\") +\n        pair(Event::Trips, \"trips\");" "line format")
+require_text("${policy}" "return \"[LowLevelWindow] minute\" + pair(Event::Fetches, \"fetches\") + pair(Event::Points, \"points\") + pair(Event::Added, \"added\") +\n        pair(Event::None, \"none\") + pair(Event::Trips, \"trips\");" "line format")
 
 # 7) Nothing beyond the window. The snapshot window has exactly two readers, both level tests: the template test of
 #    GrindTravelDestination::IsPossible and the area gate of IsLocationLevelValid (audit 22.11.2026). A new reader of the
