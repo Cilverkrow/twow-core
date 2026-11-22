@@ -123,7 +123,7 @@ require_order("${hub}" "IsLocalQuestHubCandidate(bot, destination, position)" "e
 # twow-repo#601 S2 R3 (GrindMode 1, review C-F2): the gap grind choice takes the reuse path with the switch off too (its R3
 # window snapshot); gapGrindChoice is false for every other choice and GrindMode 0 / 2, so the old expression is kept there.
 require_text("${best}" "if (target->IsForced() || (travelInfoReuse ? reuseActive(destination) : (gapGrindChoice ? reuseActive(destination) :\n                (isActive[destination] = destination->IsActive(bot, PlayerTravelInfo(bot))))))" "main check gated, old expression kept")
-require_text("${best}" "bool const gapGrindChoice = target->IsGapGrindChoice();" "the gap grind choice only from its target flag (#601 S2)")
+require_text("${best}" "bool const gapGrindChoice = target->IsGapGrindChoice() || target->IsLowLevelWindow();" "the gap grind choice only from its target flags (#601 S2, Grind.LowLevelWindow OB-10 22.11.)")
 require_text("${best}" "return isActive[dest] = dest->IsActive(bot, choiceInfo());" "miss computes and stores")
 require_order("${best}" "auto const known = isActive.find(dest);" "return isActive[dest] = dest->IsActive(bot, choiceInfo());" "known answer before the recompute")
 

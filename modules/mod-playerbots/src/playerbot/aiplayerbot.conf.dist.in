@@ -793,6 +793,16 @@ AiPlayerbot.ActionLog.DamageSampleEvery = 5
 # untouched non-quest mob was skipped and bots could hardly grind. 1 = on (default since DS6 bundle B, owner 21.11.2026).
 AiPlayerbot.Grind.GreyByLevel = 1
 
+# OB-10 22.11.2026 (a lever: A/B before any default): the grind travel window of low-level quest-first bots. A persistent
+# roster bot of QuestFirstProgression on its own, level 1-10, takes grind destinations in the GrindMode 1 level window
+# [max(gray + 1, L - 5), L + 1] (creature MaxLevel and area level) instead of the durability window, which is one level wide
+# at L5 and finds no destination at L1-5. The money test (MinLootGold > 0) stays; none of GrindMode 1's other rules (request
+# gate, trip clock, own map, on-site filter) come with it, and a bot GrindMode 1 already covers gets nothing from this key.
+# Above level 10: as before. One [LowLevelWindow] minute line per cohort (fetches / none / trips), omitted when all are 0.
+# A cohort mode: 0 = off (default), 1 = all bots, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid), the
+# same cohorts as QuestBook. Any other value = off (one error line at load).
+AiPlayerbot.Grind.LowLevelWindow = 0
+
 # twow-repo#601 decision order (owner decision 20.10.2026: a quest-first bot always has a quest; L1-c: "attack anything" 5.0
 # ties with "move to rpg target" 5.0 and, with GreyByLevel 1, always wins - turn-ins per bot-h 2.5-3.9 -> 0.6): 1 = a quest-first
 # roster bot on its own below the max level takes as its grind ("attack anything") target only a creature that attacks it or

@@ -9,6 +9,7 @@
 #include <numeric>
 #include "playerbot/QuestAreaLevelPolicy.h"
 #include "playerbot/QuestGrindModePolicy.h"
+#include "playerbot/LowLevelWindowPolicy.h"   // OB-10 22.11.: Grind.LowLevelWindow
 #include "playerbot/QuestSearchPolicy.h"
 #include "playerbot/QuestFeasibilityPolicy.h"
 #include "playerbot/QuestBook.h"         // A3 step 2 K2/K3 (AiPlayerbot.QuestBook): the one level window and the QB5 list
@@ -155,6 +156,14 @@ PlayerTravelInfo::PlayerTravelInfo(Player* player, bool gapGrind)
     {
         gapWindowLow = ai::quest_grind_mode::GapWindowLowLevel(level, MaNGOS::XP::GetGrayLevel(level));
         gapWindowHigh = ai::quest_grind_mode::GapWindowHighLevel(level);
+    }
+    // AiPlayerbot.Grind.LowLevelWindow (OB-10 22.11.2026): the same window for an L1-10 quest-first bot, the same snapshots (its
+    // grind fetch, its window choice, its window trip); only the window - IsLowLevelWindow is false for a gap filler, so nothing
+    // above changes. Switch 0 and every other bot: 0 / 0, as before.
+    else if (gapGrind && ai->IsLowLevelWindow())
+    {
+        gapWindowLow = ai::low_level_window::WindowLow(level, MaNGOS::XP::GetGrayLevel(level));
+        gapWindowHigh = ai::low_level_window::WindowHigh(level);
     }
 
     // twow-repo#601 S5a (BandLadder, S5A-DESIGN.md 5.4): the band giver filter bit, here on the bot thread - only an in-scope bot
@@ -1282,6 +1291,9 @@ void TravelTarget::SetTargetUnchecked(TravelDestination* tDestination1, WorldPos
     // never inherits it. The refresh keeps the destination and so the window end (no renewal). CopyTarget sets it again.
     if (tDestination1 != tDestination)
         gapWindowEnd = 0;
+    // Grind.LowLevelWindow: the same for the window flag (CopyTarget sets it again).
+    if (tDestination1 != tDestination)
+        lowLevelWindow = false;
 
     // twow-repo#601 S5a (BandLadder): a band trip another destination replaces (zone escape, death suppression, park, rescue,
     // battleground, world buff, go, a reset) ends here - one skip line (replaced / park), no failure; bandTripEnd goes to 0.
@@ -1435,6 +1447,8 @@ bool TravelTarget::CopyTarget(TravelTarget* const target) {
     // twow-repo#601 S2 / S4 R2: the choice's window end (0 for every target but a GrindMode 1 gap grind trip); setNewTarget
     // sets READY next, which applies it.
     gapWindowEnd = target->gapWindowEnd;
+    // Grind.LowLevelWindow: the choice's window flag (false for every target but a low-level window grind choice).
+    lowLevelWindow = target->lowLevelWindow;
     // twow-repo#601 S5a (BandLadder): the band step's trip end (0 for every other choice; a group copy builds a new target).
     bandTripEnd = target->bandTripEnd;
     // F4: a backoff walk stays a walk (0 for every other choice).
@@ -2720,8 +2734,8 @@ bool TravelTarget::IsDestinationActive()
         return false;
 
     // twow-repo#601 S2 R3 (review C-F2): the R3 window only for a gap grind trip (gapWindowEnd, GrindMode 1 only), never for a
-    // quest trip to grind mobs.
-    return tDestination->IsActive(player, PlayerTravelInfo(player, gapWindowEnd != 0));
+    // quest trip to grind mobs. Grind.LowLevelWindow: a low-level window trip (lowLevelWindow) is judged with its window too.
+    return tDestination->IsActive(player, PlayerTravelInfo(player, gapWindowEnd != 0 || lowLevelWindow));
 }
 
 bool TravelTarget::IsConditionsActive(bool clear)

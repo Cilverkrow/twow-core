@@ -324,6 +324,22 @@ add_test(NAME quest_feasibility_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/quest_feasibility_source_contract_tests.cmake")
 
+# AiPlayerbot.Grind.LowLevelWindow (OB-10 22.11.2026, default 0): the GrindMode 1 window for L1-10 quest-first bots - mode,
+# population, window per level and the minute line (LowLevelWindowPolicy.h). The call sites are pinned by
+# t/contracts.d/low_level_window_source_contract_tests.cmake.
+add_executable(low_level_window_policy_tests
+  "${PB_MODULE_DIR}/t/low_level_window_policy_tests.cpp")
+
+target_include_directories(low_level_window_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(low_level_window_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME low_level_window_policy
+  COMMAND low_level_window_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # twow-repo#601 R01 v4: S1Cohort / S3Cohort - for which bots the S1 / S3 key groups act (cohort mode in one realm).
 add_executable(r01_cohort_policy_tests
   "${PB_MODULE_DIR}/t/r01_cohort_policy_tests.cpp")
