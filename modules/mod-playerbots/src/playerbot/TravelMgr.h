@@ -559,6 +559,11 @@ namespace ai
 		// new target only, never copied) - the R3 window snapshot and the own-map skip apply to it, not to a quest choice.
 		void SetGapGrindChoice(bool gapGrindChoice1) { gapGrindChoice = gapGrindChoice1; }
 		bool IsGapGrindChoice() const { return gapGrindChoice; }
+		// AiPlayerbot.Grind.LowLevelWindow (OB-10 22.11.2026): this choice / trip is a low-level window grind (set by
+		// ChooseTravelTargetAction on the new target of an L1-10 bot's grind fetch, copied with the choice, cleared when another
+		// destination replaces it) - its choice and its trip checks ask IsActive with the window snapshot, nothing else.
+		void SetLowLevelWindow(bool lowLevelWindow1) { lowLevelWindow = lowLevelWindow1; }
+		bool IsLowLevelWindow() const { return lowLevelWindow; }
 
 		void IncRetry(bool isMove) { if (isMove) moveRetryCount+=2; else extendRetryCount++; }
         void DecRetry(bool isMove);
@@ -665,6 +670,7 @@ namespace ai
 		uint32 bandWalkAt = 0;     // twow-repo#601 S5a F4: 0 for every target but a running backoff walk
 		uint32 bandWalkFromZone = 0;
 		bool gapGrindChoice = false;   // twow-repo#601 S2 R3: only the new target of a GrindMode 1 gap grind choice
+		bool lowLevelWindow = false;   // Grind.LowLevelWindow: only a low-level window grind choice and its trip
 		bool restPausePending = false;   // twow-repo#602 X1: a rest ended since the last turn-in observation
 		bool live_ = false;        // A3 step 3 arbiter shadow: the bot's own target (MarkLive, TravelTargetValue only)
 		bool shadowGap_ = false;   // A3 step 3 arbiter shadow: a write the shadow could not follow came before the next one

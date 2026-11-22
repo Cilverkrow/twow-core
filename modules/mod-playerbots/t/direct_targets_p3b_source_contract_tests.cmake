@@ -267,7 +267,7 @@ count_regex("${travel_mgr}" "ai::direct_targets::On[A-Za-z]+\\(" 5 "TravelMgr.cp
 
 region("${choose}" "ai->TellDebug(ai->GetMaster(), \"No target set\", \"debug travel\");" "if (futureTravelPurpose == \"quest\")" no_target)
 require_text("${no_target}" "if (ai::direct_targets::AnyBuilt())\n            ai::direct_targets::NoteEmpty(ai, futureTravelPurpose);" "NoteEmpty before the quest branch")
-region("${choose}" "// Hotfix 8.1: a route was found - no more backoff." "    if (!setNewTarget(requester, &newTarget, travelTarget))\n        return false;\n    \n    return true;" chosen)
+region("${choose}" "// Hotfix 8.1: a route was found - no more backoff." "    if (!setNewTarget(requester, &newTarget, travelTarget))\n        return false;" chosen)
 require_text("${chosen}" "    if (ai::direct_targets::AnyBuilt())\n        ai::direct_targets::OnChoice(ai, newTarget);\n" "OnChoice right before setNewTarget")
 require_order("${chosen}" "ai::quest_search::DirectTargetStats().freshGrind.fetch_add(1, std::memory_order_relaxed);" "ai::direct_targets::OnChoice(ai, newTarget);" "after the grind branch")
 require_text("${choose}" "        destination->GetPurpose() == TravelDestinationPurpose::GatherSkinning ||\n        ai::direct_targets::IsSilentTrip(destination));" "direct-target trips silent like gathering")
