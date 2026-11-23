@@ -345,7 +345,7 @@ bool QuestRelationTravelDestination::IsPossible(const PlayerTravelInfo& info) co
         else if (!forceThisQuest && (int32)quest->GetQuestLevel() >= (int32)info.GetLevel() + (int32)5)
             return refuse(ai::quest_search::GiverDropQuestLevel);
 
-        // twow-repo#738 L03 (AiPlayerbot.QuestGiver.MaxLevelZeroFix, default 0): with the key a MaxLevel of 0 is no upper limit,
+        // twow-repo#738 L03 (AiPlayerbot.QuestGiver.MaxLevelZeroFix, default 1): with the key a MaxLevel of 0 is no upper limit,
         // as in the core (Player::CanTakeQuest) and in ChooseTravelTargetAction.cpp's search check; 0 keeps the old compare.
         bool const maxLevelZeroIsOpen = info.UsesGiverMaxLevelZeroOpen();
         if ((int32)info.GetLevel() < quest->GetMinLevel() ||
