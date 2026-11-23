@@ -2693,7 +2693,7 @@ void TravelTarget::OnMoveRetryCooldown()
     NoteTurnInFailure(static_cast<QuestTravelDestination*>(tDestination)->GetQuestId(), "move_failed");
 }
 
-void TravelTarget::OnRestEnded(uint32 durMs)
+uint32 TravelTarget::OnRestEnded(uint32 durMs)
 {
     // Called only for an applied episode with the switch on (RestGateValue::Finish), so mode 0 never gets here.
     restPausePending = true;
@@ -2702,7 +2702,11 @@ void TravelTarget::OnRestEnded(uint32 durMs)
     // Not for an S2 gap grind trip (gapWindowEnd): its clock is the quest-route backoff window (OB-10 review 18.10.2026).
     if (statusTime != 0 && !IsForced() && !gapWindowEnd &&
         (GetStatus() == TravelStatus::TRAVEL_STATUS_WORK || GetStatus() == TravelStatus::TRAVEL_STATUS_TRAVEL))
+    {
         SetExpireIn(uint32(std::max<int32>(GetTimeLeft(), 0)) + durMs);
+        return durMs;   // RG-B1: the time put on the status clock ([RestGateTotal] giveback_s)
+    }
+    return 0;
 }
 
 void TravelTarget::DecRetry(bool isMove)
