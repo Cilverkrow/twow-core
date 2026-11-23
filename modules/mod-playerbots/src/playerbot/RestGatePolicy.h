@@ -202,6 +202,20 @@ inline bool CastRetryWaiting(bool failed, std::uint32_t nowMs, std::uint32_t fai
     return failed && std::uint32_t(nowMs - failMs) < CastRetryMs;
 }
 
+// RG-B1 (AiPlayerbot.Rotation.RestGate.StaleGiveBack, OB-10 review e20a5abf 23.11.2026, Q2 (ii')): the time a finished, applied
+// episode gives back to the travel target (TravelTarget::OnRestEnded). A meal sets the AI update delay, so an eating bot closes stale
+// with durMs cut at the last read (about 0) although the status clock ran through the whole eat / drink wait. With the switch a stale
+// close whose late read shows rested or low gives back the time to that late read (lateMs), capped at MaxRestSeconds; a stale close seen
+// in combat or after the timeout keeps durMs (a combat close gives no combat time back either), and every other close gives durMs as
+// before. Without the switch durMs for every close (the old give-back).
+inline std::uint32_t GiveBackMs(Closed const& c, Thresholds const& t, bool staleGiveBack)
+{
+    if (!staleGiveBack || c.end != End::Stale || (c.late != End::Done && c.late != End::None))
+        return c.durMs;
+    std::uint32_t const capMs = t.maxRestSeconds * 1000u;
+    return c.lateMs < capMs ? c.lateMs : capMs;
+}
+
 inline char const* EndName(End e)
 {
     return e == End::Done ? "done" : e == End::Combat ? "combat" : e == End::Death ? "death" : e == End::Timeout ? "timeout" :
@@ -237,8 +251,17 @@ struct Counters
 {
     std::uint64_t episodes = 0, done = 0, combat = 0, death = 0, timeout = 0, stale = 0, restMs = 0, castFail = 0;
     std::uint64_t staleRested = 0, staleCombat = 0, staleTimeout = 0, staleLow = 0, staleGapMs = 0;
+    std::uint64_t offerMs = 0, giveBackMs = 0;   // RG-B1: GiveBackMs of applied closes / the part OnRestEnded added to the status clock
     bool Empty() const { return !episodes && !castFail; }
 };
+
+// RG-B1: one applied close's give-back (offer = GiveBackMs, added = what TravelTarget::OnRestEnded put on the status clock; 0 without a
+// travel target or outside a timed WORK / TRAVEL phase). RestGateTrace's RecordGiveBack, under its lock.
+inline void CountGiveBack(Counters& c, std::uint32_t offerMs, std::uint32_t addedMs)
+{
+    c.offerMs += offerMs;
+    c.giveBackMs += addedMs;
+}
 
 // One finished episode into the counters (RestGateTrace's RecordEpisode, under its lock).
 inline void Count(Counters& c, Closed const& closed)
@@ -268,17 +291,18 @@ inline void Count(Counters& c, Closed const& closed)
         ++c.timeout;
 }
 
-// The stale_* fields come after dropped= so the fields before keep their place.
+// The stale_* fields come after dropped= so the fields before keep their place; RG-B1's offer_s / giveback_s come last.
 inline std::string FormatTotalLine(std::uint32_t windowMin, char cohort, std::uint32_t cls, Counters const& c, std::uint32_t dropped)
 {
-    char buf[512];
+    char buf[640];   // RG-B1: the two last fields need more than 512 at the counter maximum
     std::snprintf(buf, sizeof(buf), "[RestGateTotal] window_min=%u cohort=%c cls=%u episodes=%llu done=%llu combat=%llu death=%llu "
         "timeout=%llu stale=%llu rest_s=%llu cast_fail=%llu dropped=%u stale_rested=%llu stale_combat=%llu stale_timeout=%llu "
-        "stale_low=%llu stale_gap_s=%llu", windowMin, cohort, cls, (unsigned long long)c.episodes,
+        "stale_low=%llu stale_gap_s=%llu offer_s=%llu giveback_s=%llu", windowMin, cohort, cls, (unsigned long long)c.episodes,
         (unsigned long long)c.done, (unsigned long long)c.combat, (unsigned long long)c.death, (unsigned long long)c.timeout,
         (unsigned long long)c.stale, (unsigned long long)(c.restMs / 1000), (unsigned long long)c.castFail, dropped,
         (unsigned long long)c.staleRested, (unsigned long long)c.staleCombat, (unsigned long long)c.staleTimeout,
-        (unsigned long long)c.staleLow, (unsigned long long)(c.staleGapMs / 1000));
+        (unsigned long long)c.staleLow, (unsigned long long)(c.staleGapMs / 1000), (unsigned long long)(c.offerMs / 1000),
+        (unsigned long long)(c.giveBackMs / 1000));
     return buf;
 }
 }

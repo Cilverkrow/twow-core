@@ -605,7 +605,7 @@ namespace ai
         void OnMoveRetryCooldown();
         // twow-repo#602 ROT-01 X1 (AiPlayerbot.Rotation.RestGate): an applied rest episode of this bot ended after durMs - the next turn-in
         // observation is a pause, and a running WORK / TRAVEL status clock gets the rest time back (OB-10 condition 1).
-        void OnRestEnded(uint32 durMs);
+        uint32 OnRestEnded(uint32 durMs);   // RG-B1: returns the ms added to the status clock (0 = none)
         turnin_recovery::RecoveryAction ObserveTurnInProgress();
         // Counts a death against the current completed-quest turn-in route and
         // puts the route on the death cooldown after too many (#307).

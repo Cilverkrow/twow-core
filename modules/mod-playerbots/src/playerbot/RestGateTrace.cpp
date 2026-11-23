@@ -38,6 +38,12 @@ void RecordCastFail(std::uint8_t cls, bool cohortB)
     ++Slot(cls, cohortB).castFail;
 }
 
+void RecordGiveBack(std::uint8_t cls, bool cohortB, std::uint32_t offerMs, std::uint32_t addedMs)
+{
+    std::lock_guard<std::mutex> lock(g_mutex);
+    ai::rest_gate::CountGiveBack(Slot(cls, cohortB), offerMs, addedMs);
+}
+
 bool TakeLineBudget(std::uint32_t now)
 {
     std::lock_guard<std::mutex> lock(g_mutex);

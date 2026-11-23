@@ -79,7 +79,8 @@ void RestGateValue::CloseOnEvent(ai::rest_gate::End end)
     Reset();   // the next read recalculates instead of the cached "resting"
 }
 
-// One finished episode: counters, the budgeted line, and (applied only) the travel target gets its pause (OB-10 condition 1).
+// One finished episode: counters, the budgeted line, and (applied only) the travel target gets its pause (OB-10 condition 1) and the
+// rest time back: GiveBackMs (RG-B1, Rotation.RestGate.StaleGiveBack: a stale rested / low close gives the time to the late read).
 void RestGateValue::Finish(ai::rest_gate::Closed const& closed, ai::rest_gate::Reading const& r)
 {
     if (!closed.closed)
@@ -91,8 +92,14 @@ void RestGateValue::Finish(ai::rest_gate::Closed const& closed, ai::rest_gate::R
             closed.applied, closed.startHp, closed.startMana, r.hp, r.manaPool ? int(r.mana) : -1, closed.durMs, closed.end,
             !ai->AllowActivity(), closed.late, closed.gapMs, closed.lateMs).c_str());   // late / gap / dur_late: stale lines only (DEEP7 3)
     if (closed.applied)
+    {
+        uint32 const offerMs =
+            ai::rest_gate::GiveBackMs(closed, ConfiguredThresholds(), sPlayerbotAIConfig.rotationRestGateStaleGiveBack != 0);
+        uint32 addedMs = 0;
         if (TravelTarget* target = AI_VALUE(TravelTarget*, "travel target"))
-            target->OnRestEnded(closed.durMs);
+            addedMs = target->OnRestEnded(offerMs);
+        ai::rest_gate_rt::RecordGiveBack(bot->getClass(), ai::cohort::InB(guid), offerMs, addedMs);
+    }
 }
 
 bool RestGateValue::Calculate()
