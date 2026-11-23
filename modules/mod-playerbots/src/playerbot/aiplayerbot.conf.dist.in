@@ -4322,6 +4322,13 @@ AiPlayerbot.Rotation.RestGate.StartMana = 40
 AiPlayerbot.Rotation.RestGate.TargetHp = 90
 AiPlayerbot.Rotation.RestGate.TargetMana = 85
 AiPlayerbot.Rotation.RestGate.MaxRestSeconds = 120
+# RG-B1 (bug fix, OB-10 review e20a5abf / OB-00 Q5 (a), 23.11.2026): an applied rest episode gives its time back to a running WORK /
+# TRAVEL status clock. A meal sets the AI update delay, so an eating bot closes stale with dur_ms cut at the last read (about 0) although
+# the clock ran through the whole eat / drink wait (L2S n3 23.11.: 83 % of the closes, ~28 s each). With 1 a stale close whose late read
+# shows rested or low gives back dur_late_ms, capped at MaxRestSeconds; late=combat / timeout and every other close keep dur_ms. The
+# [RestGateTotal] line ends with " offer_s= giveback_s=" (the time offered / the part put on a status clock), with 0 as well. Only with
+# Rotation.RestGate on. 0 = off (default, the old give-back), 1 = on.
+AiPlayerbot.Rotation.RestGate.StaleGiveBack = 0
 
 # twow-repo#602 ROT-01 hunter LoS (focus check 25.10.2026, OB-00, BEHAVIOUR CHANGE, enable only after A/B + owner go): sampled
 # hunters failed 91-96 % of Auto Shot / Hunter's Mark / Serpent Sting casts with "line of sight", about 19 core rejections per

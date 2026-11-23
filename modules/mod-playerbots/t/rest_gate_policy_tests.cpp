@@ -259,8 +259,8 @@ int main()
         c.castFail = 2;
         RequireLine(FormatTotalLine(60, 'B', 4, c, 3),
             "[RestGateTotal] window_min=60 cohort=B cls=4 episodes=6 done=4 combat=1 death=2 timeout=1 stale=3 rest_s=123 cast_fail=2 dropped=3"
-            " stale_rested=0 stale_combat=0 stale_timeout=0 stale_low=0 stale_gap_s=0",
-            "total line (the old fields first and unchanged, the stale_* fields after dropped=)");
+            " stale_rested=0 stale_combat=0 stale_timeout=0 stale_low=0 stale_gap_s=0 offer_s=0 giveback_s=0",
+            "total line (the old fields first and unchanged, the stale_* fields after dropped=, RG-B1 offer_s / giveback_s last)");
         Require(Counters().Empty() && !c.Empty(), "empty counters");
         Counters failOnly;
         failOnly.castFail = 1;
@@ -436,7 +436,67 @@ int main()
             n.staleTimeout == 1 && n.staleGapMs == 22500 + 3 * 16000 && n.restMs == 8040, "counters");
         RequireLine(FormatTotalLine(60, 'A', 8, n, 0),
             "[RestGateTotal] window_min=60 cohort=A cls=8 episodes=5 done=1 combat=0 death=0 timeout=0 stale=4 rest_s=8 cast_fail=0 dropped=0"
-            " stale_rested=1 stale_combat=1 stale_timeout=1 stale_low=1 stale_gap_s=70", "total line with the stale split");
+            " stale_rested=1 stale_combat=1 stale_timeout=1 stale_low=1 stale_gap_s=70 offer_s=0 giveback_s=0", "total line with the stale split");
+    }
+
+    // 10b) RG-B1 (Rotation.RestGate.StaleGiveBack, OB-10 review e20a5abf, Q2 (ii')): the give-back of an applied close. One case per
+    //      late kind of a stale close, the cap, the non-stale closes and the switch off; then the offer_s / giveback_s counters.
+    {
+        Thresholds const cap;   // MaxRestSeconds 120
+        Closed s;
+        s.closed = true;
+        s.applied = true;
+        s.end = End::Stale;
+        s.durMs = 1;
+        s.gapMs = 28541;
+        s.lateMs = 28542;
+        s.late = End::Done;
+        Require(GiveBackMs(s, cap, true) == 28542, "stale, late = rested: the time to the late read (dur_late_ms)");
+        Require(GiveBackMs(s, cap, false) == 1, "switch off: durMs as before (about 0)");
+        s.late = End::None;
+        Require(GiveBackMs(s, cap, true) == 28542, "stale, late = low: the time to the late read");
+        s.late = End::Combat;
+        Require(GiveBackMs(s, cap, true) == 1, "stale, late = combat: durMs (no combat time back)");
+        s.late = End::Timeout;
+        s.lateMs = 200000;
+        Require(GiveBackMs(s, cap, true) == 1, "stale, late = timeout: durMs");
+        s.late = End::Done;
+        Require(GiveBackMs(s, cap, true) == 120000, "stale, rested after 200 s: capped at MaxRestSeconds");
+        s.lateMs = 120000;
+        Require(GiveBackMs(s, cap, true) == 120000, "exactly at the cap");
+        s.lateMs = 119999;
+        Require(GiveBackMs(s, cap, true) == 119999, "just under the cap");
+        Thresholds shortCap;
+        shortCap.maxRestSeconds = 20;
+        s.lateMs = 28542;
+        Require(GiveBackMs(s, shortCap, true) == 20000, "the cap follows the configured MaxRestSeconds");
+        for (End e : { End::Done, End::Combat, End::Death, End::Timeout })
+        {
+            Closed o;
+            o.closed = true;
+            o.applied = true;
+            o.end = e;
+            o.durMs = 30000;
+            o.gapMs = 30000;
+            o.lateMs = 30000;
+            o.late = End::None;
+            Require(GiveBackMs(o, cap, true) == 30000 && GiveBackMs(o, cap, false) == 30000, "a non-stale close: durMs with and without the switch");
+        }
+
+        Counters g;
+        CountGiveBack(g, 28542, 28542);
+        CountGiveBack(g, 28542, 0);   // no timed WORK / TRAVEL phase: offered, nothing added
+        CountGiveBack(g, 1, 1);
+        Require(g.offerMs == 57085 && g.giveBackMs == 28543 && g.episodes == 0 && g.Empty(), "give-back counters, no episode counted");
+        RequireLine(FormatTotalLine(60, 'A', 5, g, 0),
+            "[RestGateTotal] window_min=60 cohort=A cls=5 episodes=0 done=0 combat=0 death=0 timeout=0 stale=0 rest_s=0 cast_fail=0 dropped=0"
+            " stale_rested=0 stale_combat=0 stale_timeout=0 stale_low=0 stale_gap_s=0 offer_s=57 giveback_s=28", "total line ends with offer_s / giveback_s");
+        Counters big;
+        big.episodes = big.done = big.combat = big.death = big.timeout = big.stale = big.restMs = big.castFail = 18446744073709551615ull;
+        big.staleRested = big.staleCombat = big.staleTimeout = big.staleLow = big.staleGapMs = 18446744073709551615ull;
+        big.offerMs = big.giveBackMs = 18446744073709551615ull;
+        std::string const longTotal = FormatTotalLine(4294967295u, 'B', 4294967295u, big, 4294967295u);
+        Require(longTotal.size() < 640 && longTotal.find(" giveback_s=18446744073709551") != std::string::npos, "the longest total line fits");
     }
 
     // 11) Byte-identical decisions: random readings, gaps (also around StaleGapMs and the 120 s timeout), events and the timer wrap,
