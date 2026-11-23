@@ -11,6 +11,7 @@ namespace ai::rest_gate_rt
 // Bot thread. Episodes end at most once a fight, so one short std::mutex per event is enough.
 void RecordEpisode(std::uint8_t cls, bool cohortB, ai::rest_gate::Closed const& closed);   // ai::rest_gate::Count
 void RecordCastFail(std::uint8_t cls, bool cohortB);   // a food / drink cast failed while resting (retry after CastRetryMs)
+void RecordGiveBack(std::uint8_t cls, bool cohortB, std::uint32_t offerMs, std::uint32_t addedMs);   // RG-B1: ai::rest_gate::CountGiveBack
 
 // One [RestGate] line: at most 300 a minute over all bots; false = no line (counted as dropped=).
 bool TakeLineBudget(std::uint32_t now);
