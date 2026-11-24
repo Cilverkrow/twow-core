@@ -1767,6 +1767,21 @@ AiPlayerbot.Planner.GiverPrefilter = 0
 # one "[PlanPrefilter] verify" line (n_orig, n_pre, mismatch, first_idx, pre, xmap, inbox). It runs after the plan's time is read
 # and changes no plan, but it costs a second fetch on the map thread, so a measured run keeps it 0. 0 = off (default).
 AiPlayerbot.Planner.GiverPrefilterVerify = 0
+# A3 step 3 planner S5 F1-IX (twow-repo#726, IX-ENTWURF-v0.2): the planner's giver fetch (every giver within 1500 yd) asks a giver
+# index instead of walking every giver: per map a bucket grid of the givers' boxes, built once at boot, gives the givers near the
+# bot and near each portal in range, and only those run the original checks (with the Planner.GiverPrefilter bound). The fetch
+# returns the same list in the same order; only the fetch gets cheaper. With Planner.BudgetMs > 0 plans can still differ: a
+# cheaper fetch runs over the budget less often. Cohort rule: 0 = off (default), 1 = all bots, 2 = cohort B (odd guid), 3 = cohort
+# A; above 3 is 0 with one error line at load. Read at boot only: the index is built only when this is not 0 at start (one
+# "[PlanIndex] built" line); a config reload does not build it. With Planner.TimeTrace = 1 the [PlanTime] line of an index plan
+# ends with prefilter=1 give_pre= give_xmap= give_inbox= verify= (the bound on the candidates) and ix=1 give_ixall= give_ixmaps=
+# give_ixportals= give_ixbuckets= give_ixwide= give_ixt=portal/collect/sort/append (microseconds); give_ixmiss=1 or
+# give_ixstale=1 when the fetch walked instead.
+AiPlayerbot.Planner.GiverIndex = 0
+# The check of Planner.GiverIndex: N = every N-th index fetch of a map thread also runs the original walk and writes one
+# "[PlanIndex] verify" line (n_orig, n_ix, mismatch, first_idx, cand, maps, portals, buckets, wide). It runs after the plan's time
+# is read and changes no plan, but it costs a second fetch on the map thread, so a measured run keeps it 0. 0 = off (default).
+AiPlayerbot.Planner.GiverIndexVerify = 0
 # A3 R9 / R2 (twow-repo#575, R9-REPLAN-INTERFACE v5, R9-PREREG C2; pair R9-2): the progress meter. It runs in the planner tick, so
 # both keys need AiPlayerbot.Supervisor to apply to the bot and AiPlayerbot.Planner >= 1; set alone they log nothing. Each tick it
 # measures the progress toward the bot's live travel target (distance, quest credit, skill for professions) and,

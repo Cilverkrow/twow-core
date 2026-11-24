@@ -1033,6 +1033,14 @@ public:
     // after the plan's time is read and writes one [PlanPrefilter] verify line (a second fetch: never in a measured run).
     uint32 plannerGiverPrefilter = 0;
     uint32 plannerGiverPrefilterVerify = 0;
+    // A3 step 3 planner S5 F1-IX (twow-repo#726, IX-ENTWURF-v0.2; AiPlayerbot.Planner.GiverIndex, default 0): the planner's giver
+    // fetch takes the candidates of a giver index (built once at boot, only when this is not 0 at load) through the original checks,
+    // with the F1 bound - the same fetch list in the same order; with BudgetMs > 0 plans can differ (a cheaper fetch is cut less
+    // often). Cohort rule: 0 off, 1 all, 2 cohort B, 3 cohort A; above 3 is 0 with an error line. Read at boot only: a config reload
+    // builds nothing (the fetch then walks, give_ixmiss=1). GiverIndexVerify N (default 0): every N-th index fetch also runs the
+    // original walk after the plan's time is read and writes one [PlanIndex] verify line (a second fetch: never in a measured run).
+    uint32 plannerGiverIndex = 0;
+    uint32 plannerGiverIndexVerify = 0;
     // A3 step 3 planner P-3a (P3-ENTWURF-v0.2 section 8, OB-00 F2 (a); AiPlayerbot.Planner.WriteCohort, default 0): which bots
     // write at Planner = 2 (the shared cohort parity rule: 0 none, 1 all, 2 cohort B, 3 cohort A; above 3 is 0 with an error
     // line). Planner = 2 alone writes nothing; a bot that does not write behaves as at Planner = 1.
