@@ -1178,6 +1178,17 @@ bool PlayerbotAIConfig::Initialize()
         plannerGiverPrefilter = 0;
     }
     plannerGiverPrefilterVerify = uint32(config.GetIntDefault("AiPlayerbot.Planner.GiverPrefilterVerify", 0));
+    // A3 step 3 planner S5 F1-IX (twow-repo#726, IX-ENTWURF-v0.2): the giver index (cohort rule 0-3; above 3 is 0, fail closed; read
+    // before LoadQuestTravelTable, which builds the index only when this is not 0) and its verify (every N-th index fetch also runs
+    // the original walk; 0 = never).
+    plannerGiverIndex = uint32(config.GetIntDefault("AiPlayerbot.Planner.GiverIndex", 0));
+    if (plannerGiverIndex > 3)
+    {
+        sLog.outError("[Planner] config key=Planner.GiverIndex value=%u result=0 (0 off, 1 all, 2 cohort B, 3 cohort A)",
+            plannerGiverIndex);
+        plannerGiverIndex = 0;
+    }
+    plannerGiverIndexVerify = uint32(config.GetIntDefault("AiPlayerbot.Planner.GiverIndexVerify", 0));
     // A3 step 3 planner P-3a (P3-ENTWURF-v0.2 section 8, OB-00 F2 (a)): the write cohort of Planner = 2; above 3 is 0 (fail closed,
     // never "all"). [ArbiterMin] gets plan= only at Planner = 2.
     plannerWriteCohort = uint32(config.GetIntDefault("AiPlayerbot.Planner.WriteCohort", 0));
@@ -2522,6 +2533,8 @@ bool PlayerbotAIConfig::Initialize()
             {"Planner.DangerTopN", Value(plannerDangerTopN)},
             {"Planner.DeadProbeYards", Value(plannerDeadProbeYards)},
             {"Planner.DeadWaitMaxSec", Value(plannerDeadWaitMaxSec)},
+            {"Planner.GiverIndex", Value(plannerGiverIndex)},
+            {"Planner.GiverIndexVerify", Value(plannerGiverIndexVerify)},
             {"Planner.GiverPrefilter", Value(plannerGiverPrefilter)},
             {"Planner.GiverPrefilterVerify", Value(plannerGiverPrefilterVerify)},
             {"Planner.GrindKillsPerMin", Value(plannerGrindKillsPerMin)},

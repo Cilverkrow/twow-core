@@ -452,6 +452,9 @@ namespace ai
         }
         // twow-repo#726 F1: the map of this square (WorldWpSquare::SqDistanceLowerBound).
         uint32 GetMapId() const { return mapId; }
+        // twow-repo#726 F1-IX: the box sqOutDistance clamps against (WorldWpSquare::ForEachMapBox, the giver index).
+        WorldPosition BoxMin() const { return GetMin(); }
+        WorldPosition BoxMax() const { return GetMax(); }
     private:
         static uint32 GetGridId(const WorldPosition& point)
         {
@@ -508,6 +511,20 @@ namespace ai
                 ai::giver_prefilter::TakeMin(lb, term);
             });
             return lb;
+        }
+
+        // A3 step 3 planner S5 F1-IX (twow-repo#726, IX-ENTWURF-v0.2; AiPlayerbot.Planner.GiverIndex): every map square as
+        // f(mapId, minX, minY, maxX, maxY) - exactly the getter values WorldPointSquare::sqOutDistance clamps against (min.getX(),
+        // min.getY(), max.getX(), max.getY()), so the giver index registers the box the original measures (OB-60 1: axes pinned).
+        template <class F>
+        void ForEachMapBox(F&& f) const
+        {
+            ForEachSubSquare([&](const MapWpSquare& sq)
+            {
+                WorldPosition const lo = sq.BoxMin();
+                WorldPosition const hi = sq.BoxMax();
+                f(sq.GetMapId(), lo.getX(), lo.getY(), hi.getX(), hi.getY());
+            });
         }
     protected:
         virtual bool IsIn(const WorldPosition& point) const override { return true; }
