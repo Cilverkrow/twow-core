@@ -226,11 +226,17 @@ require_text("${conf}" "a stale line ends with \" late=rested|combat|\n# timeout
 
 # 9. RG-B1 (AiPlayerbot.Rotation.RestGate.StaleGiveBack, bug fix, OB-10 review e20a5abf / OB-00 Q5 (a) 23.11.2026): a stale close whose
 #    late read shows rested or low gives the travel target the time to the late read (capped at MaxRestSeconds) instead of durMs (about 0
-#    for an eating bot). Default 0 = the old give-back; the [RestGateTotal] line ends with offer_s / giveback_s (Q3 (x), line end pinned).
-require_text("${config_h}" "    uint32 rotationRestGateStaleGiveBack = 0;" "RG-B1 switch default 0")
-require_text("${config_cpp}" "    rotationRestGateStaleGiveBack = config.GetIntDefault(\"AiPlayerbot.Rotation.RestGate.StaleGiveBack\", 0);\n    if (rotationRestGateStaleGiveBack > 1)\n        rotationRestGateStaleGiveBack = 0;" "RG-B1 plain load, unknown value is off")
+#    for an eating bot). Default 1 since the RGA-L1 PASS (RESULT 88cc96f4, OB-10 f3f03e8f; owner OK 24.11.2026); an unknown value
+#    is the default 1 (outError line); an explicit 0 is the rollback = the old give-back (pinned: Finish passes "!= 0", GiveBackMs
+#    returns durMs without the switch). The [RestGateTotal] line ends with offer_s / giveback_s (Q3 (x), line end pinned).
+require_text("${config_h}" "    uint32 rotationRestGateStaleGiveBack = 1;" "RG-B1 switch default 1")
+require_text("${config_cpp}" "    rotationRestGateStaleGiveBack = config.GetIntDefault(\"AiPlayerbot.Rotation.RestGate.StaleGiveBack\", 1);\n    if (rotationRestGateStaleGiveBack > 1)\n    {\n        sLog.outError(\"[StaleGiveBack] config key=Rotation.RestGate.StaleGiveBack value=%u result=default 1 (0 off = rollback, 1 on)\", rotationRestGateStaleGiveBack);\n        rotationRestGateStaleGiveBack = 1;\n    }" "RG-B1 read default 1, an unknown value is the default 1")
+forbid_text("${config_cpp}" "GetIntDefault(\"AiPlayerbot.Rotation.RestGate.StaleGiveBack\", 0)" "RG-B1: no read default 0")
+require_text("${value_cpp}" "ai::rest_gate::GiveBackMs(closed, ConfiguredThresholds(), sPlayerbotAIConfig.rotationRestGateStaleGiveBack != 0);" "RG-B1 rollback: an explicit 0 turns the give-back off")
 require_text("${config_cpp}" "            {\"Rotation.RestGate\", Value(rotationRestGate)},\n            {\"Rotation.RestGate.StaleGiveBack\", Value(rotationRestGateStaleGiveBack)},\n            {\"Rotation.RestoShamanOffdps\"" "RG-B1 key in [ConfigEcho], sorted")
-require_order("${conf}" "\nAiPlayerbot.Rotation.RestGate.MaxRestSeconds = 120\n" "\nAiPlayerbot.Rotation.RestGate.StaleGiveBack = 0\n" "RG-B1 conf default 0 after the thresholds")
+require_order("${conf}" "\nAiPlayerbot.Rotation.RestGate.MaxRestSeconds = 120\n" "\nAiPlayerbot.Rotation.RestGate.StaleGiveBack = 1\n" "RG-B1 conf default 1 after the thresholds")
+require_text("${conf}" "# 0 = rollback (off, the old give-back), 1 = on. Any other value acts like 1.\nAiPlayerbot.Rotation.RestGate.StaleGiveBack = 1\n" "RG-B1 conf: BEHAVIOUR CHANGE text, unknown acts like 1")
+forbid_text("${conf}" "\nAiPlayerbot.Rotation.RestGate.StaleGiveBack = 0\n" "RG-B1 conf: no default 0 line")
 region("${policy}" "inline std::uint32_t GiveBackMs(" "\n}\n" give_back)
 require_text("${give_back}" "    if (!staleGiveBack || c.end != End::Stale || (c.late != End::Done && c.late != End::None))\n        return c.durMs;\n    std::uint32_t const capMs = t.maxRestSeconds * 1000u;\n    return c.lateMs < capMs ? c.lateMs : capMs;" "RG-B1: lateMs (capped) only for a stale rested / low close with the switch, durMs otherwise (Q2 (ii'))")
 require_text("${policy}" "\"stale_low=%llu stale_gap_s=%llu offer_s=%llu giveback_s=%llu\", windowMin," "RG-B1: offer_s / giveback_s end the total line")

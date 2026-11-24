@@ -730,7 +730,7 @@ public:
     uint32 rotationRestGateTargetHp = 90;  // ... and ends at or above this HP %
     uint32 rotationRestGateTargetMana = 85;  // ... and this mana %
     uint32 rotationRestGateMaxRestSeconds = 120;  // ... or after this many seconds (then no new episode for a minute)
-    uint32 rotationRestGateStaleGiveBack = 0;  // RG-B1 (bug fix, OB-10 e20a5abf / OB-00 Q5 (a) 23.11.2026): a stale rested / low rest episode gives the travel target the time to the late read back (ai::rest_gate::GiveBackMs), not about 0; 0 off (old give-back), 1 on
+    uint32 rotationRestGateStaleGiveBack = 1;  // RG-B1 (bug fix, OB-10 e20a5abf / OB-00 Q5 (a) 23.11.2026; default 1 since the RGA-L1 PASS 88cc96f4, OB-10 f3f03e8f + owner 24.11.2026): a stale rested / low rest episode gives the travel target the time to the late read back (ai::rest_gate::GiveBackMs), not about 0; 0 off (old give-back, rollback), 1 on
     uint32 rotationCastStopFirst = 1;  // twow-repo#602 (cast-abort loop 27.10., OB-00: code default 1, 0 = rollback): a moving bot without a real player master casts a cast-time or channelled spell after StopMoving instead of cancelling it (CastWhileMovingPolicy.h); 0 off, 1 all, 2 cohort B
     uint32 rotationDuelRule = 1;  // twow-repo#602 (W24 duel hang 06.11., OB-00: HARM per R4, code default 1, 0 = rollback): no rpg duel against a group member, accept only as the challenged player, a running duel picks the opponent, a bot-vs-bot duel without a fight is cancelled (DuelRulePolicy.h); 0 off, 1 all, 2 cohort B
     uint32 rotationDuelRuleCancelSeconds = 60;  // ... a bot-vs-bot duel (requested or running) without a fight is cancelled after this many seconds; 0 = never
