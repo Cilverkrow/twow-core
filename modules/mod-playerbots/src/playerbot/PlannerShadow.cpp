@@ -1521,6 +1521,7 @@ void PlanTickImpl(ai::supervisor::Supervisor& sup, PlayerbotAI* ai_, PlanState& 
     if (ixOn)
     {
         planTime.giveIx = ixCounts.used;
+        planTime.giveIxVerify = ixVerify;
         planTime.giveIxMiss = ixCounts.miss;
         planTime.giveIxStale = ixCounts.stale;
         planTime.giveIxAll = ixCounts.all;

@@ -58,11 +58,13 @@ struct PlanTime
     bool giveVerify = false;
     // S5 F1-IX (twow-repo#726, IX-ENTWURF-v0.2; AiPlayerbot.Planner.GiverIndex): giveIx = the giver fetch of this plan ran through the
     // giver index; the line then ends (after the F1 part) with ix=1 give_ixall= give_ixmaps= give_ixportals= give_ixbuckets=
-    // give_ixwide= give_ixt=portal/collect/sort/append (GiverIndexPolicy.h Counts, microseconds). giveIxMiss / giveIxStale = the
-    // fetch asked the index but walked (give_ixmiss=1 / give_ixstale=1). All false: the line is as before.
+    // give_ixwide= give_ixt=portal/collect/sort/append ixv= (GiverIndexPolicy.h Counts, microseconds; ixv = this plan also ran the
+    // original list for the [PlanIndex] verify, after its clocks were read). giveIxMiss / giveIxStale = the fetch asked the index
+    // but walked (give_ixmiss=1 / give_ixstale=1). All false: the line is as before.
     bool giveIx = false;
     bool giveIxMiss = false;
     bool giveIxStale = false;
+    bool giveIxVerify = false;
     std::uint32_t giveIxAll = 0;
     std::uint32_t giveIxMaps = 0;
     std::uint32_t giveIxPortals = 0;
@@ -124,8 +126,8 @@ inline std::size_t FormatPlanTimeLine(char* buf, std::size_t n, PlanTime const& 
     if (t.giveIx && len + 1 < n)
     {
         int const x = std::snprintf(buf + len, n - len, " ix=1 give_ixall=%u give_ixmaps=%u give_ixportals=%u give_ixbuckets=%u "
-            "give_ixwide=%u give_ixt=%u/%u/%u/%u", t.giveIxAll, t.giveIxMaps, t.giveIxPortals, t.giveIxBuckets, t.giveIxWide,
-            t.giveIxPortalUs, t.giveIxCollectUs, t.giveIxSortUs, t.giveIxAppendUs);
+            "give_ixwide=%u give_ixt=%u/%u/%u/%u ixv=%u", t.giveIxAll, t.giveIxMaps, t.giveIxPortals, t.giveIxBuckets, t.giveIxWide,
+            t.giveIxPortalUs, t.giveIxCollectUs, t.giveIxSortUs, t.giveIxAppendUs, t.giveIxVerify ? 1u : 0u);
         if (x > 0)
             len = len + std::size_t(x) < n ? len + std::size_t(x) : n - 1;
     }

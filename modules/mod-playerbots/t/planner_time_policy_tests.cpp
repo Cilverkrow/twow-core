@@ -121,11 +121,14 @@ void TestBufferBound()
     t.giveIx = true;
     t.giveIxAll = t.giveIxMaps = t.giveIxPortals = t.giveIxBuckets = t.giveIxWide = 0xFFFFFFFFu;
     t.giveIxPortalUs = t.giveIxCollectUs = t.giveIxSortUs = t.giveIxAppendUs = 0xFFFFFFFFu;
+    t.giveIxVerify = true;
     char xbuf[kPlanTimeBuf];
     std::size_t const xlen = FormatPlanTimeLine(xbuf, sizeof(xbuf), t);
     Require(xlen + 1 < sizeof(xbuf), "every field, the prefilter and the index suffix at their maximum fit kPlanTimeBuf");
-    Require(std::strstr(xbuf, " give_ixt=4294967295/4294967295/4294967295/4294967295") != nullptr, "the index suffix is not cut");
+    Require(std::strstr(xbuf, " give_ixt=4294967295/4294967295/4294967295/4294967295 ixv=1") != nullptr,
+        "the index suffix is not cut");
     t.giveIx = false;
+    t.giveIxVerify = false;
 
     char small[16];
     std::size_t const cut = FormatPlanTimeLine(small, sizeof(small), t);
@@ -201,7 +204,11 @@ void TestIndexSuffix()
     Require(len == line.size(), "index: returned length = string length");
     Require(line == "[PlanTime] bot=9 cohort=A us=0 cpu_us=na ms=0 over_budget=0 cands=0 cut=0 done=0 open=0 head=0 "
         "take=- obj=- give=310/0/0/420/160 rest=0 prefilter=1 give_pre=250 give_xmap=0 give_inbox=0 verify=0 ix=1 give_ixall=6111 "
-        "give_ixmaps=3 give_ixportals=2 give_ixbuckets=63 give_ixwide=1 give_ixt=40/20/5/230", "index suffix");
+        "give_ixmaps=3 give_ixportals=2 give_ixbuckets=63 give_ixwide=1 give_ixt=40/20/5/230 ixv=0", "index suffix");
+    t.giveIxVerify = true;
+    FormatPlanTimeLine(buf, sizeof(buf), t);
+    Require(std::string(buf).substr(std::string(buf).size() - 6) == " ixv=1", "index verify flag last");
+    t.giveIxVerify = false;
     t.giveIx = false;
     t.giveIxMiss = true;
     FormatPlanTimeLine(buf, sizeof(buf), t);
