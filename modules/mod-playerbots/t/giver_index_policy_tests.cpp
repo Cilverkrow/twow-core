@@ -191,7 +191,8 @@ void TestStamp()
     Require(s.Take(1) && !s.Take(2), "resized to the built N");
 }
 
-// The cell size (OB-60 5): buckets and candidates for one grid cell and a half cell, printed for the review.
+// The cell size (OB-60 5): buckets and candidates for one grid cell and a half cell, printed for the review. With kCells = 64 a half
+// cell spans only x, y < 0 (-17066 .. 0), so boxes and queries stay in [-15000, -2000) and a 1500 yd query never reaches the clamp.
 void TestCellPrint()
 {
     std::uint32_t seed = 99u;
@@ -199,8 +200,8 @@ void TestCellPrint()
     std::vector<Box> boxes;
     for (std::uint32_t i = 0; i < 6000; ++i)
     {
-        float const x = float(int(rnd() % 30000u) - 15000);
-        float const y = float(int(rnd() % 30000u) - 15000);
+        float const x = float(int(rnd() % 13000u) - 15000);
+        float const y = float(int(rnd() % 13000u) - 15000);
         boxes.push_back(Box{ 0, x, y, x + float(rnd() % 30u), y + float(rnd() % 30u), i });
     }
     for (float cell : { kCell, kCell / 2.0f })
@@ -210,8 +211,8 @@ void TestCellPrint()
         std::uint64_t probed = 0, cand = 0, keep = 0;
         for (std::uint32_t q = 0; q < 200; ++q)
         {
-            float const x = float(int(rnd() % 30000u) - 15000);
-            float const y = float(int(rnd() % 30000u) - 15000);
+            float const x = float(int(rnd() % 13000u) - 15000);
+            float const y = float(int(rnd() % 13000u) - 15000);
             std::uint32_t p = 0;
             std::set<std::uint32_t> const got = Query(g, 0, x, y, 1500.0f, &p);
             probed += p;
