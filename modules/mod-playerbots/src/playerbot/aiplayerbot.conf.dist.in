@@ -4327,8 +4327,9 @@ AiPlayerbot.Rotation.RestGate.MaxRestSeconds = 120
 # the clock ran through the whole eat / drink wait (L2S n3 23.11.: 83 % of the closes, ~28 s each). With 1 a stale close whose late read
 # shows rested or low gives back dur_late_ms, capped at MaxRestSeconds; late=combat / timeout and every other close keep dur_ms. The
 # [RestGateTotal] line ends with " offer_s= giveback_s=" (the time offered / the part put on a status clock), with 0 as well. Only with
-# Rotation.RestGate on. 0 = off (default, the old give-back), 1 = on.
-AiPlayerbot.Rotation.RestGate.StaleGiveBack = 0
+# Rotation.RestGate on. BEHAVIOUR CHANGE, ON by default since the RGA-L1 PASS (RESULT 88cc96f4, OB-10 f3f03e8f; owner 24.11.2026),
+# 0 = rollback (off, the old give-back), 1 = on. Any other value acts like 1.
+AiPlayerbot.Rotation.RestGate.StaleGiveBack = 1
 
 # twow-repo#602 ROT-01 hunter LoS (focus check 25.10.2026, OB-00, BEHAVIOUR CHANGE, enable only after A/B + owner go): sampled
 # hunters failed 91-96 % of Auto Shot / Hunter's Mark / Serpent Sting casts with "line of sight", about 19 core rejections per

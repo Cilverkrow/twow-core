@@ -644,9 +644,14 @@ bool PlayerbotAIConfig::Initialize()
         rotationRestGateTargetMana = t.targetMana;
         rotationRestGateMaxRestSeconds = t.maxRestSeconds;
     }
-    rotationRestGateStaleGiveBack = config.GetIntDefault("AiPlayerbot.Rotation.RestGate.StaleGiveBack", 0);
+    // RG-B1 Rotation.RestGate.StaleGiveBack (default 1 since the RGA-L1 PASS, OB-10 f3f03e8f + owner 24.11.2026): an unknown value is
+    // the default 1 (0 off = rollback, 1 on).
+    rotationRestGateStaleGiveBack = config.GetIntDefault("AiPlayerbot.Rotation.RestGate.StaleGiveBack", 1);
     if (rotationRestGateStaleGiveBack > 1)
-        rotationRestGateStaleGiveBack = 0;   // RG-B1: an unknown value is off (0 off, 1 on)
+    {
+        sLog.outError("[StaleGiveBack] config key=Rotation.RestGate.StaleGiveBack value=%u result=default 1 (0 off = rollback, 1 on)", rotationRestGateStaleGiveBack);
+        rotationRestGateStaleGiveBack = 1;
+    }
     rotationCastLosGate = config.GetIntDefault("AiPlayerbot.Rotation.CastLosGate", 0);   // twow-repo#602 hunter LoS
     if (rotationCastLosGate > 2)
         rotationCastLosGate = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
