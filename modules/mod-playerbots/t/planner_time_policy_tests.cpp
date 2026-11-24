@@ -117,6 +117,19 @@ void TestBufferBound()
     Require(plen + 1 < sizeof(pbuf), "every field and the prefilter suffix at their maximum fit kPlanTimeBuf");
     Require(std::strstr(pbuf, " give_inbox=4294967295 verify=1") != nullptr, "the prefilter suffix is not cut");
 
+    // S5 F1-IX: the index suffix at its maximum fits too
+    t.giveIx = true;
+    t.giveIxAll = t.giveIxMaps = t.giveIxPortals = t.giveIxBuckets = t.giveIxWide = 0xFFFFFFFFu;
+    t.giveIxPortalUs = t.giveIxCollectUs = t.giveIxSortUs = t.giveIxAppendUs = 0xFFFFFFFFu;
+    t.giveIxVerify = true;
+    char xbuf[kPlanTimeBuf];
+    std::size_t const xlen = FormatPlanTimeLine(xbuf, sizeof(xbuf), t);
+    Require(xlen + 1 < sizeof(xbuf), "every field, the prefilter and the index suffix at their maximum fit kPlanTimeBuf");
+    Require(std::strstr(xbuf, " give_ixt=4294967295/4294967295/4294967295/4294967295 ixv=1") != nullptr,
+        "the index suffix is not cut");
+    t.giveIx = false;
+    t.giveIxVerify = false;
+
     char small[16];
     std::size_t const cut = FormatPlanTimeLine(small, sizeof(small), t);
     Require(cut == sizeof(small) - 1 && std::strlen(small) == cut, "a short buffer cuts and terminates");
@@ -159,6 +172,58 @@ void TestPrefilterSuffix()
 }
 }
 
+namespace
+{
+// S5 F1-IX (twow-repo#726, IX-ENTWURF-v0.2): an index plan ends with ix=1 and its counts after the F1 part; a fallback with
+// give_ixmiss=1 / give_ixstale=1; without the index the line is as before (OB-10 B3: key 0 leaves give= and the line unchanged).
+void TestIndexSuffix()
+{
+    PlanTime t;
+    t.guid = 9;
+    t.give.ran = true;
+    t.give.fetchUs = 310;
+    t.give.walk = 420;
+    t.give.ret = 160;
+    char buf[kPlanTimeBuf];
+    FormatPlanTimeLine(buf, sizeof(buf), t);
+    std::string const plain(buf);
+    t.givePrefilter = true;
+    t.givePre = 250;
+    t.giveIx = true;
+    t.giveIxAll = 6111;
+    t.giveIxMaps = 3;
+    t.giveIxPortals = 2;
+    t.giveIxBuckets = 63;
+    t.giveIxWide = 1;
+    t.giveIxPortalUs = 40;
+    t.giveIxCollectUs = 20;
+    t.giveIxSortUs = 5;
+    t.giveIxAppendUs = 230;
+    std::size_t const len = FormatPlanTimeLine(buf, sizeof(buf), t);
+    std::string const line(buf);
+    Require(len == line.size(), "index: returned length = string length");
+    Require(line == "[PlanTime] bot=9 cohort=A us=0 cpu_us=na ms=0 over_budget=0 cands=0 cut=0 done=0 open=0 head=0 "
+        "take=- obj=- give=310/0/0/420/160 rest=0 prefilter=1 give_pre=250 give_xmap=0 give_inbox=0 verify=0 ix=1 give_ixall=6111 "
+        "give_ixmaps=3 give_ixportals=2 give_ixbuckets=63 give_ixwide=1 give_ixt=40/20/5/230 ixv=0", "index suffix");
+    t.giveIxVerify = true;
+    FormatPlanTimeLine(buf, sizeof(buf), t);
+    Require(std::string(buf).substr(std::string(buf).size() - 6) == " ixv=1", "index verify flag last");
+    t.giveIxVerify = false;
+    t.giveIx = false;
+    t.giveIxMiss = true;
+    FormatPlanTimeLine(buf, sizeof(buf), t);
+    Require(std::string(buf).substr(std::string(buf).size() - 14) == " give_ixmiss=1", "miss last");
+    t.giveIxStale = true;
+    FormatPlanTimeLine(buf, sizeof(buf), t);
+    Require(std::string(buf).substr(std::string(buf).size() - 15) == " give_ixstale=1", "stale last");
+    PlanTime off;
+    off.guid = 9;
+    off.give = t.give;
+    FormatPlanTimeLine(buf, sizeof(buf), off);
+    Require(std::string(buf) == plain && std::strstr(buf, "ix") == nullptr, "index off: the line is as before");
+}
+}
+
 int main()
 {
     TestValidTimeTrace();
@@ -166,6 +231,7 @@ int main()
     TestLineShape();
     TestBufferBound();
     TestPrefilterSuffix();
+    TestIndexSuffix();
     std::cout << "planner_time_policy_tests: OK\n";
     return 0;
 }

@@ -3325,6 +3325,7 @@ TravelState TravelTarget::GetTravelState() {
 
 void TravelMgr::Clear()
 {
+    giverIndex.reset();   // S5 F1-IX: the index points at the destinations deleted below
     ai::supervisor::WriterScope writerScope(ai::supervisor::WriterId::Manager);
 #ifndef MANGOSBOT_ZERO
     sObjectAccessor.ExecuteOnAllPlayers([this](Player* plr) { TravelMgr::SetNullTravelTarget(plr); });
@@ -4099,6 +4100,11 @@ void TravelMgr::LoadQuestTravelTable()
 
     // twow-repo#594 / P3-b (AiPlayerbot.DirectTargets.*, default 0): boot only, after the fish locations.
     LoadDirectTargets(guidpMap);
+
+    // A3 step 3 planner S5 F1-IX (twow-repo#726, IX-ENTWURF-v0.2; AiPlayerbot.Planner.GiverIndex, default 0): boot only, after the last
+    // destination writer (the giver destinations are final here); key 0 builds nothing.
+    if (sPlayerbotAIConfig.plannerGiverIndex)
+        BuildGiverIndex();
 
     // twow-repo#601 S5a (AiPlayerbot.QuestFirstProgression.BandLadder, default 0): boot only, after the travel nodes are final.
     ai::quest_band::LoadLadder();
@@ -5165,6 +5171,8 @@ WorldPosition* TravelMgr::GetFishSpot(WorldPosition start, bool onlyNearestGrid)
 thread_local ai::DestFetchStats* ai::tDestFetchStats = nullptr;
 // A3 step 3 planner S5 F1 (twow-repo#726): null = no giver prefilter (TravelMgr.h tDestRangePrefilter).
 thread_local ai::giver_prefilter::Counts* ai::tDestRangePrefilter = nullptr;
+// A3 step 3 planner S5 F1-IX (twow-repo#726): null = no giver index (TravelMgr.h tDestGiverIndex).
+thread_local ai::giver_index::Counts* ai::tDestGiverIndex = nullptr;
 
 DestinationList TravelMgr::GetDestinations(const PlayerTravelInfo& info, uint32 purposeFlag, const std::vector<int32>& entries, bool onlyPossible, float maxDistance) const
 {
@@ -5255,6 +5263,27 @@ DestinationList TravelMgr::GetDestinations(const PlayerTravelInfo& info, uint32 
         }
     };
 
+    // S5 F1-IX (twow-repo#726, IX-ENTWURF-v0.2; AiPlayerbot.Planner.GiverIndex): exactly the planner's giver fetch, with the switch,
+    // takes the index candidates - a superset of the givers in range, in walk order - through the same appendDestinations; the
+    // list and its order stay the same. No index, a stale index or a position that is not finite: the walk below, as before.
+    giver_index::Counts* const indexCounts = (tDestGiverIndex && purposeFlag == (uint32)TravelDestinationPurpose::QuestGiver &&
+        entries.empty() && !onlyPossible && maxDistance > 0) ? tDestGiverIndex : nullptr;
+    if (indexCounts)
+    {
+        DestinationList cand;
+        if (GiverIndexCandidates(center, maxDistance, *indexCounts, portalCache, cand))
+        {
+            std::chrono::steady_clock::time_point const appendAt = indexCounts->timed ? std::chrono::steady_clock::now() :
+                std::chrono::steady_clock::time_point();
+            appendDestinations(cand);
+            if (indexCounts->timed)
+                indexCounts->appendUs = giver_index::UsBetween(appendAt, std::chrono::steady_clock::now());
+            if (fetchStats)
+                fetchStats->ret += uint32(retDests.size());
+            return retDests;
+        }
+    }
+
     for (auto& [purpose, entryDests] : destinationMap)
     {
 
@@ -5328,6 +5357,143 @@ void TravelMgr::GetPartitionsLock(bool getLock)
     
     sTravelMgr.availableDestinationWorkers++;
     sTravelMgr.getDestinationVar.notify_one();
+}
+
+// A3 step 3 planner S5 F1-IX (twow-repo#726, IX-ENTWURF-v0.2 section 2.3/2.4): the giver index over destinationMap[QuestGiver], in
+// the walk order of GetDestinations (inner map, then vector). Only one purpose key may carry the QuestGiver bit (else the outer
+// order would matter): otherwise nothing is built. One [PlanIndex] boot line either way.
+void TravelMgr::BuildGiverIndex()
+{
+    giverIndex.reset();
+    std::chrono::steady_clock::time_point const startAt = std::chrono::steady_clock::now();
+    uint32 giverKeys = 0;
+    for (auto const& [purpose, entryDests] : destinationMap)
+        if ((uint32)purpose & (uint32)TravelDestinationPurpose::QuestGiver)
+            ++giverKeys;
+    auto const givers = destinationMap.find(TravelDestinationPurpose::QuestGiver);
+    if (giverKeys != 1 || givers == destinationMap.end())
+    {
+        sLog.outString("[PlanIndex] not built reason=purpose_keys n=%u", giverKeys);
+        return;
+    }
+    std::unique_ptr<GiverIndexData> data = std::make_unique<GiverIndexData>();
+    for (auto const& [entry, dests] : givers->second)
+        for (TravelDestination* dest : dests)
+            data->order.push_back(dest);
+    if (data->order.empty())
+    {
+        sLog.outString("[PlanIndex] not built reason=no_givers n=0");
+        return;
+    }
+    std::vector<giver_index::Box> boxes;
+    for (uint32 i = 0; i < uint32(data->order.size()); ++i)
+        data->order[i]->ForEachMapBox([&](uint32 mapId, float minX, float minY, float maxX, float maxY)
+        {
+            boxes.push_back(giver_index::Box{ mapId, minX, minY, maxX, maxY, i });
+        });
+    data->grid.Build(boxes);
+    std::vector<TravelDestination*> sorted = data->order;
+    std::sort(sorted.begin(), sorted.end());
+    uint32 dup = 0;
+    for (std::size_t i = 1; i < sorted.size(); ++i)
+        if (sorted[i] == sorted[i - 1])
+            ++dup;
+    data->keys = givers->second.size();
+    data->buckets = givers->second.bucket_count();
+    sLog.outString("[PlanIndex] built n=%u maps=%u boxes=%u wide=%u cells=%u dup=%u ms=%u", uint32(data->order.size()),
+        uint32(data->grid.Maps().size()), data->grid.BoxCount(), data->grid.WideCount(), data->grid.CellCount(), dup,
+        giver_index::UsBetween(startAt, std::chrono::steady_clock::now()) / 1000);
+    giverIndex = std::move(data);
+}
+
+// S5 F1-IX (IX-ENTWURF-v0.2 section 2.5): the candidates of one planner giver fetch. The built and stale checks run before any
+// index access (OB-10 B2). The radius is the call's maxDistance (OB-10 B1). Bot's map: the buckets around the bot; every other map
+// with givers: the buckets around each portal of sqMapTransDistances (the original's portal list) whose own term is within the
+// radius (the original term is that term plus a non-negative box distance), plus the wide lists of the maps queried. The
+// ordinals are deduped by position and sorted, so cand is in walk order. portalLists is the fetch's call-local portal cache
+// (GetDestinations portalCache, empty here): every map's list is built once and the F1 bound on the candidates reuses it.
+bool TravelMgr::GiverIndexCandidates(const WorldPosition& center, float maxDistance, giver_index::Counts& counts,
+    std::vector<std::pair<uint32, std::vector<std::pair<WorldPosition, float>>>>& portalLists, DestinationList& cand) const
+{
+    using Clock = std::chrono::steady_clock;
+    if (!giverIndex)
+    {
+        counts.miss = true;
+        return false;
+    }
+    GiverIndexData const& ix = *giverIndex;
+    auto const givers = destinationMap.find(TravelDestinationPurpose::QuestGiver);
+    if (givers == destinationMap.end() || givers->second.size() != ix.keys || givers->second.bucket_count() != ix.buckets ||
+        givers->second.empty() || givers->second.begin()->second.empty() || givers->second.begin()->second.front() != ix.order.front())
+    {
+        counts.stale = true;
+        return false;
+    }
+    float const cx = center.getX();
+    float const cy = center.getY();
+    if (!std::isfinite(cx) || !std::isfinite(cy) || !std::isfinite(maxDistance))
+    {
+        counts.miss = true;
+        return false;
+    }
+    counts.used = true;
+    counts.all = uint32(ix.order.size());
+    Clock::time_point const portalAt = counts.timed ? Clock::now() : Clock::time_point();
+    uint32 const homeMap = center.getMapId();
+    for (uint32 mapId : ix.grid.Maps())
+        if (mapId != homeMap)
+            portalLists.emplace_back(mapId, sqMapTransDistances(center, mapId));   // an empty list too: the cache then knows it
+    Clock::time_point const collectAt = counts.timed ? Clock::now() : Clock::time_point();
+    static thread_local giver_index::Stamp stamp;
+    stamp.Begin(ix.order.size());
+    std::vector<uint32> ords;
+    auto const take = [&](uint32 ord)
+    {
+        if (stamp.Take(ord))
+            ords.push_back(ord);
+    };
+    uint32 const homeBuckets = ix.grid.Collect(homeMap, cx, cy, maxDistance, take);
+    if (homeBuckets)
+    {
+        ++counts.maps;
+        counts.buckets += homeBuckets;
+        counts.wide += ix.grid.Wide(homeMap, take);
+    }
+    for (auto const& [mapId, portals] : portalLists)
+    {
+        bool queried = false;
+        for (auto const& [portal, transferSq] : portals)
+        {
+            if (giver_prefilter::Excludes(transferSq, maxDistance))
+                continue;
+            float const px = portal.getX();
+            float const py = portal.getY();
+            if (!std::isfinite(px) || !std::isfinite(py))
+                continue;
+            ++counts.portals;
+            counts.buckets += ix.grid.Collect(mapId, px, py, maxDistance, take);
+            queried = true;
+        }
+        if (queried)
+        {
+            ++counts.maps;
+            counts.wide += ix.grid.Wide(mapId, take);
+        }
+    }
+    Clock::time_point const sortAt = counts.timed ? Clock::now() : Clock::time_point();
+    std::sort(ords.begin(), ords.end());
+    cand.reserve(ords.size());
+    for (uint32 ord : ords)
+        cand.push_back(ix.order[ord]);
+    counts.cand = uint32(cand.size());
+    if (counts.timed)
+    {
+        Clock::time_point const endAt = Clock::now();
+        counts.portalUs = giver_index::UsBetween(portalAt, collectAt);
+        counts.collectUs = giver_index::UsBetween(collectAt, sortAt);
+        counts.sortUs = giver_index::UsBetween(sortAt, endAt);
+    }
+    return true;
 }
 
 bool TravelMgr::IsLocationLevelValid(const WorldPosition& position, const PlayerTravelInfo& info, uint32 purposeFlag, bool gapWindowApplies)

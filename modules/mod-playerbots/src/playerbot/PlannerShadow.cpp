@@ -108,6 +108,25 @@ public:
     PrefilterScope& operator=(PrefilterScope const&) = delete;
 };
 
+// S5 F1-IX (twow-repo#726, IX-ENTWURF-v0.2; AiPlayerbot.Planner.GiverIndex): turns TravelMgr's giver index on for the one giver
+// fetch of the plan on this thread and always clears it again (End or the scope end); no other fetch of the thread runs with it.
+class IndexScope
+{
+public:
+    explicit IndexScope(ai::giver_index::Counts* counts) { ai::tDestGiverIndex = counts; }
+    ~IndexScope() { ai::tDestGiverIndex = nullptr; }
+    void End() const { ai::tDestGiverIndex = nullptr; }
+    IndexScope(IndexScope const&) = delete;
+    IndexScope& operator=(IndexScope const&) = delete;
+};
+
+// S5 F1-IX verify (AiPlayerbot.Planner.GiverIndexVerify = N): every N-th index fetch of this thread; 0 = never.
+bool IndexVerifyDue(std::uint32_t every)
+{
+    static thread_local std::uint32_t seq = 0;
+    return every && ++seq % every == 0;
+}
+
 // S5 F1 verify (AiPlayerbot.Planner.GiverPrefilterVerify = N): every N-th prefiltered giver fetch of this thread; 0 = never.
 bool PrefilterVerifyDue(std::uint32_t every)
 {
@@ -1420,6 +1439,11 @@ void PlanTickImpl(ai::supervisor::Supervisor& sup, PlayerbotAI* ai_, PlanState& 
     bool prefilterOn = false, prefilterVerify = false;
     ai::giver_prefilter::Counts prefilterCounts;
     std::vector<ai::TravelDestination*> giversPrefiltered;
+    // S5 F1-IX (twow-repo#726, IX-ENTWURF-v0.2; AiPlayerbot.Planner.GiverIndex, cohort rule): the giver index for the giver fetch
+    // only, always with the F1 bound on its candidates (section 2.6) - the same list in the same order; GiverIndexVerify N checks it.
+    bool ixOn = false, ixVerify = false;
+    ai::giver_index::Counts ixCounts;
+    std::vector<ai::TravelDestination*> giversIndexed;
     // onlyPossible = false: QuestRelationTravelDestination::IsPossible counts [QuestBookMin] target_no_* for a bot with a book
     // (TravelMgr.cpp); the planner gates by itself (CanTakeQuest without a message, CanAccept, CanTarget) and writes no counter.
     if (!overBudget && slots.size() < cap)
@@ -1429,14 +1453,21 @@ void PlanTickImpl(ai::supervisor::Supervisor& sup, PlayerbotAI* ai_, PlanState& 
         fetchStats = ai::DestFetchStats();
         FetchStatsScope const giveScope(timeTrace ? &fetchStats : nullptr);
         prefilterOn = ai::cohort::Applies(sPlayerbotAIConfig.plannerGiverPrefilter, guid);
-        PrefilterScope const prefilterScope(prefilterOn ? &prefilterCounts : nullptr);
+        ixOn = ai::cohort::Applies(sPlayerbotAIConfig.plannerGiverIndex, guid);
+        ixCounts.timed = timeTrace;
+        IndexScope const ixScope(ixOn ? &ixCounts : nullptr);
+        PrefilterScope const prefilterScope(prefilterOn || ixOn ? &prefilterCounts : nullptr);
         std::vector<ai::TravelDestination*> givers = sTravelMgr.GetDestinations(info,
             std::uint32_t(ai::TravelDestinationPurpose::QuestGiver), {}, false, kPickupRadius);
         giveScope.End();
         prefilterScope.End();
+        ixScope.End();
         prefilterVerify = prefilterOn && PrefilterVerifyDue(sPlayerbotAIConfig.plannerGiverPrefilterVerify);
         if (prefilterVerify)
             giversPrefiltered = givers;   // before the sort: the verify compares the fetch lists
+        ixVerify = ixOn && ixCounts.used && IndexVerifyDue(sPlayerbotAIConfig.plannerGiverIndexVerify);
+        if (ixVerify)
+            giversIndexed = givers;   // before the sort, as the F1 verify
         std::int64_t const giveSortAt = traceNow();
         byDistance(givers);
         std::int64_t const giveLoopAt = traceNow();
@@ -1479,13 +1510,29 @@ void PlanTickImpl(ai::supervisor::Supervisor& sup, PlayerbotAI* ai_, PlanState& 
         }
         traceStage(planTime.give, giveFetchAt, giveSortAt, giveLoopAt);
     }
-    if (prefilterOn)
+    if (prefilterOn || ixOn)
     {
         planTime.givePrefilter = true;
         planTime.givePre = prefilterCounts.pre;
         planTime.giveXmap = prefilterCounts.xmap;
         planTime.giveInbox = prefilterCounts.inbox;
         planTime.giveVerify = prefilterVerify;
+    }
+    if (ixOn)
+    {
+        planTime.giveIx = ixCounts.used;
+        planTime.giveIxVerify = ixVerify;
+        planTime.giveIxMiss = ixCounts.miss;
+        planTime.giveIxStale = ixCounts.stale;
+        planTime.giveIxAll = ixCounts.all;
+        planTime.giveIxMaps = ixCounts.maps;
+        planTime.giveIxPortals = ixCounts.portals;
+        planTime.giveIxBuckets = ixCounts.buckets;
+        planTime.giveIxWide = ixCounts.wide;
+        planTime.giveIxPortalUs = ixCounts.portalUs;
+        planTime.giveIxCollectUs = ixCounts.collectUs;
+        planTime.giveIxSortUs = ixCounts.sortUs;
+        planTime.giveIxAppendUs = ixCounts.appendUs;
     }
     std::int64_t const traceFetchEndNs = traceNow();   // S5: head (when no stage ran) and rest start here
     traceHead(traceFetchEndNs);
@@ -1779,6 +1826,18 @@ void PlanTickImpl(ai::supervisor::Supervisor& sup, PlayerbotAI* ai_, PlanState& 
         ai::giver_prefilter::FormatVerifyLine(vbuf, sizeof(vbuf), guid, std::uint32_t(original.size()),
             std::uint32_t(giversPrefiltered.size()), ai::giver_prefilter::FirstDiff(original, giversPrefiltered), prefilterCounts);
         sLog.outBasic("%s", vbuf);
+    }
+    // S5 F1-IX verify (IX-ENTWURF-v0.2 section 3): the configured original walk (all three thread pointers are null here: no index,
+    // no prefilter, no walk/ret count) against the index list, element by element; one [PlanIndex] line per verified fetch. After the
+    // plan's ms and the [PlanTime] clocks, as the F1 verify, so it changes no slot, no budget cut and no measured time of the plan.
+    if (ixVerify)
+    {
+        std::vector<ai::TravelDestination*> const original = sTravelMgr.GetDestinations(info,
+            std::uint32_t(ai::TravelDestinationPurpose::QuestGiver), {}, false, kPickupRadius);
+        char xbuf[ai::giver_index::kVerifyBuf];
+        ai::giver_index::FormatVerifyLine(xbuf, sizeof(xbuf), guid, std::uint32_t(original.size()),
+            std::uint32_t(giversIndexed.size()), ai::giver_prefilter::FirstDiff(original, giversIndexed), ixCounts);
+        sLog.outBasic("%s", xbuf);
     }
     c.msMax = ms;
 
