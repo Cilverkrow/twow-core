@@ -56,6 +56,22 @@ struct PlanTime
     std::uint32_t giveXmap = 0;
     std::uint32_t giveInbox = 0;
     bool giveVerify = false;
+    // S5 F1-IX (twow-repo#726, IX-ENTWURF-v0.2; AiPlayerbot.Planner.GiverIndex): giveIx = the giver fetch of this plan ran through the
+    // giver index; the line then ends (after the F1 part) with ix=1 give_ixall= give_ixmaps= give_ixportals= give_ixbuckets=
+    // give_ixwide= give_ixt=portal/collect/sort/append (GiverIndexPolicy.h Counts, microseconds). giveIxMiss / giveIxStale = the
+    // fetch asked the index but walked (give_ixmiss=1 / give_ixstale=1). All false: the line is as before.
+    bool giveIx = false;
+    bool giveIxMiss = false;
+    bool giveIxStale = false;
+    std::uint32_t giveIxAll = 0;
+    std::uint32_t giveIxMaps = 0;
+    std::uint32_t giveIxPortals = 0;
+    std::uint32_t giveIxBuckets = 0;
+    std::uint32_t giveIxWide = 0;
+    std::uint32_t giveIxPortalUs = 0;
+    std::uint32_t giveIxCollectUs = 0;
+    std::uint32_t giveIxSortUs = 0;
+    std::uint32_t giveIxAppendUs = 0;
 };
 
 // A microsecond difference of two steady clock readings in nanoseconds, clamped to 0..UINT32_MAX microseconds.
@@ -68,7 +84,7 @@ inline std::uint32_t UsBetween(std::int64_t fromNs, std::int64_t toNs)
 }
 
 // The [PlanTime] buffer: every field at its maximum fits (the unit test checks it).
-constexpr std::size_t kPlanTimeBuf = 640;
+constexpr std::size_t kPlanTimeBuf = 832;
 
 // [PlanTime] bot= cohort= us= cpu_us= ms= over_budget= cands= cut= done= open= head= take= obj= give= rest=; a stage is
 // fetch/sort/loop/walk/ret in microseconds and counts, or "-" when it did not run.
@@ -102,6 +118,20 @@ inline std::size_t FormatPlanTimeLine(char* buf, std::size_t n, PlanTime const& 
     {
         int const x = std::snprintf(buf + len, n - len, " prefilter=1 give_pre=%u give_xmap=%u give_inbox=%u verify=%u", t.givePre,
             t.giveXmap, t.giveInbox, t.giveVerify ? 1u : 0u);
+        if (x > 0)
+            len = len + std::size_t(x) < n ? len + std::size_t(x) : n - 1;
+    }
+    if (t.giveIx && len + 1 < n)
+    {
+        int const x = std::snprintf(buf + len, n - len, " ix=1 give_ixall=%u give_ixmaps=%u give_ixportals=%u give_ixbuckets=%u "
+            "give_ixwide=%u give_ixt=%u/%u/%u/%u", t.giveIxAll, t.giveIxMaps, t.giveIxPortals, t.giveIxBuckets, t.giveIxWide,
+            t.giveIxPortalUs, t.giveIxCollectUs, t.giveIxSortUs, t.giveIxAppendUs);
+        if (x > 0)
+            len = len + std::size_t(x) < n ? len + std::size_t(x) : n - 1;
+    }
+    else if ((t.giveIxMiss || t.giveIxStale) && len + 1 < n)
+    {
+        int const x = std::snprintf(buf + len, n - len, "%s", t.giveIxStale ? " give_ixstale=1" : " give_ixmiss=1");
         if (x > 0)
             len = len + std::size_t(x) < n ? len + std::size_t(x) : n - 1;
     }

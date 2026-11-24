@@ -24,6 +24,8 @@
 #include "GuidPosition.h"
 #include "strategy/values/TravelValues.h"
 #include "WorldSquare.h"
+#include "GiverIndexPolicy.h"   // A3 step 3 planner S5 F1-IX (twow-repo#726): the giver index (AiPlayerbot.Planner.GiverIndex)
+#include <memory>
 
 namespace ai
 {
@@ -746,6 +748,11 @@ namespace ai
 	// (GiverPrefilterPolicy.h Counts). Null (the default) changes nothing; only the planner's giver fetch sets it, by a scope that
 	// always clears it. The prefilter skips only destinations the range check drops too: the list and its order stay the same.
 	extern thread_local giver_prefilter::Counts* tDestRangePrefilter;
+	// A3 step 3 planner S5 F1-IX (twow-repo#726, IX-ENTWURF-v0.2; AiPlayerbot.Planner.GiverIndex, default 0): non-null = the giver
+	// fetch of this thread with exactly the planner's call shape (QuestGiver only, no entries, onlyPossible false, a radius) takes the
+	// candidates of the giver index through the original checks, and counts into it (GiverIndexPolicy.h Counts). Null (the default)
+	// changes nothing; only the planner's giver fetch sets it, by a scope that always clears it. Same list, same order.
+	extern thread_local giver_index::Counts* tDestGiverIndex;
 
 	//General container for all travel destinations.
 	class TravelMgr
@@ -767,6 +774,9 @@ namespace ai
 		// twow-repo#594 / P3-b (AiPlayerbot.DirectTargets.Station / Cooking / Fishing / Dungeon / Raid, default 0): the direct-target
 		// destinations, built once at boot (DirectTargetLoader.cpp); nothing with every class switch 0.
 		void LoadDirectTargets(EntryGuidps const& guidpMap);
+		// A3 step 3 planner S5 F1-IX (twow-repo#726, IX-ENTWURF-v0.2; AiPlayerbot.Planner.GiverIndex, default 0): the giver index,
+		// built once at boot (LoadQuestTravelTable, after the last destination writer) only with the key on; read-only after.
+		void BuildGiverIndex();
 
 		WorldPosition* GetFishSpot(WorldPosition start, bool onlyNearestGrid = false);
 
@@ -795,6 +805,20 @@ namespace ai
 	private:
 		void Clear();
 		void SetMobAvoidAreaMap(uint32 mapId);
+		// S5 F1-IX: the candidates of one planner giver fetch in walk order; false = no index, stale or not finite (the walk runs).
+		bool GiverIndexCandidates(const WorldPosition& center, float maxDistance, giver_index::Counts& counts,
+			std::vector<std::pair<uint32, std::vector<std::pair<WorldPosition, float>>>>& portalLists, DestinationList& cand) const;
+		// S5 F1-IX: the index and the walk it was built from. order = destinationMap[QuestGiver] in walk order (inner map, then
+		// vector); keys / buckets = that inner map's size() and bucket_count() at the build (a rehash changes bucket_count, so the
+		// stale guard sees a changed walk order; OB-60 3).
+		struct GiverIndexData
+		{
+			giver_index::Grid grid;
+			std::vector<TravelDestination*> order;
+			std::size_t keys = 0;
+			std::size_t buckets = 0;
+		};
+		std::unique_ptr<GiverIndexData> giverIndex;
 
 		void SetNullTravelTarget(Player* player) const;
 		void AddMapTransfer(WorldPosition start, WorldPosition end, float portalDistance = 0.1f, bool makeShortcuts = true);
