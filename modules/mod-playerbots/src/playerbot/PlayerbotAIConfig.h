@@ -649,6 +649,7 @@ public:
     bool parkHideFromBots = false;  // twow-repo#541/#551: parked bots invisible to other bots (core Player flag)
     bool buffRealPlayerStyle = false;  // twow-repo#588 (owner 14.10): buff group, then guild, strangers only once per cooldown
     uint32 buffStrangerCooldownSeconds = 900;
+    bool lootGroupQuestLoot = false;  // twow-repo#780 (bug fix; code default 0 until the owner group test on realm C, then 1, 0 = rollback): group bots with a player master loot their own quest items (GroupQuestLootPolicy.h)
     bool lootHoldTravelWhileLootable = false;  // twow-repo#575 H1 (bug fix; code default 0 until its acceptance unit, then the flip pair): move to rpg / travel target and the rpg-target heal stand back while the loot target is open (LootHoldPolicy.h), 0 = as before
     uint32 lootHoldTravelWhileLootableMaxSeconds = 60;  // twow-repo#575 H1 (OB-10 review): seconds a loot target may hold the bot at most (10..600); then that loot target holds no more ([LootHold] result=expired)
     uint32 lootMoveGiveUp = 1;  // twow-repo#703 item 3 (default 1 since 703H u3 ADOPT 19.11.2026): cohort mode (0 off, 1 all, 2 cohort B, 3 cohort A; other -> 0): a roster bot on its own gives up a loot target it comes no nearer to for 30 s of trying (LootGiveUpPolicy.h)

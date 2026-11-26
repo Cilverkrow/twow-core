@@ -7,6 +7,7 @@
 #include "playerbot/strategy/values/Formations.h"
 #include "playerbot/FleeAwayPolicy.h"   // twow-repo#602 (c): Rotation.FleeAway (hunter dead zone)
 #include "playerbot/OomBackoffPolicy.h"
+#include "playerbot/strategy/triggers/LootTriggers.h"   // twow-repo#780: Loot.GroupQuestLoot leash hold
 
 namespace ai
 {
@@ -535,7 +536,13 @@ namespace ai
 
         virtual bool IsActive() override
         {
-            return !AI_VALUE(bool, "can free move");
+            if (AI_VALUE(bool, "can free move"))
+                return false;
+            // twow-repo#780 (d) (AiPlayerbot.Loot.GroupQuestLoot): quiet while the loot target is a quest corpse of this bot within
+            // the bound, not in combat, at most LeashHoldMaxSeconds per corpse (LootTriggers.cpp). Key 0: as before.
+            if (sPlayerbotAIConfig.lootGroupQuestLoot && GroupQuestLootLeashQuiet(ai, bot))
+                return false;
+            return true;
         };
     };
 }

@@ -8,6 +8,95 @@
 #include "playerbot/ServerFacade.h"
 using namespace ai;
 
+// twow-repo#780 (AiPlayerbot.Loot.GroupQuestLoot, GroupQuestLootPolicy.h): a party-loot quest drop of the corpse that is the bot's
+// own copy to take. The corpse is on the bot's Map (it came from the bot's loot list / loot target); only its Loot is read.
+static bool HasOwnPartyQuestLoot(Player* bot, Creature* creature)
+{
+    Loot const* loot = creature->m_loot;
+    if (!loot || loot->m_questItems.empty())
+        return false;
+    QuestItemMap const& perPlayer = loot->GetPlayerQuestItems();
+    QuestItemMap::const_iterator own = perPlayer.find(bot->GetGUIDLow());
+    for (size_t i = 0; i < loot->m_questItems.size(); ++i)
+    {
+        LootItem const& item = loot->m_questItems[i];
+        bool lootedByBot = false;
+        if (own != perPlayer.end() && own->second)
+        {
+            for (QuestItem const& q : *own->second)
+            {
+                if (q.index == i && q.is_looted)
+                    lootedByBot = true;
+            }
+        }
+        if (group_quest_loot::OwnPartyQuestItem(item.freeforall, item.is_looted, item.AllowedForPlayer(bot, creature), lootedByBot))
+            return true;
+    }
+    return false;
+}
+
+// Eligible without the hold: the key, a non-leader group member with an active player master, the bot's own party quest drop.
+static bool GroupQuestLootEligible(PlayerbotAI* ai, Player* bot, WorldObject* wo)
+{
+    return sPlayerbotAIConfig.lootGroupQuestLoot && wo && wo->IsCreature() && bot->GetGroup() && !ai->IsGroupLeader()
+        && ai->HasActivePlayerMaster() && HasOwnPartyQuestLoot(bot, (Creature*)wo);
+}
+
+static group_quest_loot::Hold& GroupQuestHold(PlayerbotAI* ai)
+{
+    return ai->GetAiObjectContext()->GetValue<LootObjectStack*>("available loot")->Get()->GroupQuestHold();
+}
+
+// A quest corpse for (a)-(c'): eligible, and its leash hold of this bot has not expired (then the old rules apply).
+bool ai::GroupQuestLootCorpse(PlayerbotAI* ai, Player* bot, WorldObject* wo)
+{
+    return GroupQuestLootEligible(ai, bot, wo)
+        && !group_quest_loot::HoldExpired(GroupQuestHold(ai), wo->GetObjectGuid().GetRawValue(), int64(time(nullptr)));
+}
+
+// twow-repo#780 (d): the master must be on the bot's Map object (same-map guard), the loot target a lootable quest corpse.
+bool ai::GroupQuestLootLeashQuiet(PlayerbotAI* ai, Player* bot)
+{
+    AiObjectContext* context = ai->GetAiObjectContext();
+    bool eligible = false;
+    uint64 corpseGuid = 0;
+    uint32 corpseEntry = 0;
+    float botDist = 0.0f;
+    float masterDist = 0.0f;
+    Player* master = ai->GetMaster();
+    if (master && master != bot && master->IsInWorld() && master->GetMap() == bot->GetMap() && !bot->IsInCombat())
+    {
+        LootObject loot = AI_VALUE(LootObject, "loot target");
+        if (!loot.IsEmpty() && loot.IsLootPossible(bot))
+        {
+            Creature* creature = ai->GetCreature(loot.guid);
+            if (creature && sServerFacade.GetDeathState(creature) == CORPSE && GroupQuestLootEligible(ai, bot, creature))
+            {
+                eligible = true;
+                corpseGuid = loot.guid.GetRawValue();
+                corpseEntry = creature->GetEntry();
+                botDist = sServerFacade.GetDistance2d(bot, creature);
+                masterDist = sServerFacade.GetDistance2d(master, creature);
+            }
+        }
+    }
+
+    group_quest_loot::Leash step = group_quest_loot::LeashStep(GroupQuestHold(ai), eligible, corpseGuid, botDist, masterDist,
+        sPlayerbotAIConfig.lootDistance, int64(time(nullptr)));
+    // one line at the start of a hold and one when it expires
+    if (step == group_quest_loot::Leash::Start || step == group_quest_loot::Leash::Expire)
+    {
+        sLog.outBasic("[GroupQuestLoot] bot=%u corpse_guid=%llu entry=%u gate=leash result=%s bot_dist=%.1f master_dist=%.1f",
+            bot->GetGUIDLow(), (unsigned long long)corpseGuid, corpseEntry, step == group_quest_loot::Leash::Start ? "hold" : "expired",
+            botDist, masterDist);
+    }
+    // expired: the corpse takes the old rules from now on (GroupQuestLootCorpse is false for it), the loot target is reset, so
+    // FarFromCurrentLootTrigger / LootAction / "move to loot" do not pull the bot back against "follow"
+    if (step == group_quest_loot::Leash::Expire)
+        context->GetValue<LootObject>("loot target")->Set(LootObject());
+    return group_quest_loot::LeashQuiet(step);
+}
+
 bool LootAvailableTrigger::IsActive()
 {
     return AI_VALUE(bool, "has available loot") &&
@@ -37,7 +126,10 @@ bool FarFromCurrentLootTrigger::IsActive()
         Creature* creature = ai->GetCreature(loot.guid);
         if (creature && sServerFacade.GetDeathState(creature) == CORPSE)
         {
-            float safeRange = sPlayerbotAIConfig.followDistance + bot->GetMaxLootDistance(creature);
+            // twow-repo#780 (c) (Loot.GroupQuestLoot): a quest corpse is kept while the player is within LootDistance of it;
+            // the leash (d) stays quiet for it. Key 0 or any other corpse: followDistance + loot distance as before.
+            float safeRange = group_quest_loot::MasterBound(GroupQuestLootCorpse(ai, bot, creature), sPlayerbotAIConfig.followDistance,
+                bot->GetMaxLootDistance(creature), sPlayerbotAIConfig.lootDistance);
             if (sServerFacade.GetDistance2d(master, creature) > safeRange)
                 return false;
         }
