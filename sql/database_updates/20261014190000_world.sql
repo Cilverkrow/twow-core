@@ -16,7 +16,8 @@
 --   2990015 62719 Markus Farwind       Theramore, owner position in front of the bench (owner GM check 2, 22.11.2026)
 --   2990016 62726 Zalsu the Wanderer   Tanaris coast, open point of his OctoWoW wander path, random walk 10 yd
 --                                      (the first path point lay between rocks; owner GM check 11.11.2026)
---   2990017 62741 Rethevus             Moonglade
+--   2990017 (free) Rethevus 62741 left out: invisible in owner GM check 3 (26.11.2026); druid-only quests 41860/41861,
+--                                      position open (barrow den or script spawn), tracked in twow-repo#579
 --   2990018 62797 Grakk Windtamer      Arathi Highlands
 --   2990019 63099 Pargan Starstrider   Bloodhoof Village, Mulgore
 --   2990020 63160 Sentinel Velaya      Azshara
@@ -37,7 +38,6 @@ INSERT INTO `tmp_spawn_579` (`guid`, `id`, `map`, `x`, `y`, `z`, `o`, `wander`, 
     (2990014, 62700, 1, -7842.0, -2088.0, -271.8, 1.3808, 0, 0),
     (2990015, 62719, 1, -3853.34, -4433.48, 10.41, 5.5002, 0, 0),
     (2990016, 62726, 1, -7443.0, -2945.0, 9.57, 5.5795, 10, 1),
-    (2990017, 62741, 1, 7775.76, -2895.51, 466.09, 1.7373, 0, 0),
     (2990018, 62797, 0, -1468.0, -2617.0, 48.6, 4.1707, 0, 0),
     (2990019, 63099, 1, -2304.0, -455.0, -5.36, 2.9056, 0, 0),
     (2990020, 63160, 1, 2694.0, -3888.0, 109.25, 2.4138, 0, 0),
@@ -66,6 +66,6 @@ UPDATE `creature` SET `position_x` = -3853.34, `position_y` = -4433.48, `positio
 CREATE TEMPORARY TABLE IF NOT EXISTS `tmp_check_579b` (`ok` TINYINT(1) NOT NULL CHECK (`ok` = 1));
 INSERT INTO `tmp_check_579b` (`ok`)
 SELECT (SELECT COUNT(*) FROM `tmp_spawn_579` s
-         WHERE (SELECT COUNT(*) FROM `creature` c WHERE c.`id` = s.`id`) >= 1) = 10
+         WHERE (SELECT COUNT(*) FROM `creature` c WHERE c.`id` = s.`id`) >= 1) = 9
    AND (SELECT COUNT(*) FROM `creature` c JOIN `tmp_spawn_579` s ON s.`guid` = c.`guid`
          WHERE c.`id` <> s.`id`) = 0;
