@@ -525,6 +525,7 @@ bool PlayerbotAIConfig::Initialize()
     parkHideFromBots = config.GetBoolDefault("AiPlayerbot.Park.HideFromBots", false);
     buffRealPlayerStyle = config.GetBoolDefault("AiPlayerbot.Buff.RealPlayerStyle", false);
     buffStrangerCooldownSeconds = uint32(std::max<int32>(0, config.GetIntDefault("AiPlayerbot.Buff.StrangerCooldownSeconds", 900)));
+    lootGroupQuestLoot = config.GetBoolDefault("AiPlayerbot.Loot.GroupQuestLoot", false);   // twow-repo#780
     lootHoldTravelWhileLootable = config.GetBoolDefault("AiPlayerbot.Loot.HoldTravelWhileLootable", false);   // twow-repo#575 H1
     lootHoldTravelWhileLootableMaxSeconds = ai::loot_hold::ClampMaxSeconds(config.GetIntDefault("AiPlayerbot.Loot.HoldTravelWhileLootable.MaxSeconds", int(ai::loot_hold::DefaultMaxSeconds)));   // twow-repo#575 H1
     lootMoveGiveUp = config.GetIntDefault("AiPlayerbot.Loot.MoveGiveUp", 1);   // twow-repo#703 item 3 (default 1 since 703H u3 ADOPT; 0 = rollback)
@@ -2504,6 +2505,7 @@ bool PlayerbotAIConfig::Initialize()
             {"GrindAvoid.Lever", Value(grindAvoidLever)},
             {"GrindAvoid.Lever.MaxDeaths", Value(grindAvoidLeverMaxDeaths)},
             {"LogInGroupOnly", Value(logInGroupOnly)},
+            {"Loot.GroupQuestLoot", Value(lootGroupQuestLoot)},
             {"Loot.HoldTravelWhileLootable", Value(lootHoldTravelWhileLootable)},
             {"Loot.HoldTravelWhileLootable.MaxSeconds", Value(lootHoldTravelWhileLootableMaxSeconds)},
             {"Loot.MoveGiveUp", Value(lootMoveGiveUp)},

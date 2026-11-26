@@ -14,6 +14,7 @@
 #include "playerbot/ServerFacade.h"
 #include "playerbot/strategy/values/SharedValueContext.h"
 #include "playerbot/strategy/triggers/ProfessionUseTriggers.h"
+#include "playerbot/strategy/triggers/LootTriggers.h"   // twow-repo#780: GroupQuestLootCorpse, GroupQuestLootPolicy.h
 
 
 using namespace ai;
@@ -35,7 +36,10 @@ bool LootAction::Execute(Event& event)
             Creature* c = ai->GetCreature(candidate.guid);
             if (c && sServerFacade.GetDeathState(c) == CORPSE)
             {
-                float safeRange = sPlayerbotAIConfig.followDistance + bot->GetMaxLootDistance(c);
+                // twow-repo#780 (c') (Loot.GroupQuestLoot): a quest corpse of this bot is picked while the player is within
+                // LootDistance of it (the same bound as FarFromCurrentLootTrigger). Key 0 or any other corpse: as before.
+                float safeRange = group_quest_loot::MasterBound(GroupQuestLootCorpse(ai, bot, c), sPlayerbotAIConfig.followDistance,
+                    bot->GetMaxLootDistance(c), sPlayerbotAIConfig.lootDistance);
                 if (sServerFacade.GetDistance2d(master, c) > safeRange)
                     continue;
             }

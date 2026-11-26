@@ -6,6 +6,8 @@
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/ServerFacade.h"
 #include "playerbot/ProfessionUsePolicy.h"
+#include "playerbot/GroupQuestLootPolicy.h"   // twow-repo#780: Loot.GroupQuestLoot
+#include "playerbot/strategy/triggers/LootTriggers.h"   // twow-repo#780: GroupQuestLootCorpse
 #include "playerbot/strategy/triggers/ProfessionUseTriggers.h"
 
 #include "Maps/GridNotifiers.h"
@@ -162,7 +164,26 @@ bool AddAllLootAction::AddLoot(Player* requester, ObjectGuid guid)
 
     float botDist = sServerFacade.GetDistance2d(bot, wo);
     float masterDist = sServerFacade.GetDistance2d(requester, wo);
-    if (sServerFacade.IsDistanceGreaterThan(masterDist, lootDistanceToUse))
+
+    // twow-repo#780 (AiPlayerbot.Loot.GroupQuestLoot, GroupQuestLootPolicy.h): a non-leader with an active player master and a
+    // corpse that holds a quest item for this bot - the range from the bot with LootDistance (the player within LootDistance of
+    // the corpse as the leash bound), and only hostiles in combat or within their own aggro range block it. Key 0: the old rules.
+    bool groupQuestCorpse = GroupQuestLootCorpse(ai, bot, wo);
+    bool groupQuestRangeByKey = false;
+    size_t groupQuestHostilesIgnored = 0;
+    if (groupQuestCorpse)
+    {
+        if (!group_quest_loot::QuestCorpseInRange(botDist, masterDist, sPlayerbotAIConfig.lootDistance))
+        {
+            ai->TellDebug(requester, "Quest loot outside of loot range: " + std::to_string(sPlayerbotAIConfig.lootDistance), "debug loot");
+            sLog.outDebug("[BOT LOOT] %s: AddLoot reject guid=%lu (group quest range: botDist=%.1f masterDist=%.1f cap=%.1f)",
+                bot->GetName(), guid.GetRawValue(), botDist, masterDist, sPlayerbotAIConfig.lootDistance);
+            return false;
+        }
+
+        groupQuestRangeByKey = sServerFacade.IsDistanceGreaterThan(masterDist, lootDistanceToUse);
+    }
+    else if (sServerFacade.IsDistanceGreaterThan(masterDist, lootDistanceToUse))
     {
         ai->TellDebug(requester, "Outside of loot range: " + std::to_string(lootDistanceToUse), "debug loot");
         sLog.outDebug("[BOT LOOT] %s: AddLoot reject guid=%lu (range: masterDist=%.1f > cap=%.1f; botDist=%.1f)",
@@ -176,6 +197,19 @@ bool AddAllLootAction::AddLoot(Player* requester, ObjectGuid guid)
     {
         float MOB_AGGRO_DISTANCE = 30.0f;
         std::list<Unit*> hostiles = ai->GetAllHostileNPCNonPetUnitsAroundWO(wo, MOB_AGGRO_DISTANCE);
+
+        // twow-repo#780 (Loot.GroupQuestLoot): for a quest corpse only a hostile in combat or within its own aggro range blocks.
+        if (groupQuestCorpse && !hostiles.empty())
+        {
+            std::list<Unit*> blocking;
+            for (Unit* hostile : hostiles)
+            {
+                if (group_quest_loot::HostileBlocks(hostile->IsInCombat(), hostile->GetDistance(wo, SizeFactor::None), hostile->GetAttackDistance(bot)))
+                    blocking.push_back(hostile);
+            }
+            groupQuestHostilesIgnored = hostiles.size() - blocking.size();
+            hostiles.swap(blocking);
+        }
 
         if (hostiles.size() > 0)
         {
@@ -224,6 +258,11 @@ bool AddAllLootAction::AddLoot(Player* requester, ObjectGuid guid)
     bool added = AI_VALUE(LootObjectStack*, "available loot")->Add(guid);
     sLog.outDebug("[BOT LOOT] %s: AddLoot queued guid=%lu (botDist=%.1f masterDist=%.1f cap=%.1f added=%d)",
         bot->GetName(), guid.GetRawValue(), botDist, masterDist, lootDistanceToUse, added ? 1 : 0);
+    // twow-repo#780 (Loot.GroupQuestLoot): one effect line per corpse and bot that the old rules would have rejected.
+    if (added && (groupQuestRangeByKey || groupQuestHostilesIgnored > 0) && groupQuestLootSeen.Insert(guid.GetRawValue()))
+        sLog.outBasic("[GroupQuestLoot] bot=%u corpse=%u entry=%u gate=add range_by_key=%u hostiles_ignored=%u bot_dist=%.1f master_dist=%.1f",
+            bot->GetGUIDLow(), wo->GetGUIDLow(), wo->GetEntry(), groupQuestRangeByKey ? 1u : 0u, uint32(groupQuestHostilesIgnored),
+            botDist, masterDist);
     return added;
 }
 
