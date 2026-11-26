@@ -3,6 +3,8 @@
 #include "ShareQuestAction.h"
 #include "playerbot/QuestGroupWorld.h"
 #include "playerbot/GroupManagerView.h"   // A3 step 6 T30-1: a manager QUEST group shares nothing either (3.6)
+#include "playerbot/CatchupLevelPolicy.h" // #340 owner 26.11.2026: green quests also for bots above the master
+#include "Formulas.h"                     // MaNGOS::XP::GetGrayLevel for the grey check
 
 using namespace ai;
 
@@ -92,7 +94,9 @@ CatchupResult CatchupQuestAction::Admit(Player* bot, Player* master, Player* req
         return CatchupResult::RAID;
     if (!bot->IsAtGroupRewardDistance(master))
         return CatchupResult::TOO_FAR;
-    if (master->GetLevel() < bot->GetLevel() || master->GetLevel() - bot->GetLevel() > 8)
+    // Owner 26.11.2026: up to 8 below the master, or above him while the quest is not grey for the bot.
+    if (!catchup_level::Admits(master->GetLevel(), bot->GetLevel(), int32(quest->GetQuestLevel()),
+            MaNGOS::XP::GetGrayLevel(bot->GetLevel())))
         return CatchupResult::LEVEL_WINDOW;
 
     // Never alter existing progress.
