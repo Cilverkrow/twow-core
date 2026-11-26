@@ -64,7 +64,7 @@ bool ai::GroupQuestLootLeashQuiet(PlayerbotAI* ai, Player* bot)
     float botDist = 0.0f;
     float masterDist = 0.0f;
     Player* master = ai->GetMaster();
-    if (master && master != bot && master->IsInWorld() && master->GetMap() == bot->GetMap() && !bot->IsInCombat())
+    if (master && master != bot && bot->IsInWorld() && master->IsInWorld() && master->GetMap() == bot->GetMap() && !bot->IsInCombat())
     {
         LootObject loot = AI_VALUE(LootObject, "loot target");
         if (!loot.IsEmpty() && loot.IsLootPossible(bot))

@@ -163,7 +163,7 @@ require_text("${leash_cls}" "            if (AI_VALUE(bool, \"can free move\"))\
 require_text("${leash_cls}" "            if (sPlayerbotAIConfig.lootGroupQuestLoot && GroupQuestLootLeashQuiet(ai, bot))\n                return false;\n            return true;" "key before the helper, else as before")
 forbid_text("${leash_cls}" "group_quest_loot::Hold" "no hold state in the trigger (the hold lives in LootObjectStack)")
 region("${loot_trig_cpp}" "bool ai::GroupQuestLootLeashQuiet(PlayerbotAI* ai, Player* bot)" "\n}\n" leash_fn)
-require_text("${leash_fn}" "master->IsInWorld() && master->GetMap() == bot->GetMap() && !bot->IsInCombat()" "same-Map guard, not in combat")
+require_text("${leash_fn}" "bot->IsInWorld() && master->IsInWorld() && master->GetMap() == bot->GetMap() && !bot->IsInCombat()" "both in world (GetMap asserts mid-teleport), same-Map guard, not in combat")
 require_text("${leash_fn}" "sServerFacade.GetDeathState(creature) == CORPSE && GroupQuestLootEligible(ai, bot, creature)" "a quest corpse only (the hold decides expiry)")
 require_text("${leash_fn}" "group_quest_loot::LeashStep(GroupQuestHold(ai), eligible, corpseGuid, botDist, masterDist,\n        sPlayerbotAIConfig.lootDistance, int64(time(nullptr)));" "the policy decides with LootDistance")
 require_text("${leash_fn}" "    if (step == group_quest_loot::Leash::Expire)\n        context->GetValue<LootObject>(\"loot target\")->Set(LootObject());" "expiry resets the loot target (no follow / loot oscillation)")
