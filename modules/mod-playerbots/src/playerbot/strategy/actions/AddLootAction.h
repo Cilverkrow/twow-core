@@ -1,5 +1,6 @@
 #pragma once
 #include "GenericActions.h"
+#include "playerbot/GroupQuestLootPolicy.h"   // twow-repo#780: Loot.GroupQuestLoot
 
 namespace ai
 {
@@ -33,6 +34,7 @@ namespace ai
     protected:
         virtual bool AddLoot(Player* requester, ObjectGuid guid);
         virtual bool Execute(Event& event) override;
+        group_quest_loot::Seen groupQuestLootSeen;   // twow-repo#780: the corpses this bot logged a [GroupQuestLoot] gate=add line for
 
 #ifdef GenerateBotHelp
         virtual std::string GetHelpName() { return "add all loot"; }

@@ -2,6 +2,7 @@
 #include "playerbot.h"
 #include "playerbot/GatheringPacePolicy.h"   // twow-repo#333 T28b (AiPlayerbot.Gathering.PaceReach)
 #include "playerbot/LootGiveUpPolicy.h"   // twow-repo#703 item 3 (AiPlayerbot.Loot.MoveGiveUp)
+#include "playerbot/GroupQuestLootPolicy.h"   // twow-repo#780 (AiPlayerbot.Loot.GroupQuestLoot)
 
 class PlayerbotAI;
 
@@ -72,6 +73,9 @@ namespace ai
         // travel / rpg pauses) offers it. Both read and written on the bot's own thread.
         loot_giveup::Try& MoveTry() { return moveTry; }
         void GiveUp(ObjectGuid guid, int64 now);
+        // twow-repo#780 (AiPlayerbot.Loot.GroupQuestLoot, GroupQuestLootPolicy.h): this bot's leash hold of its quest corpse;
+        // written only by the "out of free move range" hook, read by GroupQuestLootCorpse; the bot's own thread.
+        group_quest_loot::Hold& GroupQuestHold() { return groupQuestHold; }
 
     private:
         bool PaceFarOk(PlayerbotAI* ai, LootObject& lootObject, uint32 now);
@@ -81,6 +85,7 @@ namespace ai
         gathering_pace::State pace;
         loot_giveup::BlockList giveUp;   // twow-repo#703 item 3: filled only by GiveUp, so empty with the key 0
         loot_giveup::Try moveTry;
+        group_quest_loot::Hold groupQuestHold;   // twow-repo#780: untouched with the key 0
     };
 
     // twow-repo#333 T28b (AiPlayerbot.Gathering.PaceReach, GatheringPacePolicy.h). The callers test the key first.
