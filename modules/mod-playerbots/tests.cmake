@@ -1422,6 +1422,21 @@ add_test(NAME loot_giveup_policy
   COMMAND loot_giveup_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#780 (bug fix, code default 0 until the owner group test): AiPlayerbot.Loot.GroupQuestLoot, group bots with a player
+# master loot their own quest items (GroupQuestLootPolicy.h); source contract in t/contracts.d.
+add_executable(group_quest_loot_policy_tests
+  "${PB_MODULE_DIR}/t/group_quest_loot_policy_tests.cpp")
+
+target_include_directories(group_quest_loot_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(group_quest_loot_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME group_quest_loot_policy
+  COMMAND group_quest_loot_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # twow-repo#575 H3: Revive.DelayResurrectRequest mode (guid bit 1, orthogonal to the cohort parity).
 add_executable(resurrect_delay_policy_tests
   "${PB_MODULE_DIR}/t/resurrect_delay_policy_tests.cpp")

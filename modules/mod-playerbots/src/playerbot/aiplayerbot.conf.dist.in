@@ -224,6 +224,19 @@ AiPlayerbot.Buff.StrangerCooldownSeconds = 900
 # premade path; 0 = a coin on every check (old).
 AiPlayerbot.Loot.RoleWeights = 0
 AiPlayerbot.Loot.FeralFixedSpec = 1
+# twow-repo#780 (BUG FIX, group bots never loot their quest items; owner group test realm C, Westfall quest 40471: player 10/10,
+# bots 0/10): a bot in a group with an active player master loots its own quest items. Only party-loot quest drops count
+# (ITEM_FLAG_PARTY_LOOT: every group member gets its own copy, so the bot takes nothing from the player) that the bot still needs.
+# Four gates blocked it: any live hostile within 30 yd of the corpse, a 10 yd cap measured from the player
+# (GroupMemberLootDistanceWithActiveMaster), the FollowDistance + loot distance bound of the loot target pick, and the follow
+# leash (FollowDistance). With 1, and only for such a corpse: a hostile blocks only if it is in combat or its own aggro range
+# (+ 2 yd) reaches the corpse; the corpse must lie within LootDistance of the bot and the player within LootDistance of the
+# corpse; while that corpse is the loot target the leash stays quiet (not in combat, at most 30 s of quiet time per corpse, a
+# fight counts at most 5 s); then the bot drops it, the corpse takes the old rules for this bot and "follow" acts as before.
+# Every other corpse keeps the old rules.
+# One [GroupQuestLoot] line per accepted corpse and per leash hold / expiry. 0 = as before (default until the owner test;
+# then 1, 0 = rollback).
+AiPlayerbot.Loot.GroupQuestLoot = 0
 # twow-repo#575 H1 (BUG FIX, loot ping-pong; A3-HARM-UPSTREAM, OB-00 09.11.2026; heal branch CLI-ROT): "move to rpg target",
 # "move to travel target" and the heal of the rpg target stand back while the bot's loot target is still open: set, within
 # LootDistance of the bot and still lootable. Before, they stood back only while the "available loot" list offered loot; that
