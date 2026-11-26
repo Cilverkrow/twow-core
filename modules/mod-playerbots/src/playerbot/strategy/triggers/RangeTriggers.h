@@ -12,11 +12,13 @@
 namespace ai
 {
     // twow-repo#602 ROT-01 3c-B (AiPlayerbot.Rotation.OomBackoff, OomBackoffPolicy.h): a priest, mage or warlock below the
-    // "no mana" mark without a wand in the ranged slot fights in melee instead of standing still.
+    // "no mana" mark without a wand in the ranged slot fights in melee instead of standing still. I-1 (Rotation.PriestOomMelee):
+    // the same fallback for priests alone, without the backoff.
     inline bool OomMeleeFallback(PlayerbotAI* ai, AiObjectContext* context)
     {
         Player* const bot = ai->GetBot();
-        if (!ai::oom_backoff::Applies(sPlayerbotAIConfig.rotationOomBackoff, bot->GetGUIDLow()))
+        if (!ai::oom_backoff::MeleeArmed(sPlayerbotAIConfig.rotationOomBackoff, sPlayerbotAIConfig.rotationPriestOomMelee,
+                bot->getClass(), bot->GetGUIDLow()))
             return false;
         Item const* const ranged = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_RANGED);
         bool const hasWand = ranged && ranged->GetProto()->Class == ITEM_CLASS_WEAPON && ranged->GetProto()->SubClass == ITEM_SUBCLASS_WEAPON_WAND;
@@ -33,7 +35,11 @@ namespace ai
         {
             if (!AI_VALUE(Unit*, "current target") || !OomMeleeFallback(ai, context))
                 return false;
-            ai::oom_backoff::fallback.fetch_add(1, std::memory_order_relaxed);
+            if (ai::oom_backoff::ViaPriestKey(sPlayerbotAIConfig.rotationOomBackoff, sPlayerbotAIConfig.rotationPriestOomMelee,
+                    bot->getClass(), bot->GetGUIDLow()))
+                ai::oom_backoff::priestFallback[ai::oom_backoff::CohortIndex(bot->GetGUIDLow())].fetch_add(1, std::memory_order_relaxed);
+            else
+                ai::oom_backoff::fallback.fetch_add(1, std::memory_order_relaxed);
             return true;
         }
     };
@@ -46,13 +52,17 @@ namespace ai
         virtual bool IsActive() override
         {
             // twow-repo#602 ROT-01 3c-B (AiPlayerbot.Rotation.OomBackoff): an out-of-mana caster in its melee fallback stays in
-            // melee. With the switch off only this test is added.
-            if (!sPlayerbotAIConfig.rotationOomBackoff)
+            // melee. With both switches off (OomBackoff, I-1 PriestOomMelee) only this test is added.
+            if (!sPlayerbotAIConfig.rotationOomBackoff && !sPlayerbotAIConfig.rotationPriestOomMelee)
                 return TooClose();
             bool const tooClose = TooClose();
             if (tooClose && OomMeleeFallback(ai, context))
             {
-                ai::oom_backoff::stayed.fetch_add(1, std::memory_order_relaxed);
+                if (ai::oom_backoff::ViaPriestKey(sPlayerbotAIConfig.rotationOomBackoff, sPlayerbotAIConfig.rotationPriestOomMelee,
+                        bot->getClass(), bot->GetGUIDLow()))
+                    ai::oom_backoff::priestStayed[ai::oom_backoff::CohortIndex(bot->GetGUIDLow())].fetch_add(1, std::memory_order_relaxed);
+                else
+                    ai::oom_backoff::stayed.fetch_add(1, std::memory_order_relaxed);
                 return false;
             }
             return tooClose;

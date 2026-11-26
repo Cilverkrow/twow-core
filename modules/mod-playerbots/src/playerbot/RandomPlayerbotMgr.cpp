@@ -1649,6 +1649,25 @@ void ReportOomBackoff()
         (unsigned long long)ai::oom_backoff::woken.exchange(0, std::memory_order_relaxed));
 }
 
+// twow-repo#602 ROT-01 I-1 (AiPlayerbot.Rotation.PriestOomMelee): one [PriestOomMelee] line per minute while the mode is on,
+// zeros included (a start proves the key by this line) - melee fallback evaluations that fired for priests armed only by
+// this key (fallback), "enemy too close for spell" kept quiet for them (stayed), per cohort (_a even, _b odd low guid: the OFF
+// cohort of a mode 2 / 3 unit must stay 0, the control null). Nothing is written when off.
+void ReportPriestOomMelee()
+{
+    static uint32 lastReport = 0;
+    uint32 const now = uint32(time(nullptr));
+    if (!sPlayerbotAIConfig.rotationPriestOomMelee || now < lastReport + 60)
+        return;
+    lastReport = now;
+    sLog.outBasic("[PriestOomMelee] mode=%u oombackoff=%u fallback_a=%llu fallback_b=%llu stayed_a=%llu stayed_b=%llu",
+        sPlayerbotAIConfig.rotationPriestOomMelee, sPlayerbotAIConfig.rotationOomBackoff,
+        (unsigned long long)ai::oom_backoff::priestFallback[0].exchange(0, std::memory_order_relaxed),
+        (unsigned long long)ai::oom_backoff::priestFallback[1].exchange(0, std::memory_order_relaxed),
+        (unsigned long long)ai::oom_backoff::priestStayed[0].exchange(0, std::memory_order_relaxed),
+        (unsigned long long)ai::oom_backoff::priestStayed[1].exchange(0, std::memory_order_relaxed));
+}
+
 // twow-repo#602 (AiPlayerbot.Rotation.MeleeFleeBreak): one [MeleeFleeBreak] line per minute - "outnumbered" evaluations
 // held for melee bots in a flee loop (held), hold windows started (breaks), and evaluations that still sent such a bot
 // to flee (allowed); with MeleeFleeBreak.Ranged the ranged part of held (held_ranged). Nothing is written when off.
@@ -2288,6 +2307,7 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     ReportKnownSpellNodes();   // twow-repo#602: [KnownSpellNodes] once per minute (AiPlayerbot.Rotation.KnownSpellNodes)
     ai::combat_rule::ReportCombatRule();   // A3 step 5: [CombatRule] once per minute and part (AiPlayerbot.CombatRule.*)
     ReportOomBackoff();   // twow-repo#602 ROT-01 3c-B: [OomBackoff] once per minute (AiPlayerbot.Rotation.OomBackoff)
+    ReportPriestOomMelee();   // twow-repo#602 ROT-01 I-1: [PriestOomMelee] once per minute (AiPlayerbot.Rotation.PriestOomMelee)
     ReportMeleeFleeBreak(); // twow-repo#602: [MeleeFleeBreak] once per minute (AiPlayerbot.Rotation.MeleeFleeBreak)
     ReportFleeAway();       // twow-repo#602 (c): [FleeAway] once per minute (AiPlayerbot.Rotation.FleeAway)
     ReportReachLos();       // twow-repo#594: [ReachLos] once per minute (AiPlayerbot.Rotation.ReachLosClose)

@@ -41,6 +41,26 @@ inline bool OutOfMana(bool hasMana, std::uint32_t manaPct)
     return hasMana && manaPct < NoManaPct;
 }
 
+// twow-repo#602 ROT-01 I-1 (owner decision relayed by OB-00 25.11.2026 "Nahkampf ja"; AiPlayerbot.Rotation.PriestOomMelee,
+// default 0, BEHAVIOUR-CHANGING): the melee fallback alone, for priests only - no backoff wait, mage and warlock unchanged.
+// Mode: 0 off, 1 every bot, 2 cohort B only, 3 cohort A only (CohortPolicy.h opt-in, for a crossover: unit 2 swaps the arm).
+inline bool PriestMeleeApplies(std::uint32_t priestMode, std::uint32_t cls, std::uint32_t guidLow)
+{
+    return cls == ClassPriest && Applies(priestMode, guidLow);
+}
+
+// The melee fallback is armed for this bot by either switch (OomBackoff: priest / mage / warlock; PriestOomMelee: priests).
+inline bool MeleeArmed(std::uint32_t oomMode, std::uint32_t priestMode, std::uint32_t cls, std::uint32_t guidLow)
+{
+    return Applies(oomMode, guidLow) || PriestMeleeApplies(priestMode, cls, guidLow);
+}
+
+// Counter attribution: the [PriestOomMelee] counters take a bot only when OomBackoff does not apply to it.
+inline bool ViaPriestKey(std::uint32_t oomMode, std::uint32_t priestMode, std::uint32_t cls, std::uint32_t guidLow)
+{
+    return !Applies(oomMode, guidLow) && PriestMeleeApplies(priestMode, cls, guidLow);
+}
+
 // Melee fallback: the switch applies, a wand class, out of mana, no wand equipped.
 inline bool MeleeFallback(bool applies, std::uint32_t cls, bool hasMana, std::uint32_t manaPct, bool hasWand)
 {
@@ -73,4 +93,15 @@ inline std::atomic<std::uint64_t> fallback{ 0 };   // "oom melee fallback" evalu
 inline std::atomic<std::uint64_t> stayed{ 0 };     // "enemy too close for spell" evaluations kept quiet for such a bot
 inline std::atomic<std::uint64_t> backoffs{ 0 };   // combat passes followed by the backoff
 inline std::atomic<std::uint64_t> woken{ 0 };      // backoffs ended early (mana back, health low)
+
+// [PriestOomMelee] counters (I-1): the same two events for bots armed only by PriestOomMelee (ViaPriestKey), per cohort
+// (index 0 = A even low guid, 1 = B odd), so the line itself shows the control null of the OFF cohort (OB-10 A7: no [ACTION] lines).
+inline std::atomic<std::uint64_t> priestFallback[2]{ { 0 }, { 0 } };   // "oom melee fallback" evaluations that fired
+inline std::atomic<std::uint64_t> priestStayed[2]{ { 0 }, { 0 } };     // "enemy too close for spell" evaluations kept quiet for such a bot
+
+// Counter index of a bot's cohort: 0 = A, 1 = B (CohortPolicy.h InB).
+inline std::uint32_t CohortIndex(std::uint32_t guidLow)
+{
+    return ai::cohort::InB(guidLow) ? 1u : 0u;
+}
 }

@@ -4669,6 +4669,13 @@ add_test(NAME oom_backoff_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/oom_backoff_source_contract_tests.cmake")
 
+# twow-repo#602 ROT-01 I-1 (AiPlayerbot.Rotation.PriestOomMelee, default 0, behaviour change; owner via OB-00 25.11.2026): the
+# melee fallback alone for out-of-mana priests without a wand; no backoff wait. Unit cases in oom_backoff_policy_tests.cpp.
+add_test(NAME priest_oom_melee_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/priest_oom_melee_source_contract_tests.cmake")
+
 add_executable(oom_backoff_policy_tests
   "${PB_MODULE_DIR}/t/oom_backoff_policy_tests.cpp")
 
