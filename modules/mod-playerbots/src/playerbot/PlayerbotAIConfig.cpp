@@ -716,6 +716,9 @@ bool PlayerbotAIConfig::Initialize()
     if (rotationOomBackoff > 2)
         rotationOomBackoff = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
     rotationOomBackoffDelayMs = config.GetIntDefault("AiPlayerbot.Rotation.OomBackoff.DelayMs", 1000);
+    rotationPriestOomMelee = config.GetIntDefault("AiPlayerbot.Rotation.PriestOomMelee", 0);   // twow-repo#602 ROT-01 I-1
+    if (rotationPriestOomMelee > 3)
+        rotationPriestOomMelee = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B, 3 cohort A: crossover, CohortPolicy.h)
     rotationReachLosClose = config.GetIntDefault("AiPlayerbot.Rotation.ReachLosClose", 0);   // twow-repo#594
     if (rotationReachLosClose > 2)
         rotationReachLosClose = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B)
@@ -2683,6 +2686,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Rotation.MeleeSkipAttacking", Value(rotationMeleeSkipAttacking)},
             {"Rotation.NeverPossibleSkip", Value(rotationNeverPossibleSkip)},
             {"Rotation.OomBackoff", Value(rotationOomBackoff)},
+            {"Rotation.PriestOomMelee", Value(rotationPriestOomMelee)},
             {"Rotation.ReachDropEngagement", Value(rotationReachDropEngagement)},
             {"Rotation.ReachLosClose", Value(rotationReachLosClose)},
             {"Rotation.ReachPlayerMaster", Value(rotationReachPlayerMaster)},
