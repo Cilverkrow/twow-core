@@ -125,9 +125,12 @@ require_text("${policy}" "    if (!eligible || guid == 0 || !QuestCorpseInRange(
 region("${loot_trig_cpp}" "static bool GroupQuestLootEligible(PlayerbotAI* ai, Player* bot, WorldObject* wo)" "\n}\n" elig_fn)
 require_text("${elig_fn}" "    return GroupQuestLootAnyKey() && wo && wo->IsCreature() && bot->GetGroup() && !ai->IsGroupLeader()\n        && GroupQuestLootMasterOk(ai, bot) && HasOwnPartyQuestLoot(bot, (Creature*)wo);" "eligibility: a key first, non-leader, master side, own quest item")
 # twow-repo#627 GRP2030: the master side - a player master only with Loot.GroupQuestLoot (#780 unchanged), a bot master only with
-# Loot.GroupQuestLoot.BotLeader and the manager's QUEST follower role (1); nothing else of another bot is read.
+# Loot.GroupQuestLoot.BotLeader and the manager's QUEST follower role (1), the leader bot on the bot's own Map object (OB-60 P2,
+# masterDist of (c)/(c')); nothing else of another bot is read.
 region("${loot_trig_cpp}" "static bool GroupQuestLootMasterOk(PlayerbotAI* ai, Player* bot)" "\n}\n" master_fn)
-require_text("${master_fn}" "    if (ai->HasActivePlayerMaster())\n        return sPlayerbotAIConfig.lootGroupQuestLoot;\n    return sPlayerbotAIConfig.lootGroupQuestLootBotLeader && group_mgr::QuestRoleOf(bot->GetGUIDLow()) == 1;" "master side: player master #780, bot leader only for a manager QUEST follower")
+require_text("${master_fn}" "    if (ai->HasActivePlayerMaster())\n        return sPlayerbotAIConfig.lootGroupQuestLoot;\n    if (!sPlayerbotAIConfig.lootGroupQuestLootBotLeader || group_mgr::QuestRoleOf(bot->GetGUIDLow()) != 1)\n        return false;" "master side: player master #780, bot leader only for a manager QUEST follower")
+require_text("${master_fn}" "    Player* leader = ai->GetMaster();\n    return leader && leader != bot && bot->IsInWorld() && leader->IsInWorld() && SameMapObject(bot, leader);" "bot leader on the bot's own Map object")
+require_text("${loot_trig_cpp}" "#include \"playerbot/BotSlots.h\"" "SameMapObject include")
 region("${loot_trig_cpp}" "bool ai::GroupQuestLootAnyKey()" "\n}\n" anykey_fn)
 require_text("${anykey_fn}" "    return sPlayerbotAIConfig.lootGroupQuestLoot || sPlayerbotAIConfig.lootGroupQuestLootBotLeader;" "either key")
 region("${loot_trig_cpp}" "bool ai::GroupQuestLootCorpse(PlayerbotAI* ai, Player* bot, WorldObject* wo)" "\n}\n" corpse_fn)
