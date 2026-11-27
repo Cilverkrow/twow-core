@@ -694,6 +694,8 @@ public:
     void PublishDead(std::vector<std::uint32_t>& dead)
     {
         bool const any = !dead.empty();
+        if (!any && !anyDead_.load(std::memory_order_acquire))
+            return;   // nothing dead before or now (lever off): no lock per pass (OB-60 P3); the world thread is the only writer
         {
             std::lock_guard<std::mutex> lock(mutex_);
             dead_.swap(dead);

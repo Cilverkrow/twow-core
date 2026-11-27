@@ -4,6 +4,7 @@
 #include "playerbot/LootObjectStack.h"
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/GroupManagerView.h"   // twow-repo#627 GRP2030: QuestRoleOf (Loot.GroupQuestLoot.BotLeader)
+#include "playerbot/BotSlots.h"   // SameMapObject (BotLeader: the leader bot on the bot's own Map object)
 #include "playerbot/strategy/values/LootValues.h"
 
 #include "playerbot/ServerFacade.h"
@@ -44,12 +45,17 @@ bool ai::GroupQuestLootAnyKey()
 // The master side of the eligibility: Loot.GroupQuestLoot with an active player master (#780), or twow-repo#627 GRP2030
 // Loot.GroupQuestLoot.BotLeader (default 0) for a follower of a manager QUEST group, whose master is the bot leader. The role
 // comes from the manager's view (GroupManagerView.h, 1 = follower; only bots of the manager's cohort can hold it): an ad-hoc or
-// S7 follower without a manager group is not covered. No other bot is read here.
+// S7 follower without a manager group is not covered. The bot leader must stand on the bot's own Map object (OB-60 pre-review
+// 27.11. P2): AddLoot (c) / LootAction (c') measure masterDist to it, and a leader on another Map with matching coordinates would
+// count as near. Only its Map pointer is compared, no other field of the leader is read.
 static bool GroupQuestLootMasterOk(PlayerbotAI* ai, Player* bot)
 {
     if (ai->HasActivePlayerMaster())
         return sPlayerbotAIConfig.lootGroupQuestLoot;
-    return sPlayerbotAIConfig.lootGroupQuestLootBotLeader && group_mgr::QuestRoleOf(bot->GetGUIDLow()) == 1;
+    if (!sPlayerbotAIConfig.lootGroupQuestLootBotLeader || group_mgr::QuestRoleOf(bot->GetGUIDLow()) != 1)
+        return false;
+    Player* leader = ai->GetMaster();
+    return leader && leader != bot && bot->IsInWorld() && leader->IsInWorld() && SameMapObject(bot, leader);
 }
 
 // Eligible without the hold: a key, a non-leader group member with an active player master (or a manager QUEST follower), the
