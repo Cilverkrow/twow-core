@@ -4558,6 +4558,16 @@ AiPlayerbot.Rotation.FleeAway.Scope = 0
 AiPlayerbot.Rotation.OomBackoff = 0
 AiPlayerbot.Rotation.OomBackoff.DelayMs = 1000
 
+# twow-repo#602 ROT-01 I-1 (owner decision relayed by OB-00 25.11.2026: a priest without a wand and without mana goes into
+# melee; BEHAVIOUR-CHANGING): OomBackoff's melee fallback alone, for priests only. A priest (any talent tree) below the "no
+# mana" mark (5 %) without a wand in the ranged slot, with a target, walks into melee and attacks, and "enemy too close for
+# spell" does not send it away from that melee. No backoff wait (that stays Rotation.OomBackoff); mage and warlock unchanged.
+# "[PriestOomMelee] mode= oombackoff= fallback= stayed=" once a minute with the mode on (zeros included). 0 = as before
+# (default), 1 = every priest, 2 = only cohort B (odd low guid), 3 = only cohort A (even low guid; a crossover's second unit).
+# Any other value acts like 0. An A/B of this key keeps
+# Rotation.OomBackoff = 0; with both on, a priest gets the melee fallback from either key and the backoff only from OomBackoff.
+AiPlayerbot.Rotation.PriestOomMelee = 0
+
 # twow-repo#594 (Linalella, QFO-clean 23.10.2026, BUG FIX, profile 1 after the A/B): 1 = a hostile reach target the bot cannot see
 # (line of sight) is chased to min(distance x 0.5, 75 % of the range) instead of 75 % of the range, so a caster standing closer
 # than that walks around the corner until it sees the target (each tick halves the distance again). Without it a priest 20 yd
