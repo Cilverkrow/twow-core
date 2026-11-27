@@ -106,6 +106,16 @@ require_text("${config_cpp}" "            {\"QuestGroups.Enable\", Value(questGr
 require_text("${qg_policy}" "constexpr std::uint32_t QuestTypeElite = 1;" "quest type constants")
 require_text("${dead_policy}" "constexpr std::uint32_t kHoursDefault = 6;" "hours default 6")
 require_text("${dead_policy}" "constexpr std::uint32_t kHoursMax = 48;" "hours max 48")
+# GroupDeadQuestPolicy.h is pure (engine header include, a3s6_t30_directives check_pure allowlist): std headers only, no game names.
+string(REGEX MATCHALL "#include [<\"][^>\"]+[>\"]" dead_includes "${dead_policy}")
+foreach(inc IN LISTS dead_includes)
+  if(NOT inc MATCHES "^#include <(cstdint|unordered_map|vector|algorithm)>$")
+    message(FATAL_ERROR "${TAG}: GroupDeadQuestPolicy.h has a non-pure include: ${inc}")
+  endif()
+endforeach()
+foreach(word "sPlayerbotAIConfig" "sLog" "Player*" "PlayerbotAI" "time(")
+  forbid_text("${dead_policy}" "${word}" "GroupDeadQuestPolicy.h is pure, it names")
+endforeach()
 
 # 2. ReadWish: both levers only for a bot of the manager's cohort; the old rule is BetterWish's group-help branch.
 region("${facts_cpp}" "bool ReadWish(Player* bot, PlayerbotAI* ai, manager_inbox::WishFacts& out)" "\n}\n" wish_fn)
