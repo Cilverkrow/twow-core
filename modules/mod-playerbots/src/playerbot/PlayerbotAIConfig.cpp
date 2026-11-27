@@ -946,11 +946,12 @@ bool PlayerbotAIConfig::Initialize()
         questRescueHomeHubsLevelFloor = 0;
     }
     // twow-repo#575 R2 (OB-10 build OK 22.11.2026): the rescue's start-valley branch and goblin pushes for roster bots (RescueValleyPolicy.h).
-    questRescueStartValleyFix = config.GetIntDefault("AiPlayerbot.QuestRescue.StartValleyFix", 0);
+    // Default 1 since the R2 PASS (owner 27.11.2026); 0 = rollback to the legacy branch.
+    questRescueStartValleyFix = config.GetIntDefault("AiPlayerbot.QuestRescue.StartValleyFix", 1);
     if (questRescueStartValleyFix > 3)
     {
-        sLog.outError("[QuestRescue] config key=StartValleyFix value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", questRescueStartValleyFix);
-        questRescueStartValleyFix = 0;
+        sLog.outError("[QuestRescue] config key=StartValleyFix value=%u result=default 1 (0 off = rollback, 1 all, 2 cohort B, 3 cohort A)", questRescueStartValleyFix);
+        questRescueStartValleyFix = 1;
     }
     grindAvoidMaxDeaths = config.GetIntDefault("AiPlayerbot.GrindAvoid.MaxDeaths", 0);
     grindAvoidWindowSeconds = std::max<uint32>(60, config.GetIntDefault("AiPlayerbot.GrindAvoid.WindowSeconds", 3600));

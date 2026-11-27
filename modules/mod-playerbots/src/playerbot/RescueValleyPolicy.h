@@ -6,7 +6,7 @@
 
 namespace ai::rescue_valley
 {
-// twow-repo#575 R2 rescue start-valley fix (AiPlayerbot.QuestRescue.StartValleyFix, default 0; OB-10 build OK 22.11.2026 via OB-00,
+// twow-repo#575 R2 rescue start-valley fix (AiPlayerbot.QuestRescue.StartValleyFix, default 1 since the R2 PASS, owner 27.11.2026; OB-10 build OK 22.11.2026 via OB-00,
 // scope answers 1-4; finding dauerb-silverpine-20261119/idle-20261122/TRACE-565-2293.txt 4d1371a0). Pure rules, no game types, no
 // config reads, no logging.
 //
