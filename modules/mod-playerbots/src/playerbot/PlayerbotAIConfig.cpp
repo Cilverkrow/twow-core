@@ -1452,7 +1452,7 @@ bool PlayerbotAIConfig::Initialize()
     // twow-repo#601 S3a: feasibility at accept time (QuestFeasibilityPolicy.h), all off by default.
     questFeasibilityEnable = config.GetBoolDefault("AiPlayerbot.QuestFeasibility.Enable", false);
     // twow-repo#750: craft-only quest items (QuestCraftOnlyPolicy.h), its own key; an unknown mode is off.
-    questFeasibilityCraftOnlySkip = config.GetIntDefault("AiPlayerbot.QuestFeasibility.CraftOnlySkip", 0);
+    questFeasibilityCraftOnlySkip = config.GetIntDefault("AiPlayerbot.QuestFeasibility.CraftOnlySkip", 1);
     if (questFeasibilityCraftOnlySkip > 3)
     {
         sLog.outError("[QuestCraftOnly] config key=CraftOnlySkip value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", questFeasibilityCraftOnlySkip);
