@@ -91,13 +91,17 @@ require_text("${policy}" "return s.professionRecipe && !s.otherSpell && !s.loot 
 require_text("${policy}" "if (needs[i].held < needs[i].required)" "the held-count rule")
 forbid_text("${policy}" "skillValue" "a skill-rank criterion (OB-10 Nachtrag 1: holding the count only until W2)")
 
-# ---- 2. Key: own member, clamp > 3, echo between BlocklistWhileNoCustomStarts.count and Enable, dist default 0 -------------
-require_text("${config_h}" "uint32 questFeasibilityCraftOnlySkip = 0;" "the key member")
-require_text("${config_cpp}" "questFeasibilityCraftOnlySkip = config.GetIntDefault(\"AiPlayerbot.QuestFeasibility.CraftOnlySkip\", 0);" "the key load")
+# ---- 2. Key: own member, clamp > 3, echo between BlocklistWhileNoCustomStarts.count and Enable, dist default 1 -------------
+# Default 1 since the CO-ABN acceptance unit (24.11.2026, OB-10 review 166eb313); 0 = rollback.
+require_text("${config_h}" "uint32 questFeasibilityCraftOnlySkip = 1;" "the key member, default 1")
+forbid_text("${config_h}" "uint32 questFeasibilityCraftOnlySkip = 0;" "member default back to off")
+require_text("${config_cpp}" "questFeasibilityCraftOnlySkip = config.GetIntDefault(\"AiPlayerbot.QuestFeasibility.CraftOnlySkip\", 1);" "the key load, default 1")
+forbid_text("${config_cpp}" "questFeasibilityCraftOnlySkip = config.GetIntDefault(\"AiPlayerbot.QuestFeasibility.CraftOnlySkip\", 0);" "loader default back to off")
 require_text("${config_cpp}" "if (questFeasibilityCraftOnlySkip > 3)" "the mode clamp (cohort_mode_a contract)")
 require_order("${config_cpp}" "{\"QuestFeasibility.BlocklistWhileNoCustomStarts.count\"" "{\"QuestFeasibility.CraftOnlySkip\", Value(questFeasibilityCraftOnlySkip)}," "echo after BlocklistWhileNoCustomStarts.count")
 require_order("${config_cpp}" "{\"QuestFeasibility.CraftOnlySkip\", Value(questFeasibilityCraftOnlySkip)}," "{\"QuestFeasibility.Enable\"" "echo before Enable")
-require_text("${conf}" "\nAiPlayerbot.QuestFeasibility.CraftOnlySkip = 0\n" "dist default 0")
+require_text("${conf}" "\nAiPlayerbot.QuestFeasibility.CraftOnlySkip = 1\n" "dist default 1")
+forbid_text("${conf}" "\nAiPlayerbot.QuestFeasibility.CraftOnlySkip = 0\n" "dist default back to off")
 require_text("${config_cpp}" "    if (sPlayerbotAIConfig.questFeasibilityCraftOnlySkip)\n        PlayerbotAI::BuildCraftOnlyQuests();" "start-only build with the key on")
 count_text("${config_cpp}" "BuildCraftOnlyQuests(" 1 "one build site")
 
