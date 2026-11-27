@@ -13,6 +13,8 @@ namespace ai
     // the bot is not in combat, the bound holds, and for at most LeashHoldMaxSeconds per corpse. The hold lives in the bot's
     // LootObjectStack (GroupQuestHold).
     bool GroupQuestLootLeashQuiet(PlayerbotAI* ai, Player* bot);
+    // Loot.GroupQuestLoot or twow-repo#627 GRP2030 Loot.GroupQuestLoot.BotLeader is on (both 0: every #780 path is off).
+    bool GroupQuestLootAnyKey();
 
     class LootAvailableTrigger : public Trigger
     {
