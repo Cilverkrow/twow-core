@@ -34,4 +34,16 @@ inline bool ShouldTell(long long now, long long lastTold, long long intervalSeco
 {
     return lastTold <= 0 || now - lastTold >= intervalSeconds;
 }
+
+// GM check 3 (26.11.2026, C2): the bot asked before the master took a flight,
+// so after landing the 300 s gate kept it silent. A master who moved farther
+// than rearmDistance from where he stood at the last request (flight, port,
+// hearthstone) gets a new request at once. rearmDistance 0 = interval only.
+inline bool ShouldTell(long long now, long long lastTold, long long intervalSeconds,
+    float masterMovedSinceTold, float rearmDistance)
+{
+    if (ShouldTell(now, lastTold, intervalSeconds))
+        return true;
+    return rearmDistance > 0.0f && masterMovedSinceTold > rearmDistance;
+}
 }
