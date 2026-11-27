@@ -3,6 +3,7 @@
 #include "LootTriggers.h"
 #include "playerbot/LootObjectStack.h"
 #include "playerbot/PlayerbotAIConfig.h"
+#include "playerbot/GroupManagerView.h"   // twow-repo#627 GRP2030: QuestRoleOf (Loot.GroupQuestLoot.BotLeader)
 #include "playerbot/strategy/values/LootValues.h"
 
 #include "playerbot/ServerFacade.h"
@@ -35,11 +36,28 @@ static bool HasOwnPartyQuestLoot(Player* bot, Creature* creature)
     return false;
 }
 
-// Eligible without the hold: the key, a non-leader group member with an active player master, the bot's own party quest drop.
+bool ai::GroupQuestLootAnyKey()
+{
+    return sPlayerbotAIConfig.lootGroupQuestLoot || sPlayerbotAIConfig.lootGroupQuestLootBotLeader;
+}
+
+// The master side of the eligibility: Loot.GroupQuestLoot with an active player master (#780), or twow-repo#627 GRP2030
+// Loot.GroupQuestLoot.BotLeader (default 0) for a follower of a manager QUEST group, whose master is the bot leader. The role
+// comes from the manager's view (GroupManagerView.h, 1 = follower; only bots of the manager's cohort can hold it): an ad-hoc or
+// S7 follower without a manager group is not covered. No other bot is read here.
+static bool GroupQuestLootMasterOk(PlayerbotAI* ai, Player* bot)
+{
+    if (ai->HasActivePlayerMaster())
+        return sPlayerbotAIConfig.lootGroupQuestLoot;
+    return sPlayerbotAIConfig.lootGroupQuestLootBotLeader && group_mgr::QuestRoleOf(bot->GetGUIDLow()) == 1;
+}
+
+// Eligible without the hold: a key, a non-leader group member with an active player master (or a manager QUEST follower), the
+// bot's own party quest drop.
 static bool GroupQuestLootEligible(PlayerbotAI* ai, Player* bot, WorldObject* wo)
 {
-    return sPlayerbotAIConfig.lootGroupQuestLoot && wo && wo->IsCreature() && bot->GetGroup() && !ai->IsGroupLeader()
-        && ai->HasActivePlayerMaster() && HasOwnPartyQuestLoot(bot, (Creature*)wo);
+    return GroupQuestLootAnyKey() && wo && wo->IsCreature() && bot->GetGroup() && !ai->IsGroupLeader()
+        && GroupQuestLootMasterOk(ai, bot) && HasOwnPartyQuestLoot(bot, (Creature*)wo);
 }
 
 static group_quest_loot::Hold& GroupQuestHold(PlayerbotAI* ai)

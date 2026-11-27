@@ -237,6 +237,11 @@ AiPlayerbot.Loot.FeralFixedSpec = 1
 # One [GroupQuestLoot] line per accepted corpse and per leash hold / expiry. 0 = as before (default until the owner test;
 # then 1, 0 = rollback).
 AiPlayerbot.Loot.GroupQuestLoot = 0
+# twow-repo#627 GRP2030 (lever, default 0, no behaviour change; OB-00 F2 (A) 27.11.2026): the same #780 rules (own party-loot
+# quest drops only, the same range, hostile and leash bounds and lines) for a follower of a group-manager QUEST group, whose
+# master is the bot leader (BotGroups.Manager.Types bit 2; only bots of the manager's cohort can be such followers). A bot with
+# an active player master keeps following Loot.GroupQuestLoot alone; ad-hoc and S7 followers are not covered.
+AiPlayerbot.Loot.GroupQuestLoot.BotLeader = 0
 # twow-repo#575 H1 (BUG FIX, loot ping-pong; A3-HARM-UPSTREAM, OB-00 09.11.2026; heal branch CLI-ROT): "move to rpg target",
 # "move to travel target" and the heal of the rpg target stand back while the bot's loot target is still open: set, within
 # LootDistance of the bot and still lootable. Before, they stood back only while the "available loot" list offered loot; that

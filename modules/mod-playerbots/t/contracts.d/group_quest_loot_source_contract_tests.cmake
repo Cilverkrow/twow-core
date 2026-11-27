@@ -96,8 +96,14 @@ require_text("${dist}" "\nAiPlayerbot.Loot.GroupQuestLoot = 0\n" "dist default 0
 count_text("${dist}" "AiPlayerbot.Loot.GroupQuestLoot =" 1 "one dist line")
 require_text("${config_h}" "    bool lootGroupQuestLoot = false;" "member default 0")
 require_text("${config_cpp}" "    lootGroupQuestLoot = config.GetBoolDefault(\"AiPlayerbot.Loot.GroupQuestLoot\", false);" "read with default 0")
-require_text("${config_cpp}" "            {\"LogInGroupOnly\", Value(logInGroupOnly)},\n            {\"Loot.GroupQuestLoot\", Value(lootGroupQuestLoot)},\n            {\"Loot.HoldTravelWhileLootable\", Value(lootHoldTravelWhileLootable)}," "[ConfigEcho] entry in sorted place")
+require_text("${config_cpp}" "            {\"LogInGroupOnly\", Value(logInGroupOnly)},\n            {\"Loot.GroupQuestLoot\", Value(lootGroupQuestLoot)},\n            {\"Loot.GroupQuestLoot.BotLeader\", Value(lootGroupQuestLootBotLeader)},\n            {\"Loot.HoldTravelWhileLootable\", Value(lootHoldTravelWhileLootable)}," "[ConfigEcho] entries in sorted place (twow-repo#627 GRP2030 BotLeader after it)")
 count_text("${config_cpp}" "\"AiPlayerbot.Loot.GroupQuestLoot\"" 1 "one config read")
+# twow-repo#627 GRP2030 (lever, default 0): Loot.GroupQuestLoot.BotLeader - dist 0, member 0, read with 0.
+require_text("${dist}" "\nAiPlayerbot.Loot.GroupQuestLoot.BotLeader = 0\n" "BotLeader dist default 0")
+count_text("${dist}" "AiPlayerbot.Loot.GroupQuestLoot.BotLeader =" 1 "one BotLeader dist line")
+require_text("${config_h}" "    bool lootGroupQuestLootBotLeader = false;" "BotLeader member default 0")
+require_text("${config_cpp}" "    lootGroupQuestLootBotLeader = config.GetBoolDefault(\"AiPlayerbot.Loot.GroupQuestLoot.BotLeader\", false);" "BotLeader read with default 0")
+count_text("${config_cpp}" "\"AiPlayerbot.Loot.GroupQuestLoot.BotLeader\"" 1 "one BotLeader config read")
 
 # 2. The policy is pure (only <cstddef> and <cstdint>) and keeps the plan's constants.
 string(REGEX MATCHALL "#include [<\"][^>\"]+[>\"]" policy_includes "${policy}")
@@ -117,7 +123,13 @@ require_text("${policy}" "    if (!eligible || guid == 0 || !QuestCorpseInRange(
 
 # 3. One eligibility helper, key first; the only key reads are the helper and the leash hook.
 region("${loot_trig_cpp}" "static bool GroupQuestLootEligible(PlayerbotAI* ai, Player* bot, WorldObject* wo)" "\n}\n" elig_fn)
-require_text("${elig_fn}" "    return sPlayerbotAIConfig.lootGroupQuestLoot && wo && wo->IsCreature() && bot->GetGroup() && !ai->IsGroupLeader()\n        && ai->HasActivePlayerMaster() && HasOwnPartyQuestLoot(bot, (Creature*)wo);" "eligibility: key first, non-leader, player master, own quest item")
+require_text("${elig_fn}" "    return GroupQuestLootAnyKey() && wo && wo->IsCreature() && bot->GetGroup() && !ai->IsGroupLeader()\n        && GroupQuestLootMasterOk(ai, bot) && HasOwnPartyQuestLoot(bot, (Creature*)wo);" "eligibility: a key first, non-leader, master side, own quest item")
+# twow-repo#627 GRP2030: the master side - a player master only with Loot.GroupQuestLoot (#780 unchanged), a bot master only with
+# Loot.GroupQuestLoot.BotLeader and the manager's QUEST follower role (1); nothing else of another bot is read.
+region("${loot_trig_cpp}" "static bool GroupQuestLootMasterOk(PlayerbotAI* ai, Player* bot)" "\n}\n" master_fn)
+require_text("${master_fn}" "    if (ai->HasActivePlayerMaster())\n        return sPlayerbotAIConfig.lootGroupQuestLoot;\n    return sPlayerbotAIConfig.lootGroupQuestLootBotLeader && group_mgr::QuestRoleOf(bot->GetGUIDLow()) == 1;" "master side: player master #780, bot leader only for a manager QUEST follower")
+region("${loot_trig_cpp}" "bool ai::GroupQuestLootAnyKey()" "\n}\n" anykey_fn)
+require_text("${anykey_fn}" "    return sPlayerbotAIConfig.lootGroupQuestLoot || sPlayerbotAIConfig.lootGroupQuestLootBotLeader;" "either key")
 region("${loot_trig_cpp}" "bool ai::GroupQuestLootCorpse(PlayerbotAI* ai, Player* bot, WorldObject* wo)" "\n}\n" corpse_fn)
 require_text("${corpse_fn}" "    return GroupQuestLootEligible(ai, bot, wo)\n        && !group_quest_loot::HoldExpired(GroupQuestHold(ai), wo->GetObjectGuid().GetRawValue(), int64(time(nullptr)));" "an expired corpse takes the old rules")
 require_text("${loot_trig_cpp}" "    return ai->GetAiObjectContext()->GetValue<LootObjectStack*>(\"available loot\")->Get()->GroupQuestHold();" "the hold lives in the bot's LootObjectStack")
@@ -130,9 +142,12 @@ require_text("${own_fn}" "        LootItem const& item = loot->m_questItems[i];"
 require_text("${own_fn}" "    QuestItemMap const& perPlayer = loot->GetPlayerQuestItems();" "the bot's own looted state")
 require_text("${own_fn}" "group_quest_loot::OwnPartyQuestItem(item.freeforall, item.is_looted, item.AllowedForPlayer(bot, creature), lootedByBot)" "policy inputs")
 forbid_text("${loot_trig_cpp}" "HasQuestItemsInWOLootList" "the shim list has no quest drops")
-count_text("${loot_trig_cpp}" "sPlayerbotAIConfig.lootGroupQuestLoot" 1 "one key read in LootTriggers.cpp")
+# Key reads in LootTriggers.cpp: GroupQuestLootAnyKey (both keys) and GroupQuestLootMasterOk (both keys) only.
+count_text("${loot_trig_cpp}" "sPlayerbotAIConfig.lootGroupQuestLoot" 4 "the key reads in LootTriggers.cpp (AnyKey + MasterOk)")
+count_text("${loot_trig_cpp}" "sPlayerbotAIConfig.lootGroupQuestLootBotLeader" 2 "the BotLeader reads (AnyKey + MasterOk)")
 count_text("${add_loot}" "sPlayerbotAIConfig.lootGroupQuestLoot" 0 "AddLoot reads the key only through the helper")
-count_text("${range_h}" "sPlayerbotAIConfig.lootGroupQuestLoot" 1 "one key read in the leash hook")
+count_text("${range_h}" "sPlayerbotAIConfig.lootGroupQuestLoot" 0 "the leash hook reads the keys only through GroupQuestLootAnyKey")
+require_text("${loot_trig_h}" "    bool GroupQuestLootAnyKey();" "any-key helper declared")
 require_text("${loot_trig_h}" "    bool GroupQuestLootCorpse(PlayerbotAI* ai, Player* bot, WorldObject* wo);" "helper declared")
 require_text("${loot_trig_h}" "    bool GroupQuestLootLeashQuiet(PlayerbotAI* ai, Player* bot);" "leash helper declared")
 
@@ -160,7 +175,7 @@ count_text("${loot_action}" "sPlayerbotAIConfig.lootGroupQuestLoot" 0 "LootActio
 # 6. The leash (d): the old check first, then the key, then the helper; the helper guards the master by Map object, not in combat.
 region("${range_h}" "    class OutOfFreeMoveRangeTrigger : public Trigger" "\n    };\n" leash_cls)
 require_text("${leash_cls}" "            if (AI_VALUE(bool, \"can free move\"))\n                return false;\n" "old check first")
-require_text("${leash_cls}" "            if (sPlayerbotAIConfig.lootGroupQuestLoot && GroupQuestLootLeashQuiet(ai, bot))\n                return false;\n            return true;" "key before the helper, else as before")
+require_text("${leash_cls}" "            if (GroupQuestLootAnyKey() && GroupQuestLootLeashQuiet(ai, bot))\n                return false;\n            return true;" "a key before the helper, else as before")
 forbid_text("${leash_cls}" "group_quest_loot::Hold" "no hold state in the trigger (the hold lives in LootObjectStack)")
 region("${loot_trig_cpp}" "bool ai::GroupQuestLootLeashQuiet(PlayerbotAI* ai, Player* bot)" "\n}\n" leash_fn)
 require_text("${leash_fn}" "bot->IsInWorld() && master->IsInWorld() && master->GetMap() == bot->GetMap() && !bot->IsInCombat()" "both in world (GetMap asserts mid-teleport), same-Map guard, not in combat")
