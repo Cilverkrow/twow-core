@@ -7784,7 +7784,7 @@ std::vector<WorldLocation> RandomPlayerbotMgr::QuestRescueTargets(Player* bot)
     // keep the legacy targets.
     PlayerbotAI* const rescueAi = GetBotAI(bot);
     bool const startZoneRules = IsPersistentRosterMember(bot->GetGUIDLow()) && !(rescueAi && rescueAi->HasRealPlayerMaster());
-    // twow-repo#575 R2 (AiPlayerbot.QuestRescue.StartValleyFix, default 0, RescueValleyPolicy.h): for roster bots only; 0 = the legacy
+    // twow-repo#575 R2 (AiPlayerbot.QuestRescue.StartValleyFix, default 1, RescueValleyPolicy.h): for roster bots only; 0 = the legacy
     // start-valley branch and goblin pushes below, unchanged.
     bool const valleyFix = startZoneRules && ai::cohort::Applies(sPlayerbotAIConfig.questRescueStartValleyFix, bot->GetGUIDLow());
 
