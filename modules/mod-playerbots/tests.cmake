@@ -2276,6 +2276,21 @@ add_test(NAME quest_catchup_source_contract
     "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
     -P "${PB_MODULE_DIR}/t/quest_catchup_source_contract_tests.cmake")
 
+# #340 owner 26.11.2026: catch-up share window - up to 8 below the master, above him
+# while the quest is not grey for the bot (grey edge from GM check 3).
+add_executable(catchup_level_policy_tests
+  "${PB_MODULE_DIR}/t/catchup_level_policy_tests.cpp")
+
+target_include_directories(catchup_level_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(catchup_level_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME catchup_level_policy
+  COMMAND catchup_level_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # #379: the factory's race/class allow-list (incl. dwarf shaman, undead paladin),
 # backed by playercreateinfo data, and a group fill that asks the factory.
 add_test(NAME race_class_availability_source_contract
