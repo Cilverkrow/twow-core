@@ -1246,7 +1246,7 @@ public:
     bool questFeasibilityEnable = false;
     // twow-repo#750 (QuestCraftOnlyPolicy.h; OB-10 840bcbdf / be58c794): its own key, outside Enable / S3Cohort. 0 off, 1 all,
     // 2 cohort B, 3 cohort A; > 3 = 0 with an error line. Restart-only (the craft-only data is built at start only with it on).
-    uint32 questFeasibilityCraftOnlySkip = 0;
+    uint32 questFeasibilityCraftOnlySkip = 1;
     std::set<uint32> questFeasibilityBlocklist;
     std::set<uint32> questFeasibilityBlocklistWhileNoCustomStarts;  // only while customRaceStartZones = false
     bool questFeasibilitySoloSkipGroupQuests = false;  // Type 1 / 81 / 62 or SuggestedPlayers >= 2, bot not in a group

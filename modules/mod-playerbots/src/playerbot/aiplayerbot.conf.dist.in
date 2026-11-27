@@ -2311,8 +2311,9 @@ AiPlayerbot.QuestFeasibility.Enable = 0
 # once per build, [QuestFeasibility] state=skip|held
 # ... reason=craft_only path=accept|giver|held item= held= required= once per bot, quest and path an hour,
 # [QuestCraftOnly] minute skips= giver_inactive= held_craft_only= once a minute.
-# 0 = off (default), 1 = all, 2 = cohort B (odd low guid), 3 = cohort A (even low guid); anything else = off.
-AiPlayerbot.QuestFeasibility.CraftOnlySkip = 0
+# 0 = off (rollback), 1 = all (default since the CO-ABN acceptance unit 24.11.2026), 2 = cohort B (odd low guid),
+# 3 = cohort A (even low guid); anything else = off.
+AiPlayerbot.QuestFeasibility.CraftOnlySkip = 1
 # Blocklist (acts only with Enable = 1): a comma list of quest ids (decimal, > 0, at most 512; anything else is
 # ignored). The profile carries the list. Empty = none (default).
 AiPlayerbot.QuestFeasibility.Blocklist =
