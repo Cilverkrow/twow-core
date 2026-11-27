@@ -1,0 +1,150 @@
+# twow-repo#627 GRP2030 dose levers 1 and 2 of the group manager (OB-00 (A) 27.11.2026; default 0 = no behaviour change):
+# AiPlayerbot.QuestGroups.Manager.WishScope (a normal quest may be a bot's manager group wish) and
+# AiPlayerbot.QuestGroups.Manager.DeadQuestEnds / DeadQuestHours (a quest whose QUEST groups end N times in a row without any
+# progress is dead for H hours: no candidate, the cohort's bots wish another quest).
+# This contract pins the keys (dist, member, read, [ConfigEcho] sorted), the cohort binding of both levers in ReadWish
+# (group_mgr::OwnsBot, the other cohort keeps the old wish), the old wish rule kept for scope 0 (BetterWish), the dead-quest
+# store in the engine (counted only for QUEST groups, published to the bots' view, also checked in QuestBlocked), the line
+# format and the unit test.
+
+cmake_policy(VERSION 3.16)
+
+set(TAG "GRP2030 dose levers")
+
+if(NOT DEFINED PB_SOURCE_DIR OR NOT DEFINED PB_MODULE_DIR)
+  message(FATAL_ERROR "${TAG}: PB_SOURCE_DIR and PB_MODULE_DIR are required")
+endif()
+
+function(read_source path out_var)
+  if(NOT EXISTS "${path}")
+    message(FATAL_ERROR "${TAG}: missing source ${path}")
+  endif()
+  file(READ "${path}" text)
+  string(REPLACE "\r" "" text "${text}")
+  set(${out_var} "${text}" PARENT_SCOPE)
+endfunction()
+
+function(require_text text needle description)
+  string(FIND "${text}" "${needle}" offset)
+  if(offset EQUAL -1)
+    message(FATAL_ERROR "${TAG}: missing ${description}: ${needle}")
+  endif()
+endfunction()
+
+function(forbid_text text needle description)
+  string(FIND "${text}" "${needle}" offset)
+  if(NOT offset EQUAL -1)
+    message(FATAL_ERROR "${TAG}: ${description}: ${needle}")
+  endif()
+endfunction()
+
+function(require_order text first second description)
+  string(FIND "${text}" "${first}" a)
+  string(FIND "${text}" "${second}" b)
+  if(a EQUAL -1 OR b EQUAL -1 OR NOT a LESS b)
+    message(FATAL_ERROR "${TAG}: order ${description}: '${first}' must come before '${second}'")
+  endif()
+endfunction()
+
+function(count_text text needle expected description)
+  set(rest "${text}")
+  set(n 0)
+  string(LENGTH "${needle}" len)
+  while(TRUE)
+    string(FIND "${rest}" "${needle}" at)
+    if(at EQUAL -1)
+      break()
+    endif()
+    math(EXPR n "${n} + 1")
+    math(EXPR cut "${at} + ${len}")
+    string(SUBSTRING "${rest}" ${cut} -1 rest)
+  endwhile()
+  if(NOT n EQUAL expected)
+    message(FATAL_ERROR "${TAG}: ${description}: expected ${expected}, found ${n}: ${needle}")
+  endif()
+endfunction()
+
+function(region text start end out_var)
+  string(FIND "${text}" "${start}" a)
+  if(a EQUAL -1)
+    message(FATAL_ERROR "${TAG}: region start not found: ${start}")
+  endif()
+  string(SUBSTRING "${text}" ${a} -1 tail)
+  string(FIND "${tail}" "${end}" b)
+  if(b EQUAL -1)
+    message(FATAL_ERROR "${TAG}: region end not found after: ${start}")
+  endif()
+  string(LENGTH "${end}" elen)
+  math(EXPR blen "${b} + ${elen}")
+  string(SUBSTRING "${tail}" 0 ${blen} part)
+  set(${out_var} "${part}" PARENT_SCOPE)
+endfunction()
+
+read_source("${PB_SOURCE_DIR}/PlayerbotAIConfig.h" config_h)
+read_source("${PB_SOURCE_DIR}/PlayerbotAIConfig.cpp" config_cpp)
+read_source("${PB_SOURCE_DIR}/aiplayerbot.conf.dist.in" dist)
+read_source("${PB_SOURCE_DIR}/ManagerFacts.cpp" facts_cpp)
+read_source("${PB_SOURCE_DIR}/QuestGroupPolicy.h" qg_policy)
+read_source("${PB_SOURCE_DIR}/GroupDeadQuestPolicy.h" dead_policy)
+read_source("${PB_SOURCE_DIR}/GroupDirectivePolicy.h" engine)
+read_source("${PB_SOURCE_DIR}/GroupManager.cpp" mgr_cpp)
+read_source("${PB_SOURCE_DIR}/GroupManagerView.h" view_h)
+read_source("${PB_MODULE_DIR}/tests.cmake" tests)
+
+# 1. The keys: default 0 / 0 / 6, one read each, [ConfigEcho] sorted right after QuestGroups.Enable.
+require_text("${dist}" "\nAiPlayerbot.QuestGroups.Manager.WishScope = 0\nAiPlayerbot.QuestGroups.Manager.DeadQuestEnds = 0\nAiPlayerbot.QuestGroups.Manager.DeadQuestHours = 6\n" "dist defaults (0, 0, 6)")
+require_text("${config_h}" "    uint32 questGroupsManagerWishScope = 0;\n    uint32 questGroupsManagerDeadQuestEnds = 0;\n    uint32 questGroupsManagerDeadQuestHours = 6;" "member defaults")
+require_text("${config_cpp}" "    questGroupsManagerWishScope = uint32(config.GetIntDefault(\"AiPlayerbot.QuestGroups.Manager.WishScope\", 0));" "WishScope read with 0")
+require_text("${config_cpp}" "    questGroupsManagerDeadQuestEnds = uint32(config.GetIntDefault(\"AiPlayerbot.QuestGroups.Manager.DeadQuestEnds\", 0));" "DeadQuestEnds read with 0")
+require_text("${config_cpp}" "    questGroupsManagerDeadQuestHours = uint32(config.GetIntDefault(\"AiPlayerbot.QuestGroups.Manager.DeadQuestHours\", int32(ai::dead_quest::kHoursDefault)));" "DeadQuestHours read with the default")
+require_text("${config_cpp}" "        questGroupsManagerDeadQuestHours = ai::dead_quest::ClampHours(hoursRaw);" "hours clamp")
+foreach(key WishScope DeadQuestEnds DeadQuestHours)
+  count_text("${config_cpp}" "\"AiPlayerbot.QuestGroups.Manager.${key}\"" 1 "one read of ${key}")
+  count_text("${dist}" "AiPlayerbot.QuestGroups.Manager.${key} =" 1 "one dist line of ${key}")
+endforeach()
+require_text("${config_cpp}" "            {\"QuestGroups.Enable\", Value(questGroupsEnable)},\n            {\"QuestGroups.Manager.DeadQuestEnds\", Value(questGroupsManagerDeadQuestEnds)},\n            {\"QuestGroups.Manager.DeadQuestHours\", Value(questGroupsManagerDeadQuestHours)},\n            {\"QuestGroups.Manager.WishScope\", Value(questGroupsManagerWishScope)},\n            {\"QuestGroups.OneHeavyStep\", Value(questGroupsOneHeavyStep)}," "[ConfigEcho] entries in sorted place")
+require_text("${qg_policy}" "constexpr std::uint32_t QuestTypeElite = 1;" "quest type constants")
+require_text("${dead_policy}" "constexpr std::uint32_t kHoursDefault = 6;" "hours default 6")
+require_text("${dead_policy}" "constexpr std::uint32_t kHoursMax = 48;" "hours max 48")
+
+# 2. ReadWish: both levers only for a bot of the manager's cohort; the old rule is BetterWish's group-help branch.
+region("${facts_cpp}" "bool ReadWish(Player* bot, PlayerbotAI* ai, manager_inbox::WishFacts& out)" "\n}\n" wish_fn)
+require_text("${wish_fn}" "    bool const owned = (sPlayerbotAIConfig.questGroupsManagerWishScope || sPlayerbotAIConfig.questGroupsManagerDeadQuestEnds) &&\n        group_mgr::OwnsBot(bot->GetGUIDLow());" "cohort binding (OwnsBot), keys first")
+require_text("${wish_fn}" "    bool const scopeAll = owned && sPlayerbotAIConfig.questGroupsManagerWishScope;" "scope only when owned")
+require_text("${wish_fn}" "    bool const skipDead = owned && sPlayerbotAIConfig.questGroupsManagerDeadQuestEnds;" "dead skip only when owned")
+require_text("${wish_fn}" "        if (!help && (!scopeAll || q->GetType() == quest_groups::QuestTypeDungeon || q->GetType() == quest_groups::QuestTypeRaid ||\n            q->GetType() == quest_groups::QuestTypePvp))\n            continue;" "scope 0 = group-help only; never dungeon / raid / PvP")
+require_text("${wish_fn}" "        if (skipDead && group_mgr::QuestDeadForWish(questId))\n            continue;" "dead quests skipped (manager view)")
+require_text("${wish_fn}" "        if (!quest_groups::Waits(f) || !quest_groups::BetterWish(best, help, f.openObjectives, questId))\n            continue;" "Waits and the wish order")
+require_order("${wish_fn}" "group_mgr::QuestDeadForWish(questId)" "QuestStatusData const* st = bot->GetQuestStatusData(questId);" "the dead skip before the quest status reads")
+region("${qg_policy}" "inline bool BetterWish(WishPick const& best, bool help, std::uint32_t open, std::uint32_t questId)" "\n}\n" better_fn)
+require_text("${better_fn}" "    if (!best.any)\n        return true;\n    if (help != best.help)\n        return help;\n    if (help)\n        return open > best.open;\n    return questId < best.questId;" "wish order: help first, old rule for help, lowest id for normal")
+# ManagerFacts reads only the bot itself and the manager's view (M6): no other Player.
+forbid_text("${facts_cpp}" "ObjectAccessor" "no other player lookups in ManagerFacts")
+forbid_text("${facts_cpp}" "sObjectMgr.GetPlayer" "no other player lookups in ManagerFacts")
+
+# 3. The view: a dead list of its own (own atomic, swap under the lock), a bot-side lookup.
+require_text("${engine}" "    bool QuestDead(std::uint32_t questId) const\n    {\n        if (!anyDead_.load(std::memory_order_acquire) || !questId)\n            return false;" "view lookup: no lock while nothing is dead")
+require_text("${engine}" "    void PublishDead(std::vector<std::uint32_t>& dead)" "view publish of the dead list")
+require_text("${view_h}" "bool QuestDeadForWish(std::uint32_t questId);" "bot-side lookup declared")
+require_text("${mgr_cpp}" "    return WorldManager().Directives().View().QuestDead(questId);" "bot-side lookup reads the view only")
+
+# 4. The engine: keys into the rules, counted only for QUEST groups, published every pass, checked in QuestBlocked.
+require_text("${mgr_cpp}" "    rules.deadQuestEnds = sPlayerbotAIConfig.questGroupsManagerDeadQuestEnds;" "rules: ends")
+require_text("${mgr_cpp}" "    rules.deadQuestHours = sPlayerbotAIConfig.questGroupsManagerDeadQuestHours;" "rules: hours")
+require_text("${engine}" "        if (g.type == GroupType::Quest)\n            NoteDeadQuest(g, why, io);" "only QUEST groups count")
+region("${engine}" "    void NoteDeadQuest(ManagedGroup const& g, EndReason why, Io& io)" "\n    }\n" note_fn)
+require_text("${note_fn}" "        bool const progress = g.anyProgress || why == EndReason::TurnedIn;" "progress or a turn-in resets")
+require_text("${note_fn}" "        bool const deadEnd = why == EndReason::NoProgress && !g.anyProgress;" "dead end = no_progress without any progress")
+require_text("${note_fn}" "\"[GroupMgr] event=quest_dead quest=%u group=%u ends=%u hours=%u\"" "quest_dead line format")
+require_text("${engine}" "            g.lastProgressSec = nowSec_;\n            g.anyProgress = true;" "progress marks the group")
+require_text("${engine}" "        if (deadEnds_ && deadQuests_.Dead(questId, nowSec))" "QuestBlocked checks dead quests")
+require_text("${engine}" "        if (!deadEnds_)\n            deadQuests_.Clear();" "off keeps nothing")
+require_text("${engine}" "        view_.Publish(viewBots_, viewCores_);\n        deadQuests_.DeadList(nowSec_, deadScratch_);" "dead list published with the view")
+region("${dead_policy}" "    Note End(" "\n    }\n" end_fn)
+require_text("${end_fn}" "        if (!endsNeeded || !questId)\n            return Note::Off;" "lever off keeps nothing")
+
+# 5. The unit test is registered.
+require_text("${tests}" "add_executable(grp2030_dose_policy_tests\n  \"\${PB_MODULE_DIR}/t/grp2030_dose_policy_tests.cpp\")" "unit test target")
+require_text("${tests}" "add_test(NAME grp2030_dose_policy\n  COMMAND grp2030_dose_policy_tests" "unit test registered")
+
+message(STATUS "GRP2030_DOSE_LEVERS_SOURCE_CONTRACT=PASS")

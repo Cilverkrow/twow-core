@@ -7,6 +7,7 @@
 #include "QuestGroupPolicy.h"
 #include "SupervisorPolicy.h"
 #include "GroupOpPolicy.h"
+#include "GroupDeadQuestPolicy.h"   // twow-repo#627 GRP2030 lever 2 (pure)
 
 #include <algorithm>
 #include <atomic>
@@ -393,6 +394,9 @@ struct Rules
     float recruitRadius = 800.0f;
     std::uint32_t maxAttempts = 3;
     std::uint32_t retryCooldownMinutes = 30;
+    // twow-repo#627 GRP2030 lever 2 (QuestGroups.Manager.DeadQuestEnds / DeadQuestHours): 0 = off (default).
+    std::uint32_t deadQuestEnds = 0;
+    std::uint32_t deadQuestHours = dead_quest::kHoursDefault;
     quest_groups::Timers timers;
 };
 
@@ -550,6 +554,7 @@ struct ManagedGroup
     quest_groups::Phase phase = quest_groups::Phase::Rendezvous;
     std::uint32_t phaseSinceSec = 0;
     std::uint32_t lastProgressSec = 0;
+    bool anyProgress = false;        // twow-repo#627 GRP2030 lever 2: a member's key showed objective progress on the quest
     std::uint32_t realPlayerSinceMs = 0;
     EndReason endReason = EndReason::None;
     std::uint32_t sizeMax = 0;
@@ -675,6 +680,28 @@ public:
         return true;
     }
 
+    // twow-repo#627 GRP2030 lever 2: the quest is dead for the wishes (QuestGroups.Manager.DeadQuestEnds). Its own atomic: no lock
+    // while no quest is dead (the lever off: never).
+    bool QuestDead(std::uint32_t questId) const
+    {
+        if (!anyDead_.load(std::memory_order_acquire) || !questId)
+            return false;
+        std::lock_guard<std::mutex> lock(mutex_);
+        return std::find(dead_.begin(), dead_.end(), questId) != dead_.end();
+    }
+
+    // World thread: the dead quests of this pass replace the old list (swap under the lock).
+    void PublishDead(std::vector<std::uint32_t>& dead)
+    {
+        bool const any = !dead.empty();
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            dead_.swap(dead);
+        }
+        anyDead_.store(any, std::memory_order_release);
+        dead.clear();
+    }
+
     // World thread: the new view replaces the old one (swap under the lock; the old maps are reused next time).
     void Publish(std::unordered_map<std::uint32_t, ViewEntry>& bots, std::unordered_map<std::uint32_t, ViewEntry>& cores)
     {
@@ -694,6 +721,8 @@ private:
     std::atomic<bool> any_{ false };
     std::unordered_map<std::uint32_t, ViewEntry> bots_;
     std::unordered_map<std::uint32_t, ViewEntry> cores_;
+    std::atomic<bool> anyDead_{ false };
+    std::vector<std::uint32_t> dead_;   // twow-repo#627 GRP2030 lever 2
 };
 
 // ---- lookups and candidate facts (2.4) ------------------------------------------------------------------------------------
@@ -1008,6 +1037,10 @@ public:
         ++passNo_;
         swept_.clear();
         retryCooldownSec_ = r.retryCooldownMinutes * 60;
+        deadEnds_ = r.deadQuestEnds;   // twow-repo#627 GRP2030 lever 2; off = nothing kept, nothing dead
+        deadHours_ = r.deadQuestHours;
+        if (!deadEnds_)
+            deadQuests_.Clear();
         // T33-1: the lever's inputs of this pass (the manager clock, the leg = RendezvousMinutes); after an off gap the open
         // meetings get a fresh deadline (2.5) - no deadline or end rule runs in a resumed pass anyway.
         gatherNow_ = in.gather;
@@ -1182,6 +1215,8 @@ private:
         if (questQueue_.Blocked(low, questId, nowSec))
             return true;
         if (maxAttempts && questQueue_.Attempts(low, questId) >= maxAttempts)
+            return true;
+        if (deadEnds_ && deadQuests_.Dead(questId, nowSec))   // twow-repo#627 GRP2030 lever 2 (a wish older than the death)
             return true;
         auto const it = questCooldown_.find((std::uint64_t(low) << 32) | questId);
         return it != questCooldown_.end() && it->second > nowSec;
@@ -1846,6 +1881,8 @@ private:
             return;
         g.state = GroupState::Ending;
         g.endReason = why;
+        if (g.type == GroupType::Quest)
+            NoteDeadQuest(g, why, io);   // twow-repo#627 GRP2030 lever 2
         CloseMeeting(g, EndReasonName(why), io);   // T33-1: an open meeting ends with its group
         // Non-leaders first: the last leave dissolves the core group (GroupOps.cpp RunLeave).
         for (Member& m : g.m)
@@ -2030,6 +2067,7 @@ private:
         {
             m.lastProgressSec = nowSec_;
             g.lastProgressSec = nowSec_;
+            g.anyProgress = true;   // twow-repo#627 GRP2030 lever 2
         }
         m.progress = p;
         m.progressKnown = true;
@@ -2873,6 +2911,22 @@ private:
             }
         }
         view_.Publish(viewBots_, viewCores_);
+        deadQuests_.DeadList(nowSec_, deadScratch_);   // twow-repo#627 GRP2030 lever 2: empty while the lever is off
+        view_.PublishDead(deadScratch_);
+    }
+
+    // twow-repo#627 GRP2030 lever 2: an ended QUEST group counts for its quest (GroupDeadQuestPolicy.h); the death of a quest
+    // writes one line. A turn-in or any member's progress resets the count; ends other than no_progress do not count.
+    void NoteDeadQuest(ManagedGroup const& g, EndReason why, Io& io)
+    {
+        bool const progress = g.anyProgress || why == EndReason::TurnedIn;
+        bool const deadEnd = why == EndReason::NoProgress && !g.anyProgress;
+        if (deadQuests_.End(g.questId, deadEnd, progress, nowSec_, deadEnds_, deadHours_) != dead_quest::Note::NowDead)
+            return;
+        char line[160];
+        std::snprintf(line, sizeof(line), "[GroupMgr] event=quest_dead quest=%u group=%u ends=%u hours=%u", g.questId, g.serial,
+            deadEnds_, deadHours_);
+        Emit(io, line);
     }
 
     // ---- lines ----
@@ -2991,6 +3045,10 @@ private:
     quest_groups::QueueStore questQueue_;
     std::atomic<bool> queueUsed_{ false };
     std::unordered_map<std::uint64_t, std::uint32_t> questCooldown_;   // F13: the manager's own reasons, cooldown only
+    dead_quest::Store deadQuests_;   // twow-repo#627 GRP2030 lever 2
+    std::vector<std::uint32_t> deadScratch_;
+    std::uint32_t deadEnds_ = 0;
+    std::uint32_t deadHours_ = dead_quest::kHoursDefault;
     std::uint32_t retryCooldownSec_ = 30 * 60;
     std::vector<Cand> adhocCands_;
     std::vector<Cand> questCands_;

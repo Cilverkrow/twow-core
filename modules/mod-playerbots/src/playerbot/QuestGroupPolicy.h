@@ -72,6 +72,29 @@ inline bool Waits(QuestFacts const& f)
     return f.incomplete && !f.classQuest && !f.abandoned && f.openObjectives > 0 && f.questLevel < f.botLevel + 5;
 }
 
+// twow-repo#627 GRP2030 dose lever 1 (AiPlayerbot.QuestGroups.Manager.WishScope, default 0): the manager's group wish of a bot.
+// Scope 0: group-help quests only, the one with the most open objectives (ties keep the earlier log slot) - as before.
+// Scope 1 (bots of the manager's cohort only): a normal quest may be the wish too, but a group-help quest always wins; between
+// normal quests the lowest quest id wins, a shared order, so neighbours that hold the same quests wish the same one.
+struct WishPick
+{
+    bool any = false;
+    bool help = false;
+    std::uint32_t open = 0;
+    std::uint32_t questId = 0;
+};
+
+inline bool BetterWish(WishPick const& best, bool help, std::uint32_t open, std::uint32_t questId)
+{
+    if (!best.any)
+        return true;
+    if (help != best.help)
+        return help;
+    if (help)
+        return open > best.open;
+    return questId < best.questId;
+}
+
 // --- forming: one quest, one map; pure greedy, no pair values ----------------------------------------------------------------
 struct Candidate
 {

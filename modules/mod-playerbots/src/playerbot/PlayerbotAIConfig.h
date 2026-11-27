@@ -1129,6 +1129,12 @@ public:
     uint32 questGroupsMaxAttempts = 3;
     uint32 questGroupsRetryCooldownMinutes = 30;
     bool questGroupsSuggestedPlayers = true;
+    // twow-repo#627 GRP2030 dose levers (default 0, only bots of the group manager's cohort; OB-00 (A) 27.11.2026):
+    // 1 WishScope: a normal quest may be a bot's manager group wish (QuestGroupPolicy.h BetterWish).
+    // 2 DeadQuestEnds: a quest whose QUEST groups end that many times in a row without any progress is dead for DeadQuestHours.
+    uint32 questGroupsManagerWishScope = 0;
+    uint32 questGroupsManagerDeadQuestEnds = 0;
+    uint32 questGroupsManagerDeadQuestHours = 6;
     // #303 part 2: a bot does not walk more than this far to a real-player
     // master (0 = no limit); beyond it the bot waits and asks to be summoned.
     float farFollowMaxWalkDistance = 400.0f;
