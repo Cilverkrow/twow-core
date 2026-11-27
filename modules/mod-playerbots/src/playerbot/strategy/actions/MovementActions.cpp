@@ -3836,10 +3836,29 @@ bool MovementAction::Follow(Unit* target, float distance, float angle)
         {
 
             Value<int32>* told = context->GetValue<int32>("manual int", "far follow told at");
+            // Where the master stood at the last request (map + 2D, yards).
+            Value<int32>* toldMap = context->GetValue<int32>("manual int", "far follow told map");
+            Value<int32>* toldX = context->GetValue<int32>("manual int", "far follow told x");
+            Value<int32>* toldY = context->GetValue<int32>("manual int", "far follow told y");
             int32 const now = int32(time(nullptr));
-            if (far_follow::ShouldTell(now, told->Get(), 300))
+            float masterMoved = 0.0f;
+            if (told->Get() > 0)
+            {
+                if (int32(target->GetMapId()) != toldMap->Get())
+                    masterMoved = 1.0e9f;  // other map: always far
+                else
+                {
+                    float const dx = target->GetPositionX() - float(toldX->Get());
+                    float const dy = target->GetPositionY() - float(toldY->Get());
+                    masterMoved = std::sqrt(dx * dx + dy * dy);
+                }
+            }
+            if (far_follow::ShouldTell(now, told->Get(), 300, masterMoved, sPlayerbotAIConfig.farFollowMaxWalkDistance))
             {
                 told->Set(now);
+                toldMap->Set(int32(target->GetMapId()));
+                toldX->Set(int32(target->GetPositionX()));
+                toldY->Set(int32(target->GetPositionY()));
                 std::ostringstream out;
                 out << "I'm too far away (" << uint32(tDist) << " yd) to walk to you - summon me.";
                 ai->TellPlayerNoFacing((Player*)target, out.str(), PlayerbotSecurityLevel::PLAYERBOT_SECURITY_ALLOW_ALL, false);

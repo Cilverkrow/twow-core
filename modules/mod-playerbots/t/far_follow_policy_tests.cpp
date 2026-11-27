@@ -31,6 +31,15 @@ int main()
     Require(ShouldTell(1000, 0, 300), "first time: tell");
     Require(!ShouldTell(1200, 1000, 300), "within five minutes: silent");
     Require(ShouldTell(1300, 1000, 300), "after five minutes: tell again");
+
+    // GM check 3 C2: told 14:19:05 at Sentinel Hill, master landed in Stormwind ~2,100 yd away 3.5 min later.
+    Require(ShouldTell(1210, 1000, 300, 2100.0f, 400.0f), "master flew away since the last request: tell again at once");
+    Require(!ShouldTell(1210, 1000, 300, 150.0f, 400.0f), "master walked a little: still silent");
+    Require(!ShouldTell(1210, 1000, 300, 400.0f, 400.0f), "exactly the hold distance: silent");
+    Require(ShouldTell(1210, 1000, 300, 1.0e9f, 400.0f), "master on another map: tell again");
+    Require(!ShouldTell(1210, 1000, 300, 2100.0f, 0.0f), "rearm distance 0: interval only");
+    Require(ShouldTell(1000, 0, 300, 0.0f, 400.0f), "first time with rearm: tell");
+    Require(ShouldTell(1300, 1000, 300, 0.0f, 400.0f), "rearm keeps the five-minute repeat");
     Require(ReplanMs > 0 && ReplanMs <= 5000, "a far walk is re-evaluated within seconds");
     return 0;
 }

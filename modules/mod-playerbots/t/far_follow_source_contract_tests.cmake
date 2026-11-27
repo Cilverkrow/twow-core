@@ -29,6 +29,9 @@ if(hold_at EQUAL -1 OR hold_branch EQUAL -1 OR long_move EQUAL -1 OR walk EQUAL 
 endif()
 require_text("${follow}" "IsRealPlayer((Player*)target)" "limit only for a real-player target")
 require_text("${follow}" "far_follow::ShouldTell(" "rate-limited summon request")
+# GM check 3 C2: a master who flew/ported away since the last request is asked again at once.
+require_text("${follow}" "far_follow::ShouldTell(now, told->Get(), 300, masterMoved, sPlayerbotAIConfig.farFollowMaxWalkDistance)" "summon request re-armed by master movement")
+require_text("${follow}" "toldX->Set(int32(target->GetPositionX()));" "master position stored with the request")
 require_text("${follow}" "SetDuration(far_follow::ReplanMs);" "far walk re-plans")
 require_text("${config}" "config.GetFloatDefault(\"AiPlayerbot.FarFollowMaxWalkDistance\", 400.0f)" "limit key, default 400")
 
