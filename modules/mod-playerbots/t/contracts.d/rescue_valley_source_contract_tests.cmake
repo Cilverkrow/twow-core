@@ -1,6 +1,6 @@
 cmake_policy(VERSION 3.16)
 # twow-repo#575 R2 (AiPlayerbot.QuestRescue.StartValleyFix, OB-10 build OK 22.11.2026 via OB-00, scope answers 1-4; finding
-# dauerb-silverpine-20261119/idle-20261122/TRACE-565-2293.txt 4d1371a0; default 0 until its acceptance unit): a roster rescue up to L10
+# dauerb-silverpine-20261119/idle-20261122/TRACE-565-2293.txt 4d1371a0; default 1 since the R2 PASS, owner 27.11.2026): a roster rescue up to L10
 # that falls through to the legacy start-valley branch of RandomPlayerbotMgr::QuestRescueTargets got the OTHER races' start points with
 # no distance filter and no dedupe, and the goblin Durotar pushes had no distance check. Pins: the key wiring, the roster + cohort gate,
 # the start-valley branch with the fix (own race only, dedupe, rescue distance, last target) and its return before the legacy loop, the
@@ -120,9 +120,10 @@ need("${policy}" "constexpr float DedupeYards = 50.0f;" "the dedupe distance")
 need_before("${policy}" "return Drop::Near;" "return Drop::Duplicate;" "near before duplicate")
 need_before("${policy}" "return Drop::Duplicate;" "return Drop::Last;" "duplicate before last")
 
-# 7. Key wiring: member default 0, read default 0 with the 0..3 clamp, the echo in sort order, one dist line = 0.
-need("${config_h}" "    uint32 questRescueStartValleyFix = 0;" "member default 0")
-need("${config_cpp}" "    questRescueStartValleyFix = config.GetIntDefault(\"AiPlayerbot.QuestRescue.StartValleyFix\", 0);\n    if (questRescueStartValleyFix > 3)\n    {\n        sLog.outError(\"[QuestRescue] config key=StartValleyFix value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)\", questRescueStartValleyFix);\n        questRescueStartValleyFix = 0;\n    }" "read with default 0 and clamp")
+# 7. Key wiring (default 1 since the R2 PASS, owner 27.11.2026): member default 1, read default 1 with the 0..3 clamp to 1,
+# the echo in sort order, one dist line = 1 with "other values act like 1".
+need("${config_h}" "    uint32 questRescueStartValleyFix = 1;" "member default 1")
+need("${config_cpp}" "    questRescueStartValleyFix = config.GetIntDefault(\"AiPlayerbot.QuestRescue.StartValleyFix\", 1);\n    if (questRescueStartValleyFix > 3)\n    {\n        sLog.outError(\"[QuestRescue] config key=StartValleyFix value=%u result=default 1 (0 off = rollback, 1 all, 2 cohort B, 3 cohort A)\", questRescueStartValleyFix);\n        questRescueStartValleyFix = 1;\n    }" "read with default 1 and clamp to 1")
 need("${config_cpp}" "            {\"QuestRescue.NoTargetFreeSlot\", Value(questRescueNoTargetFreeSlot)},\n            {\"QuestRescue.StartValleyFix\", Value(questRescueStartValleyFix)},\n            {\"QuestTurnIn.RepeatableAutoComplete\", Value(questTurnInRepeatableAutoComplete)}," "[ConfigEcho] entry in sort order")
-need("${dist}" "\nAiPlayerbot.QuestRescue.StartValleyFix = 0\n" "dist default 0")
+need("${dist}" "other values act like 1.\nAiPlayerbot.QuestRescue.StartValleyFix = 1\n" "dist default 1, other values act like 1")
 need_count("${dist}" "AiPlayerbot.QuestRescue.StartValleyFix =" 1 "dist lines")
