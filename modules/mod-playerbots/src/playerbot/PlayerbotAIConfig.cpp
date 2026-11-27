@@ -5,6 +5,7 @@
 #include "playerbot/IslandGuardPolicy.h"   // twow-repo#575 A3 step 4 M-c: Path.IslandGuard loader clamps
 #include "playerbot/CorpseRunFirstPolicy.h"   // twow-repo#575 A3 step 4 S4-1: Revive.CorpseRunFirst loader clamps
 #include "playerbot/LootHoldPolicy.h"   // twow-repo#575 H1: Loot.HoldTravelWhileLootable.MaxSeconds clamp
+#include "playerbot/GroupDeadQuestPolicy.h"   // twow-repo#627 GRP2030: QuestGroups.Manager.DeadQuestHours clamp
 #include "playerbot/RepopDeadOnlyPolicy.h"    // twow-repo#575 A3 step 4 S4-2: Rescue.RepopDeadOnly loader clamp
 #include "playerbot/PosStuckPolicy.h"
 #include "playerbot/CombatRulePolicy.h"   // A3 step 5: CombatRule.RestStartHp / RestStartMana loader clamps
@@ -1297,6 +1298,28 @@ bool PlayerbotAIConfig::Initialize()
     questGroupsMaxAttempts = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestGroups.MaxAttempts", 3));
     questGroupsRetryCooldownMinutes = (uint32)config.GetIntDefault("AiPlayerbot.QuestGroups.RetryCooldownMinutes", 30);
     questGroupsSuggestedPlayers = config.GetBoolDefault("AiPlayerbot.QuestGroups.SuggestedPlayers", true);
+    // twow-repo#627 GRP2030 dose levers 1 and 2 (default 0): WishScope 0/1 (other = 0 + error line); DeadQuestEnds 0 = off,
+    // negative = 0 + error line; DeadQuestHours 1..48 (0 / negative = 6, above = 48, one error line).
+    questGroupsManagerWishScope = uint32(config.GetIntDefault("AiPlayerbot.QuestGroups.Manager.WishScope", 0));
+    if (questGroupsManagerWishScope > 1)
+    {
+        sLog.outError("[GroupMgr] config key=QuestGroups.Manager.WishScope value=%d result=0 (0 or 1)", int32(questGroupsManagerWishScope));
+        questGroupsManagerWishScope = 0;
+    }
+    questGroupsManagerDeadQuestEnds = uint32(config.GetIntDefault("AiPlayerbot.QuestGroups.Manager.DeadQuestEnds", 0));
+    if (int32(questGroupsManagerDeadQuestEnds) < 0)
+    {
+        sLog.outError("[GroupMgr] config key=QuestGroups.Manager.DeadQuestEnds value=%d result=0 (off)", int32(questGroupsManagerDeadQuestEnds));
+        questGroupsManagerDeadQuestEnds = 0;
+    }
+    questGroupsManagerDeadQuestHours = uint32(config.GetIntDefault("AiPlayerbot.QuestGroups.Manager.DeadQuestHours", int32(ai::dead_quest::kHoursDefault)));
+    {
+        int32 const hoursRaw = int32(questGroupsManagerDeadQuestHours);
+        questGroupsManagerDeadQuestHours = ai::dead_quest::ClampHours(hoursRaw);
+        if (int64(hoursRaw) != int64(questGroupsManagerDeadQuestHours))
+            sLog.outError("[GroupMgr] config key=QuestGroups.Manager.DeadQuestHours value=%d result=%u (1..%u)", hoursRaw,
+                questGroupsManagerDeadQuestHours, ai::dead_quest::kHoursMax);
+    }
     farFollowMaxWalkDistance = config.GetFloatDefault("AiPlayerbot.FarFollowMaxWalkDistance", 400.0f);
     formationSpacing = config.GetFloatDefault("AiPlayerbot.Formation.Spacing", 2.0f);
     formationCircleMaxRadius = config.GetFloatDefault("AiPlayerbot.Formation.CircleMaxRadius", 15.0f);
@@ -2630,6 +2653,9 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestFirstProgression.TurnInParkFailures", Value(questFirstProgressionTurnInParkFailures)},
             {"QuestGiver.MaxLevelZeroFix", Value(questGiverMaxLevelZeroFix)},
             {"QuestGroups.Enable", Value(questGroupsEnable)},
+            {"QuestGroups.Manager.DeadQuestEnds", Value(questGroupsManagerDeadQuestEnds)},
+            {"QuestGroups.Manager.DeadQuestHours", Value(questGroupsManagerDeadQuestHours)},
+            {"QuestGroups.Manager.WishScope", Value(questGroupsManagerWishScope)},
             {"QuestGroups.OneHeavyStep", Value(questGroupsOneHeavyStep)},
             {"QuestGroups.ScanBudgetUs", Value(questGroupsScanBudgetUs)},
             {"QuestGroups.ScanSlices", Value(questGroupsScanSlices)},
