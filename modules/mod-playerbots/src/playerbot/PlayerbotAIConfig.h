@@ -534,6 +534,9 @@ public:
     // action reads these values. Generic trainer behaviour is unchanged.
     bool professionTrainingFreeForPersistentRoster = false;
     uint32 professionTrainingStartLevel = 1;
+    // twow-repo#333 GrantOnInit (owner 27./28.11.2026; ProfessionGrantPolicy.h): a roster bot learns the missing apprentice ranks of its
+    // profession pair at login (no trainer, no money) and gets their starter tools; 0 off (default), 1 all, 2 cohort B, 3 cohort A.
+    uint32 professionTrainingGrantOnInit = 0;
     float professionTrainingLocalTrainerRadius = 120.0f;
     bool professionTrainingTrace = false;
     uint32 professionTrainingTraceCooldownSeconds = 300;

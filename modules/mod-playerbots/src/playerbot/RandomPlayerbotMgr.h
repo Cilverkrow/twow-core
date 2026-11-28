@@ -252,6 +252,10 @@ public:
         void ScheduleRandomize(uint32 bot, uint32 time);
         void ProvisionPersistentRosterStarterOutfit(Player* bot);
         void ProvisionPersistentRosterBags(Player* bot);
+        // twow-repo#333 GrantOnInit (ProfessionGrantPolicy.h): the apprentice ranks of the persisted profession pair at
+        // login and on the periodic roster check; login = true writes not_green lines too.
+        void GrantPersistentRosterProfessions(Player* bot, bool login);
+        std::set<std::pair<uint32, uint32>> professionGrantFinal;   // (guid, skill) not retried until the next login
         bool PersistentRosterRetryReady(uint32 bot) const;
         void SchedulePersistentRosterRetry(uint32 bot, std::string const& diagnostic);
         void ClearPersistentRosterRetry(uint32 bot);

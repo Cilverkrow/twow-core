@@ -15,6 +15,8 @@
 #include "playerbot/PersistentRosterBagPolicy.h"
 #include "playerbot/PersistentRosterStarterOutfitPolicy.h"
 #include "playerbot/ProfessionPair.h"
+#include "playerbot/ProfessionGrantPolicy.h"   // twow-repo#333 GrantOnInit
+#include "playerbot/strategy/actions/RosterProfessionTrainerAction.h"
 #include "PlayerbotDatabaseContract.h"
 #include "playerbot/ActionBudgetPolicy.h"
 #include "playerbot/PacketTracePolicy.h"
@@ -6918,6 +6920,9 @@ bool RandomPlayerbotMgr::ProcessBot(uint32 bot)
             SetEventValue(bot, "login", 0, 0);
         ClearPersistentRosterRetry(bot);
         persistentRoster->RecordOnline(bot);
+        // twow-repo#333 GrantOnInit: a rank refused at login (e.g. Jewelcrafting below level 5) is granted on a later
+        // check; off and with both planned skills learned this returns after a mode check and two HasSkill calls.
+        GrantPersistentRosterProfessions(player, false);
     }
 
     // twow-repo#541/#551 (HERE:1600, 33 [Park] state=lost): with random bots (PersistentActiveRoster 0)
@@ -9146,6 +9151,8 @@ void RandomPlayerbotMgr::OnBotLoginInternal(Player * const bot)
         PlayerbotFactory(bot, bot->GetLevel()).EnsureProfessionPairPlan();
         ProvisionPersistentRosterStarterOutfit(bot);
         ProvisionPersistentRosterBags(bot);
+        // twow-repo#333 GrantOnInit: after the plan (above) and the bags (room for the starter tools).
+        GrantPersistentRosterProfessions(bot, true);
     }
 	//if (loginProgressBar && playerBots.size() < sRandomPlayerbotMgr.GetMaxAllowedBotCount()) { loginProgressBar->step(); }
 	//if (loginProgressBar && playerBots.size() >= sRandomPlayerbotMgr.GetMaxAllowedBotCount() - 1) {
@@ -9267,6 +9274,154 @@ void RandomPlayerbotMgr::ProvisionPersistentRosterBags(Player* bot)
             sLog.outError("[PersistentRoster] bag provisioner failed to create or equip item %u for bot %u in slot %u",
                 kPersistentRosterBagItemId, bot->GetGUIDLow(), slot);
         }
+    }
+}
+
+namespace
+{
+// twow-repo#333 GrantOnInit: the apprentice teaching spell of each primary skill, read once from every tradeskill
+// trainer list (npc_trainer of the entry and npc_trainer_template of its TrainerTemplateId, as Creature reads them).
+// `spell` is a copy of one TrainerSpell row, so the core state check sees the trainer's own reqLevel / reqSkill.
+struct ProfessionGrantEntry
+{
+    TrainerSpell spell;
+    bool ambiguous = false;
+};
+
+std::map<uint32, ProfessionGrantEntry> const& ProfessionGrantTable()
+{
+    static std::map<uint32, ProfessionGrantEntry> const table = []()
+    {
+        std::vector<std::pair<uint32, uint32>> skillSpells;
+        std::map<uint32, TrainerSpell> rows;
+        auto const collect = [&](TrainerSpellData const* data)
+        {
+            if (!data)
+                return;
+            for (auto const& [spellId, tSpell] : data->spellList)
+            {
+                SpellEntry const* proto = sServerFacade.LookupSpellInfo(tSpell.spell);
+                if (!proto)
+                    continue;
+                bool teachesFirstRank = false;
+                for (uint32 j = 0; j < MAX_EFFECT_INDEX; ++j)
+                    if (proto->Effect[j] == SPELL_EFFECT_LEARN_SPELL &&
+                        sSpellMgr.IsPrimaryProfessionFirstRankSpell(proto->EffectTriggerSpell[j]))
+                        teachesFirstRank = true;
+                uint32 const skill = RosterProfessionTrainerAction::GetTrainerSpellSkill(&tSpell);
+                if (!ai::profession_grant::IsApprenticeCandidate(tSpell.reqSkill, teachesFirstRank, skill))
+                    continue;
+                skillSpells.emplace_back(skill, tSpell.spell);
+                rows.emplace(tSpell.spell, tSpell);
+            }
+        };
+
+        for (uint32 id : sCreatureStorage.Ids())
+        {
+            CreatureInfo const* info = sCreatureStorage.LookupEntry<CreatureInfo>(id);
+            if (!info || info->TrainerType != TRAINER_TYPE_TRADESKILLS)
+                continue;
+            collect(sObjectMgr.GetNpcTrainerSpells(info->Entry));
+            if (info->TrainerTemplateId)
+                collect(sObjectMgr.GetNpcTrainerTemplateSpells(info->TrainerTemplateId));
+        }
+
+        std::map<uint32, ProfessionGrantEntry> built;
+        std::ostringstream summary;
+        for (auto const& [skill, spell] : ai::profession_grant::ResolveApprentice(skillSpells))
+        {
+            ProfessionGrantEntry entry;
+            entry.ambiguous = spell == ai::profession_grant::kAmbiguous;
+            if (!entry.ambiguous)
+                entry.spell = rows[spell];
+            built[skill] = entry;
+            summary << ' ' << skill << '=' << (entry.ambiguous ? std::string("ambiguous") : std::to_string(spell));
+            if (entry.ambiguous)
+                sLog.outError("[ProfessionGrant] table skill=%u result=ambiguous_spell (more than one apprentice teaching spell; no grant)", skill);
+        }
+        sLog.outBasic("[ProfessionGrant] table skills=%u%s", uint32(built.size()), summary.str().c_str());
+        return built;
+    }();
+    return table;
+}
+}
+
+void RandomPlayerbotMgr::GrantPersistentRosterProfessions(Player* bot, bool login)
+{
+    if (!bot || !ai::profession_grant::Applies(sPlayerbotAIConfig.professionTrainingGrantOnInit, bot->GetGUIDLow()))
+        return;
+
+    uint32 const guid = bot->GetGUIDLow();
+    if (login)
+        for (auto it = professionGrantFinal.lower_bound({ guid, 0 }); it != professionGrantFinal.end() && it->first == guid;)
+            it = professionGrantFinal.erase(it);
+
+    uint32 const pair = GetProfessionPair(guid);
+    ai::profession::Definition const* plan = ai::profession::Find(static_cast<ai::profession::Pair>(pair));
+    if (!plan || !IsPersistentRosterMember(guid))
+        return;
+    if (bot->HasSkill(plan->first) && bot->HasSkill(plan->second))
+        return;
+    if (bot->InBattleGround() || bot->GetLevel() < sPlayerbotAIConfig.professionTrainingStartLevel)
+        return;
+
+    for (uint32 const skill : { plan->first, plan->second })
+    {
+        if (bot->HasSkill(skill) || professionGrantFinal.count({ guid, skill }))
+            continue;
+
+        using ai::profession_grant::Result;
+        Result result = Result::Ok;
+        uint32 spellId = 0;
+        std::ostringstream tools;
+        auto const& table = ProfessionGrantTable();
+        auto const found = table.find(skill);
+        if (found == table.end())
+            result = Result::NoApprenticeSpell;
+        else if (found->second.ambiguous)
+            result = Result::AmbiguousSpell;
+        else
+        {
+            TrainerSpell const& tSpell = found->second.spell;
+            spellId = tSpell.spell;
+            // The same state check and level handling as TrainerAction::Iterate: GREEN only, so the core keeps the
+            // level, race / class and primary-profession limits (GREEN_DISABLED when both primary slots are used).
+            uint32 const reqLevel = tSpell.reqLevel;   // Iterate: isProvidedReqLevel ? reqLevel : max(0, reqLevel)
+            SpellEntry const* proto = sServerFacade.LookupSpellInfo(tSpell.spell);
+            if (!proto || bot->GetTrainerSpellState(&tSpell, reqLevel) != TRAINER_SPELL_GREEN)
+                result = Result::NotGreen;
+            else
+            {
+                // TrainerAction::Learn (MANGOSBOT_ZERO): learn each spell the teaching spell teaches; no cast, no money.
+                for (uint32 j = 0; j < MAX_EFFECT_INDEX; ++j)
+                    if (proto->Effect[j] == SPELL_EFFECT_LEARN_SPELL)
+                        bot->learnSpell(proto->EffectTriggerSpell[j], false);
+                result = bot->HasSkill(skill) ? Result::Ok : Result::LearnFailed;
+            }
+        }
+
+        if (result == Result::Ok)
+        {
+            // Owner economy decision 28.11.2026 via OB-00 ("schenken"): the starter tools of the granted skill, if missing.
+            for (uint32 const item : ai::profession_grant::StarterTools(skill))
+            {
+                if (!item || bot->HasItemCount(item, 1))
+                    continue;
+                bool const stored = sObjectMgr.GetItemPrototype(item) && bot->StoreNewItemInBestSlots(item, 1);
+                tools << (tools.tellp() > 0 ? "," : "") << item << (stored ? "" : ":failed");
+                if (!stored)
+                    sLog.outError("[ProfessionGrant] guid=%u skill=%u tool=%u result=store_failed (bag full or unknown item; the tool buy path stays)",
+                        guid, skill, item);
+            }
+        }
+
+        if (!ai::profession_grant::RetryOnTick(result))
+            professionGrantFinal.insert({ guid, skill });
+        if (ai::profession_grant::ShouldLog(result, login))
+            sLog.outBasic("[ProfessionGrant] guid=%u level=%u pair=%u skill=%u spell=%u source=%s result=%s value=%u tools=%s",
+                guid, bot->GetLevel(), pair, skill, spellId, login ? "login" : "tick",
+                ai::profession_grant::ToString(result), uint32(bot->GetSkillValuePure(skill)),
+                tools.tellp() > 0 ? tools.str().c_str() : "-");
     }
 }
 
