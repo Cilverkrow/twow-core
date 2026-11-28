@@ -77,12 +77,18 @@ require_text("${config_h}" "    uint32 questEliteDefer = 0;" "Defer member, defa
 require_text("${config_h}" "    uint32 questEliteMinGroup = 3;" "MinGroup member, default 3")
 require_text("${config_h}" "    uint32 questEliteSoloLevelsAbove = 5;" "SoloLevelsAbove member, default 5")
 require_text("${config_cpp}" "    questEliteDefer = uint32(config.GetIntDefault(\"AiPlayerbot.QuestElite.Defer\", 0));\n    if (!ai::elite_quest::ValidMode(questEliteDefer))\n    {" "loader with the mode check")
-require_text("${config_cpp}" "[QuestElite] config key=QuestElite.Defer value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)" "error line")
-require_text("${config_cpp}" "        questEliteDefer = 0;\n    }" "an invalid mode is off")
-require_text("${config_cpp}" "ai::elite_quest::ClampMinGroup(uint32(std::max(0, config.GetIntDefault(\"AiPlayerbot.QuestElite.MinGroup\", 3))))" "MinGroup clamp")
-require_text("${config_cpp}" "ai::elite_quest::ClampSoloLevelsAbove(uint32(std::max(0, config.GetIntDefault(\"AiPlayerbot.QuestElite.SoloLevelsAbove\", 5))))" "SoloLevelsAbove clamp")
+require_text("${config_cpp}" "[QuestElite] config key=QuestElite.Defer value=%d result=off (0 off, 1 all, 2 cohort B, 3 cohort A)\", int32(questEliteDefer));\n        questEliteDefer = 0;" "error line with the raw value, an invalid mode is off")
+# Out of range: one error line and the default, never the nearest (most permissive) bound (ultracode review 28.11.).
+require_text("${config_cpp}" "    if (!ai::elite_quest::ValidMinGroup(int32(questEliteMinGroup)))\n    {\n        sLog.outError(\"[QuestElite] config key=QuestElite.MinGroup value=%d result=%u (valid 2..5)\"" "MinGroup check and error line")
+require_text("${config_cpp}" "        questEliteMinGroup = ai::elite_quest::DefaultMinGroup;" "MinGroup default fallback")
+require_text("${config_cpp}" "    if (!ai::elite_quest::ValidSoloLevelsAbove(int32(questEliteSoloLevelsAbove)))\n    {\n        sLog.outError(\"[QuestElite] config key=QuestElite.SoloLevelsAbove value=%d result=%u (valid 0..99, 99 = rule 1b off)\"" "SoloLevelsAbove check and error line")
+require_text("${config_cpp}" "        questEliteSoloLevelsAbove = ai::elite_quest::DefaultSoloLevelsAbove;" "SoloLevelsAbove default fallback")
+set(n_clamp_load "ClampMinGroup(uint32(std::max(0")
+count_text("${config_cpp}" n_clamp_load 0 "no silent clamp at load")
+require_text("${policy}" "    return raw >= std::int32_t(MinGroupLow) && raw <= std::int32_t(MinGroupHigh);" "MinGroup range 2..5")
+require_text("${policy}" "    return raw >= 0 && raw <= std::int32_t(SoloLevelsAboveHigh);" "SoloLevelsAbove range 0..99")
 require_text("${config_cpp}" "            {\"QuestBook.StaleCompleteSeconds\", Value(questBookStaleCompleteSeconds)},\n            {\"QuestElite.Defer\", Value(questEliteDefer)},\n            {\"QuestElite.MinGroup\", Value(questEliteMinGroup)},\n            {\"QuestElite.SoloLevelsAbove\", Value(questEliteSoloLevelsAbove)},\n            {\"QuestFeasibility.Blocklist.count\"" "ConfigEcho entries (sorted)")
-require_text("${conf_dist}" "# groups). A flip to 1 only by a frozen ADOPT or an owner OK.\nAiPlayerbot.QuestElite.Defer = 0\n" "dist Defer, default 0")
+require_text("${conf_dist}" "# groups before the form floor is in (an A/B would judge the solo bots only). A flip to 1 only by a frozen ADOPT or an owner OK.\nAiPlayerbot.QuestElite.Defer = 0\n" "dist Defer, default 0, no A/B with manager / S7 groups before E4")
 require_text("${conf_dist}" "\nAiPlayerbot.QuestElite.MinGroup = 3\n" "dist MinGroup 3")
 require_text("${conf_dist}" "\nAiPlayerbot.QuestElite.SoloLevelsAbove = 5\n" "dist SoloLevelsAbove 5")
 require_text("${policy}" "return mode <= cohort::ModeOnlyA;" "modes 0..3")
@@ -112,16 +118,18 @@ require_text("${ai_cpp}" "bool PlayerbotAI::IsEliteQuestDefer()\n{\n    if (!sPl
 require_text("${ai_cpp}" "sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !HasRealPlayerMaster());" "roster bot on its own only")
 require_text("${ai_cpp}" "        if (!member || member == bot || !member->IsInWorld() || !SameMapObject(bot, member) || !member->IsAlive() ||\n            member->GetZoneId() != bot->GetZoneId())" "group facts guarded")
 require_text("${ai_cpp}" "    bool const ready = members > 1 ? AI_VALUE(bool, \"can fight elite\") : AI_VALUE(bool, \"can fight equal\");" "deferral keeps the readiness (A1)")
-require_text("${ai_cpp}" "    if (!ai::supervisor::GroupGoalSnapshot(this))
-    {
-        focusQuestTravelList const focus = AI_VALUE(focusQuestTravelList, \"focus travel target\");
-        if (focus.find(questId) != focus.end())
-            return false;
-    }" "E2 mirrors the E1 focus bypass")
-require_text("${ai_cpp}" "    Map const* const map = bot->FindMap();
-    if (!IsEliteQuestDefer() || !map || map->Instanceable())
-        return false;" "deferral: judged bot outside instances only (FindMap, #722)")
-require_text("${travel_mgr}" "    eliteRule = ai->IsEliteQuestDefer();\n    if (eliteRule)\n    {\n        eliteGuid = player->GetGUIDLow();\n        ai->EliteGroupFacts(eliteMembers, eliteMinLevel);\n    }" "snapshot on the bot thread, one group-facts implementation")
+require_text("${ai_cpp}" "    focusQuestTravelList const focus = AI_VALUE(focusQuestTravelList, \"focus travel target\");\n    if (focus.find(questId) != focus.end())\n        return false;" "E2 mirrors the E1 focus bypass")
+require_text("${ai_cpp}" "    Map const* const map = bot->FindMap();\n    if (!EliteRuleJudges() || !map || map->Instanceable())\n        return false;" "deferral: judged bot outside instances only (FindMap, #722)")
+# A manager (T02-GROUP goal) or S7 formed group is judged at form time (E4), never by E1 / E2 mid-work (ultracode review 28.11.,
+# OB-00 OK): no idle formed group before E4, no camp dropped on a member death.
+require_text("${ai_cpp}" "bool PlayerbotAI::EliteFormedGroup()\n{\n    return ai::supervisor::GroupGoalSnapshot(this) != 0 || GetQuestGroupRole() != 0;" "formed group = group goal or S7 role")
+require_text("${ai_cpp}" "bool PlayerbotAI::EliteRuleJudges()\n{\n    return IsEliteQuestDefer() && !EliteFormedGroup();\n}" "judged = population and not a formed group")
+require_text("${travel_mgr}" "    eliteRule = ai->EliteRuleJudges();" "E1 snapshot uses the judged predicate")
+require_text("${travel_mgr}" "    if (eliteRule)\n    {\n        eliteGuid = player->GetGUIDLow();\n        ai->EliteGroupFacts(eliteMembers, eliteMinLevel);\n    }" "snapshot on the bot thread, one group-facts implementation")
+set(n_defer_pred "IsEliteQuestDefer()")
+count_text("${travel_mgr}" n_defer_pred 0 "E1 never asks the bare population predicate")
+count_text("${qv_cpp}" n_defer_pred 0 "E2 never asks the bare population predicate")
+count_text("${grind_target}" n_defer_pred 0 "the target choice never asks the bare population predicate")
 require_text("${travel_h}" "		bool eliteRule = false;" "snapshot bit default false")
 
 # 5) E1, the travel gate: before the old tests, focus bypass, outside instances only, Pursue AND readiness, counted.
@@ -137,15 +145,27 @@ require_text("${travel_mgr}" "    if (eliteScope)\n        PlayerbotAI::NoteElit
 
 # 6) E2: its own value; subtracted only at the grind target choice and the QuestFirstOrder grind destination test.
 require_text("${value_context}" "            creators[\"deferred elite entries\"] = [](PlayerbotAI* ai) { return new DeferredEliteEntriesValue(ai); };" "value registered")
-require_text("${qv_cpp}" "std::vector<int32> DeferredEliteEntriesValue::Calculate()\n{\n\tstd::vector<int32> deferred;\n\tif (!ai->IsEliteQuestDefer())\n\t\treturn deferred;" "empty for every bot the rule does not judge")
-require_text("${qv_cpp}" "\t\t\tif (isDeferred && target && ai::elite_quest::EliteRank(target->Rank))\n\t\t\t\tdeferred.push_back(entry);" "only elite targets of deferred quests")
-require_text("${qv_cpp}" "[&keep](int32 entry) { return std::binary_search(keep.begin(), keep.end(), entry); }), deferred.end());" "entries another quest needs stay needed")
+require_text("${value_context}" "            creators[\"pursued elite entries\"] = [](PlayerbotAI* ai) { return new PursuedEliteEntriesValue(ai); };" "pursued value registered")
+require_text("${qv_cpp}" "std::vector<int32> DeferredEliteEntriesValue::Calculate()\n{\n\tstd::vector<int32> deferred;\n\tif (!ai->EliteRuleJudges())\n\t\treturn deferred;" "deferred: empty for every bot the rule does not judge")
+require_text("${qv_cpp}" "std::vector<int32> PursuedEliteEntriesValue::Calculate()\n{\n\tstd::vector<int32> pursued;\n\tif (!ai->EliteRuleJudges())\n\t\treturn pursued;" "pursued: empty for every bot the rule does not judge")
+# Both sets from the open objectives' quest destinations (kill targets and item droppers), like "needed quest entries".
+require_text("${qv_cpp}" "(quest->ReqItemCount[objective] && status.m_itemcount[objective] < quest->ReqItemCount[objective]))" "open item objectives count")
+require_text("${qv_cpp}" "\t\t\tfor (auto destination : sTravelMgr.GetDestinations(info, openMask, {int32(questId)}, false, 0))" "sets from the quest destinations")
+require_text("${qv_cpp}" "\t\t\t\tif (isDeferred)\n\t\t\t\t{\n\t\t\t\t\tif (elite)\n\t\t\t\t\t\tdeferred.push_back(entry);\n\t\t\t\t}\n\t\t\t\telse\n\t\t\t\t{\n\t\t\t\t\tkeep.push_back(entry);\n\t\t\t\t\tif (inScope && elite)\n\t\t\t\t\t\tpursued.push_back(entry);" "deferred elite / keep / pursued split")
+require_text("${qv_cpp}" "\tai::elite_quest::FinishEntrySets(deferred, pursued, keep);" "set algebra in the policy (unit-tested)")
+require_text("${policy}" "[&keep](std::int32_t entry) { return std::binary_search(keep.begin(), keep.end(), entry); }), deferredElite.end());" "entries another quest needs stay needed")
 set(n_deferred_value "\"deferred elite entries\"")
+set(n_pursued_value "\"pursued elite entries\"")
 count_text("${qv_h}" n_deferred_value 1 "value name in QuestValues.h")
 count_text("${grind_target}" n_deferred_value 1 "target choice reader")
 count_text("${travel_mgr}" n_deferred_value 1 "QuestFirstOrder grind destination reader")
 count_text("${ai_cpp}" n_deferred_value 0 "no reader in PlayerbotAI.cpp")
-require_text("${grind_target}" "            if (needForQuest && sPlayerbotAIConfig.questEliteDefer)\n            {" "target choice reads it only with the key on")
+count_text("${grind_target}" n_pursued_value 1 "pursued: one reader (target choice)")
+count_text("${travel_mgr}" n_pursued_value 0 "pursued: no travel reader")
+require_text("${grind_target}" "    if (sPlayerbotAIConfig.questEliteDefer && ai->EliteRuleJudges())\n    {\n        deferredElite = AI_VALUE(std::vector<int32>, \"deferred elite entries\");\n        pursuedElite = AI_VALUE(std::vector<int32>, \"pursued elite entries\");\n    }" "target choice reads both once per scan, key and judged only")
+require_text("${grind_target}" "            if (needForQuest && !deferredElite.empty())\n            {" "E2 subtraction with the hoisted set")
+# Rule 1b on site: a pursued elite target passes the old group-only "can fight elite" skip; everything else keeps it.
+require_text("${grind_target}" "creature->GetCreatureInfo()->Rank > CREATURE_ELITE_NORMAL && !AI_VALUE(bool, \"can fight elite\") &&\n            !std::binary_search(pursuedElite.begin(), pursuedElite.end(), int32(creature->GetEntry())) &&" "1b target gate")
 # the GrindMode 2 line stays byte-exact (quest_grind_mode contract); the elite test is its own block after it, key-gated
 require_text("${travel_mgr}" "        if (!ai::quest_grind_mode::GrindDestinationActive(true, std::binary_search(needed.begin(), needed.end(), GetEntry())))
             return false;
@@ -182,5 +202,13 @@ require_text("${rpm}" "    std::string const line = PlayerbotAI::TakeEliteQuestM
 require_text("${rpm}" "    ReportLowLevelWindow();  // OB-10 22.11.: [LowLevelWindow] minute once per minute, not when empty (Grind.LowLevelWindow > 0)\n    ReportQuestElite();" "reported from the world tick")
 require_text("${policy}" "    return \"[QuestElite] minute\" + pair(Event::TravelDeferred, \"travel_deferred\") + pair(Event::TargetSkipped, \"target_skipped\") +\n        pair(Event::WishSkipped, \"wish_skipped\") + pair(Event::FormRefused, \"form_refused\") + pair(Event::Pursued, \"pursued\");" "line format")
 require_text("${ai_h}" "    static std::string TakeEliteQuestMinuteLine();" "minute line taker declared")
+
+
+# 8) The reward line (OB-00 28.11.: accepted for the PREREG): both cohorts, roster bots on their own, scope quests, key on.
+require_text("${ai_cpp}" "    NoteEliteQuestReward(questId);\n}" "called from NoteQuestRewarded (both reward sources)")
+require_order("${ai_cpp}" "void PlayerbotAI::NoteQuestRewarded(uint32 questId)" "    NoteEliteQuestReward(questId);" "inside NoteQuestRewarded")
+require_text("${ai_cpp}" "void PlayerbotAI::NoteEliteQuestReward(uint32 questId)\n{\n    if (!sPlayerbotAIConfig.questEliteDefer || !bot || !sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) ||\n        HasRealPlayerMaster())\n        return;" "reward line: config first, roster bots on their own, no cohort filter")
+require_text("${ai_cpp}" "    facts.judged = EliteRuleJudges();\n    facts.formed = EliteFormedGroup();" "judged / formed fields")
+require_text("${policy}" "    return \"[QuestElite] reward guid=\" + std::to_string(f.guid) + \" cohort=\" + (cohort::InB(f.guid) ? \"b\" : \"a\") +" "reward line format")
 
 message(STATUS "ELITE_QUEST_SOURCE_CONTRACT=PASS")

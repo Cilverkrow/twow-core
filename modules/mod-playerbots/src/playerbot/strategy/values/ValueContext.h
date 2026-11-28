@@ -334,6 +334,7 @@ namespace ai
             creators["need for quest"] = [](PlayerbotAI* ai) { return new NeedForQuestValue(ai); };
             creators["needed quest entries"] = [](PlayerbotAI* ai) { return new NeededQuestEntriesValue(ai); };
             creators["deferred elite entries"] = [](PlayerbotAI* ai) { return new DeferredEliteEntriesValue(ai); };   // WS30-ELITE-QUEST-01
+            creators["pursued elite entries"] = [](PlayerbotAI* ai) { return new PursuedEliteEntriesValue(ai); };   // WS30-ELITE-QUEST-01
             creators["can use item on"] = [](PlayerbotAI* ai) { return new CanUseItemOn(ai); };
             creators["quest reward"] = [](PlayerbotAI* ai) { return new QuestRewardValue(ai); };
             creators["has nearby quest taker"] = [](PlayerbotAI* ai) { return new HasNearbyQuestTakerValue(ai); };

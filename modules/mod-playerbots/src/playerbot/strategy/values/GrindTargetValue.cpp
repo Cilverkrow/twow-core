@@ -178,6 +178,16 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
     }
 
     std::unordered_map<uint32, bool> needForQuestCache;
+    // WS30-ELITE-QUEST-01 (QuestElite.Defer, default 0): both elite entry sets once per scan, only for a bot the rule judges (key 0 /
+    // other bots: empty, nothing read). deferred: E2 (elite targets of deferred quests count as not needed); pursued: the rule-1b
+    // solo bot may pick the elite targets of a quest the rule lets it pursue (the old "can fight elite" skip is group only).
+    std::vector<int32> deferredElite;
+    std::vector<int32> pursuedElite;
+    if (sPlayerbotAIConfig.questEliteDefer && ai->EliteRuleJudges())
+    {
+        deferredElite = AI_VALUE(std::vector<int32>, "deferred elite entries");
+        pursuedElite = AI_VALUE(std::vector<int32>, "pursued elite entries");
+    }
 
     // #307: low-level roster bots grind at most GrindCap.LowLevelMargin levels
     // above themselves and skip creatures that killed them repeatedly.
@@ -365,6 +375,7 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
 
         Creature* creature = dynamic_cast<Creature*>(unit);
         if (creature && creature->GetCreatureInfo() && creature->GetCreatureInfo()->Rank > CREATURE_ELITE_NORMAL && !AI_VALUE(bool, "can fight elite") &&
+            !std::binary_search(pursuedElite.begin(), pursuedElite.end(), int32(creature->GetEntry())) &&   // WS30-ELITE-QUEST-01 rule 1b
             !AI_VALUE2(bool, "trigger active", "in vehicle"))
         {
             skip(ai::grind_idle::Skip::Elite);
@@ -412,9 +423,8 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
             // WS30-ELITE-QUEST-01 (QuestElite.Defer, OB-10 E2): an elite target of a deferred quest that no other quest needs counts
             // as not needed for the target choice (GrindMode 2 / QuestFirstOrder filters and the plain-grind tests below). Attackers
             // are taken by the attacker loop above, unchanged. Empty value for every bot the rule does not judge.
-            if (needForQuest && sPlayerbotAIConfig.questEliteDefer)
+            if (needForQuest && !deferredElite.empty())
             {
-                std::vector<int32> const& deferredElite = AI_VALUE(std::vector<int32>, "deferred elite entries");
                 if (std::binary_search(deferredElite.begin(), deferredElite.end(), int32(entry)))
                 {
                     needForQuest = false;

@@ -713,6 +713,8 @@ void PlayerbotAI::NoteQuestRewarded(uint32 questId)
     // (no book, no note there). Off: one config read.
     if (sPlayerbotAIConfig.planner)
         plannerRewardNotes_.Note(questId);
+    // WS30-ELITE-QUEST-01 (QuestElite.Defer, default 0): the reward line of the two reward sources (key 0: one config read).
+    NoteEliteQuestReward(questId);
 }
 
 // A3 R9 / R2 wiring pair R9-2 (twow-repo#575; AiPlayerbot.Replan / Replan.Shadow, default 0; DESIGN-R9-2 D3/D6/D7/D12): the
@@ -2329,6 +2331,16 @@ bool PlayerbotAI::IsEliteQuestDefer()
         sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !HasRealPlayerMaster());
 }
 
+bool PlayerbotAI::EliteFormedGroup()
+{
+    return ai::supervisor::GroupGoalSnapshot(this) != 0 || GetQuestGroupRole() != 0;   // T02-GROUP goal / S7 member or leader
+}
+
+bool PlayerbotAI::EliteRuleJudges()
+{
+    return IsEliteQuestDefer() && !EliteFormedGroup();
+}
+
 void PlayerbotAI::EliteGroupFacts(uint32& members, uint32& minLevel) const
 {
     members = 1;
@@ -2352,26 +2364,44 @@ bool PlayerbotAI::EliteQuestDeferred(uint32 questId)
 {
     // FindMap, not GetMap: GetMap() asserts a map before it returns (twow-repo#722, contract map_null_check).
     Map const* const map = bot->FindMap();
-    if (!IsEliteQuestDefer() || !map || map->Instanceable())
+    if (!EliteRuleJudges() || !map || map->Instanceable())
         return false;
     ai::elite_quest::ScopeEntry const* const scope = EliteQuestScope(questId);
     if (!scope)
         return false;
     AiObjectContext* context = aiObjectContext;
     // The E1 focus bypass, mirrored (TravelMgr.cpp: forceThisQuest = a focus list and no group goal; then only focus quests
-    // travel, and they skip the rule): a focus quest is never deferred here, so E1 and E2 agree on it.
-    if (!ai::supervisor::GroupGoalSnapshot(this))
-    {
-        focusQuestTravelList const focus = AI_VALUE(focusQuestTravelList, "focus travel target");
-        if (focus.find(questId) != focus.end())
-            return false;
-    }
+    // travel, and they skip the rule): a focus quest is never deferred here, so E1 and E2 agree on it. A group goal never gets
+    // here (EliteRuleJudges is false for a formed group).
+    focusQuestTravelList const focus = AI_VALUE(focusQuestTravelList, "focus travel target");
+    if (focus.find(questId) != focus.end())
+        return false;
     uint32 members = 1, minLevel = 0;
     EliteGroupFacts(members, minLevel);
     uint32 const level = scope->level ? scope->level : bot->GetLevel();
     bool const ready = members > 1 ? AI_VALUE(bool, "can fight elite") : AI_VALUE(bool, "can fight equal");
     return !ready || !ai::elite_quest::Pursue(members, minLevel, bot->GetLevel(), level, sPlayerbotAIConfig.questEliteMinGroup,
         sPlayerbotAIConfig.questEliteSoloLevelsAbove);
+}
+
+void PlayerbotAI::NoteEliteQuestReward(uint32 questId)
+{
+    if (!sPlayerbotAIConfig.questEliteDefer || !bot || !sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) ||
+        HasRealPlayerMaster())
+        return;
+    ai::elite_quest::ScopeEntry const* const scope = EliteQuestScope(questId);
+    if (!scope)
+        return;
+    ai::elite_quest::RewardFacts facts;
+    facts.guid = bot->GetGUIDLow();
+    facts.questId = questId;
+    facts.botLevel = bot->GetLevel();
+    facts.questLevel = scope->level ? scope->level : facts.botLevel;
+    EliteGroupFacts(facts.members, facts.minLevel);
+    facts.judged = EliteRuleJudges();
+    facts.formed = EliteFormedGroup();
+    sLog.outBasic("%s", ai::elite_quest::FormatRewardLine(facts, sPlayerbotAIConfig.questEliteMinGroup,
+        sPlayerbotAIConfig.questEliteSoloLevelsAbove).c_str());
 }
 
 void PlayerbotAI::NoteEliteQuest(uint8 event, uint32 guidLow, uint32 n)

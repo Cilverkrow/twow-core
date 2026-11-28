@@ -2008,21 +2008,25 @@ AiPlayerbot.QuestGroups.SuggestedPlayers = 1
 # "Mercenaries", 0 turn-ins): a quest is "elite" when its Type is 1 or one of its kill objectives is a creature of rank 1, 2 or 3
 # (elite, rare elite, boss; rank 4 rare is not - its old "can fight elite" test stays); never dungeon (81) / raid (62), never
 # inside an instance. The level it is judged at = the quest level, raised to the highest MaxLevel of those elite targets.
-# Defer: a persistent roster bot on its own pursues such a quest (travel target, target choice, manager / S7 help group) only
+# Defer: a persistent roster bot on its own pursues such a quest (travel target, target choice) only
 #   (1a) in a group of >= MinGroup members alive in its zone whose lowest level is >= that level, or
-#   (1b) at >= that level + SoloLevelsAbove, solo or in a group;
+#   (1b) at >= that level + SoloLevelsAbove, solo or in a group (then it may also pick the quest's elite targets on site);
 # and still only when the old readiness holds ("can fight elite" for a group, "can fight equal" alone). Otherwise the quest is
-# deferred: accepted as before, kept in the log, never abandoned by this key; a bot below that level does not wish it for a help
-# group (it wishes its next quest); the manager / S7 do not form a group for it that misses the floor. It is a candidate again
-# as soon as the rule holds. 1b loosens: today a solo bot never travels to an elite target. One "[QuestElite] minute
-# travel_deferred_a= _b= target_skipped_a= _b= wish_skipped_a= _b= form_refused_a= _b= pursued_a= _b=" line per minute, omitted
-# when all are 0. A cohort mode: 0 = off (default), 1 = all bots, 2 = only cohort B (odd low guid), 3 = only cohort A (even low
-# guid). Any other value = off (one error line at load). With 2 / 3 the manager's quest buckets are split by cohort (no mixed
-# groups). A flip to 1 only by a frozen ADOPT or an owner OK.
+# deferred: accepted as before, kept in the log, never abandoned by this key; its elite targets (kill objectives and droppers of
+# open quest items) count as not needed unless another quest of the bot needs them. It is a candidate again as soon as the rule
+# holds. 1b loosens: today a solo bot never travels to an elite target. A group the manager (group goal) or S7 formed is judged
+# when it is formed, not during its work: the wish floor and the form floor for those groups follow in a later change; until
+# then such a group behaves as with 0. Lines: "[QuestElite] minute travel_deferred_a= _b= target_skipped_a= _b= wish_skipped_a=
+# _b= form_refused_a= _b= pursued_a= _b=" once per minute (counts of checks, omitted when all are 0) and one "[QuestElite]
+# reward guid= cohort= quest= level= bot_level= members= min_level= rule= judged= formed=" line per rewarded elite quest of a
+# roster bot, in both cohorts. A cohort mode: 0 = off (default), 1 = all bots, 2 = only cohort B (odd low guid), 3 = only cohort
+# A (even low guid). Any other value = off (one error line at load). Do not combine 2 / 3 with the manager or S7 quest
+# groups before the form floor is in (an A/B would judge the solo bots only). A flip to 1 only by a frozen ADOPT or an owner OK.
 AiPlayerbot.QuestElite.Defer = 0
-# Rule 1a group size (alive members in the zone, the bot included), 2..5.
+# Rule 1a group size (alive members in the zone, the bot included), 2..5; any other value: the default 3 and one error line.
 AiPlayerbot.QuestElite.MinGroup = 3
-# Rule 1b margin above the effective quest level, 0..99; 99 turns 1b off and leaves 1a as it is.
+# Rule 1b margin above the effective quest level, 0..99; 99 turns 1b off and leaves 1a as it is; any other value: the default 5
+# and one error line.
 AiPlayerbot.QuestElite.SoloLevelsAbove = 5
 # #303: a bot of a real player does not walk more than this many yards to its
 # master; beyond it the bot keeps its own activity and asks to be summoned
