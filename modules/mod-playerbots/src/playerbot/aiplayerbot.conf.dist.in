@@ -2756,6 +2756,23 @@ AiPlayerbot.ProfessionTraining.FreeForPersistentRoster = 0
 # The core/trainer remains authoritative for level and rank requirements. This
 # gate merely allows a roster bot to use a valid local profession trainer at L1.
 AiPlayerbot.ProfessionTraining.StartLevel = 1
+# twow-repo#333 Berufe GrantOnInit (owner 27.11.2026 via OB-00: roster bots get their professions at start). A persistent
+# roster bot that lacks a primary of its persisted profession pair learns its apprentice rank at login, the way the bots'
+# trainer path does: the core trainer state check (GREEN - level, race / class and the two-primary limit stay with the
+# core), then the spell the apprentice teaching spell teaches (skill 1/75 and the starter recipes). No trainer visit, no
+# money, no follow rank (journeyman and up stay with the trainer), no change to a learned skill, never a third primary.
+# The teaching spells come from the tradeskill trainer lists (npc_trainer and npc_trainer_template), read once; a skill
+# with more than one apprentice teaching spell gets no grant and an error line. A rank refused at login (the trainer level:
+# Alchemy, Engineering and Jewelcrafting need level 5) is granted on a later roster check. With a granted rank the bot gets its missing
+# starter tools for free, into its bags
+# (owner economy decision 28.11.2026 via OB-00): Mining Pick 2901, Skinning Knife 7005, Blacksmith Hammer 5956
+# (Blacksmithing, Engineering), Arclight Spanner 6219, Runed Copper Rod 6218, Jewelers Kit 55155. Lines:
+# "[ProfessionGrant] table skills= ambiguous= missing= <skill>=<spell>@L<level>|ambiguous|none ..." once (all ten
+# primaries; a skipped one also gets an error line), and per skill "[ProfessionGrant] guid= level= pair= skill=
+# spell= source=login|tick result=ok|learn_failed|no_apprentice_spell|ambiguous_spell|not_green value= tools=" (not_green
+# only at login). Mode (in-realm A/B, cohort parity): 0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low
+# guid), 3 = only cohort A (even low guid). Any other value acts like 0.
+AiPlayerbot.ProfessionTraining.GrantOnInit = 0
 # A planned profession never creates autonomous travel. Persistent roster bots
 # add tradeskill trainers within LocalTrainerRadius (yards) to their ordinary
 # RPG candidates, beyond the generic AiPlayerbot.RpgDistance reach, so a bot

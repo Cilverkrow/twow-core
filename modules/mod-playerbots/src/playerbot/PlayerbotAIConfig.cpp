@@ -2050,6 +2050,13 @@ bool PlayerbotAIConfig::Initialize()
     autoTrainSpells = config.GetStringDefault("AiPlayerbot.AutoTrainSpells", "no");
     professionTrainingFreeForPersistentRoster = config.GetBoolDefault("AiPlayerbot.ProfessionTraining.FreeForPersistentRoster", false);
     professionTrainingStartLevel = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.ProfessionTraining.StartLevel", 1));
+    // twow-repo#333 GrantOnInit: an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B, 3 cohort A).
+    professionTrainingGrantOnInit = config.GetIntDefault("AiPlayerbot.ProfessionTraining.GrantOnInit", 0);
+    if (professionTrainingGrantOnInit > 3)
+    {
+        sLog.outError("[ProfessionGrant] config key=GrantOnInit value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", professionTrainingGrantOnInit);
+        professionTrainingGrantOnInit = 0;
+    }
     professionTrainingLocalTrainerRadius = std::max<float>(0.0f, config.GetFloatDefault("AiPlayerbot.ProfessionTraining.LocalTrainerRadius", 120.0f));
     professionTrainingTrace = config.GetBoolDefault("AiPlayerbot.ProfessionTraining.Trace", false);
     professionTrainingTraceCooldownSeconds = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.ProfessionTraining.TraceCooldownSeconds", 300));
@@ -2564,6 +2571,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Planner.TurnInWorkSec", Value(plannerTurnInWorkSec)},
             {"Planner.WriteCohort", Value(plannerWriteCohort)},
             {"PotionFind.BySpell", Value(potionFindBySpell)},
+            {"ProfessionTraining.GrantOnInit", Value(professionTrainingGrantOnInit)},
             {"ProfessionTraining.NearRadius", Value(professionTrainingNearRadius)},
             {"ProfessionTraining.Travel", Value(professionTrainingTravel)},
             {"ProfessionTraining.TripDoneAtTarget", Value(professionTrainingTripDoneAtTarget)},
