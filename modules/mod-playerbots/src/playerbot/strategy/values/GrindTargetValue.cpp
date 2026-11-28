@@ -409,6 +409,14 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
                 needForQuest = AI_VALUE2(bool, "need for quest", std::to_string(entry));
                 needForQuestCache[entry] = needForQuest;
             }
+            // WS30-ELITE-QUEST-01 (QuestElite.Defer, OB-10 E2): an elite target of a deferred quest that no other quest needs counts
+            // as not needed for the target choice (GrindMode 2 / QuestFirstOrder filters and the plain-grind tests below). Attackers
+            // are taken by the attacker loop above, unchanged. Empty value for every bot the rule does not judge.
+            if (needForQuest && sPlayerbotAIConfig.questEliteDefer)
+            {
+                std::vector<int32> const& deferredElite = AI_VALUE(std::vector<int32>, "deferred elite entries");
+                needForQuest = !std::binary_search(deferredElite.begin(), deferredElite.end(), int32(entry));
+            }
         }
 
         // twow-repo#601 GrindMode 2: only quest objectives stay (players and other creatures are skipped; a creature

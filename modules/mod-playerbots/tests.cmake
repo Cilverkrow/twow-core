@@ -340,6 +340,21 @@ add_test(NAME low_level_window_policy
   COMMAND low_level_window_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# WS30-ELITE-QUEST-01 (AiPlayerbot.QuestElite.Defer, default 0): mode and clamps, population, scope, the 1a / 1b rule, the wish
+# and form floors and the minute line (EliteQuestPolicy.h).
+add_executable(elite_quest_policy_tests
+  "${PB_MODULE_DIR}/t/elite_quest_policy_tests.cpp")
+
+target_include_directories(elite_quest_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(elite_quest_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME elite_quest_policy
+  COMMAND elite_quest_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # twow-repo#601 R01 v4: S1Cohort / S3Cohort - for which bots the S1 / S3 key groups act (cohort mode in one realm).
 add_executable(r01_cohort_policy_tests
   "${PB_MODULE_DIR}/t/r01_cohort_policy_tests.cpp")

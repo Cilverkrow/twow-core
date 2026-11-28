@@ -3,7 +3,7 @@ cmake_policy(VERSION 3.16)
 # 3 cohort A; other = 0 + error line) and AiPlayerbot.QuestBook.Shadow (default 0). Plan
 # ws-10/cli-quest-organic/a3/step2-questbook/QB-BUILD-PLAN-20261107.md. This contract pins that:
 #   - the switch: members default 0 / false, keys read with default 0 and clamped by questbook::ValidMode, documented = 0,
-#     echoed in byte order between ProfessionUse.Trace and QuestFeasibility.Blocklist.count;
+#     echoed in byte order between ProfessionUse.Trace and QuestElite.Defer (WS30-ELITE-QUEST-01 sits between QuestBook.* and QuestFeasibility.*);
 #   - one observe per engine pass: PlayerbotAI::UpdateAI after the reaction gate, right before the supervisor gate, for a roster
 #     bot on its own only; the else branch releases and drops the instance; one place makes a QuestBook; a shadow book is never
 #     handed to a caller (ActiveQuestBook is null in shadow);
@@ -85,7 +85,7 @@ set(ECHO "            {\"ProfessionUse.Trace\", Value(professionUseTrace)},
             {\"QuestBook.SingleSpawnMargin\", Value(questBookSingleSpawnMargin)},
             {\"QuestBook.SourceChoice\", Value(questBookSourceChoice)},
             {\"QuestBook.StaleCompleteSeconds\", Value(questBookStaleCompleteSeconds)},
-            {\"QuestFeasibility.Blocklist.count\"")
+            {\"QuestElite.Defer\"")
 
 function(check_switch config_h config_cpp conf_dist out)
   foreach(needle "uint32 questBook = 0;" "bool questBookShadow = false;")

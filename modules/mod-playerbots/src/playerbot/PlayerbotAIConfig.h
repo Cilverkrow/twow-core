@@ -1128,6 +1128,12 @@ public:
     uint32 questGroupsMaxAttempts = 3;
     uint32 questGroupsRetryCooldownMinutes = 30;
     bool questGroupsSuggestedPlayers = true;
+    // WS30-ELITE-QUEST-01 (OB-20 rule f6ab4497, EliteQuestPolicy.h): AiPlayerbot.QuestElite.Defer - elite quests only with a group of
+    // >= MinGroup in the zone at >= the effective quest level (1a) or a bot >= that level + SoloLevelsAbove (1b), else deferred
+    // (kept, not abandoned); 0 off, 1 all, 2 cohort B (odd low guid), 3 cohort A (even low guid)
+    uint32 questEliteDefer = 0;
+    uint32 questEliteMinGroup = 3;          // AiPlayerbot.QuestElite.MinGroup, clamp 2..5
+    uint32 questEliteSoloLevelsAbove = 5;   // AiPlayerbot.QuestElite.SoloLevelsAbove, clamp 0..99 (99 = rule 1b off)
     // #303 part 2: a bot does not walk more than this far to a real-player
     // master (0 = no limit); beyond it the bot waits and asks to be summoned.
     float farFollowMaxWalkDistance = 400.0f;

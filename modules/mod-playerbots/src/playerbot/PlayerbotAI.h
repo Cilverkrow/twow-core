@@ -30,6 +30,7 @@
 #include "playerbot/SupervisorPolicy.h"   // A3 step 5: the CombatLoop event a ProgressGuard break leaves (plain data)
 #include "playerbot/PlannerShadow.h"      // A3 step 3 planner P-2b: the reward note and the relocation source (plain data)
 #include "playerbot/ManagerInboxPolicy.h"   // A3 step 6 T30-0: the last group edge this bot posted (plain data)
+#include "playerbot/EliteQuestPolicy.h"   // WS30-ELITE-QUEST-01: the scope entry of EliteQuestScope (plain data)
 #include <atomic>
 #include <functional>
 #include <mutex>
@@ -1401,6 +1402,23 @@ public:
     // relaxed); world thread: "[LowLevelWindow] minute ..." with the counts since the last call (reset), empty when all are 0.
     static void NoteLowLevelWindow(uint8 event, uint32 guidLow, uint32 n = 1);
     static std::string TakeLowLevelWindowMinuteLine();
+    // WS30-ELITE-QUEST-01 (AiPlayerbot.QuestElite.Defer, EliteQuestPolicy.h): a persistent roster bot on its own in the mode's
+    // cohort - the bots the elite rule judges. Always false with the switch 0 (the config is read first).
+    bool IsEliteQuestDefer();
+    // QuestElite.Defer, the bot's own thread: rule 1a's group facts - alive group members in the bot's zone (itself included, only
+    // members on its own Map object: HARM-RACE guard pair SameMapObject) and their lowest level. Solo: 1 / own level.
+    void EliteGroupFacts(uint32& members, uint32& minLevel) const;
+    // QuestElite.Defer, the bot's own thread: the quest is elite-scope, the bot is judged by the rule, outside instances, and the rule
+    // does not let it pursue the quest now (Pursue && the old readiness, OB-10 A1). False for every other bot / quest / place.
+    bool EliteQuestDeferred(uint32 questId);
+    // QuestElite.Defer, world thread at start, only with the key on: the scope table (quest id -> effective level), built once,
+    // published, never rebuilt on reload. EliteQuestScope: nullptr = not built or not in scope (one pointer load, one search).
+    static void BuildEliteQuestScope();
+    static ai::elite_quest::ScopeEntry const* EliteQuestScope(uint32 questId);
+    // QuestElite.Defer: adds n to one minute counter of the bot's cohort (ai::elite_quest::Event as uint8; any thread, relaxed);
+    // world thread: "[QuestElite] minute ..." with the counts since the last call (reset), empty when all are 0.
+    static void NoteEliteQuest(uint8 event, uint32 guidLow, uint32 n = 1);
+    static std::string TakeEliteQuestMinuteLine();
     // twow-repo#601 S5a (AiPlayerbot.QuestFirstProgression.BandLadder, QuestBand.cpp): the band step. Every member reads the switch
     // first or touches only state the band path writes; nothing with BandLadder 0.
     // The band episode of this bot (bot thread only): the last two zones it left by a band step and the band it left them in,

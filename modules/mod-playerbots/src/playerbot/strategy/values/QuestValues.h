@@ -115,6 +115,17 @@ namespace ai
         virtual std::vector<int32> Calculate() override;
     };
 
+    // WS30-ELITE-QUEST-01 (AiPlayerbot.QuestElite.Defer, default 0; OB-10 review 8b4ddc3c E2): the creature entries of rank 1 / 2 / 3
+    // targets of the bot's DEFERRED elite-scope quests (PlayerbotAI::EliteQuestDeferred) that no other incomplete quest of the
+    // bot needs, sorted. Its own value, not part of "needed quest entries" (6+ readers keep the full set): only the grind target
+    // choice and the QuestFirstOrder grind destination test subtract it. Empty for every bot the rule does not judge.
+    class DeferredEliteEntriesValue : public CalculatedValue<std::vector<int32>>
+    {
+    public:
+        DeferredEliteEntriesValue(PlayerbotAI* ai) : CalculatedValue<std::vector<int32>>(ai, "deferred elite entries", 5) {}
+        virtual std::vector<int32> Calculate() override;
+    };
+
     //Check if a specific entry is a quest objective that the bot has to complete.
     class NeedForQuestValue : public BoolCalculatedValue, public Qualified
     {
