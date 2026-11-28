@@ -2756,8 +2756,9 @@ AiPlayerbot.ProfessionTraining.StartLevel = 1
 # core), then the spell the apprentice teaching spell teaches (skill 1/75 and the starter recipes). No trainer visit, no
 # money, no follow rank (journeyman and up stay with the trainer), no change to a learned skill, never a third primary.
 # The teaching spells come from the tradeskill trainer lists (npc_trainer and npc_trainer_template), read once; a skill
-# with more than one apprentice teaching spell gets no grant and an error line. A rank refused at login (Jewelcrafting
-# below level 5) is granted on a later roster check. With a granted rank the bot gets its missing starter tools for free
+# with more than one apprentice teaching spell gets no grant and an error line. A rank refused at login (the trainer level:
+# Alchemy, Engineering and Jewelcrafting need level 5) is granted on a later roster check. With a granted rank the bot gets its missing
+# starter tools for free, into its bags
 # (owner economy decision 28.11.2026 via OB-00): Mining Pick 2901, Skinning Knife 7005, Blacksmith Hammer 5956
 # (Blacksmithing, Engineering), Arclight Spanner 6219, Runed Copper Rod 6218, Jewelers Kit 55155. Lines:
 # "[ProfessionGrant] table skills= <skill>=<spell> ..." once, and per skill "[ProfessionGrant] guid= level= pair= skill=

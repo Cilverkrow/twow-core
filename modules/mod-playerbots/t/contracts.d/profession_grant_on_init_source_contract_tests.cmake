@@ -86,6 +86,8 @@ require_text("${grant}" "if (proto->Effect[j] == SPELL_EFFECT_LEARN_SPELL)\n    
 require_text("${grant}" "result = bot->HasSkill(skill) ? Result::Ok : Result::LearnFailed;" "skill check after learning")
 require_order("${grant}" "if (result == Result::Ok)" "ai::profession_grant::StarterTools(skill)" "tools only after a grant")
 require_text("${grant}" "bot->HasItemCount(item, 1)" "only missing tools")
+require_text("${grant}" "bot->CanStoreNewItem(INVENTORY_SLOT_BAG_0, NULL_SLOT, dest, item, 1) == EQUIP_ERR_OK" "tools into the bags")
+forbid_text("${grant}" "StoreNewItemInBestSlots" "equipping store (a tool must never land in a weapon slot)")
 require_text("${grant}" "\"[ProfessionGrant] guid=%u level=%u pair=%u skill=%u spell=%u source=%s result=%s value=%u tools=%s\"" "the grant line")
 forbid_text("${grant}" "ModifyMoney" "money change in the grant")
 forbid_text("${grant}" "CastSpell" "cast in the grant (the trainer path learns, it does not cast)")
@@ -99,6 +101,7 @@ require_text("${table}" "collect(sObjectMgr.GetNpcTrainerTemplateSpells(info->Tr
 require_text("${table}" "ai::profession_grant::IsApprenticeCandidate(tSpell.reqSkill, teachesFirstRank, skill)" "candidate rule")
 require_text("${table}" "RosterProfessionTrainerAction::GetTrainerSpellSkill(&tSpell)" "skill identity of the trainer path")
 require_text("${table}" "ai::profession_grant::ResolveApprentice(skillSpells)" "resolver")
+require_text("${table}" "if (!inserted && tSpell.reqLevel > row->second.reqLevel)\n                    row->second = tSpell;" "strictest trainer row per teaching spell")
 
 # 5. Policy: starter tools and modes as decided; the factory stays plan-only.
 require_text("${policy}" "case profession::kEngineering:    return { kBlacksmithHammer, kArclightSpanner };" "engineering tools")
