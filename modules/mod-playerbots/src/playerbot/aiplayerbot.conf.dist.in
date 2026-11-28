@@ -853,6 +853,12 @@ AiPlayerbot.Grind.QuestFirstOrder = 0
 # computes and is counted, nobody's pick changes - the log-only run). Any other value acts like 0.
 AiPlayerbot.Grind.NeighbourAware = 0
 
+# Grind pick, crowded candidate (bug fix): a creature that more bots target than the assist allows should get a penalty of
+# 5 yards per targeting bot on its distance score. The old code replaced the distance by that penalty, so crowded creatures
+# looked near. Grouped bots score by member distance and are not affected. 0 = old behaviour (default until the acceptance
+# test), 1 = add the penalty for every bot, 2 = only cohort B (odd low guid), 3 = only cohort A. Any other value acts like 0.
+AiPlayerbot.Grind.CrowdPenalty = 0
+
 # twow-repo#656 BOT-PULL-01-L1 (#653 lever 1, OB-00 31.10.2026): the stage-2 grind pick of solo free bots orders its candidates
 # by risk - the idle creatures of the pass's own target list that would join the fight: linked to the candidate (AGGRO_TOGETHER
 # group, same-faction assist, call for help along its run to a ranged bot; weight 2) or seeing the bot at the candidate, at the
