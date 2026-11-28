@@ -3266,6 +3266,8 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
 
         if (sPlayerbotAIConfig.pathTransportEdgeTrace)   // twow-repo#342 (S1): fail reason=fell_off for a boarded episode
             MovementAction::TraceTransportEdgeFellOff(this);
+        if (sPlayerbotAIConfig.pathTransportTeleportTrace)   // twow-repo#790 (S3b-2 step 3): why the fell-off test failed, log only
+            TraceTransportTeleportFellOff();
 
         WorldPosition botPos(bot);
         bot->GetTransport()->RemovePassenger(bot);
@@ -4518,8 +4520,17 @@ void PlayerbotAI::HandleTeleportAck()
 	}
 	else if (bot->IsBeingTeleportedFar())
 	{
+        // twow-repo#790 (S3b-2 step 3, AiPlayerbot.Path.TransportTeleportTrace, default 0): a passenger of a transport that changed
+        // map (Transport::TeleportTransport, TELE_TO_NOT_LEAVE_TRANSPORT) - the destination before the ack, the result after it.
+        Transport const* const traceTransport = sPlayerbotAIConfig.pathTransportTeleportTrace ? bot->GetTransport() : nullptr;
+        uint32 const traceEntry = traceTransport ? traceTransport->GetEntry() : 0;
+        uint32 const traceDestMap = traceTransport ? bot->GetTeleportDest().mapId : 0;
+        float const traceDestX = traceTransport ? bot->GetTeleportDest().x : 0.0f;
+        float const traceDestY = traceTransport ? bot->GetTeleportDest().y : 0.0f;
         bot->GetSession()->HandleMoveWorldportAckOpcode();
         NoteTeleportAck();   // R9-2 (twow-repo#575): the ack confirms the site's source, else teleport_ack (D7)
+        if (traceTransport)
+            TraceTransportTeleportAck(traceEntry, traceDestMap, traceDestX, traceDestY);
 
         // add delay to simulate teleport delay
         SetAIInternalUpdateDelay(urand(2000, 5000));
@@ -4529,6 +4540,43 @@ void PlayerbotAI::HandleTeleportAck()
         bot->SendHeartBeat();
 
     Reset();
+}
+
+// twow-repo#790 (S3b-2 step 3 diagnosis, AiPlayerbot.Path.TransportTeleportTrace): only called with the key on, so with 0 there is no
+// state, no line and no extra call. Both lines are rare (a far ack while on a transport; a fell-off removal), so no line budget.
+void PlayerbotAI::TraceTransportTeleportAck(uint32 entry, uint32 destMap, float destX, float destY)
+{
+    transportFarAckMs = std::max<uint32>(WorldTimer::getMSTime(), 1u);
+    Transport const* const transport = bot->GetTransport();
+    float const dist = transport ? bot->GetDistance2dToCenter(transport->GetPositionX(), transport->GetPositionY()) : -1.0f;
+    sLog.outBasic("[TransportTeleport] ack bot=%u level=%u entry=%u dest_map=%u dest_x=%.1f dest_y=%.1f map=%u inst=%u x=%.1f y=%.1f z=%.1f "
+        "in_world=%u on_transport=%u t_map=%d t_inst=%d t_x=%.1f t_y=%.1f t_z=%.1f dist=%.1f off_x=%.1f off_y=%.1f off_z=%.1f",
+        bot->GetGUIDLow(), uint32(bot->GetLevel()), entry, destMap, destX, destY, bot->GetMapId(), bot->GetInstanceId(), bot->GetPositionX(),
+        bot->GetPositionY(), bot->GetPositionZ(), bot->IsInWorld() ? 1u : 0u, transport ? 1u : 0u,
+        transport ? int32(transport->GetMapId()) : -1, transport ? int32(transport->GetInstanceId()) : -1,
+        transport ? transport->GetPositionX() : 0.0f, transport ? transport->GetPositionY() : 0.0f, transport ? transport->GetPositionZ() : 0.0f,
+        dist, bot->GetTransOffsetX(), bot->GetTransOffsetY(), bot->GetTransOffsetZ());
+}
+
+void PlayerbotAI::TraceTransportTeleportFellOff()
+{
+    Transport* const transport = bot->GetTransport();
+    if (!transport)
+        return;
+    WorldPosition here(bot);
+    // The two answers of the fell-off test (WorldPosition::isOnTransport): the static test and the TransportBoardFix deck test.
+    bool const onStatic = here.isOnTransport(transport, false);
+    bool const fixedRide = MovementAction::HasFixedRide(this);
+    bool const onDeck = here.isOnTransport(transport, true);
+    uint32 const nowMs = WorldTimer::getMSTime();
+    int32 const sinceAck = transportFarAckMs ? int32(WorldTimer::getMSTimeDiff(transportFarAckMs, nowMs)) : -1;
+    sLog.outBasic("[TransportTeleport] felloff bot=%u level=%u entry=%u map=%u inst=%u x=%.1f y=%.1f z=%.1f t_map=%u t_inst=%u t_x=%.1f "
+        "t_y=%.1f t_z=%.1f dist=%.1f on_static=%u on_deck=%u fixed_ride=%u since_far_ack_ms=%d off_x=%.1f off_y=%.1f off_z=%.1f",
+        bot->GetGUIDLow(), uint32(bot->GetLevel()), transport->GetEntry(), bot->GetMapId(), bot->GetInstanceId(), bot->GetPositionX(),
+        bot->GetPositionY(), bot->GetPositionZ(), transport->GetMapId(), transport->GetInstanceId(), transport->GetPositionX(),
+        transport->GetPositionY(), transport->GetPositionZ(), here.distance(WorldPosition(transport)),
+        onStatic ? 1u : 0u, onDeck ? 1u : 0u, fixedRide ? 1u : 0u, sinceAck, bot->GetTransOffsetX(), bot->GetTransOffsetY(),
+        bot->GetTransOffsetZ());
 }
 
 void PlayerbotAI::Reset(bool full)

@@ -1441,6 +1441,12 @@ public:
     void SetLastRelocSource(ai::replan::RelocSource source);   // a site, only after a teleport that started (D12)
     void MarkRelocHop();                                         // D6: a movement hop of a non-detailed bot (no relocation)
     void NoteTeleportAck();                                      // HandleTeleportAck: the ack confirms the site (D7)
+    // twow-repo#790 (S3b-2 step 3 diagnosis, AiPlayerbot.Path.TransportTeleportTrace, default 0, log only): a bot passenger
+    // across a ship's / zeppelin's map change. One [TransportTeleport] ack line per far ack while on a transport, one
+    // [TransportTeleport] felloff line per fell-off removal; transportFarAckMs (0 = none) is written only with the key on.
+    void TraceTransportTeleportAck(uint32 entry, uint32 destMap, float destX, float destY);
+    void TraceTransportTeleportFellOff();
+    uint32 transportFarAckMs = 0;
     ai::replan_wire::Taken TakeLastRelocSource(std::uint32_t nowMs);
     void ExpireLastRelocSource(std::uint32_t nowMs);
     // R9-2: the [Unreachable] results of this bot (Sample.unreachable, a diagnosis field); counted only while ReplanWired().
