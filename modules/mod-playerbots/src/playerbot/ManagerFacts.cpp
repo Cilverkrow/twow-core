@@ -135,10 +135,13 @@ bool ReadWish(Player* bot, PlayerbotAI* ai, manager_inbox::WishFacts& out)
     TravelTarget* const target = Target(ai);
     // twow-repo#627 GRP2030 levers 1 and 2 (QuestGroups.Manager.WishScope / DeadQuestEnds, default 0): only for a bot of the
     // manager's cohort (OwnsBot; the other cohort keeps the old wish). Dead quests come from the manager's view (no other bot).
-    bool const owned = (sPlayerbotAIConfig.questGroupsManagerWishScope || sPlayerbotAIConfig.questGroupsManagerDeadQuestEnds) &&
-        group_mgr::OwnsBot(bot->GetGUIDLow());
+    // twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1; QuestGroups.Manager.WishSkipBlocked, default 0): the same binding; the
+    // quests the manager blocks for this bot (its view, QuestBlockedForWish) are skipped, so the next waiting quest is the wish.
+    bool const owned = (sPlayerbotAIConfig.questGroupsManagerWishScope || sPlayerbotAIConfig.questGroupsManagerDeadQuestEnds ||
+        sPlayerbotAIConfig.questGroupsManagerWishSkipBlocked) && group_mgr::OwnsBot(bot->GetGUIDLow());
     bool const scopeAll = owned && sPlayerbotAIConfig.questGroupsManagerWishScope;
     bool const skipDead = owned && sPlayerbotAIConfig.questGroupsManagerDeadQuestEnds;
+    bool const skipBlocked = owned && sPlayerbotAIConfig.questGroupsManagerWishSkipBlocked;
     quest_groups::WishPick best;
     bool bestDrop = false;
     for (std::uint16_t slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
@@ -152,6 +155,8 @@ bool ReadWish(Player* bot, PlayerbotAI* ai, manager_inbox::WishFacts& out)
             q->GetType() == quest_groups::QuestTypePvp))
             continue;
         if (skipDead && group_mgr::QuestDeadForWish(questId))
+            continue;
+        if (skipBlocked && group_mgr::QuestBlockedForWish(bot->GetGUIDLow(), questId))
             continue;
         QuestStatusData const* st = bot->GetQuestStatusData(questId);
         bool drop = false;
