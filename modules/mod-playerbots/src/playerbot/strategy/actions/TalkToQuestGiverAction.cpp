@@ -122,6 +122,7 @@ void TalkToQuestGiverAction::RewardNoItem(Quest const* quest, WorldObject* quest
     {
         bot->RewardQuest(quest, 0, questGiver, false);
         ai->NoteQuestRewarded(quest->GetQuestId());   // twow-repo#724: announce = false sends no reward packet
+        ai->NoteEliteQuestReward(quest->GetQuestId());   // WS30-ELITE-QUEST-01: [QuestElite] reward line (key 0: one config read)
         out = BOT_TEXT2("quest_status_completed", args);
 
         BroadcastHelper::BroadcastQuestTurnedIn(ai, bot, quest);
