@@ -713,8 +713,6 @@ void PlayerbotAI::NoteQuestRewarded(uint32 questId)
     // (no book, no note there). Off: one config read.
     if (sPlayerbotAIConfig.planner)
         plannerRewardNotes_.Note(questId);
-    // WS30-ELITE-QUEST-01 (QuestElite.Defer, default 0): the reward line of the two reward sources (key 0: one config read).
-    NoteEliteQuestReward(questId);
 }
 
 // A3 R9 / R2 wiring pair R9-2 (twow-repo#575; AiPlayerbot.Replan / Replan.Shadow, default 0; DESIGN-R9-2 D3/D6/D7/D12): the
@@ -4987,6 +4985,16 @@ void PlayerbotAI::HandleBotOutgoingPacket(const WorldPacket& packet)
 			uint32 questId;
 			p >> questId;
 			questBook_->OnRewarded(questId);
+		}
+		// WS30-ELITE-QUEST-01 (QuestElite.Defer, default 0): the [QuestElite] reward line of the packet reward source (announce = true;
+		// the announce = false sources call it next to NoteQuestRewarded). Off: one config read.
+		if (sPlayerbotAIConfig.questEliteDefer && packet.size() >= 4)
+		{
+			WorldPacket p(packet);
+			p.rpos(0);
+			uint32 eliteQuestId;
+			p >> eliteQuestId;
+			NoteEliteQuestReward(eliteQuestId);
 		}
 		return;
 	}

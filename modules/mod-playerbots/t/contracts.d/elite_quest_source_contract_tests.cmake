@@ -71,6 +71,8 @@ read_source("strategy/values/QuestValues.h" qv_h)
 read_source("strategy/values/QuestValues.cpp" qv_cpp)
 read_source("strategy/values/ValueContext.h" value_context)
 read_source("strategy/values/GrindTargetValue.cpp" grind_target)
+read_source("strategy/actions/RewardAction.cpp" reward_action)
+read_source("strategy/actions/TalkToQuestGiverAction.cpp" talk_action)
 
 # 1) The keys: a cohort mode, default 0, clamps, one error line, echo (sorted), dist.
 require_text("${config_h}" "    uint32 questEliteDefer = 0;" "Defer member, default 0")
@@ -205,8 +207,17 @@ require_text("${ai_h}" "    static std::string TakeEliteQuestMinuteLine();" "min
 
 
 # 8) The reward line (OB-00 28.11.: accepted for the PREREG): both cohorts, roster bots on their own, scope quests, key on.
-require_text("${ai_cpp}" "    NoteEliteQuestReward(questId);\n}" "called from NoteQuestRewarded (both reward sources)")
-require_order("${ai_cpp}" "void PlayerbotAI::NoteQuestRewarded(uint32 questId)" "    NoteEliteQuestReward(questId);" "inside NoteQuestRewarded")
+# Both reward sources (the a3s3 / questbook contracts pin NoteQuestRewarded byte-exact, so the line has its own calls): the
+# announce = false sources right after their NoteQuestRewarded, the packet source (announce = true) in the
+# SMSG_QUESTGIVER_QUEST_COMPLETE handler after the quest book's block, key-gated.
+require_text("${reward_action}" "                    ai->NoteQuestRewarded(questID);   // twow-repo#724: announce = false sends no reward packet\n                    ai->NoteEliteQuestReward(questID);" "RewardAction source")
+require_text("${talk_action}" "        ai->NoteQuestRewarded(quest->GetQuestId());   // twow-repo#724: announce = false sends no reward packet\n        ai->NoteEliteQuestReward(quest->GetQuestId());" "RewardNoItem source")
+require_text("${ai_cpp}" "			questBook_->OnRewarded(questId);\n		}\n		// WS30-ELITE-QUEST-01 (QuestElite.Defer, default 0): the [QuestElite] reward line of the packet reward source" "packet source after the quest book block")
+require_text("${ai_cpp}" "		if (sPlayerbotAIConfig.questEliteDefer && packet.size() >= 4)\n		{\n			WorldPacket p(packet);\n			p.rpos(0);\n			uint32 eliteQuestId;\n			p >> eliteQuestId;\n			NoteEliteQuestReward(eliteQuestId);\n		}\n		return;" "packet source key-gated")
+set(n_reward_call "NoteEliteQuestReward(")
+count_text("${ai_cpp}" n_reward_call 2 "reward line: definition + packet source in PlayerbotAI.cpp")
+count_text("${reward_action}" n_reward_call 1 "reward line: RewardAction")
+count_text("${talk_action}" n_reward_call 1 "reward line: RewardNoItem")
 require_text("${ai_cpp}" "void PlayerbotAI::NoteEliteQuestReward(uint32 questId)\n{\n    if (!sPlayerbotAIConfig.questEliteDefer || !bot || !sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) ||\n        HasRealPlayerMaster())\n        return;" "reward line: config first, roster bots on their own, no cohort filter")
 require_text("${ai_cpp}" "    facts.judged = EliteRuleJudges();\n    facts.formed = EliteFormedGroup();" "judged / formed fields")
 require_text("${policy}" "    return \"[QuestElite] reward guid=\" + std::to_string(f.guid) + \" cohort=\" + (cohort::InB(f.guid) ? \"b\" : \"a\") +" "reward line format")
