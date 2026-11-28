@@ -1465,6 +1465,20 @@ add_test(NAME area_level_policy
   COMMAND area_level_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#333 GrantOnInit: mode, starter tools, apprentice resolver and retry rule of the profession grant.
+add_executable(profession_grant_policy_tests
+  "${PB_MODULE_DIR}/t/profession_grant_policy_tests.cpp")
+
+target_include_directories(profession_grant_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(profession_grant_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME profession_grant_policy
+  COMMAND profession_grant_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 add_test(NAME area_level_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
