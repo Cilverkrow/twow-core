@@ -1078,6 +1078,8 @@ bool ItemUsageValue::IsItemNeededForSkill(ItemPrototype const* proto)
         return ai->HasSkill(SKILL_ENCHANTING);
     case 16207: //Runed Arcanite Rod
         return ai->HasSkill(SKILL_ENCHANTING);
+    case 55155: //Jewelers Kit - twow-repo#333 GrantOnInit: the tool (totem) of the Jewelcrafting recipes up to 75 (OB-40 54e8be01)
+        return ai->HasSkill(SKILL_JEWELCRAFTING);
     case 7005: //Skinning Knife
         return ai->HasSkill(SKILL_SKINNING);
     case 4471: //Flint and Tinder

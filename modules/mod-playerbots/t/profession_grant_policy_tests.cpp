@@ -30,12 +30,12 @@ int main()
 
     // Starter tools (owner economy decision 28.11.2026 via OB-00; OB-40 54e8be01).
     Require(StarterTools(p::kMining)[0] == 2901 && StarterTools(p::kMining)[1] == 0, "mining: Mining Pick");
-    Require(StarterTools(p::kSkinning)[0] == 7005, "skinning: Skinning Knife");
-    Require(StarterTools(p::kBlacksmithing)[0] == 5956, "blacksmithing: Blacksmith Hammer");
+    Require(StarterTools(p::kSkinning)[0] == 7005 && StarterTools(p::kSkinning)[1] == 0, "skinning: Skinning Knife");
+    Require(StarterTools(p::kBlacksmithing)[0] == 5956 && StarterTools(p::kBlacksmithing)[1] == 0, "blacksmithing: Blacksmith Hammer");
     Require(StarterTools(p::kEngineering)[0] == 5956 && StarterTools(p::kEngineering)[1] == 6219,
         "engineering: Blacksmith Hammer and Arclight Spanner");
-    Require(StarterTools(p::kEnchanting)[0] == 6218, "enchanting: Runed Copper Rod");
-    Require(StarterTools(p::kJewelcrafting)[0] == 55155, "jewelcrafting: Jewelers Kit");
+    Require(StarterTools(p::kEnchanting)[0] == 6218 && StarterTools(p::kEnchanting)[1] == 0, "enchanting: Runed Copper Rod");
+    Require(StarterTools(p::kJewelcrafting)[0] == 55155 && StarterTools(p::kJewelcrafting)[1] == 0, "jewelcrafting: Jewelers Kit");
     for (std::uint32_t const skill : { p::kHerbalism, p::kAlchemy, p::kLeatherworking, p::kTailoring, 185u, 0u })
         Require(StarterTools(skill)[0] == 0 && StarterTools(skill)[1] == 0, "no tool for the other skills");
 
