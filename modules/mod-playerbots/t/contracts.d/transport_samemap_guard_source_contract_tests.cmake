@@ -62,7 +62,7 @@ require_text("${dist}" "\nAiPlayerbot.Path.TransportSameMapGuard = 1\n" "dist de
 count_text("${dist}" "AiPlayerbot.Path.TransportSameMapGuard =" 1 "one dist line")
 require_text("${config_h}" "    bool pathTransportSameMapGuard = true;" "member default true")
 require_text("${config_cpp}" "    pathTransportSameMapGuard = config.GetBoolDefault(\"AiPlayerbot.Path.TransportSameMapGuard\", true);" "read with default true")
-require_text("${config_cpp}" "            {\"Path.TransportEdgeTrace\", Value(pathTransportEdgeTrace)},\n            {\"Path.TransportSameMapGuard\", Value(pathTransportSameMapGuard)},\n            {\"Path.TransportWaitTimeoutMin\", Value(pathTransportWaitTimeoutMin)}," "[ConfigEcho] sorted")
+require_text("${config_cpp}" "            {\"Path.TransportEdgeTrace\", Value(pathTransportEdgeTrace)},\n            {\"Path.TransportSameMapGuard\", Value(pathTransportSameMapGuard)},\n            {\"Path.TransportTeleportTrace\", Value(pathTransportTeleportTrace)},\n            {\"Path.TransportWaitTimeoutMin\", Value(pathTransportWaitTimeoutMin)}," "[ConfigEcho] sorted (twow-repo#790 TransportTeleportTrace between)")
 
 # 2. The policy: guard off = always the scan; guard on = only on the bot's map.
 require_text("${policy}" "inline bool ScanAllowed(bool guard, std::uint32_t dockMap, std::uint32_t botMap)\n{\n    return !guard || dockMap == botMap;\n}" "the rule")

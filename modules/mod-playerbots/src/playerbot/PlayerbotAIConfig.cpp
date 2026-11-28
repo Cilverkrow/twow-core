@@ -1580,6 +1580,7 @@ bool PlayerbotAIConfig::Initialize()
     pathTransportWaitTimeoutMin = ai::transport_board::ClampWaitTimeoutMin(config.GetIntDefault("AiPlayerbot.Path.TransportWaitTimeoutMin", 15));
     pathTransportBoardFix = config.GetBoolDefault("AiPlayerbot.Path.TransportBoardFix", true);
     pathTransportSameMapGuard = config.GetBoolDefault("AiPlayerbot.Path.TransportSameMapGuard", true);   // twow-repo#575 H4
+    pathTransportTeleportTrace = config.GetBoolDefault("AiPlayerbot.Path.TransportTeleportTrace", false);   // twow-repo#790
     if (pathTransportBoardFix && transportTeleportType == 0)   // twow-repo#342 (S3b-1)
         sLog.outError("AiPlayerbot.Path.TransportBoardFix is built for TransportTeleportType 1 / 2; walking onto transports (0) is not supported");
     pathTaxiCancelForm = config.GetBoolDefault("AiPlayerbot.Path.TaxiCancelForm", false);
@@ -2570,6 +2571,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Path.TransportDeckProbe", Value(pathTransportDeckProbe)},
             {"Path.TransportEdgeTrace", Value(pathTransportEdgeTrace)},
             {"Path.TransportSameMapGuard", Value(pathTransportSameMapGuard)},
+            {"Path.TransportTeleportTrace", Value(pathTransportTeleportTrace)},
             {"Path.TransportWaitTimeoutMin", Value(pathTransportWaitTimeoutMin)},
             {"Perf.BindAreaFromHomebind", Value(perfBindAreaFromHomebind)},
             {"Perf.DispatchPrecomputedPath", Value(perfDispatchPrecomputedPath)},
