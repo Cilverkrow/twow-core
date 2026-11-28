@@ -112,6 +112,14 @@ require_text("${ai_cpp}" "bool PlayerbotAI::IsEliteQuestDefer()\n{\n    if (!sPl
 require_text("${ai_cpp}" "sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !HasRealPlayerMaster());" "roster bot on its own only")
 require_text("${ai_cpp}" "        if (!member || member == bot || !member->IsInWorld() || !SameMapObject(bot, member) || !member->IsAlive() ||\n            member->GetZoneId() != bot->GetZoneId())" "group facts guarded")
 require_text("${ai_cpp}" "    bool const ready = members > 1 ? AI_VALUE(bool, \"can fight elite\") : AI_VALUE(bool, \"can fight equal\");" "deferral keeps the readiness (A1)")
+require_text("${ai_cpp}" "    if (!ai::supervisor::GroupGoalSnapshot(this))
+    {
+        focusQuestTravelList const focus = AI_VALUE(focusQuestTravelList, \"focus travel target\");
+        if (focus.find(questId) != focus.end())
+            return false;
+    }" "E2 mirrors the E1 focus bypass")
+require_text("${ai_cpp}" "    if (!IsEliteQuestDefer() || !bot->GetMap() || bot->GetMap()->Instanceable())
+        return false;" "deferral: judged bot outside instances only")
 require_text("${travel_mgr}" "    eliteRule = ai->IsEliteQuestDefer();\n    if (eliteRule)\n    {\n        eliteGuid = player->GetGUIDLow();\n        ai->EliteGroupFacts(eliteMembers, eliteMinLevel);\n    }" "snapshot on the bot thread, one group-facts implementation")
 require_text("${travel_h}" "		bool eliteRule = false;" "snapshot bit default false")
 
@@ -138,9 +146,25 @@ count_text("${travel_mgr}" n_deferred_value 1 "QuestFirstOrder grind destination
 count_text("${ai_cpp}" n_deferred_value 0 "no reader in PlayerbotAI.cpp")
 require_text("${grind_target}" "            if (needForQuest && sPlayerbotAIConfig.questEliteDefer)\n            {" "target choice reads it only with the key on")
 require_text("${travel_mgr}" "        if (!ai::quest_grind_mode::GrindDestinationActive(true, neededHere))" "QFO destination test with the subtraction")
+require_text("${travel_mgr}" "        std::vector<int32> const& deferredElite = sPlayerbotAIConfig.questEliteDefer ?
+            AI_VALUE(std::vector<int32>, \"deferred elite entries\") : noDeferredElite;" "QFO destination reads it only with the key on")
+require_text("${grind_target}" "                if (std::binary_search(deferredElite.begin(), deferredElite.end(), int32(entry)))
+                {
+                    needForQuest = false;
+                    PlayerbotAI::NoteEliteQuest(uint8(ai::elite_quest::Event::TargetSkipped), bot->GetGUIDLow());" "target_skipped counted at the skip")
+set(n_skipped "Event::TargetSkipped")
+count_text("${grind_target}" n_skipped 1 "target_skipped: one count site (target choice)")
+count_text("${qv_cpp}" n_skipped 0 "no target_skipped count in the value rebuild")
 # "needed quest entries" keeps its full set for its other readers: its Calculate never reads the deferral.
 string(FIND "${qv_cpp}" "std::vector<int32> NeededQuestEntriesValue::Calculate()" needed_at)
-string(SUBSTRING "${qv_cpp}" ${needed_at} 6000 needed_body)
+string(SUBSTRING "${qv_cpp}" ${needed_at} -1 needed_rest)
+string(FIND "${needed_rest}" "
+}
+" needed_end)   # the function ends at its first closing brace in column 0
+if(needed_at EQUAL -1 OR needed_end EQUAL -1)
+  message(FATAL_ERROR "elite quest: NeededQuestEntriesValue::Calculate not found")
+endif()
+string(SUBSTRING "${needed_rest}" 0 ${needed_end} needed_body)
 forbid_text("${needed_body}" "EliteQuestDeferred" "deferral inside needed quest entries")
 forbid_text("${needed_body}" "deferred elite entries" "deferred value inside needed quest entries")
 
