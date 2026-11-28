@@ -74,7 +74,7 @@ int main()
         Require(Pursue(2, 18, 24, 19, 3, 5), "L24 in a group of 2 pursues by 1b");
         Require(!Pursue(1, 60, 60, 19, 3, 99), "99 turns 1b off");
         Require(Pursue(3, 19, 19, 19, 3, 99), "99 leaves 1a on");
-        Require(!Pursue(2, 19, 19, 19, 1, 99) && Pursue(2, 19, 19, 19, 2, 99), "MinGroup clamps to >= 2");
+        Require(!Pursue(1, 19, 19, 19, 1, 99) && Pursue(2, 19, 19, 19, 1, 99), "MinGroup clamps to >= 2 (1 -> 2: a group of 2 passes, a solo bot not)");
         Require(Pursue(5, 19, 19, 19, 9, 99) && !Pursue(4, 19, 19, 19, 9, 99), "MinGroup clamps to <= 5");
     }
 

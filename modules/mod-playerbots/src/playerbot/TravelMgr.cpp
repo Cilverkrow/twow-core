@@ -1045,15 +1045,16 @@ bool GrindTravelDestination::IsActive(Player* bot, const PlayerTravelInfo& info)
     if (ai->IsQuestNoGrindTrip())   // + QuestFirstOrder (#601 review)
     {
         std::vector<int32> const& needed = AI_VALUE(std::vector<int32>, "needed quest entries");
-        // WS30-ELITE-QUEST-01 (QuestElite.Defer, OB-10 E2): an elite target of a deferred quest no other quest needs is not needed
-        // here (its own value, read only with the key on; empty for every bot the rule does not judge).
-        static std::vector<int32> const noDeferredElite;
-        std::vector<int32> const& deferredElite = sPlayerbotAIConfig.questEliteDefer ?
-            AI_VALUE(std::vector<int32>, "deferred elite entries") : noDeferredElite;
-        bool const neededHere = std::binary_search(needed.begin(), needed.end(), GetEntry()) &&
-            !std::binary_search(deferredElite.begin(), deferredElite.end(), GetEntry());
-        if (!ai::quest_grind_mode::GrindDestinationActive(true, neededHere))
+        if (!ai::quest_grind_mode::GrindDestinationActive(true, std::binary_search(needed.begin(), needed.end(), GetEntry())))
             return false;
+        // WS30-ELITE-QUEST-01 (QuestElite.Defer, OB-10 E2): an elite target of a deferred quest no other quest needs is not needed
+        // here either (its own value, read only with the key on; empty for every bot the rule does not judge).
+        if (sPlayerbotAIConfig.questEliteDefer)
+        {
+            std::vector<int32> const& deferredElite = AI_VALUE(std::vector<int32>, "deferred elite entries");
+            if (std::binary_search(deferredElite.begin(), deferredElite.end(), GetEntry()))
+                return false;
+        }
     }
 
     return GuidPosition(bot).IsHostileTo(GuidPosition(HIGHGUID_UNIT, GetEntry()), bot->GetInstanceId());

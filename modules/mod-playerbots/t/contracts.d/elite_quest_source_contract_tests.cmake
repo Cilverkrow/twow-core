@@ -118,8 +118,9 @@ require_text("${ai_cpp}" "    if (!ai::supervisor::GroupGoalSnapshot(this))
         if (focus.find(questId) != focus.end())
             return false;
     }" "E2 mirrors the E1 focus bypass")
-require_text("${ai_cpp}" "    if (!IsEliteQuestDefer() || !bot->GetMap() || bot->GetMap()->Instanceable())
-        return false;" "deferral: judged bot outside instances only")
+require_text("${ai_cpp}" "    Map const* const map = bot->FindMap();
+    if (!IsEliteQuestDefer() || !map || map->Instanceable())
+        return false;" "deferral: judged bot outside instances only (FindMap, #722)")
 require_text("${travel_mgr}" "    eliteRule = ai->IsEliteQuestDefer();\n    if (eliteRule)\n    {\n        eliteGuid = player->GetGUIDLow();\n        ai->EliteGroupFacts(eliteMembers, eliteMinLevel);\n    }" "snapshot on the bot thread, one group-facts implementation")
 require_text("${travel_h}" "		bool eliteRule = false;" "snapshot bit default false")
 
@@ -145,9 +146,16 @@ count_text("${grind_target}" n_deferred_value 1 "target choice reader")
 count_text("${travel_mgr}" n_deferred_value 1 "QuestFirstOrder grind destination reader")
 count_text("${ai_cpp}" n_deferred_value 0 "no reader in PlayerbotAI.cpp")
 require_text("${grind_target}" "            if (needForQuest && sPlayerbotAIConfig.questEliteDefer)\n            {" "target choice reads it only with the key on")
-require_text("${travel_mgr}" "        if (!ai::quest_grind_mode::GrindDestinationActive(true, neededHere))" "QFO destination test with the subtraction")
-require_text("${travel_mgr}" "        std::vector<int32> const& deferredElite = sPlayerbotAIConfig.questEliteDefer ?
-            AI_VALUE(std::vector<int32>, \"deferred elite entries\") : noDeferredElite;" "QFO destination reads it only with the key on")
+# the GrindMode 2 line stays byte-exact (quest_grind_mode contract); the elite test is its own block after it, key-gated
+require_text("${travel_mgr}" "        if (!ai::quest_grind_mode::GrindDestinationActive(true, std::binary_search(needed.begin(), needed.end(), GetEntry())))
+            return false;
+        // WS30-ELITE-QUEST-01" "QFO destination: the pinned line, then the elite test")
+require_text("${travel_mgr}" "        if (sPlayerbotAIConfig.questEliteDefer)
+        {
+            std::vector<int32> const& deferredElite = AI_VALUE(std::vector<int32>, \"deferred elite entries\");
+            if (std::binary_search(deferredElite.begin(), deferredElite.end(), GetEntry()))
+                return false;
+        }" "QFO destination reads it only with the key on")
 require_text("${grind_target}" "                if (std::binary_search(deferredElite.begin(), deferredElite.end(), int32(entry)))
                 {
                     needForQuest = false;
