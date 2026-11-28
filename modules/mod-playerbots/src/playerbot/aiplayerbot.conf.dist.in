@@ -237,6 +237,11 @@ AiPlayerbot.Loot.FeralFixedSpec = 1
 # One [GroupQuestLoot] line per accepted corpse and per leash hold / expiry. 0 = as before (default until the owner test;
 # then 1, 0 = rollback).
 AiPlayerbot.Loot.GroupQuestLoot = 0
+# twow-repo#627 GRP2030 (lever, default 0, no behaviour change; OB-00 F2 (A) 27.11.2026): the same #780 rules (own party-loot
+# quest drops only, the same range, hostile and leash bounds and lines) for a follower of a group-manager QUEST group, whose
+# master is the bot leader (BotGroups.Manager.Types bit 2; only bots of the manager's cohort can be such followers). A bot with
+# an active player master keeps following Loot.GroupQuestLoot alone; ad-hoc and S7 followers are not covered.
+AiPlayerbot.Loot.GroupQuestLoot.BotLeader = 0
 # twow-repo#575 H1 (BUG FIX, loot ping-pong; A3-HARM-UPSTREAM, OB-00 09.11.2026; heal branch CLI-ROT): "move to rpg target",
 # "move to travel target" and the heal of the rpg target stand back while the bot's loot target is still open: set, within
 # LootDistance of the bot and still lootable. Before, they stood back only while the "available loot" list offered loot; that
@@ -2010,6 +2015,27 @@ AiPlayerbot.QuestGroups.MaxQuestMinutes = 60
 AiPlayerbot.QuestGroups.MaxAttempts = 3
 AiPlayerbot.QuestGroups.RetryCooldownMinutes = 30
 AiPlayerbot.QuestGroups.SuggestedPlayers = 1
+# twow-repo#627 GRP2030 dose levers of the group manager (BotGroups.Manager.Types bit 2; default 0 = no behaviour change; OB-00
+# (A) 27.11.2026). Both act only on bots of the manager's cohort (BotGroups.Manager); the other cohort keeps the old wish.
+# WishScope: 0 = a bot's manager group wish is a group-help quest only (elite / SuggestedPlayers above), as before; 1 = a normal
+# quest may be the wish too (no dungeon, raid or PvP quest). A group-help quest still wins; between normal quests the lowest
+# quest id wins (a shared order, so neighbours holding the same quests wish the same one). Other values = 0 (one error line).
+# DeadQuestEnds: 0 = off; N = a quest whose manager QUEST groups end N times in a row with no_progress and without any objective
+# progress of any member is dead for DeadQuestHours: no QUEST candidate for it, and the cohort's bots wish another quest.
+# Progress or a turn-in in one of its groups resets the count. One line "[GroupMgr] event=quest_dead quest= group= ends= hours="
+# per death. DeadQuestHours: 1..48 (0 or negative = 6, above = 48; one error line).
+AiPlayerbot.QuestGroups.Manager.WishScope = 0
+AiPlayerbot.QuestGroups.Manager.DeadQuestEnds = 0
+AiPlayerbot.QuestGroups.Manager.DeadQuestHours = 6
+# twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1; default 0 = no behaviour change). Only bots of the manager's cohort.
+# WishSkipBlocked: 0 = off, as before (a bot keeps wishing a quest the manager blocks for it, and is no QUEST candidate for that
+# time); 1 = the bot's wish skips a quest the manager blocks for this bot (the retry cooldown after a failed group, attempts used
+# up, the manager's own end reasons), so it wishes its next waiting quest. The block stays while skipped. The attempts of a
+# quest add up (up to QuestGroups.MaxAttempts) within DeadQuestHours after its last failed group, even while the bot does not
+# wish it; once the retry cooldown ran out the bot may wish it again. A quest with all attempts used up is skipped for
+# DeadQuestHours after the last failure and may then be tried again. Other values = 0 (one error line). The "[GroupMgr]
+# minute" line counts in wish_blocked= (its last field, key on or off) the fresh wishes whose quest the manager blocks.
+AiPlayerbot.QuestGroups.Manager.WishSkipBlocked = 0
 # #303: a bot of a real player does not walk more than this many yards to its
 # master; beyond it the bot keeps its own activity and asks to be summoned
 # ("far_follow_hold"). 0 = no limit (old behaviour: walk any distance).

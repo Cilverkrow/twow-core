@@ -3,6 +3,8 @@
 #include "LootTriggers.h"
 #include "playerbot/LootObjectStack.h"
 #include "playerbot/PlayerbotAIConfig.h"
+#include "playerbot/GroupManagerView.h"   // twow-repo#627 GRP2030: QuestRoleOf (Loot.GroupQuestLoot.BotLeader)
+#include "playerbot/BotSlots.h"   // SameMapObject (BotLeader: the leader bot on the bot's own Map object)
 #include "playerbot/strategy/values/LootValues.h"
 
 #include "playerbot/ServerFacade.h"
@@ -35,11 +37,33 @@ static bool HasOwnPartyQuestLoot(Player* bot, Creature* creature)
     return false;
 }
 
-// Eligible without the hold: the key, a non-leader group member with an active player master, the bot's own party quest drop.
+bool ai::GroupQuestLootAnyKey()
+{
+    return sPlayerbotAIConfig.lootGroupQuestLoot || sPlayerbotAIConfig.lootGroupQuestLootBotLeader;
+}
+
+// The master side of the eligibility: Loot.GroupQuestLoot with an active player master (#780), or twow-repo#627 GRP2030
+// Loot.GroupQuestLoot.BotLeader (default 0) for a follower of a manager QUEST group, whose master is the bot leader. The role
+// comes from the manager's view (GroupManagerView.h, 1 = follower; only bots of the manager's cohort can hold it): an ad-hoc or
+// S7 follower without a manager group is not covered. The bot leader must stand on the bot's own Map object (OB-60 pre-review
+// 27.11. P2): AddLoot (c) / LootAction (c') measure masterDist to it, and a leader on another Map with matching coordinates would
+// count as near. Only its Map pointer is compared, no other field of the leader is read.
+static bool GroupQuestLootMasterOk(PlayerbotAI* ai, Player* bot)
+{
+    if (ai->HasActivePlayerMaster())
+        return sPlayerbotAIConfig.lootGroupQuestLoot;
+    if (!sPlayerbotAIConfig.lootGroupQuestLootBotLeader || group_mgr::QuestRoleOf(bot->GetGUIDLow()) != 1)
+        return false;
+    Player* leader = ai->GetMaster();
+    return leader && leader != bot && bot->IsInWorld() && leader->IsInWorld() && SameMapObject(bot, leader);
+}
+
+// Eligible without the hold: a key, a non-leader group member with an active player master (or a manager QUEST follower), the
+// bot's own party quest drop.
 static bool GroupQuestLootEligible(PlayerbotAI* ai, Player* bot, WorldObject* wo)
 {
-    return sPlayerbotAIConfig.lootGroupQuestLoot && wo && wo->IsCreature() && bot->GetGroup() && !ai->IsGroupLeader()
-        && ai->HasActivePlayerMaster() && HasOwnPartyQuestLoot(bot, (Creature*)wo);
+    return GroupQuestLootAnyKey() && wo && wo->IsCreature() && bot->GetGroup() && !ai->IsGroupLeader()
+        && GroupQuestLootMasterOk(ai, bot) && HasOwnPartyQuestLoot(bot, (Creature*)wo);
 }
 
 static group_quest_loot::Hold& GroupQuestHold(PlayerbotAI* ai)
@@ -64,7 +88,8 @@ bool ai::GroupQuestLootLeashQuiet(PlayerbotAI* ai, Player* bot)
     float botDist = 0.0f;
     float masterDist = 0.0f;
     Player* master = ai->GetMaster();
-    if (master && master != bot && bot->IsInWorld() && master->IsInWorld() && master->GetMap() == bot->GetMap() && !bot->IsInCombat())
+    // FindMap (SameMapObject), not GetMap: the master may be a bot on another region Map object, mid-transfer on its own thread.
+    if (master && master != bot && bot->IsInWorld() && master->IsInWorld() && SameMapObject(bot, master) && !bot->IsInCombat())
     {
         LootObject loot = AI_VALUE(LootObject, "loot target");
         if (!loot.IsEmpty() && loot.IsLootPossible(bot))

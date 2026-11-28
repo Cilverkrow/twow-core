@@ -550,7 +550,8 @@ namespace ai
                 return false;
             // twow-repo#780 (d) (AiPlayerbot.Loot.GroupQuestLoot): quiet while the loot target is a quest corpse of this bot within
             // the bound, not in combat, at most LeashHoldMaxSeconds per corpse (LootTriggers.cpp). Key 0: as before.
-            if (sPlayerbotAIConfig.lootGroupQuestLoot && GroupQuestLootLeashQuiet(ai, bot))
+            // twow-repo#627 GRP2030: also with Loot.GroupQuestLoot.BotLeader (GroupQuestLootAnyKey; the eligibility tells them apart).
+            if (GroupQuestLootAnyKey() && GroupQuestLootLeashQuiet(ai, bot))
                 return false;
             return true;
         };
