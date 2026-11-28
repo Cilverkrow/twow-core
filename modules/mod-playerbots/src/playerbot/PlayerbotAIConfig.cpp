@@ -17,6 +17,7 @@
 #include "playerbot/DamageLogPolicy.h"   // twow-repo#653: AiPlayerbot.ActionLog.DamageSampleEvery
 #include "playerbot/QuestFeasibilityPolicy.h"
 #include "playerbot/LowLevelWindowPolicy.h"   // OB-10 22.11.: Grind.LowLevelWindow mode
+#include "playerbot/EliteQuestPolicy.h"   // WS30-ELITE-QUEST-01: QuestElite.Defer mode and clamps
 #include "playerbot/SpecPathPolicy.h"
 #include "playerbot/EmergencyLadderPolicy.h"
 #include "playerbot/RestGatePolicy.h"
@@ -1296,6 +1297,15 @@ bool PlayerbotAIConfig::Initialize()
     questGroupsMaxAttempts = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestGroups.MaxAttempts", 3));
     questGroupsRetryCooldownMinutes = (uint32)config.GetIntDefault("AiPlayerbot.QuestGroups.RetryCooldownMinutes", 30);
     questGroupsSuggestedPlayers = config.GetBoolDefault("AiPlayerbot.QuestGroups.SuggestedPlayers", true);
+    // WS30-ELITE-QUEST-01 (OB-20 rule f6ab4497): a cohort mode (EliteQuestPolicy.h); an unknown mode is off.
+    questEliteDefer = uint32(config.GetIntDefault("AiPlayerbot.QuestElite.Defer", 0));
+    if (!ai::elite_quest::ValidMode(questEliteDefer))
+    {
+        sLog.outError("[QuestElite] config key=QuestElite.Defer value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", questEliteDefer);
+        questEliteDefer = 0;
+    }
+    questEliteMinGroup = ai::elite_quest::ClampMinGroup(uint32(std::max(0, config.GetIntDefault("AiPlayerbot.QuestElite.MinGroup", 3))));
+    questEliteSoloLevelsAbove = ai::elite_quest::ClampSoloLevelsAbove(uint32(std::max(0, config.GetIntDefault("AiPlayerbot.QuestElite.SoloLevelsAbove", 5))));
     farFollowMaxWalkDistance = config.GetFloatDefault("AiPlayerbot.FarFollowMaxWalkDistance", 400.0f);
     formationSpacing = config.GetFloatDefault("AiPlayerbot.Formation.Spacing", 2.0f);
     formationCircleMaxRadius = config.GetFloatDefault("AiPlayerbot.Formation.CircleMaxRadius", 15.0f);
@@ -2413,6 +2423,10 @@ bool PlayerbotAIConfig::Initialize()
     if (sPlayerbotAIConfig.questFeasibilityCraftOnlySkip)
         PlayerbotAI::BuildCraftOnlyQuests();
 
+    // WS30-ELITE-QUEST-01 (QuestElite.Defer): the elite scope table, once, only with the key on - off, nothing is built.
+    if (sPlayerbotAIConfig.questEliteDefer)
+        PlayerbotAI::BuildEliteQuestScope();
+
     sLog.outString("Loading named locations...");
     sRandomPlayerbotMgr.LoadNamedLocations();
 
@@ -2583,6 +2597,9 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestBook.SingleSpawnMargin", Value(questBookSingleSpawnMargin)},
             {"QuestBook.SourceChoice", Value(questBookSourceChoice)},
             {"QuestBook.StaleCompleteSeconds", Value(questBookStaleCompleteSeconds)},
+            {"QuestElite.Defer", Value(questEliteDefer)},
+            {"QuestElite.MinGroup", Value(questEliteMinGroup)},
+            {"QuestElite.SoloLevelsAbove", Value(questEliteSoloLevelsAbove)},
             {"QuestFeasibility.Blocklist.count", Value(uint32(questFeasibilityBlocklist.size()))},
             {"QuestFeasibility.BlocklistWhileNoCustomStarts.count", Value(uint32(questFeasibilityBlocklistWhileNoCustomStarts.size()))},
             {"QuestFeasibility.CraftOnlySkip", Value(questFeasibilityCraftOnlySkip)},

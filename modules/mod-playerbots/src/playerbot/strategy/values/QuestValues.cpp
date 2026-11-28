@@ -9,6 +9,7 @@
 #include "playerbot/QuestBook.h"   // A3 step 2 K2 (AiPlayerbot.QuestBook): the one level window and the QB5 list
 #include "playerbot/LootChancePolicy.h"   // OB-00 08.11.: QuestRelation.GameObjectChanceDrops
 #include "playerbot/QuestNeedPolicy.h"   // A3 step 2 H5 (QuestBook.NeedPerObjective): open-objective mask, item link rule, cap
+#include "playerbot/EliteQuestPolicy.h"   // WS30-ELITE-QUEST-01: deferred elite entries (rank set, counters)
 #include <chrono>
 #include "playerbot/RepeatableTurnInPolicy.h"   // twow-repo#716 BOT-16: QuestTurnIn.RepeatableAutoComplete
 #include "Formulas.h"
@@ -446,6 +447,41 @@ static bool SourceOfOpenItem(Quest const* quest, QuestStatusData const& status, 
 			return true;
 	}
 	return false;
+}
+
+std::vector<int32> DeferredEliteEntriesValue::Calculate()
+{
+	std::vector<int32> deferred;
+	if (!ai->IsEliteQuestDefer())
+		return deferred;   // switch 0 / not judged: nothing is read
+
+	std::vector<int32> keep;   // entries an incomplete quest the bot may pursue still needs
+	for (auto const& questStatus : bot->getQuestStatusMap())
+	{
+		Quest const* const quest = sObjectMgr.GetQuestTemplate(questStatus.first);
+		if (!quest || !quest->IsActive() || questStatus.second.m_status != QUEST_STATUS_INCOMPLETE)
+			continue;
+		bool const isDeferred = ai->EliteQuestDeferred(questStatus.first);
+		for (uint32 i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
+		{
+			int32 const entry = quest->ReqCreatureOrGOId[i];
+			if (entry <= 0 || questStatus.second.m_creatureOrGOcount[i] >= quest->ReqCreatureOrGOCount[i])
+				continue;
+			CreatureInfo const* const target = sObjectMgr.GetCreatureTemplate(uint32(entry));
+			if (isDeferred && target && ai::elite_quest::EliteRank(target->Rank))
+				deferred.push_back(entry);
+			else
+				keep.push_back(entry);
+		}
+	}
+	std::sort(keep.begin(), keep.end());
+	std::sort(deferred.begin(), deferred.end());
+	deferred.erase(std::unique(deferred.begin(), deferred.end()), deferred.end());
+	deferred.erase(std::remove_if(deferred.begin(), deferred.end(),
+		[&keep](int32 entry) { return std::binary_search(keep.begin(), keep.end(), entry); }), deferred.end());
+	if (!deferred.empty())
+		PlayerbotAI::NoteEliteQuest(uint8(ai::elite_quest::Event::TargetSkipped), bot->GetGUIDLow(), uint32(deferred.size()));
+	return deferred;
 }
 
 std::vector<int32> NeededQuestEntriesValue::Calculate()
