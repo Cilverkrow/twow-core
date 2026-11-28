@@ -9,6 +9,7 @@
 #include "playerbot/QuestBook.h"   // A3 step 2 K2 (AiPlayerbot.QuestBook): the one level window and the QB5 list
 #include "playerbot/LootChancePolicy.h"   // OB-00 08.11.: QuestRelation.GameObjectChanceDrops
 #include "playerbot/QuestNeedPolicy.h"   // A3 step 2 H5 (QuestBook.NeedPerObjective): open-objective mask, item link rule, cap
+#include "playerbot/EliteQuestPolicy.h"   // WS30-ELITE-QUEST-01: deferred elite entries (rank set, counters)
 #include <chrono>
 #include "playerbot/RepeatableTurnInPolicy.h"   // twow-repo#716 BOT-16: QuestTurnIn.RepeatableAutoComplete
 #include "Formulas.h"
@@ -446,6 +447,85 @@ static bool SourceOfOpenItem(Quest const* quest, QuestStatusData const& status, 
 			return true;
 	}
 	return false;
+}
+
+namespace
+{
+// WS30-ELITE-QUEST-01 (QuestElite.Defer; ultracode review 28.11.): one walk for both sets - E2's deferred entries and the 1b
+// pursued entries - from the open objectives' quest destinations, the source "needed quest entries" uses (kill targets AND the
+// droppers of open quest items). A bot without an incomplete scope quest walks nothing. Bot thread only.
+void EliteEntrySets(PlayerbotAI* ai, Player* bot, std::vector<int32>* deferredOut, std::vector<int32>* pursuedOut)
+{
+	std::vector<int32> deferred, pursued, keep;
+	bool anyScope = false;
+	for (auto const& questStatus : bot->getQuestStatusMap())
+		if (questStatus.second.m_status == QUEST_STATUS_INCOMPLETE && PlayerbotAI::EliteQuestScope(questStatus.first))
+		{
+			anyScope = true;
+			break;
+		}
+	if (anyScope)
+	{
+		const PlayerTravelInfo info(bot);
+		for (auto const& questStatus : bot->getQuestStatusMap())
+		{
+			uint32 const questId = questStatus.first;
+			Quest const* const quest = sObjectMgr.GetQuestTemplate(questId);
+			QuestStatusData const& status = questStatus.second;
+			if (!quest || !quest->IsActive() || status.m_status != QUEST_STATUS_INCOMPLETE)
+				continue;
+			uint32 openMask = 0;
+			for (uint32 objective = 0; objective < QUEST_OBJECTIVES_COUNT; ++objective)
+				if ((quest->ReqCreatureOrGOCount[objective] && status.m_creatureOrGOcount[objective] < quest->ReqCreatureOrGOCount[objective]) ||
+					(quest->ReqItemCount[objective] && status.m_itemcount[objective] < quest->ReqItemCount[objective]))
+					openMask |= ai::quest_need::ObjectiveBit(objective);
+			if (!openMask)
+				continue;
+			bool const inScope = PlayerbotAI::EliteQuestScope(questId) != nullptr;
+			bool const isDeferred = inScope && ai->EliteQuestDeferred(questId);
+			for (auto destination : sTravelMgr.GetDestinations(info, openMask, {int32(questId)}, false, 0))
+			{
+				int32 const entry = destination->GetEntry();
+				CreatureInfo const* const target = entry > 0 ? sObjectMgr.GetCreatureTemplate(uint32(entry)) : nullptr;
+				bool const elite = target && ai::elite_quest::EliteRank(target->Rank);
+				if (isDeferred)
+				{
+					if (elite)
+						deferred.push_back(entry);
+				}
+				else
+				{
+					keep.push_back(entry);
+					if (inScope && elite)
+						pursued.push_back(entry);
+				}
+			}
+		}
+	}
+	ai::elite_quest::FinishEntrySets(deferred, pursued, keep);
+	if (deferredOut)
+		*deferredOut = std::move(deferred);
+	if (pursuedOut)
+		*pursuedOut = std::move(pursued);
+}
+}
+
+std::vector<int32> DeferredEliteEntriesValue::Calculate()
+{
+	std::vector<int32> deferred;
+	if (!ai->EliteRuleJudges())
+		return deferred;   // switch 0 / not judged / a formed group: nothing is read
+	EliteEntrySets(ai, bot, &deferred, nullptr);
+	return deferred;
+}
+
+std::vector<int32> PursuedEliteEntriesValue::Calculate()
+{
+	std::vector<int32> pursued;
+	if (!ai->EliteRuleJudges())
+		return pursued;
+	EliteEntrySets(ai, bot, nullptr, &pursued);
+	return pursued;
 }
 
 std::vector<int32> NeededQuestEntriesValue::Calculate()

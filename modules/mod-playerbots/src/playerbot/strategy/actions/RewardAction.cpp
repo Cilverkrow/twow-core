@@ -73,6 +73,7 @@ bool RewardAction::Reward(Player* requester, uint32 itemId, Object* questGiver)
                 {
                     bot->RewardQuest(pQuest, rewardIdx, questGiver ? ToWorldObject(questGiver) : nullptr, false);
                     ai->NoteQuestRewarded(questID);   // twow-repo#724: announce = false sends no reward packet
+                    ai->NoteEliteQuestReward(questID);   // WS30-ELITE-QUEST-01: [QuestElite] reward line (key 0: one config read)
 
                     std::map<std::string, std::string> args;
                     args["%item"] = chat->formatItem(pRewardItem);
