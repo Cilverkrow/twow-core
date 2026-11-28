@@ -78,7 +78,7 @@ require_text("${mgr_h}" "void GrantPersistentRosterProfessions(Player* bot, bool
 
 # 3. The grant: mode first, persisted pair, both-skills early return, the core GREEN state check, the TrainerAction::Learn
 #    path (learnSpell of each LEARN_SPELL trigger), HasSkill afterwards, tools only on ok, no money and no cast.
-between("${mgr}" "void RandomPlayerbotMgr::GrantPersistentRosterProfessions(Player* bot, bool login)" "void RandomPlayerbotMgr::OnPlayerLogin(Player* player)" grant)
+between("${mgr}" "void RandomPlayerbotMgr::GrantPersistentRosterProfessions(Player* bot, bool login)" "Player* RandomPlayerbotMgr::GetRandomPlayer()" grant)
 require_order("${grant}" "ai::profession_grant::Applies(sPlayerbotAIConfig.professionTrainingGrantOnInit, bot->GetGUIDLow())" "GetProfessionPair(guid)" "mode before any work")
 require_text("${grant}" "if (bot->HasSkill(plan->first) && bot->HasSkill(plan->second))\n        return;" "early return with both skills")
 require_text("${grant}" "if (bot->HasSkill(skill) || professionGrantFinal.count({ guid, skill }))\n            continue;" "idempotent: a learned skill is never granted again (relog, tick); a final result is not retried before the next login")

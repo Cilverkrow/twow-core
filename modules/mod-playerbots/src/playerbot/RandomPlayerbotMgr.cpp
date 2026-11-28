@@ -9277,6 +9277,63 @@ void RandomPlayerbotMgr::ProvisionPersistentRosterBags(Player* bot)
     }
 }
 
+void RandomPlayerbotMgr::OnPlayerLogin(Player* player)
+{
+    if (!sPlayerbotAIConfig.enabled)
+        return;
+
+    ForEachPlayerbot([&](Player* bot)
+    {
+        if (player == bot)
+            return;
+
+        Group* group = bot->GetGroup();
+        if (!group)
+            return;
+
+        for (GroupReference *gref = group->GetFirstMember(); gref; gref = gref->next())
+        {
+            Player* member = gref->getSource();
+            PlayerbotAI* ai = GetBotAI(bot);
+            if (member == player && (!ai->GetMaster() || GetBotAI(ai->GetMaster())))
+            {
+                if (!bot->InBattleGround())
+                {
+                    ai->SetMaster(player);
+                    ai->ResetStrategies();
+                    ai->TellPlayer(ai->GetMaster(), BOT_TEXT("hello"));
+                }
+                break;
+            }
+        }
+    });
+
+    if (IsFreeBot(player))
+    {
+        uint32 guid = player->GetGUIDLow();
+        if (!sPlayerbotAIConfig.IsFreeAltBot(player))
+           SetEventValue(guid, "login", 0, 0);
+    }
+    else
+    {
+        players[player->GetGUIDLow()] = player;
+        sLog.outDebug("Including non-random bot player %s into random bot update", player->GetName());
+    }
+}
+
+void RandomPlayerbotMgr::OnPlayerLoginError(uint32 bot)
+{
+    if (IsPersistentRosterMember(bot))
+    {
+        SetEventValue(bot, "login", 0, 0);
+        SchedulePersistentRosterRetry(bot, "LOGIN_FAILED");
+        return;
+    }
+    SetEventValue(bot, "add", 0, 0);
+    SetEventValue(bot, "login", 0, 0);
+    currentBots.remove(bot);
+}
+
 namespace
 {
 // twow-repo#333 GrantOnInit: the apprentice teaching spell of each primary skill, read once from every tradeskill
@@ -9452,63 +9509,6 @@ void RandomPlayerbotMgr::GrantPersistentRosterProfessions(Player* bot, bool logi
                 ai::profession_grant::ToString(result), uint32(bot->GetSkillValuePure(skill)),
                 tools.tellp() > 0 ? tools.str().c_str() : "-");
     }
-}
-
-void RandomPlayerbotMgr::OnPlayerLogin(Player* player)
-{
-    if (!sPlayerbotAIConfig.enabled)
-        return;
-
-    ForEachPlayerbot([&](Player* bot)
-    {
-        if (player == bot)
-            return;
-
-        Group* group = bot->GetGroup();
-        if (!group)
-            return;
-
-        for (GroupReference *gref = group->GetFirstMember(); gref; gref = gref->next())
-        {
-            Player* member = gref->getSource();
-            PlayerbotAI* ai = GetBotAI(bot);
-            if (member == player && (!ai->GetMaster() || GetBotAI(ai->GetMaster())))
-            {
-                if (!bot->InBattleGround())
-                {
-                    ai->SetMaster(player);
-                    ai->ResetStrategies();
-                    ai->TellPlayer(ai->GetMaster(), BOT_TEXT("hello"));
-                }
-                break;
-            }
-        }
-    });
-
-    if (IsFreeBot(player))
-    {
-        uint32 guid = player->GetGUIDLow();
-        if (!sPlayerbotAIConfig.IsFreeAltBot(player))
-           SetEventValue(guid, "login", 0, 0);
-    }
-    else
-    {
-        players[player->GetGUIDLow()] = player;
-        sLog.outDebug("Including non-random bot player %s into random bot update", player->GetName());
-    }
-}
-
-void RandomPlayerbotMgr::OnPlayerLoginError(uint32 bot)
-{
-    if (IsPersistentRosterMember(bot))
-    {
-        SetEventValue(bot, "login", 0, 0);
-        SchedulePersistentRosterRetry(bot, "LOGIN_FAILED");
-        return;
-    }
-    SetEventValue(bot, "add", 0, 0);
-    SetEventValue(bot, "login", 0, 0);
-    currentBots.remove(bot);
 }
 
 Player* RandomPlayerbotMgr::GetRandomPlayer()
