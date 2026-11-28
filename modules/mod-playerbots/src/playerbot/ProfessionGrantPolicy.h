@@ -119,7 +119,7 @@ inline char const* ToString(Result result)
     return "unknown";
 }
 
-// A refused state is retried on later checks (a level-gated rank such as Jewelcrafting at level 5 becomes GREEN
+// A refused state is retried on later checks (a level-gated rank such as Alchemy, Engineering or Jewelcrafting at level 5 becomes GREEN
 // on level-up); everything else is final until the next login, so the periodic check never repeats a failure.
 inline bool RetryOnTick(Result result)
 {

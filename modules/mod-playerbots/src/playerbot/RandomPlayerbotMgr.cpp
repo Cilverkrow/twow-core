@@ -6920,7 +6920,7 @@ bool RandomPlayerbotMgr::ProcessBot(uint32 bot)
             SetEventValue(bot, "login", 0, 0);
         ClearPersistentRosterRetry(bot);
         persistentRoster->RecordOnline(bot);
-        // twow-repo#333 GrantOnInit: a rank refused at login (e.g. Jewelcrafting below level 5) is granted on a later
+        // twow-repo#333 GrantOnInit: a rank refused at login (e.g. Alchemy, Engineering or Jewelcrafting below level 5) is granted on a later
         // check; off and with both planned skills learned this returns after a mode check and two HasSkill calls.
         GrantPersistentRosterProfessions(player, false);
     }
@@ -9312,7 +9312,12 @@ std::map<uint32, ProfessionGrantEntry> const& ProfessionGrantTable()
                 if (!ai::profession_grant::IsApprenticeCandidate(tSpell.reqSkill, teachesFirstRank, skill))
                     continue;
                 skillSpells.emplace_back(skill, tSpell.spell);
-                rows.emplace(tSpell.spell, tSpell);
+                // The same teaching spell has reqlevel 0 at some trainers and 5 at others (Alchemy 2275, Engineering 4039,
+                // Jewelcrafting 30219; OB-40 e550df1c). Keep the strictest row: never more permissive than any trainer,
+                // and independent of the load order.
+                auto const [row, inserted] = rows.emplace(tSpell.spell, tSpell);
+                if (!inserted && tSpell.reqLevel > row->second.reqLevel)
+                    row->second = tSpell;
             }
         };
 
@@ -9407,7 +9412,12 @@ void RandomPlayerbotMgr::GrantPersistentRosterProfessions(Player* bot, bool logi
             {
                 if (!item || bot->HasItemCount(item, 1))
                     continue;
-                bool const stored = sObjectMgr.GetItemPrototype(item) && bot->StoreNewItemInBestSlots(item, 1);
+                // Bags only, like PlayerbotFactory::StoreItem: the "best slots" store equips first and would put a knife,
+                // hammer or spanner into an empty weapon slot.
+                ItemPosCountVec dest;
+                bool const stored = sObjectMgr.GetItemPrototype(item) &&
+                    bot->CanStoreNewItem(INVENTORY_SLOT_BAG_0, NULL_SLOT, dest, item, 1) == EQUIP_ERR_OK &&
+                    bot->StoreNewItem(dest, item, true, Item::GenerateItemRandomPropertyId(item)) != nullptr;
                 tools << (tools.tellp() > 0 ? "," : "") << item << (stored ? "" : ":failed");
                 if (!stored)
                     sLog.outError("[ProfessionGrant] guid=%u skill=%u tool=%u result=store_failed (bag full or unknown item; the tool buy path stays)",
