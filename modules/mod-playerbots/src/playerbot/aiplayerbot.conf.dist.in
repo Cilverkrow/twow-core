@@ -2571,6 +2571,13 @@ AiPlayerbot.Path.TransportBoardFix = 1
 # region layout any region). The [TransportWait] trace keeps counting the wait (cand=0 on a cross-map wait).
 # 1 = the guard (default since its acceptance unit passed: H1+H4 u1, 10.11.2026, OB-10 OK); 0 = as before (rollback).
 AiPlayerbot.Path.TransportSameMapGuard = 1
+# twow-repo#790 (S3b-2 step 3, diagnosis, log only, no behaviour change): ABBA-1 dropped 11 of 198 boarded bots at the map change
+# of their vessel (all at its map-entry point; 164871 Undercity -> Orgrimmar 8 of 58). 1 = one [TransportTeleport] ack line per
+# far teleport ack of a bot that is on a transport (destination, position after the ack, transport map / instance / position,
+# distance, passenger offset) and one [TransportTeleport] felloff line per fell-off removal (distance, static and deck answer
+# of the on-transport test, ride record, ms since the last such ack, both maps and instances). Both are rare, no line budget.
+# 0 = off (default).
+AiPlayerbot.Path.TransportTeleportTrace = 0
 # twow-repo#575 (PATH-01 b, flight A/B 18.10.2026): a res=failed [TaxiUse] line names the refusal: reason=logout|combat|
 # disable_move|unknown_node|mounted|shapeshift|casting|no_path|money|other (first core check that holds; trace only).
 # twow-repo#575 (PATH-01 b, BUG FIX, profile 1 after the A/B): with a flight master the core refuses a flight in a

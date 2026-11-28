@@ -321,9 +321,11 @@ function(check_gates wp move node ai out_var)
     set(${out_var} "PlayerbotAI fell-off / follow check (${m})" PARENT_SCOPE)
     return()
   endif()
+  # twow-repo#790: + 2 log-only calls in TraceTransportTeleportFellOff (static and deck answer, pinned by
+  # contracts.d/transport_teleport_trace_source_contract_tests.cmake), so 2 checks + 2 trace reads.
   occurrences("${ai}" "isOnTransport(" n_ai)
-  if(NOT n_ai EQUAL 2)
-    set(${out_var} "expected the 2 isOnTransport checks in PlayerbotAI.cpp, found ${n_ai}" PARENT_SCOPE)
+  if(NOT n_ai EQUAL 4)
+    set(${out_var} "expected the 2 isOnTransport checks + 2 #790 trace reads in PlayerbotAI.cpp, found ${n_ai}" PARENT_SCOPE)
     return()
   endif()
 endfunction()
