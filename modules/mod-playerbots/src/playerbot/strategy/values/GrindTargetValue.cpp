@@ -415,7 +415,11 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
             if (needForQuest && sPlayerbotAIConfig.questEliteDefer)
             {
                 std::vector<int32> const& deferredElite = AI_VALUE(std::vector<int32>, "deferred elite entries");
-                needForQuest = !std::binary_search(deferredElite.begin(), deferredElite.end(), int32(entry));
+                if (std::binary_search(deferredElite.begin(), deferredElite.end(), int32(entry)))
+                {
+                    needForQuest = false;
+                    PlayerbotAI::NoteEliteQuest(uint8(ai::elite_quest::Event::TargetSkipped), bot->GetGUIDLow());
+                }
             }
         }
 

@@ -479,8 +479,6 @@ std::vector<int32> DeferredEliteEntriesValue::Calculate()
 	deferred.erase(std::unique(deferred.begin(), deferred.end()), deferred.end());
 	deferred.erase(std::remove_if(deferred.begin(), deferred.end(),
 		[&keep](int32 entry) { return std::binary_search(keep.begin(), keep.end(), entry); }), deferred.end());
-	if (!deferred.empty())
-		PlayerbotAI::NoteEliteQuest(uint8(ai::elite_quest::Event::TargetSkipped), bot->GetGUIDLow(), uint32(deferred.size()));
 	return deferred;
 }
 

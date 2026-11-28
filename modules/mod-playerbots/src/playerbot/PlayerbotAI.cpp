@@ -116,6 +116,7 @@
 #include "playerbot/GroupAiRefresh.h"   // twow-repo#628 / #627: the AI part of the world-thread group changes
 #include "playerbot/DeferredLog.h"      // s7r: log lines a world-thread manager handed to the bot
 #include "playerbot/QuestGroupWorld.h"
+#include "playerbot/SupervisorEnforce.h"   // WS30-ELITE-QUEST-01: GroupGoalSnapshot (E2 mirrors the E1 focus bypass)
 
 using namespace ai;
 
@@ -2354,10 +2355,18 @@ bool PlayerbotAI::EliteQuestDeferred(uint32 questId)
     ai::elite_quest::ScopeEntry const* const scope = EliteQuestScope(questId);
     if (!scope)
         return false;
+    AiObjectContext* context = aiObjectContext;
+    // The E1 focus bypass, mirrored (TravelMgr.cpp: forceThisQuest = a focus list and no group goal; then only focus quests
+    // travel, and they skip the rule): a focus quest is never deferred here, so E1 and E2 agree on it.
+    if (!ai::supervisor::GroupGoalSnapshot(this))
+    {
+        focusQuestTravelList const focus = AI_VALUE(focusQuestTravelList, "focus travel target");
+        if (focus.find(questId) != focus.end())
+            return false;
+    }
     uint32 members = 1, minLevel = 0;
     EliteGroupFacts(members, minLevel);
     uint32 const level = scope->level ? scope->level : bot->GetLevel();
-    AiObjectContext* context = aiObjectContext;
     bool const ready = members > 1 ? AI_VALUE(bool, "can fight elite") : AI_VALUE(bool, "can fight equal");
     return !ready || !ai::elite_quest::Pursue(members, minLevel, bot->GetLevel(), level, sPlayerbotAIConfig.questEliteMinGroup,
         sPlayerbotAIConfig.questEliteSoloLevelsAbove);

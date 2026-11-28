@@ -46,7 +46,7 @@ inline bool Applies(std::uint32_t mode, std::uint32_t guidLow, bool rosterOnItsO
     return rosterOnItsOwn && cohort::Applies(ValidMode(mode) ? mode : cohort::ModeOff, guidLow);
 }
 
-// --- scope (rule "Geltung"): Type 1 (elite), or a kill objective on a creature of rank >= 1; never dungeon / raid --------------
+// --- scope (rule "Geltung"): Type 1 (elite), or a kill objective on a creature of rank 1 / 2 / 3; never dungeon / raid ----------
 constexpr std::uint32_t QuestTypeElite = 1;
 constexpr std::uint32_t QuestTypeRaid = 62;
 constexpr std::uint32_t QuestTypeDungeon = 81;
@@ -128,7 +128,7 @@ inline bool MayForm(std::uint32_t size, std::uint32_t minLevel, std::uint32_t qu
 
 // --- [QuestElite] minute line, per cohort (a = even low guid, b = odd) -------------------------------------------------------
 //   travel_deferred  quest objective destinations refused by the rule (E1, per destination check, not bots),
-//   target_skipped   open-objective entries of deferred quests left out of the quest need set (E2, per set build),
+//   target_skipped   grind-scan candidates counted as not needed: an elite target of a deferred quest (E2, per candidate per scan),
 //   wish_skipped     scope quests not wished because the bot is below the quest level (E3, per wish read),
 //   form_refused     scope-quest groups the manager / S7 did not form (E4, per refused group, leader's cohort),
 //   pursued          scope quest destinations the rule let through (E1).

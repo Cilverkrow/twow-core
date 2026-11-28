@@ -1046,8 +1046,10 @@ bool GrindTravelDestination::IsActive(Player* bot, const PlayerTravelInfo& info)
     {
         std::vector<int32> const& needed = AI_VALUE(std::vector<int32>, "needed quest entries");
         // WS30-ELITE-QUEST-01 (QuestElite.Defer, OB-10 E2): an elite target of a deferred quest no other quest needs is not needed
-        // here (its own value; empty for every bot the rule does not judge).
-        std::vector<int32> const& deferredElite = AI_VALUE(std::vector<int32>, "deferred elite entries");
+        // here (its own value, read only with the key on; empty for every bot the rule does not judge).
+        static std::vector<int32> const noDeferredElite;
+        std::vector<int32> const& deferredElite = sPlayerbotAIConfig.questEliteDefer ?
+            AI_VALUE(std::vector<int32>, "deferred elite entries") : noDeferredElite;
         bool const neededHere = std::binary_search(needed.begin(), needed.end(), GetEntry()) &&
             !std::binary_search(deferredElite.begin(), deferredElite.end(), GetEntry());
         if (!ai::quest_grind_mode::GrindDestinationActive(true, neededHere))
