@@ -182,7 +182,7 @@ PlayerTravelInfo::PlayerTravelInfo(Player* player, bool gapGrind)
     // WS30-ELITE-QUEST-01 (AiPlayerbot.QuestElite.Defer, default 0): the rule bit and the group facts of rule 1a, here on the bot
     // thread (PlayerbotAI::EliteGroupFacts: only members on this bot's own Map object, alive, in its zone). The switch 0 and every
     // other bot: false / 0, nothing is read.
-    eliteRule = ai->IsEliteQuestDefer();
+    eliteRule = ai->EliteRuleJudges();   // a manager / S7 formed group is judged at form time (E4), not here
     if (eliteRule)
     {
         eliteGuid = player->GetGUIDLow();

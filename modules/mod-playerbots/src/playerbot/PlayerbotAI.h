@@ -1405,6 +1405,14 @@ public:
     // WS30-ELITE-QUEST-01 (AiPlayerbot.QuestElite.Defer, EliteQuestPolicy.h): a persistent roster bot on its own in the mode's
     // cohort - the bots the elite rule judges. Always false with the switch 0 (the config is read first).
     bool IsEliteQuestDefer();
+    // QuestElite.Defer (ultracode review 28.11., OB-00 OK): a group the manager (T02-GROUP goal) or S7 formed is judged at form time
+    // (E4), not by E1 / E2 mid-work - a member death or zone change does not drop its camp, and a group formed before E4 is
+    // not left without a destination. EliteRuleJudges = IsEliteQuestDefer() && !EliteFormedGroup(): the bots E1 / E2 judge.
+    bool EliteFormedGroup();
+    bool EliteRuleJudges();
+    // QuestElite.Defer, bot thread, from NoteQuestRewarded: one [QuestElite] reward line for a rewarded scope quest of a persistent
+    // roster bot on its own, both cohorts (OB-00 28.11.: accepted for the PREREG). Key 0: one config read.
+    void NoteEliteQuestReward(uint32 questId);
     // QuestElite.Defer, the bot's own thread: rule 1a's group facts - alive group members in the bot's zone (itself included, only
     // members on its own Map object: HARM-RACE guard pair SameMapObject) and their lowest level. Solo: 1 / own level.
     void EliteGroupFacts(uint32& members, uint32& minLevel) const;

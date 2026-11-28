@@ -1297,15 +1297,29 @@ bool PlayerbotAIConfig::Initialize()
     questGroupsMaxAttempts = std::max<uint32>(1, config.GetIntDefault("AiPlayerbot.QuestGroups.MaxAttempts", 3));
     questGroupsRetryCooldownMinutes = (uint32)config.GetIntDefault("AiPlayerbot.QuestGroups.RetryCooldownMinutes", 30);
     questGroupsSuggestedPlayers = config.GetBoolDefault("AiPlayerbot.QuestGroups.SuggestedPlayers", true);
-    // WS30-ELITE-QUEST-01 (OB-20 rule f6ab4497): a cohort mode (EliteQuestPolicy.h); an unknown mode is off.
+    // WS30-ELITE-QUEST-01 (OB-20 rule f6ab4497): a cohort mode (EliteQuestPolicy.h); an unknown mode is off. MinGroup / SoloLevelsAbove
+    // outside their range: one error line, the default (never the nearest bound - ultracode review 28.11.). A negative value wraps
+    // to a large uint32 (invalid too) and prints as the raw %d.
     questEliteDefer = uint32(config.GetIntDefault("AiPlayerbot.QuestElite.Defer", 0));
     if (!ai::elite_quest::ValidMode(questEliteDefer))
     {
-        sLog.outError("[QuestElite] config key=QuestElite.Defer value=%u result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", questEliteDefer);
+        sLog.outError("[QuestElite] config key=QuestElite.Defer value=%d result=off (0 off, 1 all, 2 cohort B, 3 cohort A)", int32(questEliteDefer));
         questEliteDefer = 0;
     }
-    questEliteMinGroup = ai::elite_quest::ClampMinGroup(uint32(std::max(0, config.GetIntDefault("AiPlayerbot.QuestElite.MinGroup", 3))));
-    questEliteSoloLevelsAbove = ai::elite_quest::ClampSoloLevelsAbove(uint32(std::max(0, config.GetIntDefault("AiPlayerbot.QuestElite.SoloLevelsAbove", 5))));
+    questEliteMinGroup = uint32(config.GetIntDefault("AiPlayerbot.QuestElite.MinGroup", int32(ai::elite_quest::DefaultMinGroup)));
+    if (!ai::elite_quest::ValidMinGroup(int32(questEliteMinGroup)))
+    {
+        sLog.outError("[QuestElite] config key=QuestElite.MinGroup value=%d result=%u (valid 2..5)", int32(questEliteMinGroup),
+            ai::elite_quest::DefaultMinGroup);
+        questEliteMinGroup = ai::elite_quest::DefaultMinGroup;
+    }
+    questEliteSoloLevelsAbove = uint32(config.GetIntDefault("AiPlayerbot.QuestElite.SoloLevelsAbove", int32(ai::elite_quest::DefaultSoloLevelsAbove)));
+    if (!ai::elite_quest::ValidSoloLevelsAbove(int32(questEliteSoloLevelsAbove)))
+    {
+        sLog.outError("[QuestElite] config key=QuestElite.SoloLevelsAbove value=%d result=%u (valid 0..99, 99 = rule 1b off)",
+            int32(questEliteSoloLevelsAbove), ai::elite_quest::DefaultSoloLevelsAbove);
+        questEliteSoloLevelsAbove = ai::elite_quest::DefaultSoloLevelsAbove;
+    }
     farFollowMaxWalkDistance = config.GetFloatDefault("AiPlayerbot.FarFollowMaxWalkDistance", 400.0f);
     formationSpacing = config.GetFloatDefault("AiPlayerbot.Formation.Spacing", 2.0f);
     formationCircleMaxRadius = config.GetFloatDefault("AiPlayerbot.Formation.CircleMaxRadius", 15.0f);

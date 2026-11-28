@@ -101,6 +101,51 @@ int main()
         Require(Slot(Event::WishSkipped, 8) == 4 && Slot(Event::WishSkipped, 9) == 5, "slot layout");
     }
 
+    // 7) Config validity (ultracode review 28.11.): out of range is invalid (the loader then uses the default, not the bound).
+    {
+        Require(!ValidMinGroup(-1) && !ValidMinGroup(0) && !ValidMinGroup(1) && ValidMinGroup(2) && ValidMinGroup(5) && !ValidMinGroup(6),
+            "MinGroup valid 2..5 only");
+        Require(!ValidSoloLevelsAbove(-5) && ValidSoloLevelsAbove(0) && ValidSoloLevelsAbove(99) && !ValidSoloLevelsAbove(100),
+            "SoloLevelsAbove valid 0..99 only");
+    }
+
+    // 8) The entry sets: deferred minus everything a pursued / other quest needs; sorted, unique.
+    {
+        std::vector<std::int32_t> deferred = {1180, 1178, 1179, 1178, 300};
+        std::vector<std::int32_t> pursued = {77, 55, 77};
+        std::vector<std::int32_t> keep = {300, 12, 300};   // 300: also an item dropper of a pursued quest -> stays needed
+        FinishEntrySets(deferred, pursued, keep);
+        Require(deferred == std::vector<std::int32_t>({1178, 1179, 1180}), "deferred minus keep, sorted, unique");
+        Require(pursued == std::vector<std::int32_t>({55, 77}), "pursued sorted, unique");
+        std::vector<std::int32_t> none, none2, none3;
+        FinishEntrySets(none, none2, none3);
+        Require(none.empty() && none2.empty(), "empty sets");
+    }
+
+    // 9) The rule label and the reward line (quest 255 at its effective level 20, MinGroup 3, +5).
+    {
+        Require(std::string(RuleLabel(3, 20, 21, 20, 3, 5)) == "1a", "label 1a");
+        Require(std::string(RuleLabel(1, 25, 25, 20, 3, 5)) == "1b", "label 1b");
+        Require(std::string(RuleLabel(2, 19, 19, 20, 3, 5)) == "none", "label none");
+        Require(std::string(RuleLabel(3, 25, 25, 20, 3, 5)) == "1a", "1a wins when both hold");
+        RewardFacts f;
+        f.guid = 7;
+        f.questId = 255;
+        f.questLevel = 20;
+        f.botLevel = 25;
+        f.members = 1;
+        f.minLevel = 25;
+        f.judged = true;
+        Require(FormatRewardLine(f, 3, 5) ==
+            "[QuestElite] reward guid=7 cohort=b quest=255 level=20 bot_level=25 members=1 min_level=25 rule=1b judged=1 formed=0",
+            "reward line text");
+        f.guid = 8;
+        f.formed = true;
+        f.judged = false;
+        Require(FormatRewardLine(f, 3, 99).find(" cohort=a ") != std::string::npos &&
+            FormatRewardLine(f, 3, 99).find(" rule=none judged=0 formed=1") != std::string::npos, "control row, 1b off");
+    }
+
     std::cout << "elite_quest_policy: all tests passed\n";
     return 0;
 }

@@ -126,6 +126,74 @@ inline bool MayForm(std::uint32_t size, std::uint32_t minLevel, std::uint32_t qu
     return Pursue(size, minLevel, minLevel, questLevel, minGroup, soloLevelsAbove);
 }
 
+// Config (ultracode review 28.11. finding "clamped silently"): a raw value outside the range is invalid - the loader writes one
+// error line and uses the default, never the nearest (most permissive) bound.
+inline bool ValidMinGroup(std::int32_t raw)
+{
+    return raw >= std::int32_t(MinGroupLow) && raw <= std::int32_t(MinGroupHigh);
+}
+
+inline bool ValidSoloLevelsAbove(std::int32_t raw)
+{
+    return raw >= 0 && raw <= std::int32_t(SoloLevelsAboveHigh);
+}
+
+// The entry sets of E2 / the 1b target gate (ultracode review: built from the quests' open-objective destinations - kill
+// targets AND item droppers, the source of "needed quest entries"). Inputs are unsorted candidates:
+//   deferredElite  elite-rank entries of deferred scope quests,
+//   pursuedElite   elite-rank entries of scope quests the rule lets the bot pursue,
+//   keep           every entry an incomplete, not deferred quest of the bot needs (elite or not).
+// Out: deferred = sorted unique deferredElite minus keep (another quest still needs it); pursued = sorted unique pursuedElite.
+inline void FinishEntrySets(std::vector<std::int32_t>& deferredElite, std::vector<std::int32_t>& pursuedElite,
+    std::vector<std::int32_t>& keep)
+{
+    auto const seal = [](std::vector<std::int32_t>& v)
+    {
+        std::sort(v.begin(), v.end());
+        v.erase(std::unique(v.begin(), v.end()), v.end());
+    };
+    seal(keep);
+    seal(deferredElite);
+    seal(pursuedElite);
+    deferredElite.erase(std::remove_if(deferredElite.begin(), deferredElite.end(),
+        [&keep](std::int32_t entry) { return std::binary_search(keep.begin(), keep.end(), entry); }), deferredElite.end());
+}
+
+// The rule that holds for a reward / a decision: "1a" group floor, "1b" outlevelled, "none" (neither).
+inline char const* RuleLabel(std::uint32_t members, std::uint32_t minLevel, std::uint32_t botLevel, std::uint32_t questLevel,
+    std::uint32_t minGroup, std::uint32_t soloLevelsAbove)
+{
+    if (members >= ClampMinGroup(minGroup) && minLevel >= questLevel)
+        return "1a";
+    if (botLevel >= questLevel + ClampSoloLevelsAbove(soloLevelsAbove))
+        return "1b";
+    return "none";
+}
+
+// [QuestElite] reward line (OB-00 28.11.: accepted for the PREREG): one line per rewarded scope quest of a persistent roster
+// bot on its own, in BOTH cohorts (the control arm too), with the key on. judged = the rule applies to the bot (cohort, not a
+// formed group); formed = a manager / S7 group bot (judged at form time, E4). The solo-1b row and the quest rows come from it.
+struct RewardFacts
+{
+    std::uint32_t guid = 0;
+    std::uint32_t questId = 0;
+    std::uint32_t questLevel = 0;   // the effective level
+    std::uint32_t botLevel = 0;
+    std::uint32_t members = 1;
+    std::uint32_t minLevel = 0;
+    bool judged = false;
+    bool formed = false;
+};
+
+inline std::string FormatRewardLine(RewardFacts const& f, std::uint32_t minGroup, std::uint32_t soloLevelsAbove)
+{
+    return "[QuestElite] reward guid=" + std::to_string(f.guid) + " cohort=" + (cohort::InB(f.guid) ? "b" : "a") +
+        " quest=" + std::to_string(f.questId) + " level=" + std::to_string(f.questLevel) + " bot_level=" + std::to_string(f.botLevel) +
+        " members=" + std::to_string(f.members) + " min_level=" + std::to_string(f.minLevel) +
+        " rule=" + RuleLabel(f.members, f.minLevel, f.botLevel, f.questLevel, minGroup, soloLevelsAbove) +
+        " judged=" + (f.judged ? "1" : "0") + " formed=" + (f.formed ? "1" : "0");
+}
+
 // --- [QuestElite] minute line, per cohort (a = even low guid, b = odd) -------------------------------------------------------
 //   travel_deferred  quest objective destinations refused by the rule (E1, per destination check, not bots),
 //   target_skipped   grind-scan candidates counted as not needed: an elite target of a deferred quest (E2, per candidate per scan),
