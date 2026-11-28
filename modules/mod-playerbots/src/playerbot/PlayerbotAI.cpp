@@ -2350,7 +2350,9 @@ void PlayerbotAI::EliteGroupFacts(uint32& members, uint32& minLevel) const
 
 bool PlayerbotAI::EliteQuestDeferred(uint32 questId)
 {
-    if (!IsEliteQuestDefer() || !bot->GetMap() || bot->GetMap()->Instanceable())
+    // FindMap, not GetMap: GetMap() asserts a map before it returns (twow-repo#722, contract map_null_check).
+    Map const* const map = bot->FindMap();
+    if (!IsEliteQuestDefer() || !map || map->Instanceable())
         return false;
     ai::elite_quest::ScopeEntry const* const scope = EliteQuestScope(questId);
     if (!scope)
