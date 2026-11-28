@@ -268,8 +268,10 @@ float PullMultiplier::GetValue(Action* action)
 
 void PossibleAdsStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
 {
+    // twow-repo#607 point 1: the registered trigger is "possible adds" (TriggerContext.h). The strategy "ads" is not assigned
+    // to any bot yet, so this name fix changes no behaviour; assigning it is a separate decision.
     triggers.push_back(new TriggerNode(
-        "possible ads",
+        "possible adds",
         NextAction::array(0, new NextAction("flee with pet", ACTION_EMERGENCY), NULL)));
 }
 

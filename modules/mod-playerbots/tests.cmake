@@ -1452,6 +1452,23 @@ add_test(NAME group_quest_loot_policy
   COMMAND group_quest_loot_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# twow-repo#627 GRP2030 dose levers 1 and 2 (QuestGroups.Manager.WishScope / DeadQuestEnds): the wish order and the dead-quest store.
+add_executable(grp2030_dose_policy_tests
+  "${PB_MODULE_DIR}/t/grp2030_dose_policy_tests.cpp")
+
+target_include_directories(grp2030_dose_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+# twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1): the test now runs quest_groups::QueueStore (std::mutex).
+target_link_libraries(grp2030_dose_policy_tests PRIVATE Threads::Threads)
+
+set_target_properties(grp2030_dose_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME grp2030_dose_policy
+  COMMAND grp2030_dose_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # twow-repo#575 H3: Revive.DelayResurrectRequest mode (guid bit 1, orthogonal to the cohort parity).
 add_executable(resurrect_delay_policy_tests
   "${PB_MODULE_DIR}/t/resurrect_delay_policy_tests.cpp")
@@ -1478,6 +1495,20 @@ set_target_properties(area_level_policy_tests PROPERTIES
 
 add_test(NAME area_level_policy
   COMMAND area_level_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+# twow-repo#333 GrantOnInit: mode, starter tools, apprentice resolver and retry rule of the profession grant.
+add_executable(profession_grant_policy_tests
+  "${PB_MODULE_DIR}/t/profession_grant_policy_tests.cpp")
+
+target_include_directories(profession_grant_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(profession_grant_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME profession_grant_policy
+  COMMAND profession_grant_policy_tests
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
 
 add_test(NAME area_level_source_contract
@@ -2828,6 +2859,25 @@ add_test(NAME grind_neighbour_source_contract
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/grind_neighbour_source_contract_tests.cmake")
 
+# AiPlayerbot.Grind.CrowdPenalty (default 0): the crowded-candidate penalty of the grind pick is added, not assigned.
+add_executable(grind_crowd_policy_tests
+  "${PB_MODULE_DIR}/t/grind_crowd_policy_tests.cpp")
+
+target_include_directories(grind_crowd_policy_tests PRIVATE
+  "${PB_MODULE_DIR}/src/playerbot")
+
+set_target_properties(grind_crowd_policy_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME grind_crowd_policy
+  COMMAND grind_crowd_policy_tests
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_test(NAME grind_crowd_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/grind_crowd_source_contract_tests.cmake")
+
 # twow-repo#656 BOT-PULL-01-L1 (AiPlayerbot.Grind.SafePull, default 0; 2 cohort B, 3 cohort A, 4 = shadow only; #653 lever 1): the stage-2 grind pick of
 # solo free bots orders its candidates by the creatures that would join the fight at the target, the fight spot or on the approach.
 add_executable(grind_safe_pull_policy_tests
@@ -2847,6 +2897,12 @@ add_test(NAME grind_safe_pull_source_contract
   COMMAND "${CMAKE_COMMAND}"
     "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
     -P "${PB_MODULE_DIR}/t/grind_safe_pull_source_contract_tests.cmake")
+
+# twow-repo#607 point 1: the (still unassigned) ads strategy asks for the registered "possible adds" trigger.
+add_test(NAME possible_adds_trigger_source_contract
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPB_SOURCE_DIR=${PB_MODULE_DIR}/src/playerbot"
+    -P "${PB_MODULE_DIR}/t/possible_adds_trigger_source_contract_tests.cmake")
 
 # twow-repo#563 X5 (AiPlayerbot.ThreadSafeTeleportAck, default 1 since 06.11.2026; CLI-ROT 02.11.2026): a master's bot holder no longer acks the
 # near teleport of a bot in world on another thread - the bot's own UpdateAI does (crash 02.11.2026, MotionMaster::DirectClean);

@@ -72,6 +72,29 @@ inline bool Waits(QuestFacts const& f)
     return f.incomplete && !f.classQuest && !f.abandoned && f.openObjectives > 0 && f.questLevel < f.botLevel + 5;
 }
 
+// twow-repo#627 GRP2030 dose lever 1 (AiPlayerbot.QuestGroups.Manager.WishScope, default 0): the manager's group wish of a bot.
+// Scope 0: group-help quests only, the one with the most open objectives (ties keep the earlier log slot) - as before.
+// Scope 1 (bots of the manager's cohort only): a normal quest may be the wish too, but a group-help quest always wins; between
+// normal quests the lowest quest id wins, a shared order, so neighbours that hold the same quests wish the same one.
+struct WishPick
+{
+    bool any = false;
+    bool help = false;
+    std::uint32_t open = 0;
+    std::uint32_t questId = 0;
+};
+
+inline bool BetterWish(WishPick const& best, bool help, std::uint32_t open, std::uint32_t questId)
+{
+    if (!best.any)
+        return true;
+    if (help != best.help)
+        return help;
+    if (help)
+        return open > best.open;
+    return questId < best.questId;
+}
+
 // --- forming: one quest, one map; pure greedy, no pair values ----------------------------------------------------------------
 struct Candidate
 {
@@ -319,6 +342,41 @@ struct ApproachWatch
 };
 
 // --- per (bot, quest): queue age and attempts ---------------------------------------------------------------------------------
+// twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1; AiPlayerbot.QuestGroups.Manager.WishSkipBlocked, default 0): the group
+// manager publishes the (bot, quest) pairs it blocks for the bot, and the bot's wish (ManagerFacts.cpp ReadWish) skips them.
+// A skipped quest is no wish any more, so nothing marks it Seen; with the key on the store keeps the block alive instead:
+// ForgetStale keeps an entry while its blockedUntil lies ahead and, with attempts, up to the exhaust horizon after its last
+// failure (so the attempts add up), and Failed gives an exhausted entry (attempts >= maxAttempts) the exhaust horizon
+// (QuestGroups.Manager.DeadQuestHours * 3600), after which the minute sweep may drop it and the bot may try the quest again.
+// The default BlockHold (keepBlocked false) is the old code path; S7 (QuestGroupWorld.cpp) passes none.
+struct BlockHold
+{
+    // twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1): keepBlocked = the key (WishSkipBlocked 1), maxAttempts =
+    // QuestGroups.MaxAttempts (0 = no exhausted entries), exhaustSeconds = QuestGroups.Manager.DeadQuestHours * 3600.
+    bool keepBlocked = false;
+    std::uint32_t maxAttempts = 0;
+    std::uint32_t exhaustSeconds = 0;
+};
+
+// twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1): the key of a published (bot, quest) pair, the same packing as QueueStore.
+inline std::uint64_t BlockKey(std::uint32_t guid, std::uint32_t quest)
+{
+    return (std::uint64_t(guid) << 32) | quest;
+}
+
+// twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1): sorted and without duplicates, for BlockedIn.
+inline void SortBlockKeys(std::vector<std::uint64_t>& keys)
+{
+    std::sort(keys.begin(), keys.end());
+    keys.erase(std::unique(keys.begin(), keys.end()), keys.end());
+}
+
+// twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1): the pair is in the sorted list (SortBlockKeys).
+inline bool BlockedIn(std::vector<std::uint64_t> const& sorted, std::uint32_t guid, std::uint32_t quest)
+{
+    return quest && std::binary_search(sorted.begin(), sorted.end(), BlockKey(guid, quest));
+}
+
 // The manager is the only writer (world thread); CLI-Deep's hooks (S5a trigger, QFO) read the queue age from map threads,
 // so the store is mutex-protected and read rarely (not per tick). Bounded: a full store drops its oldest half.
 class QueueStore
@@ -344,12 +402,17 @@ public:
         e.lastSeen = now;
     }
 
-    void Failed(std::uint32_t guid, std::uint32_t quest, std::uint32_t now, std::uint32_t cooldownSeconds)
+    void Failed(std::uint32_t guid, std::uint32_t quest, std::uint32_t now, std::uint32_t cooldownSeconds,
+        BlockHold const& hold = BlockHold())
     {
         std::lock_guard<std::mutex> lock(mutex);
         Entry& e = entries[Key(guid, quest)];
         ++e.attempts;
         e.blockedUntil = now + cooldownSeconds;
+        // twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1): with the key on an exhausted entry is blocked for the exhaust
+        // horizon (never shorter than the retry cooldown), so ForgetStale keeps it while the bot's wish skips the quest.
+        if (hold.keepBlocked && hold.maxAttempts && e.attempts >= hold.maxAttempts)
+            e.blockedUntil = now + std::max(cooldownSeconds, hold.exhaustSeconds);
     }
 
     void Forget(std::uint32_t guid, std::uint32_t quest)
@@ -359,11 +422,32 @@ public:
     }
 
     // Entries of a bot not seen in this pass any more (quest done, dropped, bot gone).
-    void ForgetStale(std::uint32_t now, std::uint32_t maxAgeSeconds)
+    // twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1): with the key on (hold.keepBlocked) an entry stays while its
+    // blockedUntil lies ahead (the wish skips it, so it is not seen), and an entry with attempts stays up to exhaustSeconds
+    // after its last failure (Failed comes after Seen, so lastSeen = the last failure while the wish skips the quest; a bot
+    // grouped on another quest is not seen either): its attempts add up to MaxAttempts instead of going back to 0 once the
+    // retry cooldown ran out. A lastSeen ahead of now counts as just seen. The default hold is the old rule.
+    void ForgetStale(std::uint32_t now, std::uint32_t maxAgeSeconds, BlockHold const& hold = BlockHold())
     {
         std::lock_guard<std::mutex> lock(mutex);
         for (auto it = entries.begin(); it != entries.end();)
-            it = (now - it->second.lastSeen > maxAgeSeconds) ? entries.erase(it) : std::next(it);
+        {
+            bool const stale = now - it->second.lastSeen > maxAgeSeconds;
+            bool const recent = it->second.attempts &&
+                (it->second.lastSeen > now || now - it->second.lastSeen <= hold.exhaustSeconds);
+            bool const keep = hold.keepBlocked && (it->second.blockedUntil > now || recent);
+            it = (stale && !keep) ? entries.erase(it) : std::next(it);
+        }
+    }
+
+    // twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1): appends the key (BlockKey) of every entry Blocked at now or exhausted
+    // (attempts >= maxAttempts, 0 = none) - the store's part of the manager's QuestBlocked. Unsorted (SortBlockKeys).
+    void BlockedKeys(std::uint32_t now, std::uint32_t maxAttempts, std::vector<std::uint64_t>& out) const
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        for (auto const& kv : entries)
+            if (kv.second.blockedUntil > now || (maxAttempts && kv.second.attempts >= maxAttempts))
+                out.push_back(kv.first);
     }
 
     bool Blocked(std::uint32_t guid, std::uint32_t quest, std::uint32_t now) const

@@ -23,6 +23,14 @@ bool Blocks(std::uint32_t guidLow);
 std::uint8_t QuestRoleOf(std::uint32_t guidLow);
 bool IsQuestMember(std::uint32_t guidLow);
 bool IsQuestFollower(std::uint32_t guidLow);
+// twow-repo#627 GRP2030 lever 2 (QuestGroups.Manager.DeadQuestEnds, default 0): the manager holds the quest dead (its QUEST groups
+// ended without any progress DeadQuestEnds times in a row); the wish of a bot of its cohort skips it. False without a lock while
+// no quest is dead.
+bool QuestDeadForWish(std::uint32_t questId);
+// twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1; QuestGroups.Manager.WishSkipBlocked, default 0): the manager blocks the quest
+// for this bot (the retry cooldown after a failed group, attempts used up, its own end reasons); the bot's wish skips it. False
+// without a lock while no pair is blocked.
+bool QuestBlockedForWish(std::uint32_t low, std::uint32_t questId);
 // The S7 queue age mirror (3.6): seconds the bot waits on the quest in the manager's queue (0 = not queued).
 std::uint32_t QueuedAge(std::uint32_t guidLow, std::uint32_t questId);
 // The key of a manager group by its core group id (ManagerFacts::ReadKey): false = not a manager group.
