@@ -9496,7 +9496,7 @@ void RandomPlayerbotMgr::GrantPersistentRosterProfessions(Player* bot, bool logi
                     bot->StoreNewItem(dest, item, true, Item::GenerateItemRandomPropertyId(item)) != nullptr;
                 tools << (tools.tellp() > 0 ? "," : "") << item << (stored ? "" : ":failed");
                 if (!stored)
-                    sLog.outError("[ProfessionGrant] guid=%u skill=%u tool=%u result=store_failed (bag full or unknown item; the tool buy path stays)",
+                    sLog.outError("[ProfessionGrant] guid=%u skill=%u tool=%u result=store_failed (bag full or unknown item; not retried while the skill is held; a vendor that sells the tool stays the way to get it)",
                         guid, skill, item);
             }
         }
