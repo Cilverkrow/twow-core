@@ -431,6 +431,7 @@ public:
     uint32 grindQuestFirstOrder = 0;  // twow-repo#601 decision order (owner 20.10.2026): AiPlayerbot.Grind.QuestFirstOrder - "attack anything" of quest-first roster bots only on quest objectives, attackers and mobs in the way; 0 off, 1 all, 2 cohort B (odd low guid)
     uint32 grindNeighbourAware = 0;  // twow-repo#602 #2 (adds analysis 25.10.2026): the stage-2 grind pick prefers a candidate with fewer neighbours that would join the fight (GrindNeighbourPolicy.h); 0 off, 1 all, 2 cohort B (A in shadow), 3 shadow only
     uint32 grindSafePull = 0;  // twow-repo#656 (#653 lever 1, OB-00 31.10.2026): the stage-2 grind pick orders the candidates by the creatures that would join the fight at the target, the fight spot or on the approach (SafePullPolicy.h); 0 off, 1 all, 2 cohort B, 3 cohort A (crossover; the other cohort in shadow), 4 shadow only
+    uint32 grindCrowdPenalty = 0;  // bug fix (OB-10 27.11.2026): the grind pick ADDS the 5-yd-per-bot penalty of a crowded candidate to its distance instead of replacing the distance with it (GrindCrowdPolicy.h); 0 off (default until acceptance), 1 all, 2 cohort B, 3 cohort A
     bool threadSafeTeleportAck = true;  // twow-repo#563 X5 (CLI-ROT 02.11.2026, OB-00): a master's holder no longer acks the near teleport of a bot in world on another thread - the bot's own UpdateAI does (TeleportAckThreadPolicy.h); default on since twow-repo#676 crash B (OB-00 06.11.2026), 0 = rollback, anything else on
     uint32 grindSafePullReadyHp = 80;  // twow-repo#656: HP % a bot needs for a pick with risk >= 2 (below: no target, at most 90 s)
     uint32 grindSafePullReadyMana = 50;  // twow-repo#656: the same for mana % (mana users only)
@@ -534,6 +535,9 @@ public:
     // action reads these values. Generic trainer behaviour is unchanged.
     bool professionTrainingFreeForPersistentRoster = false;
     uint32 professionTrainingStartLevel = 1;
+    // twow-repo#333 GrantOnInit (owner 27./28.11.2026; ProfessionGrantPolicy.h): a roster bot learns the missing apprentice ranks of its
+    // profession pair at login (no trainer, no money) and gets their starter tools; 0 off (default), 1 all, 2 cohort B, 3 cohort A.
+    uint32 professionTrainingGrantOnInit = 0;
     float professionTrainingLocalTrainerRadius = 120.0f;
     bool professionTrainingTrace = false;
     uint32 professionTrainingTraceCooldownSeconds = 300;
@@ -649,6 +653,7 @@ public:
     bool parkHideFromBots = false;  // twow-repo#541/#551: parked bots invisible to other bots (core Player flag)
     bool buffRealPlayerStyle = false;  // twow-repo#588 (owner 14.10): buff group, then guild, strangers only once per cooldown
     uint32 buffStrangerCooldownSeconds = 900;
+    bool lootGroupQuestLootBotLeader = false;  // twow-repo#627 GRP2030 (default 0): the #780 rules for a follower of a manager QUEST group (bot leader)
     bool lootGroupQuestLoot = false;  // twow-repo#780 (bug fix; code default 0 until the owner group test on realm C, then 1, 0 = rollback): group bots with a player master loot their own quest items (GroupQuestLootPolicy.h)
     bool lootHoldTravelWhileLootable = false;  // twow-repo#575 H1 (bug fix; code default 0 until its acceptance unit, then the flip pair): move to rpg / travel target and the rpg-target heal stand back while the loot target is open (LootHoldPolicy.h), 0 = as before
     uint32 lootHoldTravelWhileLootableMaxSeconds = 60;  // twow-repo#575 H1 (OB-10 review): seconds a loot target may hold the bot at most (10..600); then that loot target holds no more ([LootHold] result=expired)
@@ -1128,6 +1133,15 @@ public:
     uint32 questGroupsMaxAttempts = 3;
     uint32 questGroupsRetryCooldownMinutes = 30;
     bool questGroupsSuggestedPlayers = true;
+    // twow-repo#627 GRP2030 dose levers (default 0, only bots of the group manager's cohort; OB-00 (A) 27.11.2026):
+    // 1 WishScope: a normal quest may be a bot's manager group wish (QuestGroupPolicy.h BetterWish).
+    // 2 DeadQuestEnds: a quest whose QUEST groups end that many times in a row without any progress is dead for DeadQuestHours.
+    uint32 questGroupsManagerWishScope = 0;
+    uint32 questGroupsManagerDeadQuestEnds = 0;
+    uint32 questGroupsManagerDeadQuestHours = 6;
+    // twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1; default 0): 1 = the wish skips a quest the manager blocks for the bot
+    // (retry cooldown, attempts used up, its own end reasons); an exhausted quest stays blocked for DeadQuestHours.
+    uint32 questGroupsManagerWishSkipBlocked = 0;
     // WS30-ELITE-QUEST-01 (OB-20 rule f6ab4497, EliteQuestPolicy.h): AiPlayerbot.QuestElite.Defer - elite quests only with a group of
     // >= MinGroup in the zone at >= the effective quest level (1a) or a bot >= that level + SoloLevelsAbove (1b), else deferred
     // (kept, not abandoned); 0 off, 1 all, 2 cohort B (odd low guid), 3 cohort A (even low guid)

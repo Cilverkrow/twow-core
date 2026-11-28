@@ -237,6 +237,11 @@ AiPlayerbot.Loot.FeralFixedSpec = 1
 # One [GroupQuestLoot] line per accepted corpse and per leash hold / expiry. 0 = as before (default until the owner test;
 # then 1, 0 = rollback).
 AiPlayerbot.Loot.GroupQuestLoot = 0
+# twow-repo#627 GRP2030 (lever, default 0, no behaviour change; OB-00 F2 (A) 27.11.2026): the same #780 rules (own party-loot
+# quest drops only, the same range, hostile and leash bounds and lines) for a follower of a group-manager QUEST group, whose
+# master is the bot leader (BotGroups.Manager.Types bit 2; only bots of the manager's cohort can be such followers). A bot with
+# an active player master keeps following Loot.GroupQuestLoot alone; ad-hoc and S7 followers are not covered.
+AiPlayerbot.Loot.GroupQuestLoot.BotLeader = 0
 # twow-repo#575 H1 (BUG FIX, loot ping-pong; A3-HARM-UPSTREAM, OB-00 09.11.2026; heal branch CLI-ROT): "move to rpg target",
 # "move to travel target" and the heal of the rpg target stand back while the bot's loot target is still open: set, within
 # LootDistance of the bot and still lootable. Before, they stood back only while the "available loot" list offered loot; that
@@ -852,6 +857,12 @@ AiPlayerbot.Grind.QuestFirstOrder = 0
 # (default), 1 = every bot, 2 = only cohort B (odd low guid; cohort A computes the same in shadow), 3 = shadow only (every bot
 # computes and is counted, nobody's pick changes - the log-only run). Any other value acts like 0.
 AiPlayerbot.Grind.NeighbourAware = 0
+
+# Grind pick, crowded candidate (bug fix): a creature that more bots target than the assist allows should get a penalty of
+# 5 yards per targeting bot on its distance score. The old code replaced the distance by that penalty, so crowded creatures
+# looked near. Grouped bots score by member distance and are not affected. 0 = old behaviour (default until the acceptance
+# test), 1 = add the penalty for every bot, 2 = only cohort B (odd low guid), 3 = only cohort A. Any other value acts like 0.
+AiPlayerbot.Grind.CrowdPenalty = 0
 
 # twow-repo#656 BOT-PULL-01-L1 (#653 lever 1, OB-00 31.10.2026): the stage-2 grind pick of solo free bots orders its candidates
 # by risk - the idle creatures of the pass's own target list that would join the fight: linked to the candidate (AGGRO_TOGETHER
@@ -2004,6 +2015,27 @@ AiPlayerbot.QuestGroups.MaxQuestMinutes = 60
 AiPlayerbot.QuestGroups.MaxAttempts = 3
 AiPlayerbot.QuestGroups.RetryCooldownMinutes = 30
 AiPlayerbot.QuestGroups.SuggestedPlayers = 1
+# twow-repo#627 GRP2030 dose levers of the group manager (BotGroups.Manager.Types bit 2; default 0 = no behaviour change; OB-00
+# (A) 27.11.2026). Both act only on bots of the manager's cohort (BotGroups.Manager); the other cohort keeps the old wish.
+# WishScope: 0 = a bot's manager group wish is a group-help quest only (elite / SuggestedPlayers above), as before; 1 = a normal
+# quest may be the wish too (no dungeon, raid or PvP quest). A group-help quest still wins; between normal quests the lowest
+# quest id wins (a shared order, so neighbours holding the same quests wish the same one). Other values = 0 (one error line).
+# DeadQuestEnds: 0 = off; N = a quest whose manager QUEST groups end N times in a row with no_progress and without any objective
+# progress of any member is dead for DeadQuestHours: no QUEST candidate for it, and the cohort's bots wish another quest.
+# Progress or a turn-in in one of its groups resets the count. One line "[GroupMgr] event=quest_dead quest= group= ends= hours="
+# per death. DeadQuestHours: 1..48 (0 or negative = 6, above = 48; one error line).
+AiPlayerbot.QuestGroups.Manager.WishScope = 0
+AiPlayerbot.QuestGroups.Manager.DeadQuestEnds = 0
+AiPlayerbot.QuestGroups.Manager.DeadQuestHours = 6
+# twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1; default 0 = no behaviour change). Only bots of the manager's cohort.
+# WishSkipBlocked: 0 = off, as before (a bot keeps wishing a quest the manager blocks for it, and is no QUEST candidate for that
+# time); 1 = the bot's wish skips a quest the manager blocks for this bot (the retry cooldown after a failed group, attempts used
+# up, the manager's own end reasons), so it wishes its next waiting quest. The block stays while skipped. The attempts of a
+# quest add up (up to QuestGroups.MaxAttempts) within DeadQuestHours after its last failed group, even while the bot does not
+# wish it; once the retry cooldown ran out the bot may wish it again. A quest with all attempts used up is skipped for
+# DeadQuestHours after the last failure and may then be tried again. Other values = 0 (one error line). The "[GroupMgr]
+# minute" line counts in wish_blocked= (its last field, key on or off) the fresh wishes whose quest the manager blocks.
+AiPlayerbot.QuestGroups.Manager.WishSkipBlocked = 0
 # WS30-ELITE-QUEST-01 (OB-20 rule 27.11.2026 f6ab4497; finding CLI-GRP 27.11.: 539 of 815 manager QUEST groups on quest 255
 # "Mercenaries", 0 turn-ins): a quest is "elite" when its Type is 1 or one of its kill objectives is a creature of rank 1, 2 or 3
 # (elite, rare elite, boss; rank 4 rare is not - its old "can fight elite" test stays); never dungeon (81) / raid (62), never
@@ -2774,6 +2806,23 @@ AiPlayerbot.ProfessionTraining.FreeForPersistentRoster = 0
 # The core/trainer remains authoritative for level and rank requirements. This
 # gate merely allows a roster bot to use a valid local profession trainer at L1.
 AiPlayerbot.ProfessionTraining.StartLevel = 1
+# twow-repo#333 Berufe GrantOnInit (owner 27.11.2026 via OB-00: roster bots get their professions at start). A persistent
+# roster bot that lacks a primary of its persisted profession pair learns its apprentice rank at login, the way the bots'
+# trainer path does: the core trainer state check (GREEN - level, race / class and the two-primary limit stay with the
+# core), then the spell the apprentice teaching spell teaches (skill 1/75 and the starter recipes). No trainer visit, no
+# money, no follow rank (journeyman and up stay with the trainer), no change to a learned skill, never a third primary.
+# The teaching spells come from the tradeskill trainer lists (npc_trainer and npc_trainer_template), read once; a skill
+# with more than one apprentice teaching spell gets no grant and an error line. A rank refused at login (the trainer level:
+# Alchemy, Engineering and Jewelcrafting need level 5) is granted on a later roster check. With a granted rank the bot gets its missing
+# starter tools for free, into its bags
+# (owner economy decision 28.11.2026 via OB-00): Mining Pick 2901, Skinning Knife 7005, Blacksmith Hammer 5956
+# (Blacksmithing, Engineering), Arclight Spanner 6219, Runed Copper Rod 6218, Jewelers Kit 55155. Lines:
+# "[ProfessionGrant] table skills= ambiguous= missing= <skill>=<spell>@L<level>|ambiguous|none ..." once (all ten
+# primaries; a skipped one also gets an error line), and per skill "[ProfessionGrant] guid= level= pair= skill=
+# spell= source=login|tick result=ok|learn_failed|no_apprentice_spell|ambiguous_spell|not_green value= tools=" (not_green
+# only at login). Mode (in-realm A/B, cohort parity): 0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low
+# guid), 3 = only cohort A (even low guid). Any other value acts like 0.
+AiPlayerbot.ProfessionTraining.GrantOnInit = 0
 # A planned profession never creates autonomous travel. Persistent roster bots
 # add tradeskill trainers within LocalTrainerRadius (yards) to their ordinary
 # RPG candidates, beyond the generic AiPlayerbot.RpgDistance reach, so a bot

@@ -7,6 +7,7 @@
 #include "QuestGroupPolicy.h"
 #include "SupervisorPolicy.h"
 #include "GroupOpPolicy.h"
+#include "GroupDeadQuestPolicy.h"   // twow-repo#627 GRP2030 lever 2 (pure)
 
 #include <algorithm>
 #include <atomic>
@@ -393,6 +394,12 @@ struct Rules
     float recruitRadius = 800.0f;
     std::uint32_t maxAttempts = 3;
     std::uint32_t retryCooldownMinutes = 30;
+    // twow-repo#627 GRP2030 lever 2 (QuestGroups.Manager.DeadQuestEnds / DeadQuestHours): 0 = off (default).
+    std::uint32_t deadQuestEnds = 0;
+    std::uint32_t deadQuestHours = dead_quest::kHoursDefault;
+    // twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1; QuestGroups.Manager.WishSkipBlocked, default 0 = off): the view lists
+    // the (bot, quest) pairs QuestBlocked blocks, the queue keeps them while skipped (quest_groups::BlockHold).
+    bool wishSkipBlocked = false;
     quest_groups::Timers timers;
 };
 
@@ -550,6 +557,7 @@ struct ManagedGroup
     quest_groups::Phase phase = quest_groups::Phase::Rendezvous;
     std::uint32_t phaseSinceSec = 0;
     std::uint32_t lastProgressSec = 0;
+    bool anyProgress = false;        // twow-repo#627 GRP2030 lever 2: a member's key showed objective progress on the quest
     std::uint32_t realPlayerSinceMs = 0;
     EndReason endReason = EndReason::None;
     std::uint32_t sizeMax = 0;
@@ -675,6 +683,60 @@ public:
         return true;
     }
 
+    // twow-repo#627 GRP2030 lever 2: the quest is dead for the wishes (QuestGroups.Manager.DeadQuestEnds). Its own atomic: no lock
+    // while no quest is dead (the lever off: never).
+    bool QuestDead(std::uint32_t questId) const
+    {
+        if (!anyDead_.load(std::memory_order_acquire) || !questId)
+            return false;
+        std::lock_guard<std::mutex> lock(mutex_);
+        return std::find(dead_.begin(), dead_.end(), questId) != dead_.end();
+    }
+
+    // World thread: the dead quests of this pass replace the old list (swap under the lock).
+    void PublishDead(std::vector<std::uint32_t>& dead)
+    {
+        bool const any = !dead.empty();
+        if (!any && !anyDead_.load(std::memory_order_acquire))
+            return;   // nothing dead before or now (lever off): no lock per pass (OB-60 P3); the world thread is the only writer
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            dead_.swap(dead);
+        }
+        anyDead_.store(any, std::memory_order_release);
+        dead.clear();
+    }
+
+    // twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1; QuestGroups.Manager.WishSkipBlocked): the manager blocks the quest for
+    // this bot (retry cooldown, attempts used up, its own end reasons; QuestBlocked). Its own atomic: no lock while no pair is
+    // blocked (the key off: never).
+    bool BlockedForBot(std::uint32_t low, std::uint32_t questId) const
+    {
+        if (!anyBlocked_.load(std::memory_order_acquire) || !questId)
+            return false;
+        std::lock_guard<std::mutex> lock(mutex_);
+        return quest_groups::BlockedIn(blocked_, low, questId);
+    }
+
+    // twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1): any pair listed (tests: false while the key is off).
+    bool AnyBlocked() const { return anyBlocked_.load(std::memory_order_acquire); }
+
+    // twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1), world thread: the sorted blocked pairs of this pass
+    // (quest_groups::SortBlockKeys) replace the old list (swap under the lock), the PublishDead pattern. Nothing blocked before
+    // or now (key off): no lock per pass (OB-60 P3); the world thread is the only writer.
+    void PublishBlocked(std::vector<std::uint64_t>& blocked)
+    {
+        bool const any = !blocked.empty();
+        if (!any && !anyBlocked_.load(std::memory_order_acquire))
+            return;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            blocked_.swap(blocked);
+        }
+        anyBlocked_.store(any, std::memory_order_release);
+        blocked.clear();
+    }
+
     // World thread: the new view replaces the old one (swap under the lock; the old maps are reused next time).
     void Publish(std::unordered_map<std::uint32_t, ViewEntry>& bots, std::unordered_map<std::uint32_t, ViewEntry>& cores)
     {
@@ -694,6 +756,11 @@ private:
     std::atomic<bool> any_{ false };
     std::unordered_map<std::uint32_t, ViewEntry> bots_;
     std::unordered_map<std::uint32_t, ViewEntry> cores_;
+    std::atomic<bool> anyDead_{ false };
+    std::vector<std::uint32_t> dead_;   // twow-repo#627 GRP2030 lever 2
+    // twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1): its own atomic, the sorted BlockKey pairs.
+    std::atomic<bool> anyBlocked_{ false };
+    std::vector<std::uint64_t> blocked_;
 };
 
 // ---- lookups and candidate facts (2.4) ------------------------------------------------------------------------------------
@@ -916,6 +983,9 @@ struct MinuteCounts
     std::uint64_t candBusy = 0;
     std::uint64_t candZoneHold = 0;
     std::uint64_t wishes = 0;
+    // twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1): the fresh wishes whose quest QuestBlocked blocks for the bot, summed
+    // over the passes of the minute like wishes (an increment, counted with the key on or off: a diagnosis field).
+    std::uint64_t wishBlocked = 0;
     std::uint64_t noSupervisor = 0;
     std::uint64_t staleSnap = 0;
     std::uint64_t keyOverflow = 0;
@@ -946,6 +1016,9 @@ inline int FormatMinute(char* buf, std::size_t size, MinuteCounts const& m, Stan
         n += std::snprintf(buf + n, size - std::size_t(n), " gap_ms_max=%u pass_us_max=%u groups=%llu members=%llu silent=%llu owned=%llu",
             m.gapMsMax, m.passUsMax, (unsigned long long)s.groups, (unsigned long long)s.members, (unsigned long long)s.silent,
             (unsigned long long)s.owned);
+    // twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1): wish_blocked appended at the end (later pairs only append, OB-10 rule).
+    if (n > 0 && std::size_t(n) < size)
+        n += std::snprintf(buf + n, size - std::size_t(n), " wish_blocked=%llu", (unsigned long long)m.wishBlocked);
     return n;
 }
 
@@ -1008,6 +1081,18 @@ public:
         ++passNo_;
         swept_.clear();
         retryCooldownSec_ = r.retryCooldownMinutes * 60;
+        deadEnds_ = r.deadQuestEnds;   // twow-repo#627 GRP2030 lever 2; off = nothing kept, nothing dead
+        deadHours_ = r.deadQuestHours;
+        if (!deadEnds_)
+            deadQuests_.Clear();
+        // twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1): off = the default hold, the old queue rules, nothing published.
+        hold_ = quest_groups::BlockHold();
+        if (r.wishSkipBlocked)
+        {
+            hold_.keepBlocked = true;
+            hold_.maxAttempts = r.maxAttempts;
+            hold_.exhaustSeconds = r.deadQuestHours * 3600u;
+        }
         // T33-1: the lever's inputs of this pass (the manager clock, the leg = RendezvousMinutes); after an off gap the open
         // meetings get a fresh deadline (2.5) - no deadline or end rule runs in a resumed pass anyway.
         gatherNow_ = in.gather;
@@ -1182,6 +1267,8 @@ private:
         if (questQueue_.Blocked(low, questId, nowSec))
             return true;
         if (maxAttempts && questQueue_.Attempts(low, questId) >= maxAttempts)
+            return true;
+        if (deadEnds_ && deadQuests_.Dead(questId, nowSec))   // twow-repo#627 GRP2030 lever 2 (a wish older than the death)
             return true;
         auto const it = questCooldown_.find((std::uint64_t(low) << 32) | questId);
         return it != questCooldown_.end() && it->second > nowSec;
@@ -1800,7 +1887,8 @@ private:
             {
                 // Seen first: a fresh entry, so the minute sweep (ForgetStale) does not drop the attempt at once.
                 questQueue_.Seen(m.low, g.questId, nowSec_);
-                questQueue_.Failed(m.low, g.questId, nowSec_, retryCooldownSec_);
+                // twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1): hold_ gives an exhausted entry the exhaust horizon.
+                questQueue_.Failed(m.low, g.questId, nowSec_, retryCooldownSec_, hold_);
             }
             else
                 questCooldown_[(std::uint64_t(m.low) << 32) | g.questId] = nowSec_ + retryCooldownSec_;
@@ -1846,6 +1934,8 @@ private:
             return;
         g.state = GroupState::Ending;
         g.endReason = why;
+        if (g.type == GroupType::Quest)
+            NoteDeadQuest(g, why, io);   // twow-repo#627 GRP2030 lever 2
         CloseMeeting(g, EndReasonName(why), io);   // T33-1: an open meeting ends with its group
         // Non-leaders first: the last leave dissolves the core group (GroupOps.cpp RunLeave).
         for (Member& m : g.m)
@@ -2030,6 +2120,7 @@ private:
         {
             m.lastProgressSec = nowSec_;
             g.lastProgressSec = nowSec_;
+            g.anyProgress = true;   // twow-repo#627 GRP2030 lever 2
         }
         m.progress = p;
         m.progressKnown = true;
@@ -2437,6 +2528,9 @@ private:
                 questQueue_.Seen(low, w->wish.questId, nowSec_);
                 queueUsed_.store(true, std::memory_order_release);
                 blocked = QuestBlocked(low, w->wish.questId, nowSec_, r.maxAttempts);
+                // twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1): wish_blocked, with the key on or off (diagnosis).
+                if (blocked)
+                    ++minute_.wishBlocked;
             }
             CandidateFacts const c = Candidate(entry.second, FindEdge(in.edges, low), w, io.SupervisorApplies(low), blocked, now_, staleMs_);
             minute_.staleSnap += c.stale ? 1 : 0;
@@ -2464,7 +2558,8 @@ private:
         if (now_ - lastQueueSweepMs_ >= 60000)
         {
             lastQueueSweepMs_ = now_;
-            questQueue_.ForgetStale(nowSec_, 600);
+            // twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1): with hold_ on a blocked entry outlives its last wish.
+            questQueue_.ForgetStale(nowSec_, 600, hold_);
             for (auto it = questCooldown_.begin(); it != questCooldown_.end();)
                 it = it->second <= nowSec_ ? questCooldown_.erase(it) : std::next(it);
         }
@@ -2873,6 +2968,40 @@ private:
             }
         }
         view_.Publish(viewBots_, viewCores_);
+        deadQuests_.DeadList(nowSec_, deadScratch_);   // twow-repo#627 GRP2030 lever 2: empty while the lever is off
+        view_.PublishDead(deadScratch_);
+        BlockedList(blockedScratch_);   // twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1): empty while the key is off
+        view_.PublishBlocked(blockedScratch_);
+    }
+
+    // twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1): every (bot, quest) pair QuestBlocked blocks now, from the stores (the
+    // queue's cooldown and exhausted entries, the manager's own end reasons), not only the current wishes: the bot wishes one
+    // quest per period, and a pair listed only while it is the wish would come back as the wish once skipped. Dead quests are
+    // the dead list's (QuestDeadForWish). Key off: nothing, no lock on the queue.
+    void BlockedList(std::vector<std::uint64_t>& out) const
+    {
+        out.clear();
+        if (!hold_.keepBlocked)
+            return;
+        questQueue_.BlockedKeys(nowSec_, hold_.maxAttempts, out);
+        for (auto const& entry : questCooldown_)
+            if (entry.second > nowSec_)
+                out.push_back(entry.first);
+        quest_groups::SortBlockKeys(out);
+    }
+
+    // twow-repo#627 GRP2030 lever 2: an ended QUEST group counts for its quest (GroupDeadQuestPolicy.h); the death of a quest
+    // writes one line. A turn-in or any member's progress resets the count; ends other than no_progress do not count.
+    void NoteDeadQuest(ManagedGroup const& g, EndReason why, Io& io)
+    {
+        bool const progress = g.anyProgress || why == EndReason::TurnedIn;
+        bool const deadEnd = why == EndReason::NoProgress && !g.anyProgress;
+        if (deadQuests_.End(g.questId, deadEnd, progress, nowSec_, deadEnds_, deadHours_) != dead_quest::Note::NowDead)
+            return;
+        char line[160];
+        std::snprintf(line, sizeof(line), "[GroupMgr] event=quest_dead quest=%u group=%u ends=%u hours=%u", g.questId, g.serial,
+            deadEnds_, deadHours_);
+        Emit(io, line);
     }
 
     // ---- lines ----
@@ -2991,6 +3120,13 @@ private:
     quest_groups::QueueStore questQueue_;
     std::atomic<bool> queueUsed_{ false };
     std::unordered_map<std::uint64_t, std::uint32_t> questCooldown_;   // F13: the manager's own reasons, cooldown only
+    dead_quest::Store deadQuests_;   // twow-repo#627 GRP2030 lever 2
+    std::vector<std::uint32_t> deadScratch_;
+    // twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1): the hold of this pass (default = off) and the publish scratch.
+    quest_groups::BlockHold hold_;
+    std::vector<std::uint64_t> blockedScratch_;
+    std::uint32_t deadEnds_ = 0;
+    std::uint32_t deadHours_ = dead_quest::kHoursDefault;
     std::uint32_t retryCooldownSec_ = 30 * 60;
     std::vector<Cand> adhocCands_;
     std::vector<Cand> questCands_;

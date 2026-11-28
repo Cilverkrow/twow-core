@@ -1,0 +1,36 @@
+cmake_policy(VERSION 3.16)
+# AiPlayerbot.Grind.CrowdPenalty: the grind pick must not assign the crowded penalty to the distance score again.
+set(TAG "Grind crowd penalty")
+if(NOT DEFINED PB_SOURCE_DIR)
+  message(FATAL_ERROR "${TAG}: PB_SOURCE_DIR is required")
+endif()
+
+file(READ "${PB_SOURCE_DIR}/strategy/values/GrindTargetValue.cpp" value)
+file(READ "${PB_SOURCE_DIR}/PlayerbotAIConfig.cpp" config)
+file(READ "${PB_SOURCE_DIR}/PlayerbotAIConfig.h" header)
+file(READ "${PB_SOURCE_DIR}/aiplayerbot.conf.dist.in" dist)
+
+function(require_text text needle what)
+  string(FIND "${text}" "${needle}" at)
+  if(at EQUAL -1)
+    message(FATAL_ERROR "${TAG}: missing ${what}: ${needle}")
+  endif()
+endfunction()
+
+function(forbid_text text needle what)
+  string(FIND "${text}" "${needle}" at)
+  if(NOT at EQUAL -1)
+    message(FATAL_ERROR "${TAG}: ${what}: ${needle}")
+  endif()
+endfunction()
+
+require_text("${value}" "newdistance = ai::grind_crowd::CrowdedDistance(newdistance, GetTargetingPlayerCount(unit)," "crowded score through the policy")
+require_text("${value}" "ai::cohort::Applies(sPlayerbotAIConfig.grindCrowdPenalty, bot->GetGUIDLow()));" "switch per bot")
+forbid_text("${value}" "newdistance =+" "the assignment typo is back")
+require_text("${header}" "uint32 grindCrowdPenalty = 0;" "default 0 in the header")
+require_text("${config}" "config.GetIntDefault(\"AiPlayerbot.Grind.CrowdPenalty\", 0)" "config read, default 0")
+require_text("${config}" "if (grindCrowdPenalty > 3)" "unknown mode is off")
+require_text("${config}" "{\"Grind.CrowdPenalty\", Value(grindCrowdPenalty)}," "config echo")
+require_text("${dist}" "AiPlayerbot.Grind.CrowdPenalty = 0" "dist default 0")
+
+message(STATUS "GRIND_CROWD_CONTRACT=PASS")
