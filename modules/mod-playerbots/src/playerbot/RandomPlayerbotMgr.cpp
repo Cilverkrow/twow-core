@@ -9332,19 +9332,38 @@ std::map<uint32, ProfessionGrantEntry> const& ProfessionGrantTable()
         }
 
         std::map<uint32, ProfessionGrantEntry> built;
+        auto const resolved = ai::profession_grant::ResolveApprentice(skillSpells);
+        // One line at the first use with the key on: every primary as <skill>=<spell>@L<reqlevel of the strictest row>,
+        // <skill>=ambiguous or <skill>=none - the acceptance run reads which professions are skipped.
         std::ostringstream summary;
-        for (auto const& [skill, spell] : ai::profession_grant::ResolveApprentice(skillSpells))
+        uint32 ok = 0, ambiguous = 0, missing = 0;
+        for (uint32 const skill : ai::profession_grant::kPrimaries)
         {
+            auto const found = resolved.find(skill);
+            if (found == resolved.end())
+            {
+                ++missing;
+                summary << ' ' << skill << "=none";
+                sLog.outError("[ProfessionGrant] table skill=%u result=no_apprentice_spell (no trainer list has an apprentice teaching spell; no grant)", skill);
+                continue;
+            }
             ProfessionGrantEntry entry;
-            entry.ambiguous = spell == ai::profession_grant::kAmbiguous;
-            if (!entry.ambiguous)
-                entry.spell = rows[spell];
-            built[skill] = entry;
-            summary << ' ' << skill << '=' << (entry.ambiguous ? std::string("ambiguous") : std::to_string(spell));
+            entry.ambiguous = found->second == ai::profession_grant::kAmbiguous;
             if (entry.ambiguous)
+            {
+                ++ambiguous;
+                summary << ' ' << skill << "=ambiguous";
                 sLog.outError("[ProfessionGrant] table skill=%u result=ambiguous_spell (more than one apprentice teaching spell; no grant)", skill);
+            }
+            else
+            {
+                ++ok;
+                entry.spell = rows[found->second];
+                summary << ' ' << skill << '=' << found->second << "@L" << entry.spell.reqLevel;
+            }
+            built[skill] = entry;
         }
-        sLog.outBasic("[ProfessionGrant] table skills=%u%s", uint32(built.size()), summary.str().c_str());
+        sLog.outBasic("[ProfessionGrant] table skills=%u ambiguous=%u missing=%u%s", ok, ambiguous, missing, summary.str().c_str());
         return built;
     }();
     return table;

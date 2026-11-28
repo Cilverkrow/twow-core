@@ -81,6 +81,9 @@ require_text("${mgr_h}" "void GrantPersistentRosterProfessions(Player* bot, bool
 between("${mgr}" "void RandomPlayerbotMgr::GrantPersistentRosterProfessions(Player* bot, bool login)" "void RandomPlayerbotMgr::OnPlayerLogin(Player* player)" grant)
 require_order("${grant}" "ai::profession_grant::Applies(sPlayerbotAIConfig.professionTrainingGrantOnInit, bot->GetGUIDLow())" "GetProfessionPair(guid)" "mode before any work")
 require_text("${grant}" "if (bot->HasSkill(plan->first) && bot->HasSkill(plan->second))\n        return;" "early return with both skills")
+require_text("${grant}" "if (bot->HasSkill(skill) || professionGrantFinal.count({ guid, skill }))\n            continue;" "idempotent: a learned skill is never granted again (relog, tick); a final result is not retried before the next login")
+require_order("${grant}" "ai::profession_grant::Applies(sPlayerbotAIConfig.professionTrainingGrantOnInit, bot->GetGUIDLow())" "auto const& table = ProfessionGrantTable();" "key 0: the trainer table is never built")
+require_text("${grant}" "bot->StoreNewItem(dest, item, true, Item::GenerateItemRandomPropertyId(item)) != nullptr" "store only after CanStoreNewItem said OK (a full bag = no item and a store_failed line)")
 require_text("${grant}" "bot->GetTrainerSpellState(&tSpell, reqLevel) != TRAINER_SPELL_GREEN" "core GREEN state check")
 require_text("${grant}" "if (proto->Effect[j] == SPELL_EFFECT_LEARN_SPELL)\n                        bot->learnSpell(proto->EffectTriggerSpell[j], false);" "learn path of TrainerAction::Learn")
 require_text("${grant}" "result = bot->HasSkill(skill) ? Result::Ok : Result::LearnFailed;" "skill check after learning")
@@ -101,6 +104,9 @@ require_text("${table}" "collect(sObjectMgr.GetNpcTrainerTemplateSpells(info->Tr
 require_text("${table}" "ai::profession_grant::IsApprenticeCandidate(tSpell.reqSkill, teachesFirstRank, skill)" "candidate rule")
 require_text("${table}" "RosterProfessionTrainerAction::GetTrainerSpellSkill(&tSpell)" "skill identity of the trainer path")
 require_text("${table}" "ai::profession_grant::ResolveApprentice(skillSpells)" "resolver")
+require_text("${table}" "for (uint32 const skill : ai::profession_grant::kPrimaries)" "table line names every primary")
+require_text("${table}" "\"[ProfessionGrant] table skills=%u ambiguous=%u missing=%u%s\"" "table line with skipped counts")
+require_text("${table}" "summary << ' ' << skill << '=' << found->second << \"@L\" << entry.spell.reqLevel;" "strictest row level in the table line")
 require_text("${table}" "if (!inserted && tSpell.reqLevel > row->second.reqLevel)\n                    row->second = tSpell;" "strictest trainer row per teaching spell")
 
 # 5. Policy: starter tools and modes as decided; the factory stays plan-only.

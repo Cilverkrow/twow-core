@@ -46,6 +46,9 @@ int main()
         Require(d && IsPrimary(d->first) && IsPrimary(d->second), "both skills of each pair are primaries");
     }
     Require(!IsPrimary(185) && !IsPrimary(129) && !IsPrimary(356) && !IsPrimary(142), "secondaries are no primary");
+    Require(kPrimaries.size() == 10, "ten primaries in the table line");
+    for (std::uint32_t const skill : kPrimaries)
+        Require(IsPrimary(skill), "every listed primary is a primary");
 
     // Apprentice candidate: no skill required, teaches a first rank, primary skill.
     Require(IsApprenticeCandidate(0, true, p::kMining), "the apprentice rank is a candidate");
