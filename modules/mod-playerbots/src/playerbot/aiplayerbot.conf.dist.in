@@ -2021,6 +2021,15 @@ AiPlayerbot.QuestGroups.SuggestedPlayers = 1
 AiPlayerbot.QuestGroups.Manager.WishScope = 0
 AiPlayerbot.QuestGroups.Manager.DeadQuestEnds = 0
 AiPlayerbot.QuestGroups.Manager.DeadQuestHours = 6
+# twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1; default 0 = no behaviour change). Only bots of the manager's cohort.
+# WishSkipBlocked: 0 = off, as before (a bot keeps wishing a quest the manager blocks for it, and is no QUEST candidate for that
+# time); 1 = the bot's wish skips a quest the manager blocks for this bot (the retry cooldown after a failed group, attempts used
+# up, the manager's own end reasons), so it wishes its next waiting quest. The block stays while skipped. The attempts of a
+# quest add up (up to QuestGroups.MaxAttempts) within DeadQuestHours after its last failed group, even while the bot does not
+# wish it; once the retry cooldown ran out the bot may wish it again. A quest with all attempts used up is skipped for
+# DeadQuestHours after the last failure and may then be tried again. Other values = 0 (one error line). The "[GroupMgr]
+# minute" line counts in wish_blocked= (its last field, key on or off) the fresh wishes whose quest the manager blocks.
+AiPlayerbot.QuestGroups.Manager.WishSkipBlocked = 0
 # #303: a bot of a real player does not walk more than this many yards to its
 # master; beyond it the bot keeps its own activity and asks to be summoned
 # ("far_follow_hold"). 0 = no limit (old behaviour: walk any distance).

@@ -1444,6 +1444,9 @@ add_executable(grp2030_dose_policy_tests
 target_include_directories(grp2030_dose_policy_tests PRIVATE
   "${PB_MODULE_DIR}/src/playerbot")
 
+# twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1): the test now runs quest_groups::QueueStore (std::mutex).
+target_link_libraries(grp2030_dose_policy_tests PRIVATE Threads::Threads)
+
 set_target_properties(grp2030_dose_policy_tests PROPERTIES
   RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 

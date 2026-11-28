@@ -1135,6 +1135,9 @@ public:
     uint32 questGroupsManagerWishScope = 0;
     uint32 questGroupsManagerDeadQuestEnds = 0;
     uint32 questGroupsManagerDeadQuestHours = 6;
+    // twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1; default 0): 1 = the wish skips a quest the manager blocks for the bot
+    // (retry cooldown, attempts used up, its own end reasons); an exhausted quest stays blocked for DeadQuestHours.
+    uint32 questGroupsManagerWishSkipBlocked = 0;
     // #303 part 2: a bot does not walk more than this far to a real-player
     // master (0 = no limit); beyond it the bot waits and asks to be summoned.
     float farFollowMaxWalkDistance = 400.0f;

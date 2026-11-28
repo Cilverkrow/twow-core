@@ -6,6 +6,11 @@
 # (group_mgr::OwnsBot, the other cohort keeps the old wish), the old wish rule kept for scope 0 (BetterWish), the dead-quest
 # store in the engine (counted only for QUEST groups, published to the bots' view, also checked in QuestBlocked), the line
 # format and the unit test.
+# twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1; AiPlayerbot.QuestGroups.Manager.WishSkipBlocked, default 0): the key (dist,
+# member, read, [ConfigEcho] sorted), the skip in ReadWish (owned only, right after the dead skip), the blocked pairs in the
+# view (own atomic, sorted, no lock while off), the hold in the queue (ForgetStale keeps a blocked entry and one with attempts
+# up to the DeadQuestHours horizon after its last failure, Failed gives an exhausted one the DeadQuestHours horizon; the
+# default hold is the old code path), the minute line's wish_blocked field.
 
 cmake_policy(VERSION 3.16)
 
@@ -98,11 +103,20 @@ require_text("${config_cpp}" "    questGroupsManagerWishScope = uint32(config.Ge
 require_text("${config_cpp}" "    questGroupsManagerDeadQuestEnds = uint32(config.GetIntDefault(\"AiPlayerbot.QuestGroups.Manager.DeadQuestEnds\", 0));" "DeadQuestEnds read with 0")
 require_text("${config_cpp}" "    questGroupsManagerDeadQuestHours = uint32(config.GetIntDefault(\"AiPlayerbot.QuestGroups.Manager.DeadQuestHours\", int32(ai::dead_quest::kHoursDefault)));" "DeadQuestHours read with the default")
 require_text("${config_cpp}" "        questGroupsManagerDeadQuestHours = ai::dead_quest::ClampHours(hoursRaw);" "hours clamp")
-foreach(key WishScope DeadQuestEnds DeadQuestHours)
+# twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1): WishSkipBlocked default 0, 0/1 (other = 0 + error line), after DeadQuestHours.
+require_text("${dist}" "\nAiPlayerbot.QuestGroups.Manager.DeadQuestHours = 6\n# twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1" "dist: the wish skip block right after the lever 2 keys")
+require_text("${dist}" "\nAiPlayerbot.QuestGroups.Manager.WishSkipBlocked = 0\n" "dist default WishSkipBlocked 0")
+require_text("${config_h}" "    uint32 questGroupsManagerDeadQuestHours = 6;\n" "member DeadQuestHours")
+require_text("${config_h}" "    uint32 questGroupsManagerWishSkipBlocked = 0;" "member default WishSkipBlocked 0")
+require_text("${config_cpp}" "    questGroupsManagerWishSkipBlocked = uint32(config.GetIntDefault(\"AiPlayerbot.QuestGroups.Manager.WishSkipBlocked\", 0));\n    if (questGroupsManagerWishSkipBlocked > 1)\n    {" "WishSkipBlocked read with 0, above 1 caught")
+require_text("${config_cpp}" "        sLog.outError(\"[GroupMgr] config key=QuestGroups.Manager.WishSkipBlocked value=%d result=0 (0 or 1)\", int32(questGroupsManagerWishSkipBlocked));\n        questGroupsManagerWishSkipBlocked = 0;" "WishSkipBlocked: other values = 0 + one error line")
+require_order("${config_cpp}" "        questGroupsManagerDeadQuestHours = ai::dead_quest::ClampHours(hoursRaw);" "    questGroupsManagerWishSkipBlocked = uint32(config.GetIntDefault(" "WishSkipBlocked read after the hours clamp")
+foreach(key WishScope DeadQuestEnds DeadQuestHours WishSkipBlocked)
   count_text("${config_cpp}" "\"AiPlayerbot.QuestGroups.Manager.${key}\"" 1 "one read of ${key}")
   count_text("${dist}" "AiPlayerbot.QuestGroups.Manager.${key} =" 1 "one dist line of ${key}")
 endforeach()
-require_text("${config_cpp}" "            {\"QuestGroups.Enable\", Value(questGroupsEnable)},\n            {\"QuestGroups.Manager.DeadQuestEnds\", Value(questGroupsManagerDeadQuestEnds)},\n            {\"QuestGroups.Manager.DeadQuestHours\", Value(questGroupsManagerDeadQuestHours)},\n            {\"QuestGroups.Manager.WishScope\", Value(questGroupsManagerWishScope)},\n            {\"QuestGroups.OneHeavyStep\", Value(questGroupsOneHeavyStep)}," "[ConfigEcho] entries in sorted place")
+require_text("${config_cpp}" "            {\"QuestGroups.Enable\", Value(questGroupsEnable)},\n            {\"QuestGroups.Manager.DeadQuestEnds\", Value(questGroupsManagerDeadQuestEnds)},\n            {\"QuestGroups.Manager.DeadQuestHours\", Value(questGroupsManagerDeadQuestHours)},\n            {\"QuestGroups.Manager.WishScope\", Value(questGroupsManagerWishScope)},\n            {\"QuestGroups.Manager.WishSkipBlocked\", Value(questGroupsManagerWishSkipBlocked)},\n            {\"QuestGroups.OneHeavyStep\", Value(questGroupsOneHeavyStep)}," "[ConfigEcho] entries in sorted place")
+count_text("${config_cpp}" "{\"QuestGroups.Manager.WishSkipBlocked\"," 1 "one [ConfigEcho] entry of WishSkipBlocked")
 require_text("${qg_policy}" "constexpr std::uint32_t QuestTypeElite = 1;" "quest type constants")
 require_text("${dead_policy}" "constexpr std::uint32_t kHoursDefault = 6;" "hours default 6")
 require_text("${dead_policy}" "constexpr std::uint32_t kHoursMax = 48;" "hours max 48")
@@ -119,9 +133,15 @@ endforeach()
 
 # 2. ReadWish: both levers only for a bot of the manager's cohort; the old rule is BetterWish's group-help branch.
 region("${facts_cpp}" "bool ReadWish(Player* bot, PlayerbotAI* ai, manager_inbox::WishFacts& out)" "\n}\n" wish_fn)
-require_text("${wish_fn}" "    bool const owned = (sPlayerbotAIConfig.questGroupsManagerWishScope || sPlayerbotAIConfig.questGroupsManagerDeadQuestEnds) &&\n        group_mgr::OwnsBot(bot->GetGUIDLow());" "cohort binding (OwnsBot), keys first")
+require_text("${wish_fn}" "    bool const owned = (sPlayerbotAIConfig.questGroupsManagerWishScope || sPlayerbotAIConfig.questGroupsManagerDeadQuestEnds ||\n        sPlayerbotAIConfig.questGroupsManagerWishSkipBlocked) && group_mgr::OwnsBot(bot->GetGUIDLow());" "cohort binding (OwnsBot), keys first (GRP2030 wish skip included)")
 require_text("${wish_fn}" "    bool const scopeAll = owned && sPlayerbotAIConfig.questGroupsManagerWishScope;" "scope only when owned")
 require_text("${wish_fn}" "    bool const skipDead = owned && sPlayerbotAIConfig.questGroupsManagerDeadQuestEnds;" "dead skip only when owned")
+# twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1): only when owned, the bot's own guid, right after the dead skip, before the
+# quest status reads.
+require_text("${wish_fn}" "    bool const skipBlocked = owned && sPlayerbotAIConfig.questGroupsManagerWishSkipBlocked;" "blocked skip only when owned")
+require_text("${wish_fn}" "        if (skipDead && group_mgr::QuestDeadForWish(questId))\n            continue;\n        if (skipBlocked && group_mgr::QuestBlockedForWish(bot->GetGUIDLow(), questId))\n            continue;\n        QuestStatusData const* st = bot->GetQuestStatusData(questId);" "blocked quests skipped right after the dead skip (manager view)")
+require_order("${wish_fn}" "group_mgr::QuestDeadForWish(questId)" "group_mgr::QuestBlockedForWish(bot->GetGUIDLow(), questId)" "the blocked skip after the dead skip")
+count_text("${wish_fn}" "group_mgr::QuestBlockedForWish(" 1 "one blocked lookup in ReadWish")
 require_text("${wish_fn}" "        if (!help && (!scopeAll || q->GetType() == quest_groups::QuestTypeDungeon || q->GetType() == quest_groups::QuestTypeRaid ||\n            q->GetType() == quest_groups::QuestTypePvp))\n            continue;" "scope 0 = group-help only; never dungeon / raid / PvP")
 require_text("${wish_fn}" "        if (skipDead && group_mgr::QuestDeadForWish(questId))\n            continue;" "dead quests skipped (manager view)")
 require_text("${wish_fn}" "        if (!quest_groups::Waits(f) || !quest_groups::BetterWish(best, help, f.openObjectives, questId))\n            continue;" "Waits and the wish order")
@@ -137,6 +157,13 @@ require_text("${engine}" "    bool QuestDead(std::uint32_t questId) const\n    {
 require_text("${engine}" "    void PublishDead(std::vector<std::uint32_t>& dead)" "view publish of the dead list")
 require_text("${view_h}" "bool QuestDeadForWish(std::uint32_t questId);" "bot-side lookup declared")
 require_text("${mgr_cpp}" "    return WorldManager().Directives().View().QuestDead(questId);" "bot-side lookup reads the view only")
+# twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1): the blocked pairs, the same pattern (own atomic, no lock while empty or off).
+require_text("${engine}" "    bool BlockedForBot(std::uint32_t low, std::uint32_t questId) const\n    {\n        if (!anyBlocked_.load(std::memory_order_acquire) || !questId)\n            return false;" "view lookup: no lock while no pair is blocked")
+require_text("${engine}" "        return quest_groups::BlockedIn(blocked_, low, questId);" "view lookup: binary search of the sorted pairs")
+require_text("${engine}" "    void PublishBlocked(std::vector<std::uint64_t>& blocked)\n    {\n        bool const any = !blocked.empty();\n        if (!any && !anyBlocked_.load(std::memory_order_acquire))\n            return;" "view publish: no lock while nothing was or is blocked")
+require_text("${view_h}" "bool QuestBlockedForWish(std::uint32_t low, std::uint32_t questId);" "bot-side blocked lookup declared")
+require_text("${mgr_cpp}" "bool QuestBlockedForWish(std::uint32_t low, std::uint32_t questId)\n{\n    return WorldManager().Directives().View().BlockedForBot(low, questId);\n}" "bot-side blocked lookup reads the view only")
+require_order("${view_h}" "bool QuestDeadForWish(std::uint32_t questId);" "bool QuestBlockedForWish(std::uint32_t low, std::uint32_t questId);" "blocked lookup next to the dead lookup")
 
 # 4. The engine: keys into the rules, counted only for QUEST groups, published every pass, checked in QuestBlocked.
 require_text("${mgr_cpp}" "    rules.deadQuestEnds = sPlayerbotAIConfig.questGroupsManagerDeadQuestEnds;" "rules: ends")
@@ -152,6 +179,37 @@ require_text("${engine}" "        if (!deadEnds_)\n            deadQuests_.Clear
 require_text("${engine}" "        view_.Publish(viewBots_, viewCores_);\n        deadQuests_.DeadList(nowSec_, deadScratch_);" "dead list published with the view")
 region("${dead_policy}" "    Note End(" "\n    }\n" end_fn)
 require_text("${end_fn}" "        if (!endsNeeded || !questId)\n            return Note::Off;" "lever off keeps nothing")
+# twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1): the key into the rules, the hold (default = the old queue rules), the hold
+# passed to Failed and ForgetStale, the pairs from the stores published with the view (nothing while off).
+require_text("${mgr_cpp}" "    rules.wishSkipBlocked = sPlayerbotAIConfig.questGroupsManagerWishSkipBlocked != 0;" "rules: wish skip")
+require_order("${mgr_cpp}" "    rules.deadQuestHours = sPlayerbotAIConfig.questGroupsManagerDeadQuestHours;" "    rules.wishSkipBlocked = " "rules: wish skip next to the lever 2 keys")
+require_text("${engine}" "    bool wishSkipBlocked = false;" "Rules: wish skip default off")
+require_text("${engine}" "        hold_ = quest_groups::BlockHold();\n        if (r.wishSkipBlocked)\n        {\n            hold_.keepBlocked = true;\n            hold_.maxAttempts = r.maxAttempts;\n            hold_.exhaustSeconds = r.deadQuestHours * 3600u;\n        }" "the hold: off = default, on = MaxAttempts and DeadQuestHours")
+require_text("${engine}" "                questQueue_.Failed(m.low, g.questId, nowSec_, retryCooldownSec_, hold_);" "Failed gets the hold")
+require_text("${engine}" "            questQueue_.ForgetStale(nowSec_, 600, hold_);" "ForgetStale gets the hold")
+require_text("${engine}" "        view_.PublishDead(deadScratch_);\n        BlockedList(blockedScratch_);" "blocked pairs published with the view, after the dead list")
+region("${engine}" "    void BlockedList(std::vector<std::uint64_t>& out) const" "\n    }\n" blocked_fn)
+require_text("${blocked_fn}" "        out.clear();\n        if (!hold_.keepBlocked)\n            return;" "key off: nothing listed, no lock on the queue")
+require_text("${blocked_fn}" "        questQueue_.BlockedKeys(nowSec_, hold_.maxAttempts, out);" "the queue's cooldown and exhausted entries")
+require_text("${blocked_fn}" "        quest_groups::SortBlockKeys(out);" "sorted for the binary search")
+# twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1): wish_blocked appended at the end of the minute line (later pairs only
+# append, OB-10 rule), one increment per fresh wish QuestBlocked blocks, with the key on or off (diagnosis).
+require_text("${engine}" "    std::uint64_t wishes = 0;\n" "minute counter wishes")
+require_text("${engine}" "    std::uint64_t wishBlocked = 0;\n    std::uint64_t noSupervisor = 0;" "minute counter wish_blocked")
+require_text("${engine}" "            (unsigned long long)s.owned);\n    // twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1): wish_blocked appended at the end (later pairs only append, OB-10 rule).\n    if (n > 0 && std::size_t(n) < size)\n        n += std::snprintf(buf + n, size - std::size_t(n), \" wish_blocked=%llu\", (unsigned long long)m.wishBlocked);\n    return n;" "minute line: wish_blocked appended after owned")
+forbid_text("${engine}" "wishes=%llu wish_blocked=%llu" "wish_blocked not mid-line (append only)")
+require_text("${engine}" "                blocked = QuestBlocked(low, w->wish.questId, nowSec_, r.maxAttempts);\n                // twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1): wish_blocked, with the key on or off (diagnosis).\n                if (blocked)\n                    ++minute_.wishBlocked;" "wish_blocked counted right after QuestBlocked, not under the key")
+count_text("${engine}" "++minute_.wishBlocked;" 1 "one wish_blocked increment")
+count_text("${engine}" "wish_blocked=%llu" 1 "one wish_blocked field")
+# twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1): the pure hold (QuestGroupPolicy.h), the default is the old code path.
+require_text("${qg_policy}" "    bool keepBlocked = false;" "BlockHold default off")
+require_text("${qg_policy}" "    void ForgetStale(std::uint32_t now, std::uint32_t maxAgeSeconds, BlockHold const& hold = BlockHold())" "ForgetStale: default hold = old rule")
+require_text("${qg_policy}" "            bool const stale = now - it->second.lastSeen > maxAgeSeconds;\n            bool const recent = it->second.attempts &&\n                (it->second.lastSeen > now || now - it->second.lastSeen <= hold.exhaustSeconds);\n            bool const keep = hold.keepBlocked && (it->second.blockedUntil > now || recent);\n            it = (stale && !keep) ? entries.erase(it) : std::next(it);" "ForgetStale keeps a blocked entry, and one with attempts up to the exhaust horizon after its last failure, only with the key on")
+# twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1): BlockedKeys lists only entries blocked now or exhausted (a kept entry whose
+# cooldown ran out is no block: the bot may wish it again and its attempts add up).
+require_text("${qg_policy}" "            if (kv.second.blockedUntil > now || (maxAttempts && kv.second.attempts >= maxAttempts))\n                out.push_back(kv.first);" "BlockedKeys: blocked now or exhausted only")
+require_text("${qg_policy}" "        BlockHold const& hold = BlockHold())" "Failed: default hold = old rule")
+require_text("${qg_policy}" "        if (hold.keepBlocked && hold.maxAttempts && e.attempts >= hold.maxAttempts)\n            e.blockedUntil = now + std::max(cooldownSeconds, hold.exhaustSeconds);" "Failed: the exhaust horizon only with the key on")
 
 # 5. The unit test is registered.
 require_text("${tests}" "add_executable(grp2030_dose_policy_tests\n  \"\${PB_MODULE_DIR}/t/grp2030_dose_policy_tests.cpp\")" "unit test target")

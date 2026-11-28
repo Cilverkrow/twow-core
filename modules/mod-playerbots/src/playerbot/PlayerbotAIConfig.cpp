@@ -1320,6 +1320,13 @@ bool PlayerbotAIConfig::Initialize()
             sLog.outError("[GroupMgr] config key=QuestGroups.Manager.DeadQuestHours value=%d result=%u (1..%u)", hoursRaw,
                 questGroupsManagerDeadQuestHours, ai::dead_quest::kHoursMax);
     }
+    // twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1; default 0): WishSkipBlocked 0/1 (other = 0 + error line).
+    questGroupsManagerWishSkipBlocked = uint32(config.GetIntDefault("AiPlayerbot.QuestGroups.Manager.WishSkipBlocked", 0));
+    if (questGroupsManagerWishSkipBlocked > 1)
+    {
+        sLog.outError("[GroupMgr] config key=QuestGroups.Manager.WishSkipBlocked value=%d result=0 (0 or 1)", int32(questGroupsManagerWishSkipBlocked));
+        questGroupsManagerWishSkipBlocked = 0;
+    }
     farFollowMaxWalkDistance = config.GetFloatDefault("AiPlayerbot.FarFollowMaxWalkDistance", 400.0f);
     formationSpacing = config.GetFloatDefault("AiPlayerbot.Formation.Spacing", 2.0f);
     formationCircleMaxRadius = config.GetFloatDefault("AiPlayerbot.Formation.CircleMaxRadius", 15.0f);
@@ -2656,6 +2663,7 @@ bool PlayerbotAIConfig::Initialize()
             {"QuestGroups.Manager.DeadQuestEnds", Value(questGroupsManagerDeadQuestEnds)},
             {"QuestGroups.Manager.DeadQuestHours", Value(questGroupsManagerDeadQuestHours)},
             {"QuestGroups.Manager.WishScope", Value(questGroupsManagerWishScope)},
+            {"QuestGroups.Manager.WishSkipBlocked", Value(questGroupsManagerWishSkipBlocked)},
             {"QuestGroups.OneHeavyStep", Value(questGroupsOneHeavyStep)},
             {"QuestGroups.ScanBudgetUs", Value(questGroupsScanBudgetUs)},
             {"QuestGroups.ScanSlices", Value(questGroupsScanSlices)},
