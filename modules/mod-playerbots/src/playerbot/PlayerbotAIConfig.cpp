@@ -1858,6 +1858,9 @@ bool PlayerbotAIConfig::Initialize()
     grindQuestFirstOrder = config.GetIntDefault("AiPlayerbot.Grind.QuestFirstOrder", 0);   // twow-repo#601 decision order
     if (grindQuestFirstOrder > 2)
         grindQuestFirstOrder = 0;   // an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B)
+    grindCrowdPenalty = config.GetIntDefault("AiPlayerbot.Grind.CrowdPenalty", 0);   // crowded-candidate penalty added, not assigned
+    if (grindCrowdPenalty > 3)
+        grindCrowdPenalty = 0;   // an unknown mode is off (CohortPolicy.h: 0 off, 1 all, 2 cohort B, 3 cohort A)
     grindNeighbourAware = config.GetIntDefault("AiPlayerbot.Grind.NeighbourAware", 0);   // twow-repo#602 #2
     if (grindNeighbourAware > 3)
         grindNeighbourAware = 0;   // an unknown mode is off (0 off, 1 all, 2 cohort B, 3 shadow only)
@@ -2499,6 +2502,7 @@ bool PlayerbotAIConfig::Initialize()
             {"Gathering.PaceReach", Value(gatheringPaceReach)},
             {"Gathering.PaceReachYards", Value(gatheringPaceReachYards)},
             {"Gathering.Trace", Value(gatheringTrace)},
+            {"Grind.CrowdPenalty", Value(grindCrowdPenalty)},
             {"Grind.GreyByLevel", Value(grindGreyByLevel)},
             {"Grind.LowLevelWindow", Value(grindLowLevelWindow)},
             {"Grind.NeighbourAware", Value(grindNeighbourAware)},

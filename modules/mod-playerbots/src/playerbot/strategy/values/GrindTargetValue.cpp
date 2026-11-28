@@ -17,6 +17,7 @@
 #include "playerbot/CohortPolicy.h"
 #include "playerbot/QuestLoopPolicy.h"   // twow-repo#601 turn_in hold (QuestLoop.RelationWorkNoGrind)
 #include "playerbot/GrindIdlePolicy.h"   // twow-repo#601 (ActivityTrace.GrindIdleDetail)
+#include "playerbot/GrindCrowdPolicy.h"   // AiPlayerbot.Grind.CrowdPenalty
 #include "playerbot/TravelMgr.h"
 #include "CreatureGroups.h"
 #include "World.h"
@@ -500,7 +501,9 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount, uint32& round0Gap
             if (tally && tally->crowded < 0xFFFF)
                 ++tally->crowded;
             logGrind(unit, std::to_string(GetTargetingPlayerCount(unit)) + " bots already targeting).");
-            newdistance =+ GetTargetingPlayerCount(unit) * 5;
+            // AiPlayerbot.Grind.CrowdPenalty (GrindCrowdPolicy.h): off = the penalty replaces the distance (old), on = it is added.
+            newdistance = ai::grind_crowd::CrowdedDistance(newdistance, GetTargetingPlayerCount(unit),
+                ai::cohort::Applies(sPlayerbotAIConfig.grindCrowdPenalty, bot->GetGUIDLow()));
         }
 
         if (group)
