@@ -53,18 +53,18 @@ inline std::array<std::uint32_t, 2> StarterTools(std::uint32_t skill)
     }
 }
 
+// The ten primaries of the profession pairs; the table line names each one (resolved, ambiguous or none).
+constexpr std::array<std::uint32_t, 10> kPrimaries = {
+    profession::kAlchemy, profession::kBlacksmithing, profession::kEnchanting, profession::kEngineering,
+    profession::kHerbalism, profession::kJewelcrafting, profession::kLeatherworking, profession::kMining,
+    profession::kSkinning, profession::kTailoring };
+
 inline bool IsPrimary(std::uint32_t skill)
 {
-    switch (skill)
-    {
-    case profession::kAlchemy: case profession::kBlacksmithing: case profession::kEnchanting:
-    case profession::kEngineering: case profession::kHerbalism: case profession::kJewelcrafting:
-    case profession::kLeatherworking: case profession::kMining: case profession::kSkinning:
-    case profession::kTailoring:
-        return true;
-    default:
-        return false;
-    }
+    for (std::uint32_t const primary : kPrimaries)
+        if (skill == primary)
+            return true;
+    return false;
 }
 
 // A trainer spell is an apprentice candidate when it needs no skill yet and the spell it teaches is the first

@@ -2761,7 +2761,8 @@ AiPlayerbot.ProfessionTraining.StartLevel = 1
 # starter tools for free, into its bags
 # (owner economy decision 28.11.2026 via OB-00): Mining Pick 2901, Skinning Knife 7005, Blacksmith Hammer 5956
 # (Blacksmithing, Engineering), Arclight Spanner 6219, Runed Copper Rod 6218, Jewelers Kit 55155. Lines:
-# "[ProfessionGrant] table skills= <skill>=<spell> ..." once, and per skill "[ProfessionGrant] guid= level= pair= skill=
+# "[ProfessionGrant] table skills= ambiguous= missing= <skill>=<spell>@L<level>|ambiguous|none ..." once (all ten
+# primaries; a skipped one also gets an error line), and per skill "[ProfessionGrant] guid= level= pair= skill=
 # spell= source=login|tick result=ok|learn_failed|no_apprentice_spell|ambiguous_spell|not_green value= tools=" (not_green
 # only at login). Mode (in-realm A/B, cohort parity): 0 = off (default), 1 = every roster bot, 2 = only cohort B (odd low
 # guid), 3 = only cohort A (even low guid). Any other value acts like 0.
