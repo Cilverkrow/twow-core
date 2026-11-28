@@ -1,0 +1,30 @@
+cmake_policy(VERSION 3.16)
+# twow-repo#607 point 1: the "ads" strategy must ask for the trigger that is registered, "possible adds".
+# Note: "ads" is assigned to no bot (no "+ads" / ",ads" anywhere); assigning it is a behaviour change of its own.
+set(TAG "Possible adds trigger (#607)")
+if(NOT DEFINED PB_SOURCE_DIR)
+  message(FATAL_ERROR "${TAG}: PB_SOURCE_DIR is required")
+endif()
+
+file(READ "${PB_SOURCE_DIR}/strategy/generic/PullStrategy.cpp" pull)
+file(READ "${PB_SOURCE_DIR}/strategy/triggers/TriggerContext.h" context)
+
+string(FIND "${pull}" "void PossibleAdsStrategy::InitCombatTriggers" at)
+if(at EQUAL -1)
+  message(FATAL_ERROR "${TAG}: PossibleAdsStrategy::InitCombatTriggers not found")
+endif()
+string(SUBSTRING "${pull}" ${at} 600 block)
+string(FIND "${block}" "\"possible adds\"," good)
+if(good EQUAL -1)
+  message(FATAL_ERROR "${TAG}: the ads strategy does not ask for \"possible adds\"")
+endif()
+string(FIND "${pull}" "\"possible ads\"" bad)
+if(NOT bad EQUAL -1)
+  message(FATAL_ERROR "${TAG}: the unregistered trigger name \"possible ads\" is back")
+endif()
+string(FIND "${context}" "creators[\"possible adds\"]" registered)
+if(registered EQUAL -1)
+  message(FATAL_ERROR "${TAG}: \"possible adds\" is not registered in TriggerContext.h")
+endif()
+
+message(STATUS "POSSIBLE_ADDS_TRIGGER_CONTRACT=PASS")
