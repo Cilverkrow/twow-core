@@ -113,6 +113,14 @@ namespace ai
 		bool HasQuestBook() const { return questBook; }
 		uint32 GetQuestBookGreyLevel() const { return questBookGreyLevel; }
 		uint32 GetQuestBookGuid() const { return questBookGuid; }
+		// WS30-ELITE-QUEST-01 (AiPlayerbot.QuestElite.Defer, default 0): the elite rule judges this bot (PlayerbotAI::IsEliteQuestDefer),
+		// with its alive group members in its zone (itself included, only members on its own Map object) and their lowest level - set
+		// in the constructor on the bot thread, read by QuestObjectiveTravelDestination::IsPossible only as values. false / 0 for
+		// every other bot (switch 0: nothing is read).
+		bool HasEliteRule() const { return eliteRule; }
+		uint32 GetEliteMembers() const { return eliteMembers; }
+		uint32 GetEliteMinLevel() const { return eliteMinLevel; }
+		uint32 GetEliteGuid() const { return eliteGuid; }
 		// A3 step 2 QB-S (AiPlayerbot.QuestBook.SourceChoice, default 0): source choice and quest order apply to this bot (an active
 		// quest book in the SourceChoice cohort). The needs and XP of the quests in the log are filled in the constructor on the bot
 		// thread (Quest::XPValue needs the Player) and read by the async quest fetch (ai::questsource::RankQuestSources). false / empty
@@ -164,6 +172,10 @@ namespace ai
 		bool questBook = false;          // A3 step 2: an active quest book (QuestBook applies to this roster bot on its own)
 		uint32 questBookGreyLevel = 0;
 		uint32 questBookGuid = 0;        // the cohort of the [QuestBookMin] counters
+		bool eliteRule = false;          // WS30-ELITE-QUEST-01: QuestElite.Defer judges this bot
+		uint32 eliteMembers = 0;
+		uint32 eliteMinLevel = 0;
+		uint32 eliteGuid = 0;            // the cohort of the [QuestElite] counters
 		bool questSourceChoice = false;  // A3 step 2 QB-S: SourceChoice applies to this bot (implies questBook)
 		bool questBundle = false;        // A3 step 2 QB-B: Bundle applies to this bot (implies questBook)
 		bool objectiveWindow = false;    // twow-repo#575 SZF-Q: the objective window applies to this bot

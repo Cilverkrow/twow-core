@@ -115,6 +115,27 @@ namespace ai
         virtual std::vector<int32> Calculate() override;
     };
 
+    // WS30-ELITE-QUEST-01 (AiPlayerbot.QuestElite.Defer, default 0; OB-10 review 8b4ddc3c E2): the creature entries of rank 1 / 2 / 3
+    // targets and open-item droppers of the bot's DEFERRED elite-scope quests (PlayerbotAI::EliteQuestDeferred) that no other incomplete quest of the
+    // bot needs, sorted. Its own value, not part of "needed quest entries" (6+ readers keep the full set): only the grind target
+    // choice and the QuestFirstOrder grind destination test subtract it. Empty for every bot the rule does not judge.
+    class DeferredEliteEntriesValue : public CalculatedValue<std::vector<int32>>
+    {
+    public:
+        DeferredEliteEntriesValue(PlayerbotAI* ai) : CalculatedValue<std::vector<int32>>(ai, "deferred elite entries", 5) {}
+        virtual std::vector<int32> Calculate() override;
+    };
+
+    // WS30-ELITE-QUEST-01 (QuestElite.Defer, default 0; ultracode review 28.11.): the elite-rank entries (kill targets and droppers of
+    // open items) of the scope quests the rule lets the bot pursue, sorted. Only the grind target choice reads it: a pursued target
+    // passes the old "can fight elite" skip (group only), so rule 1b solo works on site, not only in travel. Empty unless judged.
+    class PursuedEliteEntriesValue : public CalculatedValue<std::vector<int32>>
+    {
+    public:
+        PursuedEliteEntriesValue(PlayerbotAI* ai) : CalculatedValue<std::vector<int32>>(ai, "pursued elite entries", 5) {}
+        virtual std::vector<int32> Calculate() override;
+    };
+
     //Check if a specific entry is a quest objective that the bot has to complete.
     class NeedForQuestValue : public BoolCalculatedValue, public Qualified
     {

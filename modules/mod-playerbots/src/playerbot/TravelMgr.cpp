@@ -10,6 +10,7 @@
 #include "playerbot/QuestAreaLevelPolicy.h"
 #include "playerbot/QuestGrindModePolicy.h"
 #include "playerbot/LowLevelWindowPolicy.h"   // OB-10 22.11.: Grind.LowLevelWindow
+#include "playerbot/EliteQuestPolicy.h"   // WS30-ELITE-QUEST-01: QuestElite.Defer travel rule
 #include "playerbot/QuestSearchPolicy.h"
 #include "playerbot/QuestFeasibilityPolicy.h"
 #include "playerbot/QuestBook.h"         // A3 step 2 K2/K3 (AiPlayerbot.QuestBook): the one level window and the QB5 list
@@ -177,6 +178,16 @@ PlayerTravelInfo::PlayerTravelInfo(Player* player, bool gapGrind)
     questBook = ai->ActiveQuestBook() != nullptr;
     questBookGreyLevel = questBook ? MaNGOS::XP::GetGrayLevel(level) : 0;
     questBookGuid = questBook ? player->GetGUIDLow() : 0;
+
+    // WS30-ELITE-QUEST-01 (AiPlayerbot.QuestElite.Defer, default 0): the rule bit and the group facts of rule 1a, here on the bot
+    // thread (PlayerbotAI::EliteGroupFacts: only members on this bot's own Map object, alive, in its zone). The switch 0 and every
+    // other bot: false / 0, nothing is read.
+    eliteRule = ai->EliteRuleJudges();   // a manager / S7 formed group is judged at form time (E4), not here
+    if (eliteRule)
+    {
+        eliteGuid = player->GetGUIDLow();
+        ai->EliteGroupFacts(eliteMembers, eliteMinLevel);
+    }
 
     // A3 step 2 QB-S (AiPlayerbot.QuestBook.SourceChoice, default 0): the needs and XP of the quests in the log, here on the bot
     // thread; the async quest fetch ranks the sources by them. Every other bot: false / empty, nothing is read.
@@ -512,6 +523,24 @@ bool QuestObjectiveTravelDestination::IsPossible(const PlayerTravelInfo& info) c
     if (forceThisQuest && !info.IsFocusQuest(GetQuestId()))
         return false;
 
+    // WS30-ELITE-QUEST-01 (AiPlayerbot.QuestElite.Defer, default 0; OB-20 rule f6ab4497, OB-10 review 8b4ddc3c): an elite-scope
+    // quest of a bot the rule judges, outside instances, is pursued only under rule 1a / 1b AND the old readiness ("can fight
+    // elite" in a group, "can fight equal" alone, OB-10 A1); else the destination is deferred (the quest stays in the log). A
+    // focus quest keeps its bypass. eliteScope is null for every other bot, quest or place: the old tests below, unchanged.
+    ai::elite_quest::ScopeEntry const* const eliteScope =
+        (!forceThisQuest && info.HasEliteRule() && IsOverWorld(info.GetPosition())) ? PlayerbotAI::EliteQuestScope(GetQuestId()) : nullptr;
+    if (eliteScope)
+    {
+        uint32 const eliteLevel = eliteScope->level ? eliteScope->level : info.GetLevel();
+        bool const ready = info.GetEliteMembers() > 1 ? info.GetBoolValue("can fight elite") : info.GetBoolValue("can fight equal");
+        if (!ready || !ai::elite_quest::Pursue(info.GetEliteMembers(), info.GetEliteMinLevel(), info.GetLevel(), eliteLevel,
+                sPlayerbotAIConfig.questEliteMinGroup, sPlayerbotAIConfig.questEliteSoloLevelsAbove))
+        {
+            PlayerbotAI::NoteEliteQuest(uint8(ai::elite_quest::Event::TravelDeferred), info.GetEliteGuid());
+            return false;
+        }
+    }
+
     bool skipShouldGrindCheck = false;
 
     //Check mob level
@@ -600,7 +629,9 @@ bool QuestObjectiveTravelDestination::IsPossible(const PlayerTravelInfo& info) c
                 return false;
 
             //Do not try to hand-in dungeon/elite quests in instances without a group.
-            if (cInfo->Rank > CREATURE_ELITE_NORMAL)
+            // QuestElite.Defer: an elite-scope target (rank 1 / 2 / 3) of a scope quest was judged above (eliteScope); a rank 4 target
+            // keeps this old veto with the key on (OB-10 28.11.: not in scope, Pursue does not apply).
+            if (cInfo->Rank > CREATURE_ELITE_NORMAL && !(eliteScope && ai::elite_quest::EliteRank(cInfo->Rank)))
             {
                 if (!IsOverWorld(info.GetPosition()) && info.GetPosition().getMapId() != 609 && !info.GetBoolValue("can fight boss"))
                     return false;
@@ -612,7 +643,8 @@ bool QuestObjectiveTravelDestination::IsPossible(const PlayerTravelInfo& info) c
 
     if (!forceThisQuest)
     {
-        if (!skipKillableCheck && GetQuestTemplate()->GetType() == QUEST_TYPE_ELITE && !info.GetBoolValue("can fight elite"))
+        // QuestElite.Defer: a Type 1 scope quest was judged above (eliteScope), so this old group-only veto is not asked again.
+        if (!skipKillableCheck && !eliteScope && GetQuestTemplate()->GetType() == QUEST_TYPE_ELITE && !info.GetBoolValue("can fight elite"))
             return false;
 
         //Do not try to do dungeon/elite quests in instances without a group.
@@ -630,6 +662,8 @@ bool QuestObjectiveTravelDestination::IsPossible(const PlayerTravelInfo& info) c
         }
     }
 
+    if (eliteScope)
+        PlayerbotAI::NoteEliteQuest(uint8(ai::elite_quest::Event::Pursued), info.GetEliteGuid());
     return true;
 }
 
@@ -1013,6 +1047,14 @@ bool GrindTravelDestination::IsActive(Player* bot, const PlayerTravelInfo& info)
         std::vector<int32> const& needed = AI_VALUE(std::vector<int32>, "needed quest entries");
         if (!ai::quest_grind_mode::GrindDestinationActive(true, std::binary_search(needed.begin(), needed.end(), GetEntry())))
             return false;
+        // WS30-ELITE-QUEST-01 (QuestElite.Defer, OB-10 E2): an elite target of a deferred quest no other quest needs is not needed
+        // here either (its own value, read only with the key on; empty for every bot the rule does not judge).
+        if (sPlayerbotAIConfig.questEliteDefer)
+        {
+            std::vector<int32> const& deferredElite = AI_VALUE(std::vector<int32>, "deferred elite entries");
+            if (std::binary_search(deferredElite.begin(), deferredElite.end(), GetEntry()))
+                return false;
+        }
     }
 
     return GuidPosition(bot).IsHostileTo(GuidPosition(HIGHGUID_UNIT, GetEntry()), bot->GetInstanceId());

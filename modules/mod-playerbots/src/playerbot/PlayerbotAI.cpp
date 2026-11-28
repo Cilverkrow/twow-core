@@ -116,6 +116,7 @@
 #include "playerbot/GroupAiRefresh.h"   // twow-repo#628 / #627: the AI part of the world-thread group changes
 #include "playerbot/DeferredLog.h"      // s7r: log lines a world-thread manager handed to the bot
 #include "playerbot/QuestGroupWorld.h"
+#include "playerbot/SupervisorEnforce.h"   // WS30-ELITE-QUEST-01: GroupGoalSnapshot (E2 mirrors the E1 focus bypass)
 
 using namespace ai;
 
@@ -2259,6 +2260,160 @@ void PlayerbotAI::BuildCraftOnlyQuests()
     uint32 const questCount = uint32(quests.size());
     craftOnlyQuests.store(built.release(), std::memory_order_release);
     sLog.outBasic("%s", ai::quest_craft_only::FormatInitLine(items, questCount, sPlayerbotAIConfig.questFeasibilityCraftOnlySkip).c_str());
+}
+
+// WS30-ELITE-QUEST-01 (AiPlayerbot.QuestElite.Defer, EliteQuestPolicy.h; OB-10 review 8b4ddc3c A5): the scope table, the
+// CraftOnlySkip pattern - built into a local vector, sealed and published once (release store); readers on the map threads
+// only load the pointer (acquire). A later Initialize (reload) does not rebuild. The minute counters are taken by the world
+// thread (atomics, no lock).
+namespace
+{
+std::atomic<std::vector<ai::elite_quest::ScopeEntry> const*> eliteQuestScope{nullptr};
+std::mutex eliteQuestBuildLock;
+std::atomic<uint32> eliteQuestCounts[ai::elite_quest::SlotCount] = {};
+}
+
+void PlayerbotAI::BuildEliteQuestScope()
+{
+    std::lock_guard<std::mutex> const guard(eliteQuestBuildLock);
+    if (eliteQuestScope.load(std::memory_order_acquire))
+    {
+        sLog.outBasic("[QuestElite] init skipped: already built (no rebuild on reload)");
+        return;
+    }
+    std::unique_ptr<std::vector<ai::elite_quest::ScopeEntry>> built(new std::vector<ai::elite_quest::ScopeEntry>());
+    uint32 typeElite = 0, eliteTargets = 0;
+    for (auto const& [questId, quest] : sObjectMgr.GetQuestTemplates())
+    {
+        // Scope test: EliteRank 1 / 2 / 3 (OB-20 f6ab4497). Not the old "rank above normal" test of
+        // QuestObjectiveTravelDestination::IsPossible, which also takes rank 4 and stays as it is (OB-10 28.11.).
+        uint32 highest = 0;
+        bool eliteKill = false;
+        for (uint32 i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
+        {
+            int32 const entry = quest->ReqCreatureOrGOId[i];
+            CreatureInfo const* const target = entry > 0 ? sObjectMgr.GetCreatureTemplate(uint32(entry)) : nullptr;
+            if (!target || !ai::elite_quest::EliteRank(target->Rank))
+                continue;
+            eliteKill = true;
+            highest = std::max<uint32>(highest, target->MaxLevel);
+        }
+        if (!ai::elite_quest::InScope(quest->GetType(), eliteKill))
+            continue;
+        ai::elite_quest::ScopeEntry e;
+        e.questId = questId;
+        e.level = ai::elite_quest::EffectiveLevel(quest->GetQuestLevel(), highest);
+        built->push_back(e);
+        typeElite += quest->GetType() == ai::elite_quest::QuestTypeElite ? 1 : 0;
+        eliteTargets += eliteKill ? 1 : 0;
+    }
+    ai::elite_quest::Seal(*built);
+    uint32 const size = uint32(built->size());
+    eliteQuestScope.store(built.release(), std::memory_order_release);
+    sLog.outBasic("[QuestElite] init quests=%u type_elite=%u elite_targets=%u defer=%u min_group=%u solo_levels_above=%u", size,
+        typeElite, eliteTargets, sPlayerbotAIConfig.questEliteDefer, sPlayerbotAIConfig.questEliteMinGroup,
+        sPlayerbotAIConfig.questEliteSoloLevelsAbove);
+}
+
+ai::elite_quest::ScopeEntry const* PlayerbotAI::EliteQuestScope(uint32 questId)
+{
+    std::vector<ai::elite_quest::ScopeEntry> const* const scope = eliteQuestScope.load(std::memory_order_acquire);
+    return scope ? ai::elite_quest::Find(*scope, questId) : nullptr;
+}
+
+bool PlayerbotAI::IsEliteQuestDefer()
+{
+    if (!sPlayerbotAIConfig.questEliteDefer || !bot)
+        return false;
+    return ai::elite_quest::Applies(sPlayerbotAIConfig.questEliteDefer, bot->GetGUIDLow(),
+        sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) && !HasRealPlayerMaster());
+}
+
+bool PlayerbotAI::EliteFormedGroup()
+{
+    return ai::supervisor::GroupGoalSnapshot(this) != 0 || GetQuestGroupRole() != 0;   // T02-GROUP goal / S7 member or leader
+}
+
+bool PlayerbotAI::EliteRuleJudges()
+{
+    return IsEliteQuestDefer() && !EliteFormedGroup();
+}
+
+void PlayerbotAI::EliteGroupFacts(uint32& members, uint32& minLevel) const
+{
+    members = 1;
+    minLevel = bot->GetLevel();
+    Group* const group = bot->GetGroup();
+    if (!group)
+        return;
+    for (GroupReference* gref = group->GetFirstMember(); gref; gref = gref->next())
+    {
+        Player* const member = gref->getSource();
+        // HARM-RACE guard pair: in the world AND on this bot's own Map object, not only the map id.
+        if (!member || member == bot || !member->IsInWorld() || !SameMapObject(bot, member) || !member->IsAlive() ||
+            member->GetZoneId() != bot->GetZoneId())
+            continue;
+        ++members;
+        minLevel = std::min<uint32>(minLevel, member->GetLevel());
+    }
+}
+
+bool PlayerbotAI::EliteQuestDeferred(uint32 questId)
+{
+    // FindMap, not GetMap: GetMap() asserts a map before it returns (twow-repo#722, contract map_null_check).
+    Map const* const map = bot->FindMap();
+    if (!EliteRuleJudges() || !map || map->Instanceable())
+        return false;
+    ai::elite_quest::ScopeEntry const* const scope = EliteQuestScope(questId);
+    if (!scope)
+        return false;
+    AiObjectContext* context = aiObjectContext;
+    // The E1 focus bypass, mirrored (TravelMgr.cpp: forceThisQuest = a focus list and no group goal; then only focus quests
+    // travel, and they skip the rule): a focus quest is never deferred here, so E1 and E2 agree on it. A group goal never gets
+    // here (EliteRuleJudges is false for a formed group).
+    focusQuestTravelList const focus = AI_VALUE(focusQuestTravelList, "focus travel target");
+    if (focus.find(questId) != focus.end())
+        return false;
+    uint32 members = 1, minLevel = 0;
+    EliteGroupFacts(members, minLevel);
+    uint32 const level = scope->level ? scope->level : bot->GetLevel();
+    bool const ready = members > 1 ? AI_VALUE(bool, "can fight elite") : AI_VALUE(bool, "can fight equal");
+    return !ready || !ai::elite_quest::Pursue(members, minLevel, bot->GetLevel(), level, sPlayerbotAIConfig.questEliteMinGroup,
+        sPlayerbotAIConfig.questEliteSoloLevelsAbove);
+}
+
+void PlayerbotAI::NoteEliteQuestReward(uint32 questId)
+{
+    if (!sPlayerbotAIConfig.questEliteDefer || !bot || !sRandomPlayerbotMgr.IsPersistentRosterMember(bot->GetGUIDLow()) ||
+        HasRealPlayerMaster())
+        return;
+    ai::elite_quest::ScopeEntry const* const scope = EliteQuestScope(questId);
+    if (!scope)
+        return;
+    ai::elite_quest::RewardFacts facts;
+    facts.guid = bot->GetGUIDLow();
+    facts.questId = questId;
+    facts.botLevel = bot->GetLevel();
+    facts.questLevel = scope->level ? scope->level : facts.botLevel;
+    EliteGroupFacts(facts.members, facts.minLevel);
+    facts.judged = EliteRuleJudges();
+    facts.formed = EliteFormedGroup();
+    sLog.outBasic("%s", ai::elite_quest::FormatRewardLine(facts, sPlayerbotAIConfig.questEliteMinGroup,
+        sPlayerbotAIConfig.questEliteSoloLevelsAbove).c_str());
+}
+
+void PlayerbotAI::NoteEliteQuest(uint8 event, uint32 guidLow, uint32 n)
+{
+    if (event < ai::elite_quest::EventCount && n)
+        eliteQuestCounts[ai::elite_quest::Slot(ai::elite_quest::Event(event), guidLow)].fetch_add(n, std::memory_order_relaxed);
+}
+
+std::string PlayerbotAI::TakeEliteQuestMinuteLine()
+{
+    std::array<std::uint32_t, ai::elite_quest::SlotCount> counts = {};
+    for (std::size_t slot = 0; slot < ai::elite_quest::SlotCount; ++slot)
+        counts[slot] = eliteQuestCounts[slot].exchange(0, std::memory_order_relaxed);
+    return ai::elite_quest::FormatMinuteLine(counts);
 }
 
 bool PlayerbotAI::SkipCraftOnlyQuest(Quest const* quest, ai::quest_craft_only::Path path)
@@ -4878,6 +5033,16 @@ void PlayerbotAI::HandleBotOutgoingPacket(const WorldPacket& packet)
 			uint32 questId;
 			p >> questId;
 			questBook_->OnRewarded(questId);
+		}
+		// WS30-ELITE-QUEST-01 (QuestElite.Defer, default 0): the [QuestElite] reward line of the packet reward source (announce = true;
+		// the announce = false sources call it next to NoteQuestRewarded). Off: one config read.
+		if (sPlayerbotAIConfig.questEliteDefer && packet.size() >= 4)
+		{
+			WorldPacket p(packet);
+			p.rpos(0);
+			uint32 eliteQuestId;
+			p >> eliteQuestId;
+			NoteEliteQuestReward(eliteQuestId);
 		}
 		return;
 	}
