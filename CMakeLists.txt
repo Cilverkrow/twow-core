@@ -1208,6 +1208,11 @@ if(BUILD_TESTING AND CMAKE_SOURCE_DIR STREQUAL TW_CORE_ROOT)
     COMMAND "${CMAKE_COMMAND}"
       "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
       -P "${TW_CORE_ROOT}/t/check_alarus_once_338_contract.cmake")
+  # twow-repo#694: Kheyna (only giver of 80396) comes back after 80395 is turned in and 80396 was declined.
+  add_test(NAME kheyna_resummon_694_contract
+    COMMAND "${CMAKE_COMMAND}"
+      "-DTW_CORE_ROOT=${TW_CORE_ROOT}"
+      -P "${TW_CORE_ROOT}/t/check_kheyna_resummon_694_contract.cmake")
   # twow-repo#482 test build: no loot packet with more than 16 entries or a slot index >= 16.
   add_test(NAME loot_client_slots_482_contract
     COMMAND "${CMAKE_COMMAND}"

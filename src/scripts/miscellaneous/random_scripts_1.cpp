@@ -3864,7 +3864,10 @@ bool GOHello_go_kheyna_wormhole(Player* pPlayer, GameObject* pGo)
         if (pPlayer->FindNearestCreature(81041, 15.0F))
             return true;
 
-        if (pPlayer->GetQuestStatus(80395) == QUEST_STATUS_INCOMPLETE || pPlayer->GetQuestStatus(80395) == QUEST_STATUS_COMPLETE || pPlayer->GetQuestStatus(80396) == QUEST_STATUS_COMPLETE) // A Glittering Opportunity
+        // twow-repo#694: Kheyna is the only giver of 80396 and despawns after 60 s. Once 80395 is turned in, 80396 stays
+        // NONE until it is accepted, so she must come back for that state too, or a declined offer locks the quest for good.
+        bool const offer80396Again = pPlayer->GetQuestRewardStatus(80395) && pPlayer->GetQuestStatus(80396) == QUEST_STATUS_NONE;
+        if (pPlayer->GetQuestStatus(80395) == QUEST_STATUS_INCOMPLETE || pPlayer->GetQuestStatus(80395) == QUEST_STATUS_COMPLETE || pPlayer->GetQuestStatus(80396) == QUEST_STATUS_COMPLETE || offer80396Again) // A Glittering Opportunity
             pGo->SummonCreature(81041, pGo->GetPositionX() + 1.0F, pGo->GetPositionY() + 1.0F, pGo->GetPositionZ(), pGo->GetOrientation(), TEMPSUMMON_TIMED_DESPAWN, 60 * 1000);
         return true;
     }
