@@ -124,6 +124,9 @@ void WorldThreadManager::RunDirectives(std::map<std::uint32_t, Player*> const& b
     rules.recruitRadius = sPlayerbotAIConfig.questGroupsRecruitRadius;
     rules.maxAttempts = sPlayerbotAIConfig.questGroupsMaxAttempts;
     rules.retryCooldownMinutes = sPlayerbotAIConfig.questGroupsRetryCooldownMinutes;
+    rules.deadQuestEnds = sPlayerbotAIConfig.questGroupsManagerDeadQuestEnds;     // twow-repo#627 GRP2030 lever 2
+    rules.deadQuestHours = sPlayerbotAIConfig.questGroupsManagerDeadQuestHours;
+    rules.wishSkipBlocked = sPlayerbotAIConfig.questGroupsManagerWishSkipBlocked != 0;   // twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1)
     rules.timers.rendezvousMinutes = sPlayerbotAIConfig.questGroupsRendezvousMinutes;
     rules.timers.noProgressMinutes = sPlayerbotAIConfig.questGroupsNoProgressMinutes;
     rules.timers.turnInWaitMinutes = sPlayerbotAIConfig.questGroupsTurnInWaitMinutes;
@@ -323,6 +326,17 @@ bool IsManaged(std::uint32_t guidLow, std::uint16_t serial)
 bool Blocks(std::uint32_t guidLow)
 {
     return OwnsBot(guidLow) || IsManaged(guidLow);
+}
+
+bool QuestDeadForWish(std::uint32_t questId)
+{
+    return WorldManager().Directives().View().QuestDead(questId);
+}
+
+// twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1): the manager's view only (no lock while no pair is blocked).
+bool QuestBlockedForWish(std::uint32_t low, std::uint32_t questId)
+{
+    return WorldManager().Directives().View().BlockedForBot(low, questId);
 }
 
 std::uint8_t QuestRoleOf(std::uint32_t guidLow)

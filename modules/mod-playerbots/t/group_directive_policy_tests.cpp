@@ -834,6 +834,8 @@ void TestMinuteLine()
     Require(io.CountLines("[GroupMgr] minute types=1 passes=") == 1, "one minute line with the type stand first");
     Require(io.CountLines("[GroupMgr] minute2 leave_quest_turned_in=0") == 1, "one minute2 line, every reason, 0 included");
     Require(io.CountLines(" owned=0") == 1 && io.CountLines(" lines_dropped=0") == 1, "stands and the line budget field");
+    // twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1): wish_blocked appended at the end, after owned (no wish: 0).
+    Require(io.CountLines(" owned=0 wish_blocked=0") == 1, "wish_blocked appended after owned (no wish: 0)");
     char buf[2048];
     MinuteCounts m;
     Stands s;
@@ -918,6 +920,164 @@ void TestFormingNoAttempt()
         Require(e.TotalLeave(EndReason::JoinStale) == 1 && e.TotalLeave(EndReason::TooSmall) == 0,
             "forming: the acked leader alone ends as join_stale");
         Require(e.QuestAttempts(1, 300) == 0 && e.QuestAttempts(2, 300) == 0, "forming: a PASSIVE refusal charges no attempt");
+    }
+}
+
+// twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1; QuestGroups.Manager.WishSkipBlocked): the bot side (ManagerFacts.cpp
+// ReadWish) emulated - the bot holds quests 300 and 400 and wishes the first one (lowest id, BetterWish's order for normal
+// quests) that the view does not block for it; skip false = the old wish.
+std::uint32_t WishAfterSkip(Engine const& e, std::uint32_t low, bool skip)
+{
+    std::uint32_t const held[2] = { 300, 400 };
+    for (std::uint32_t q : held)
+        if (!skip || !e.View().BlockedForBot(low, q))
+            return q;
+    return 0;
+}
+
+// twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1): the registry holds a QUEST group on the quest.
+bool HasQuestGroup(Engine const& e, std::uint32_t questId)
+{
+    for (auto const& entry : e.Groups())
+        if (entry.second.type == GroupType::Quest && entry.second.questId == questId)
+            return true;
+    return false;
+}
+
+// twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1): the view lists the (bot, quest) pairs the manager blocks, only with the key
+// on; a bot whose first waiting quest failed is a QUEST candidate for its second one in the next pass; key off = as before.
+void TestWishSkipBlocked()
+{
+    // twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1): the view alone - an empty publish lists nothing (no lock while off), a
+    // sorted list hits and misses, an empty one clears it.
+    {
+        ManagedView v;
+        std::vector<std::uint64_t> keys;
+        v.PublishBlocked(keys);
+        Require(!v.AnyBlocked() && !v.BlockedForBot(1, 300), "wish skip view: an empty publish (key off) lists nothing");
+        keys.push_back(ai::quest_groups::BlockKey(2, 300));
+        keys.push_back(ai::quest_groups::BlockKey(1, 300));
+        ai::quest_groups::SortBlockKeys(keys);
+        v.PublishBlocked(keys);
+        Require(keys.empty(), "wish skip view: the publish takes the list, the scratch comes back empty");
+        Require(v.AnyBlocked() && v.BlockedForBot(1, 300) && v.BlockedForBot(2, 300), "wish skip view: hit");
+        Require(!v.BlockedForBot(1, 400) && !v.BlockedForBot(3, 300) && !v.BlockedForBot(1, 0), "wish skip view: miss");
+        v.PublishBlocked(keys);
+        Require(!v.AnyBlocked() && !v.BlockedForBot(1, 300), "wish skip view: an empty publish after a list clears it");
+    }
+    for (int on = 0; on < 2; ++on)
+    {
+        bool const key = on != 0;
+        Rules r = QuestRulesOnly();
+        r.wishSkipBlocked = key;
+        Engine e;
+        World w;
+        FakeIo io;
+        // twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1): the first QUEST group on 300 fails while forming
+        // (TestFormingNoAttempt): both bots get the retry cooldown on 300.
+        io.joinOk = false;
+        SetQuestPair(w, 1000, -1);
+        Run(e, w, r, io, 1000);
+        Require(e.TotalLeave(EndReason::OpRefused) == 1, "wish skip: the QUEST group on 300 fails (op_refused)");
+        std::uint32_t t = Tick(e, w, r, io, 1000, 5000);
+        Require(e.Groups().empty() && e.Bots().empty(), "wish skip: the failed group is gone, no bot held");
+        std::uint32_t const sec = SecOf(w, t);
+        Require(e.QuestCooldown(1, 300, sec) && e.QuestCooldown(2, 300, sec), "wish skip: both bots blocked on 300 (retry cooldown)");
+        Require(e.View().AnyBlocked() == key && e.View().BlockedForBot(1, 300) == key && e.View().BlockedForBot(2, 300) == key,
+            "wish skip: the view lists the blocked pairs only with the key on");
+        Require(!e.View().BlockedForBot(1, 400) && !e.View().BlockedForBot(2, 400), "wish skip: a quest without a block is not listed");
+        // twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1): the bots post their next wish (ReadWish skips what the view blocks).
+        io.joinOk = true;
+        t += 1000;
+        SetWish(w, 1, t, WishAfterSkip(e, 1, key), 0.0f, 0.0f);
+        SetWish(w, 2, t, WishAfterSkip(e, 2, key), 100.0f, 0.0f);
+        Refresh(w, t);
+        Run(e, w, r, io, t);
+        if (key)
+            Require(HasQuestGroup(e, 400) && !HasQuestGroup(e, 300), "wish skip key on: the second waiting quest forms in one pass");
+        else
+            Require(e.Groups().empty(), "wish skip key off: the blocked wish keeps both bots out of the QUEST pool (as before)");
+        // twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1): the pairs come from the stores, not from the wish - still listed
+        // while 400 is the wish. op_refused is a manager reason: the block lives in questCooldown_ (no queue entry, no
+        // attempt), which the queue sweep never touches; TestWishSkipQueueHold covers the queue store's hold.
+        t = Tick(e, w, r, io, t, t + 5000);
+        Require(e.View().BlockedForBot(1, 300) == key && e.View().BlockedForBot(2, 300) == key,
+            "wish skip: still listed while another quest is the wish (questCooldown_)");
+        t = Tick(e, w, r, io, t, t + 700000);
+        Require(e.View().BlockedForBot(1, 300) == key && e.View().BlockedForBot(2, 300) == key,
+            "wish skip: a questCooldown_ block (manager reason) still listed after 700 s (cooldown 30 min)");
+        Require(e.QuestAttempts(1, 300) == 0 && e.QuestAttempts(2, 300) == 0,
+            "wish skip: a manager reason charges no attempt, nor does the skip");
+        // twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1): wish_blocked counts the blocked wishes with the key on or off (the
+        // passes right after the failure still post the wish 300); at least one minute line is not 0.
+        Require(io.CountLines(" wish_blocked=0") < io.CountLines("[GroupMgr] minute types="),
+            "wish skip: wish_blocked counts the blocked wishes (key on and off)");
+    }
+}
+
+// twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1): an S7 attempt reason (rendezvous_timeout, TestQuestAttempts (b)) puts the
+// block into the queue store (questQueue_.Failed with the hold). The bots wish nothing afterwards, so nothing marks the entry
+// Seen again: the key on keeps it (listed while its cooldown runs, the attempt kept past the cooldown, so attempts add up);
+// the key off drops it in the first sweep past 600 s unseen (the old rule, the attempt back to 0).
+void TestWishSkipQueueHold()
+{
+    for (int on = 0; on < 2; ++on)
+    {
+        bool const key = on != 0;
+        Rules r = QuestRulesOnly();
+        r.wishSkipBlocked = key;
+        Engine e;
+        World w;
+        FakeIo io;
+        SetQuestPair(w, 1000, -1);
+        Run(e, w, r, io, 1000);
+        Require(io.joins.size() == 1 && io.joins[0].type == GroupType::Quest && io.joins[0].questId == 300,
+            "wish skip hold: a join for the wish 300");
+        std::uint32_t const inviter = io.joins[0].inviter;
+        std::uint32_t const invitee = io.joins[0].invitee;
+        Refresh(w, 2000);
+        w.outcomes.push_back(Outcome(invitee, inviter, go::OpKind::Join, go::ManagerOpResult::Executed));
+        SetEdge(w, invitee, 2000, 88, inviter, 2);
+        SetEdge(w, inviter, 2000, 88, inviter, 2);
+        Run(e, w, r, io, 2000);
+        Refresh(w, 3000);
+        w.acks.push_back(AckFor(1, SeqOf(io, 1, Verb::Enter), mi::kAckApplied));
+        w.acks.push_back(AckFor(2, SeqOf(io, 2, Verb::Enter), mi::kAckApplied));
+        Run(e, w, r, io, 3000);
+        Require(e.Total(Cnt::Formed) == 1, "wish skip hold: QUEST group formed");
+        std::uint32_t t = 3000;
+        for (std::uint32_t i = 0; i < r.timers.rendezvousMinutes * 60 + 5 && e.TotalLeave(EndReason::RendezvousTimeout) == 0; ++i)
+        {
+            t += 1000;
+            Refresh(w, t);
+            Run(e, w, r, io, t);
+        }
+        Require(e.TotalLeave(EndReason::RendezvousTimeout) == 2, "wish skip hold: never gathered, rendezvous_timeout (S7 reason)");
+        Require(e.QuestAttempts(1, 300) == 1 && e.QuestAttempts(2, 300) == 1, "wish skip hold: one attempt per member (queue store)");
+        // twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1): from here on no wish (the skip), out of the core group.
+        w.wishes.clear();
+        SetEdge(w, 1, t);
+        SetEdge(w, 2, t);
+        std::uint32_t const failed = t;
+        t = Tick(e, w, r, io, t, failed + 700000);
+        if (key)
+        {
+            Require(e.QuestAttempts(1, 300) == 1 && e.QuestAttempts(2, 300) == 1,
+                "wish skip hold key on: the queue entry stays past the 600 s sweep, unseen");
+            Require(e.View().BlockedForBot(1, 300) && e.View().BlockedForBot(2, 300),
+                "wish skip hold key on: the queue store's pair is listed after 700 s (cooldown 30 min)");
+            t = Tick(e, w, r, io, t, failed + 2500000);
+            Require(e.QuestAttempts(1, 300) == 1 && e.QuestAttempts(2, 300) == 1,
+                "wish skip hold key on: the attempt kept past the cooldown + 600 s (attempts add up)");
+            Require(!e.View().BlockedForBot(1, 300) && !e.View().BlockedForBot(2, 300),
+                "wish skip hold key on: not listed once the cooldown ran out (below MaxAttempts the bot may wish it again)");
+        }
+        else
+        {
+            Require(e.QuestAttempts(1, 300) == 0 && e.QuestAttempts(2, 300) == 0,
+                "wish skip hold key off: the entry goes in the sweep after 600 s unseen (old rule, attempts back to 0)");
+            Require(!e.View().AnyBlocked(), "wish skip hold key off: nothing listed");
+        }
     }
 }
 
@@ -2550,6 +2710,8 @@ int main()
     TestMinuteLine();
     TestWrap();
     TestFormingNoAttempt();
+    TestWishSkipBlocked();   // twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1)
+    TestWishSkipQueueHold();   // twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1)
     TestQuestViewKey();
     TestLeaveEdgeLag();
     TestGapSameMs();

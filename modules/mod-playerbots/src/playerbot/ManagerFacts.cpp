@@ -133,14 +133,30 @@ bool ReadWish(Player* bot, PlayerbotAI* ai, manager_inbox::WishFacts& out)
         Busy(bot, ai))
         return false;
     TravelTarget* const target = Target(ai);
-    std::uint32_t bestQuest = 0;
-    std::uint32_t bestOpen = 0;
+    // twow-repo#627 GRP2030 levers 1 and 2 (QuestGroups.Manager.WishScope / DeadQuestEnds, default 0): only for a bot of the
+    // manager's cohort (OwnsBot; the other cohort keeps the old wish). Dead quests come from the manager's view (no other bot).
+    // twow-repo#627 GRP2030 wish skip (OB-00 28.11. R1; QuestGroups.Manager.WishSkipBlocked, default 0): the same binding; the
+    // quests the manager blocks for this bot (its view, QuestBlockedForWish) are skipped, so the next waiting quest is the wish.
+    bool const owned = (sPlayerbotAIConfig.questGroupsManagerWishScope || sPlayerbotAIConfig.questGroupsManagerDeadQuestEnds ||
+        sPlayerbotAIConfig.questGroupsManagerWishSkipBlocked) && group_mgr::OwnsBot(bot->GetGUIDLow());
+    bool const scopeAll = owned && sPlayerbotAIConfig.questGroupsManagerWishScope;
+    bool const skipDead = owned && sPlayerbotAIConfig.questGroupsManagerDeadQuestEnds;
+    bool const skipBlocked = owned && sPlayerbotAIConfig.questGroupsManagerWishSkipBlocked;
+    quest_groups::WishPick best;
     bool bestDrop = false;
     for (std::uint16_t slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
     {
         std::uint32_t const questId = bot->GetQuestSlotQuestId(slot);
         Quest const* q = questId ? sObjectMgr.GetQuestTemplate(questId) : nullptr;
-        if (!q || !quest_groups::IsGroupHelpQuest(q->GetType(), q->GetSuggestedPlayers(), sPlayerbotAIConfig.questGroupsSuggestedPlayers))
+        if (!q)
+            continue;
+        bool const help = quest_groups::IsGroupHelpQuest(q->GetType(), q->GetSuggestedPlayers(), sPlayerbotAIConfig.questGroupsSuggestedPlayers);
+        if (!help && (!scopeAll || q->GetType() == quest_groups::QuestTypeDungeon || q->GetType() == quest_groups::QuestTypeRaid ||
+            q->GetType() == quest_groups::QuestTypePvp))
+            continue;
+        if (skipDead && group_mgr::QuestDeadForWish(questId))
+            continue;
+        if (skipBlocked && group_mgr::QuestBlockedForWish(bot->GetGUIDLow(), questId))
             continue;
         QuestStatusData const* st = bot->GetQuestStatusData(questId);
         bool drop = false;
@@ -151,18 +167,21 @@ bool ReadWish(Player* bot, PlayerbotAI* ai, manager_inbox::WishFacts& out)
         f.questLevel = q->GetQuestLevel() > 0 ? std::uint32_t(q->GetQuestLevel()) : f.botLevel;
         f.abandoned = target && target->IsStructurallyAbandoned(questId);
         f.openObjectives = OpenObjectives(q, st, drop);
-        // One wish per period: the waiting quest with the most open objectives (F3 (a)); ties keep the earlier log slot.
-        if (!quest_groups::Waits(f) || f.openObjectives <= bestOpen)
+        // One wish per period: the waiting quest with the most open objectives (F3 (a)); ties keep the earlier log slot. GRP2030
+        // WishScope 1: a group-help quest still wins; between normal quests the lowest id (QuestGroupPolicy.h BetterWish).
+        if (!quest_groups::Waits(f) || !quest_groups::BetterWish(best, help, f.openObjectives, questId))
             continue;
-        bestQuest = questId;
-        bestOpen = f.openObjectives;
+        best.any = true;
+        best.help = help;
+        best.open = f.openObjectives;
+        best.questId = questId;
         bestDrop = drop;
     }
-    if (!bestQuest)
+    if (!best.any)
         return false;
     out = manager_inbox::WishFacts();
-    out.questId = bestQuest;
-    out.openObjectives = bestOpen;
+    out.questId = best.questId;
+    out.openObjectives = best.open;
     out.dropOnly = bestDrop;
     out.level = std::uint8_t(std::min<std::uint32_t>(255, bot->GetLevel()));
     out.mapId = bot->GetMapId();
